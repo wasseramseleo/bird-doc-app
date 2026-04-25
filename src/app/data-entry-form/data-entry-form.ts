@@ -22,6 +22,8 @@ import {MatNativeDateModule} from '@angular/material/core';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {provideNativeDateAdapter} from '@angular/material/core';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
+import {MatDialog, MatDialogModule} from '@angular/material/dialog';
+import {MatIconModule} from '@angular/material/icon';
 
 import {debounceTime, distinctUntilChanged, switchMap, startWith, map} from 'rxjs/operators';
 import {Observable} from 'rxjs';
@@ -46,6 +48,7 @@ import {Scientist} from '../models/scientist.model';
 import {RingSize} from '../models/ring.model';
 import {SelectOnTabDirective} from '../core/directives/select-on-tab';
 import {MatTableModule} from '@angular/material/table';
+import {DataEntryDetailDialogComponent} from './data-entry-detail-dialog/data-entry-detail-dialog';
 
 @Component({
   selector: 'app-data-entry-form',
@@ -66,6 +69,8 @@ import {MatTableModule} from '@angular/material/table';
     MatCheckboxModule,
     MatSnackBarModule,
     MatTableModule,
+    MatDialogModule,
+    MatIconModule,
   ],
   providers: [provideNativeDateAdapter(), DatePipe, DecimalPipe],
   templateUrl: './data-entry-form.html',
@@ -79,6 +84,7 @@ export class DataEntryFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   // Component State
   private readonly entryId = signal<string | null>(this.route.snapshot.paramMap.get('id'));
@@ -87,7 +93,10 @@ export class DataEntryFormComponent implements OnInit {
 
   // Recapture History State
   readonly recaptureHistory = signal<DataEntry[]>([]);
-  readonly displayedHistoryColumns: string[] = ['date_time', 'ringing_station', 'staff', 'wing_span', 'weight_gram'];
+  readonly displayedHistoryColumns: string[] = [
+    'date_time', 'species', 'bird_status', 'ringing_station', 'staff', 'wing_span', 'weight_gram', 'actions'
+  ];
+  readonly BirdStatus = BirdStatus;
 
   // Form Definition
   entryForm = this.fb.group({
@@ -99,7 +108,7 @@ export class DataEntryFormComponent implements OnInit {
     bird_status: [null as BirdStatus | null, Validators.required],
     ring_size: [null as RingSize | null, Validators.required],
     ring_number: ['', [Validators.required, Validators.pattern('^[0-9]*$')]],
-    net_location: [null as number | null, Validators.required],
+    net_location: [null as number | null],
     net_height: [null as number | null],
     net_direction: [null as Direction | null],
     fat_deposit: [null as FatClass | null],
@@ -136,8 +145,8 @@ export class DataEntryFormComponent implements OnInit {
     'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'ring_size', 'ring_number',
     'net_location', 'net_height', 'net_direction', 'age_class', 'sex', 'fat_deposit', 'muscle_class',
     'small_feather_int', 'small_feather_app', 'hand_wing',
-    'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'notch_f2',
-    'inner_foot', 'has_mites', 'comment'
+    'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'comment', 'notch_f2',
+    'inner_foot', 'has_mites'
   ];
 
 
@@ -242,15 +251,15 @@ export class DataEntryFormComponent implements OnInit {
 
   ringSizeOptions: SelectOption<RingSize>[] = [{
     value: RingSize.XSmall,
-    viewValue: 'V (Extra Small)',
+    viewValue: 'V ()',
     key: 'v'
-  }, {value: RingSize.Small, viewValue: 'T (Small)', key: 't'}, {
+  }, {value: RingSize.Small, viewValue: 'T ()', key: 't'}, {
     value: RingSize.Medium,
     viewValue: 'S (Medium)',
     key: 's'
-  }, {value: RingSize.Large, viewValue: 'X (Large)', key: 'x'}, {
+  }, {value: RingSize.Large, viewValue: 'X ()', key: 'x'}, {
     value: RingSize.XLarge,
-    viewValue: 'P (Extra Large)',
+    viewValue: 'P ()',
     key: 'p'
   },];
 
@@ -350,6 +359,14 @@ export class DataEntryFormComponent implements OnInit {
     });
   }
 
+
+  openDetailDialog(entry: DataEntry): void {
+    this.dialog.open(DataEntryDetailDialogComponent, {
+      data: entry,
+      width: '640px',
+      maxHeight: '90vh',
+    });
+  }
 
   onSubmit(): void {
     if (this.entryForm.invalid) {

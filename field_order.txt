@@ -1,0 +1,12 @@
+1. Alter
+2. Geschlecht
+3. Fett
+4. Muskel
+5. Klein Int
+6. Klein Fort
+7. Handschwinge
+8. Tarsus
+9. Federl
+10. Flügell
+11. Gewicht
+12. Bemerkung

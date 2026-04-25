@@ -1,4 +1,7 @@
 import {Ring} from './ring.model';
+import {Species} from './species.model';
+import {Scientist} from './scientist.model';
+import {RingingStation} from './ringing-station.model';
 
 export enum Direction {
   Left = 'L',
@@ -67,10 +70,10 @@ export enum FatClass {
 
 export interface DataEntry {
   id: string;
-  species: string;
+  species: Species;
   ring: Ring;
-  staff: number; // User ID
-  ringing_station: string;
+  staff: Scientist;
+  ringing_station: RingingStation;
   net_location: number;
   net_height: number;
   net_direction: Direction;

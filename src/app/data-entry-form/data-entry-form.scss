@@ -66,6 +66,33 @@
   .mat-elevation-z2 {
     box-shadow: none;
   }
+
+  .history-row {
+    transition: background-color 150ms ease;
+
+    &:hover {
+      background-color: rgba(0, 0, 0, 0.04);
+    }
+  }
+
+  .status-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.5;
+
+    &.chip-erstfang {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    &.chip-wiederfang {
+      background-color: #fff3e0;
+      color: #e65100;
+    }
+  }
 }
 
 .action-buttons {

@@ -1,0 +1,147 @@
+<h2 mat-dialog-title>Ring {{ entry.ring.size }} – {{ entry.ring.number }}</h2>
+
+<mat-dialog-content>
+
+  <section>
+    <h4>Art</h4>
+    <dl>
+      <dt>Deutscher Name</dt>
+      <dd>{{ entry.species.common_name_de }}</dd>
+      <dt>Wissenschaftlicher Name</dt>
+      <dd><em>{{ entry.species.scientific_name }}</em></dd>
+    </dl>
+  </section>
+
+  <section>
+    <h4>Fang</h4>
+    <dl>
+      <dt>Status</dt>
+      <dd>
+        <span class="status-badge"
+              [class.erstfang]="entry.bird_status === BirdStatus.FirstCatch"
+              [class.wiederfang]="entry.bird_status !== BirdStatus.FirstCatch">
+          {{ getStatusLabel(entry.bird_status) }}
+        </span>
+      </dd>
+      <dt>Datum & Uhrzeit</dt>
+      <dd>{{ entry.date_time | date:'dd.MM.yyyy HH:mm' }}</dd>
+      <dt>Station</dt>
+      <dd>{{ entry.ringing_station.name }}</dd>
+      <dt>Beringer</dt>
+      <dd>{{ entry.staff.full_name }} ({{ entry.staff.handle }})</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h4>Netz</h4>
+    <dl>
+      <dt>Netznummer</dt>
+      <dd>{{ entry.net_location ?? '—' }}</dd>
+      <dt>Netzfach</dt>
+      <dd>{{ entry.net_height ?? '—' }}</dd>
+      <dt>Flugrichtung</dt>
+      <dd>{{ getDirectionLabel(entry.net_direction) }}</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h4>Alter & Geschlecht</h4>
+    <dl>
+      <dt>Alter</dt>
+      <dd>{{ getAgeClassLabel(entry.age_class) }}</dd>
+      <dt>Geschlecht</dt>
+      <dd>{{ getSexLabel(entry.sex) }}</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h4>Gefieder</h4>
+    <dl>
+      <dt>Kleingefieder Intensität</dt>
+      <dd>{{ getSmallFeatherIntLabel(entry.small_feather_int) }}</dd>
+      <dt>Kleingefieder Fortschritt</dt>
+      <dd>{{ getSmallFeatherAppLabel(entry.small_feather_app) }}</dd>
+      <dt>Handschwingenmauser</dt>
+      <dd>{{ getHandWingLabel(entry.hand_wing) }}</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h4>Biometrie</h4>
+    <dl>
+      <dt>Tarsus (mm)</dt>
+      <dd>{{ entry.tarsus ?? '—' }}</dd>
+      <dt>Federlänge (mm)</dt>
+      <dd>{{ entry.feather_span ?? '—' }}</dd>
+      <dt>Flügellänge (mm)</dt>
+      <dd>{{ entry.wing_span ?? '—' }}</dd>
+      <dt>Gewicht (g)</dt>
+      <dd>{{ entry.weight_gram ?? '—' }}</dd>
+      <dt>Kerbe F2 (mm)</dt>
+      <dd>{{ entry.notch_f2 ?? '—' }}</dd>
+      <dt>Innenfuß (mm)</dt>
+      <dd>{{ entry.inner_foot ?? '—' }}</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h4>Kondition</h4>
+    <dl>
+      <dt>Fett</dt>
+      <dd>{{ getFatLabel(entry.fat_deposit) }}</dd>
+      <dt>Muskelklasse</dt>
+      <dd>{{ getMuscleLabel(entry.muscle_class) }}</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h4>Merkmale</h4>
+    <dl>
+      <dt>Milben</dt>
+      <dd>
+        @if (entry.has_mites) {
+          <mat-icon class="flag-yes">check</mat-icon>
+        } @else {
+          <mat-icon class="flag-no">remove</mat-icon>
+        }
+      </dd>
+      <dt>Hungerstreifen</dt>
+      <dd>
+        @if (entry.has_hunger_stripes) {
+          <mat-icon class="flag-yes">check</mat-icon>
+        } @else {
+          <mat-icon class="flag-no">remove</mat-icon>
+        }
+      </dd>
+      <dt>Brutfleck</dt>
+      <dd>
+        @if (entry.has_brood_patch) {
+          <mat-icon class="flag-yes">check</mat-icon>
+        } @else {
+          <mat-icon class="flag-no">remove</mat-icon>
+        }
+      </dd>
+      <dt>CPL+</dt>
+      <dd>
+        @if (entry.has_cpl_plus) {
+          <mat-icon class="flag-yes">check</mat-icon>
+        } @else {
+          <mat-icon class="flag-no">remove</mat-icon>
+        }
+      </dd>
+    </dl>
+  </section>
+
+  @if (entry.comment) {
+    <section>
+      <h4>Bemerkung</h4>
+      <p class="comment">{{ entry.comment }}</p>
+    </section>
+  }
+
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button mat-dialog-close>Schließen</button>
+  <button mat-flat-button color="primary" (click)="openInBackend()">Im Backend öffnen</button>
+</mat-dialog-actions>
