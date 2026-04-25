@@ -1,6 +1,6 @@
-# BirdDoc
+# BirdDoc — Backend
 
-Django REST API backend for a bird ringing (ornithology) data capture system. Pairs with an Angular 20 frontend at `localhost:4200`.
+Django REST API for a bird ringing (ornithology) data capture system. Part of the `bird-doc-app` monorepo — pairs with the Angular 20 frontend in `../frontend/` at `localhost:4200`.
 
 ## Stack
 
@@ -11,6 +11,7 @@ Django REST API backend for a bird ringing (ornithology) data capture system. Pa
 ## Quick Start
 
 ```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py createsuperuser

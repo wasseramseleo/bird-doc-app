@@ -1,64 +1,57 @@
-# BirdDoc
+# BirdDoc — Frontend
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.1.6.
+Angular 20 single-page application for bird ringing field data entry. Captures per-bird measurements and ring assignments through a keyboard-optimised form.
 
-## Development server
+## Prerequisites
 
-To start a local development server, run:
+- Node.js 20+
+- Angular CLI (`npm install -g @angular/cli`)
+- Django backend running at `http://localhost:8000` (see `../backend/README.md`)
 
-```bash
-ng serve
-```
-
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+## Setup
 
 ```bash
-ng generate component component-name
+npm install
+ng serve        # Dev server at http://localhost:4200
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+## Commands
 
 ```bash
-ng generate --help
+ng serve                          # Dev server with live reload
+ng build                          # Production build → dist/bird-doc/
+ng build --configuration development  # Dev build (no optimisation)
+ng test                           # Unit tests via Karma/Jasmine
+ng generate component <name>      # Scaffold a new standalone component
 ```
 
-## Building
+## Project Structure
 
-To build the project run:
-
-```bash
-ng build
+```
+src/app/
+├── data-entry-form/
+│   ├── data-entry-form.ts        # Main form component (create/edit)
+│   └── data-entry-detail-dialog/ # View-only record detail dialog
+├── nav-bar/                      # Top navigation bar
+├── service/
+│   └── api.service.ts            # All HTTP calls to the backend
+├── models/                       # TypeScript interfaces mirroring Django models
+├── core/directives/
+│   └── select-on-tab.ts          # Confirms autocomplete on Tab keypress
+└── shared/directives/
+    └── focus-next.ts             # Advances focus to next field on Enter/selection
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+## Key Behaviours
 
-## Running unit tests
+**Autocomplete fields** (species, ringing station, scientist) debounce 300 ms before hitting the API via `switchMap`. Selecting a species automatically pre-fills the ring size.
 
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
+**Auto ring number** — when ring size and `BirdStatus.FirstCatch` are both set, the next ring number is fetched via a reactive `effect()`.
 
-```bash
-ng test
-```
+**Form submit** — `transformFromForm()` flattens nested objects to flat write IDs (`species_id`, `staff_id`, `ringing_station_id`) before POST/PUT. After a successful save, `clearForm()` resets everything except station, scientist, and organisation.
 
-## Running end-to-end tests
+**Keyboard UX** — single-character shortcuts on `MatSelect` fields advance focus automatically through `focusOrder`. Tab on open autocomplete confirms the highlighted option.
 
-For end-to-end (e2e) testing, run:
+## Locale
 
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
-
-
-## Checkboxes
-Oberhalb/Unterhalb Comments
-Milben, Hungerstreifen, Brutfleck, CPL+
+`LOCALE_ID: 'de-AT'` (Austrian German). All dates and decimals are formatted in Austrian German conventions.
