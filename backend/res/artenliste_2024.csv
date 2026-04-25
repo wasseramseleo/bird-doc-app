@@ -1,0 +1,461 @@
+seq;common_name_de;order_name;family_name;scientific_name;common_name_en
+1;Ringelgans;Anseriformes;Anatidae;Branta bernicla;Brant Goose
+2;Rothalsgans;Anseriformes;Anatidae;Branta ruficollis;Red-breasted Goose
+3;Kanadagans;Anseriformes;Anatidae;Branta canadensis;Canada Goose
+4;Weißwangengans;Anseriformes;Anatidae;Branta leucopsis;Barnacle Goose
+5;Zwergkanadagans;Anseriformes;Anatidae;Branta hutchinsii;Cackling Goose
+6;Streifengans;Anseriformes;Anatidae;Anser indicus;Bar-headed Goose
+7;Schneegans;Anseriformes;Anatidae;Anser caerulescens;Snow Goose
+8;Graugans;Anseriformes;Anatidae;Anser anser;Greylag Goose
+9;Waldsaatgans;Anseriformes;Anatidae;Anser fabalis;Taiga Bean Goose
+10;Kurzschnabelgans;Anseriformes;Anatidae;Anser brachyrhynchus;Pink-footed Goose
+11;Tundrasaatgans;Anseriformes;Anatidae;Anser serrirostris;Tundra Bean Goose
+12;Blässgans;Anseriformes;Anatidae;Anser albifrons;Greater White-fronted Goose
+13;Zwerggans;Anseriformes;Anatidae;Anser erythropus;Lesser White-fronted Goose
+14;Trauerschwan (Schwarzschwan);Anseriformes;Anatidae;Cygnus atratus;Black Swan
+15;Höckerschwan;Anseriformes;Anatidae;Cygnus olor;Mute Swan
+16;Zwergschwan;Anseriformes;Anatidae;Cygnus columbianus;Tundra Swan
+17;Singschwan;Anseriformes;Anatidae;Cygnus cygnus;Whooper Swan
+18;Nilgans;Anseriformes;Anatidae;Alopochen aegyptiaca;Egyptian Goose
+19;Brandgans;Anseriformes;Anatidae;Tadorna tadorna;Common Shelduck
+20;Rostgans;Anseriformes;Anatidae;Tadorna ferruginea;Ruddy Shelduck
+21;Moschusente;Anseriformes;Anatidae;Cairina moschata f. dom.;Muscovy Duck
+22;Brautente;Anseriformes;Anatidae;Aix sponsa;Wood Duck
+23;Mandarinente;Anseriformes;Anatidae;Aix galericulata;Mandarin Duck
+24;Knäkente;Anseriformes;Anatidae;Spatula querquedula;Garganey
+25;Blauflügelente;Anseriformes;Anatidae;Spatula discors;Blue-winged Teal
+26;Löffelente;Anseriformes;Anatidae;Spatula clypeata;Northern Shoveler
+27;Schnatterente;Anseriformes;Anatidae;Mareca strepera;Gadwall
+28;Sichelente;Anseriformes;Anatidae;Mareca falcata;Falcated Duck
+29;Pfeifente;Anseriformes;Anatidae;Mareca penelope;Eurasian Wigeon
+30;Nordamerikanische Pfeifente (Kanadapfeifente);Anseriformes;Anatidae;Mareca americana;American Wigeon
+31;Stockente;Anseriformes;Anatidae;Anas platyrhynchos;Mallard
+32;Spießente;Anseriformes;Anatidae;Anas acuta;Northern Pintail
+33;Krickente;Anseriformes;Anatidae;Anas crecca;Eurasian Teal
+34;Amerikanische Krickente (Carolinakrickente);Anseriformes;Anatidae;Anas carolinensis;Green-winged Teal
+35;Kolbenente;Anseriformes;Anatidae;Netta rufina;Red-crested Pochard
+36;Tafelente;Anseriformes;Anatidae;Aythya ferina;Common Pochard
+37;Moorente;Anseriformes;Anatidae;Aythya nyroca;Ferruginous Duck
+38;Ringschnabelente;Anseriformes;Anatidae;Aythya collaris;Ring-necked Duck
+39;Reiherente;Anseriformes;Anatidae;Aythya fuligula;Tufted Duck
+40;Bergente;Anseriformes;Anatidae;Aythya marila;Greater Scaup
+41;Eiderente;Anseriformes;Anatidae;Somateria mollissima;Common Eider
+42;Kragenente;Anseriformes;Anatidae;Histrionicus histrionicus;Harlequin Duck
+43;Samtente;Anseriformes;Anatidae;Melanitta fusca;Velvet Scoter
+44;Trauerente;Anseriformes;Anatidae;Melanitta nigra;Common Scoter
+45;Eisente;Anseriformes;Anatidae;Clangula hyemalis;Long-tailed Duck
+46;Schellente;Anseriformes;Anatidae;Bucephala clangula;Common Goldeneye
+47;Zwergsäger;Anseriformes;Anatidae;Mergellus albellus;Smew
+48;Gänsesäger;Anseriformes;Anatidae;Mergus merganser;Common Merganser
+49;Mittelsäger;Anseriformes;Anatidae;Mergus serrator;Red-breasted Merganser
+50;Schwarzkopf-Ruderente;Anseriformes;Anatidae;Oxyura jamaicensis;Ruddy Duck
+51;Weißkopf-Ruderente;Anseriformes;Anatidae;Oxyura leucocephala;White-headed Duck
+52;Truthuhn;Galliformes;Phasianidae;Meleagris gallopavo;Wild Turkey
+53;Haselhuhn;Galliformes;Phasianidae;Tetrastes bonasia;Hazel Grouse
+54;Alpenschneehuhn;Galliformes;Phasianidae;Lagopus muta;Rock Ptarmigan
+55;Auerhuhn;Galliformes;Phasianidae;Tetrao urogallus;Western Capercaillie
+56;Birkhuhn;Galliformes;Phasianidae;Lyrurus tetrix;Black Grouse
+57;Rebhuhn;Galliformes;Phasianidae;Perdix perdix;Grey Partridge
+58;Fasan (Jagdfasan);Galliformes;Phasianidae;Phasianus colchicus;Common Pheasant
+59;Pfau;Galliformes;Phasianidae;Pavo cristatus;Indian Peafowl
+60;Wachtel;Galliformes;Phasianidae;Coturnix coturnix;Common Quail
+61;Chukarhuhn;Galliformes;Phasianidae;Alectoris chukar;Chukar Partridge
+62;Steinhuhn;Galliformes;Phasianidae;Alectoris graeca;Rock Partridge
+63;Ziegenmelker (Nachtschwalbe);Caprimulgiformes;Caprimulgidae;Caprimulgus europaeus;European Nightjar
+64;Alpensegler;Apodiformes;Apodidae;Tachymarptis melba;Alpine Swift
+65;Mauersegler;Apodiformes;Apodidae;Apus apus;Common Swift
+66;Großtrappe;Otidiformes;Otididae;Otis tarda;Great Bustard
+67;Steppenkragentrappe;Otidiformes;Otididae;Chlamydotis macqueenii;Macqueen's Bustard
+68;Zwergtrappe;Otidiformes;Otididae;Tetrax tetrax;Little Bustard
+69;Häherkuckuck;Cuculiformes;Cuculidae;Clamator glandarius;Great Spotted Cuckoo
+70;Kuckuck;Cuculiformes;Cuculidae;Cuculus canorus;Common Cuckoo
+71;Steppenflughuhn;Pterocliformes;Pteroclidae;Syrrhaptes paradoxus;Pallas's Sandgrouse
+72;Straßentaube;Columbiformes;Columbidae;Columba livia f. domestica;Feral Pigeon
+73;Hohltaube;Columbiformes;Columbidae;Columba oenas;Stock Dove
+74;Ringeltaube;Columbiformes;Columbidae;Columba palumbus;Common Wood Pigeon
+75;Turteltaube;Columbiformes;Columbidae;Streptopelia turtur;European Turtle Dove
+76;Orientturteltaube;Columbiformes;Columbidae;Streptopelia orientalis;Oriental Turtle Dove
+77;Türkentaube;Columbiformes;Columbidae;Streptopelia decaocto;Eurasian Collared Dove
+78;Wasserralle;Gruiformes;Rallidae;Rallus aquaticus;Water Rail
+79;Wachtelkönig;Gruiformes;Rallidae;Crex crex;Corn Crake
+80;Tüpfelsumpfhuhn;Gruiformes;Rallidae;Porzana porzana;Spotted Crake
+81;Teichhuhn;Gruiformes;Rallidae;Gallinula chloropus;Common Moorhen
+82;Blässhuhn;Gruiformes;Rallidae;Fulica atra;Eurasian Coot
+83;Graukopf-Purpurhuhn;Gruiformes;Rallidae;Porphyrio poliocephalus;Grey-headed Swamphen
+84;Zwergsumpfhuhn;Gruiformes;Rallidae;Zapornia pusilla;Baillon's Crake
+85;Kleines Sumpfhuhn (Kleinsumpfhuhn);Gruiformes;Rallidae;Zapornia parva;Little Crake
+86;Jungfernkranich;Gruiformes;Gruidae;Grus virgo;Demoiselle Crane
+87;Kranich;Gruiformes;Gruidae;Grus grus;Common Crane
+88;Zwergtaucher;Podicipediformes;Podicipedidae;Tachybaptus ruficollis;Little Grebe
+89;Rothalstaucher;Podicipediformes;Podicipedidae;Podiceps grisegena;Red-necked Grebe
+90;Haubentaucher;Podicipediformes;Podicipedidae;Podiceps cristatus;Great Crested Grebe
+91;Ohrentaucher;Podicipediformes;Podicipedidae;Podiceps auritus;Horned Grebe
+92;Schwarzhalstaucher;Podicipediformes;Podicipedidae;Podiceps nigricollis;Black-necked Grebe
+93;Rosaflamingo;Phoenicopteriformes;Phoenicopteridae;Phoenicopterus roseus;Greater Flamingo
+94;Chileflamingo;Phoenicopteriformes;Phoenicopteridae;Phoenicopterus chilensis;Chilean Flamingo
+95;Triel;Charadriiformes;Burhinidae;Burhinus oedicnemus;Eurasian Stone-curlew
+96;Austernfischer;Charadriiformes;Haematopodidae;Haematopus ostralegus;Eurasian Oystercatcher
+97;Stelzenläufer;Charadriiformes;Recurvirostridae;Himantopus himantopus;Black-winged Stilt
+98;Säbelschnäbler;Charadriiformes;Recurvirostridae;Recurvirostra avosetta;Pied Avocet
+99;Kiebitz;Charadriiformes;Charadriidae;Vanellus vanellus;Northern Lapwing
+100;Steppenkiebitz;Charadriiformes;Charadriidae;Vanellus gregarius;Sociable Lapwing
+101;Weißschwanzkiebitz;Charadriiformes;Charadriidae;Vanellus leucurus;White-tailed Lapwing
+102;Goldregenpfeifer;Charadriiformes;Charadriidae;Pluvialis apricaria;European Golden Plover
+103;Pazifischer Goldregenpfeifer ;Charadriiformes;Charadriidae;Pluvialis fulva;(Tundra-Goldregenpfeifer)
+104;Amerikanischer Goldregenpfeifer ;Charadriiformes;Charadriidae;Pluvialis dominica;(Prärie-Goldregenpfeifer)
+105;Kiebitzregenpfeifer;Charadriiformes;Charadriidae;Pluvialis squatarola;Grey Plover
+106;Sandregenpfeifer;Charadriiformes;Charadriidae;Charadrius hiaticula;Common Ringed Plover
+107;Flussregenpfeifer;Charadriiformes;Charadriidae;Charadrius dubius;Little Ringed Plover
+108;Seeregenpfeifer;Charadriiformes;Charadriidae;Anarhynchus alexandrinus;Kentish Plover
+109;Wüstenregenpfeifer;Charadriiformes;Charadriidae;Anarhynchus leschenaultii;Greater Sand Plover
+110;Mornellregenpfeifer;Charadriiformes;Charadriidae;Eudromias morinellus;Eurasian Dotterel
+111;Regenbrachvogel;Charadriiformes;Scolopacidae;Numenius phaeopus;Eurasian Whimbrel
+112;Dünnschnabel-Brachvogel;Charadriiformes;Scolopacidae;Numenius tenuirostris;Slender-billed Curlew
+113;Großer Brachvogel (Brachvogel);Charadriiformes;Scolopacidae;Numenius arquata;Eurasian Curlew
+114;Pfuhlschnepfe;Charadriiformes;Scolopacidae;Limosa lapponica;Bar-tailed Godwit
+115;Uferschnepfe;Charadriiformes;Scolopacidae;Limosa limosa;Black-tailed Godwit
+116;Steinwälzer;Charadriiformes;Scolopacidae;Arenaria interpres;Ruddy Turnstone
+117;Knutt;Charadriiformes;Scolopacidae;Calidris canutus;Red Knot
+118;Kampfläufer;Charadriiformes;Scolopacidae;Calidris pugnax;Ruff
+119;Sumpfläufer;Charadriiformes;Scolopacidae;Calidris falcinellus;Broad-billed Sandpiper
+120;Spitzschwanz-Strandläufer;Charadriiformes;Scolopacidae;Calidris acuminata;Sharp-tailed Sandpiper
+121;Sichelstrandläufer;Charadriiformes;Scolopacidae;Calidris ferruginea;Curlew Sandpiper
+122;Temminckstrandläufer;Charadriiformes;Scolopacidae;Calidris temminckii;Temminck's Stint
+123;Sanderling;Charadriiformes;Scolopacidae;Calidris alba;Sanderling
+124;Alpenstrandläufer;Charadriiformes;Scolopacidae;Calidris alpina;Dunlin
+125;Meerstrandläufer;Charadriiformes;Scolopacidae;Calidris maritima;Purple Sandpiper
+126;Bairdstrandläufer;Charadriiformes;Scolopacidae;Calidris bairdii;Baird's Sandpiper
+127;Zwergstrandläufer;Charadriiformes;Scolopacidae;Calidris minuta;Little Stint
+128;Weißbürzel-Strandläufer;Charadriiformes;Scolopacidae;Calidris fuscicollis;White-rumped Sandpiper
+129;Grasläufer;Charadriiformes;Scolopacidae;Calidris subruficollis;Buff-breasted Sandpiper
+130;Graubrust-Strandläufer;Charadriiformes;Scolopacidae;Calidris melanotos;Pectoral Sandpiper
+131;Sandstrandläufer;Charadriiformes;Scolopacidae;Calidris pusilla;Semipalmated Sandpiper
+132;Waldschnepfe;Charadriiformes;Scolopacidae;Scolopax rusticola;Eurasian Woodcock
+133;Zwergschnepfe;Charadriiformes;Scolopacidae;Lymnocryptes minimus;Jack Snipe
+134;Doppelschnepfe;Charadriiformes;Scolopacidae;Gallinago media;Great Snipe
+135;Bekassine;Charadriiformes;Scolopacidae;Gallinago gallinago;Common Snipe
+136;Terekwasserläufer;Charadriiformes;Scolopacidae;Xenus cinereus;Terek Sandpiper
+137;Odinshühnchen;Charadriiformes;Scolopacidae;Phalaropus lobatus;Red-necked Phalarope
+138;Thorshühnchen;Charadriiformes;Scolopacidae;Phalaropus fulicarius;Red Phalarope
+139;Flussuferläufer;Charadriiformes;Scolopacidae;Actitis hypoleucos;Common Sandpiper
+140;Drosseluferläufer;Charadriiformes;Scolopacidae;Actitis macularius;Spotted Sandpiper
+141;Waldwasserläufer;Charadriiformes;Scolopacidae;Tringa ochropus;Green Sandpiper
+142;Kleiner Gelbschenkel (Gelbschenkel);Charadriiformes;Scolopacidae;Tringa flavipes;Lesser Yellowlegs
+143;Rotschenkel;Charadriiformes;Scolopacidae;Tringa totanus;Common Redshank
+144;Teichwasserläufer;Charadriiformes;Scolopacidae;Tringa stagnatilis;Marsh Sandpiper
+145;Bruchwasserläufer;Charadriiformes;Scolopacidae;Tringa glareola;Wood Sandpiper
+146;Dunkler Wasserläufer (Dunkelwasserläufer);Charadriiformes;Scolopacidae;Tringa erythropus;Spotted Redshank
+147;Grünschenkel;Charadriiformes;Scolopacidae;Tringa nebularia;Common Greenshank
+148;Rennvogel;Charadriiformes;Glareolidae;Cursorius cursor;Cream-colored Courser
+149;Rotflügel-Brachschwalbe;Charadriiformes;Glareolidae;Glareola pratincola;Collared Pratincole
+150;Schwarzflügel-Brachschwalbe;Charadriiformes;Glareolidae;Glareola nordmanni;Black-winged Pratincole
+151;Dreizehenmöwe;Charadriiformes;Laridae;Rissa tridactyla;Black-legged Kittiwake
+152;Schwalbenmöwe;Charadriiformes;Laridae;Xema sabini;Sabine's Gull
+153;Dünnschnabelmöwe;Charadriiformes;Laridae;Chroicocephalus genei;Slender-billed Gull
+154;Lachmöwe;Charadriiformes;Laridae;Chroicocephalus ridibundus;Black-headed Gull
+155;Zwergmöwe;Charadriiformes;Laridae;Hydrocoloeus minutus;Little Gull
+156;Präriemöwe;Charadriiformes;Laridae;Leucophaeus pipixcan;Franklin's Gull
+157;Korallenmöwe ;Charadriiformes;Laridae;Ichthyaetus audouinii;Audouin's Gull 
+158;Schwarzkopfmöwe;Charadriiformes;Laridae;Ichthyaetus melanocephalus;Mediterranean Gull
+159;Fischmöwe;Charadriiformes;Laridae;Ichthyaetus ichthyaetus;Pallas's Gull
+160;Sturmmöwe;Charadriiformes;Laridae;Larus canus;Common Gull
+161;Ringschnabelmöwe;Charadriiformes;Laridae;Larus delawarensis;Ring-billed Gull
+162;Mantelmöwe;Charadriiformes;Laridae;Larus marinus;Great Black-backed Gull
+163;Eismöwe;Charadriiformes;Laridae;Larus hyperboreus;Glaucous Gull
+164;Polarmöwe;Charadriiformes;Laridae;Larus glaucoides;Iceland Gull
+165;Silbermöwe;Charadriiformes;Laridae;Larus argentatus;European Herring Gull
+166;Steppenmöwe;Charadriiformes;Laridae;Larus cachinnans;Caspian Gull
+167;Mittelmeermöwe;Charadriiformes;Laridae;Larus michahellis;Yellow-legged Gull
+168;Heringsmöwe;Charadriiformes;Laridae;Larus fuscus;Lesser Black-backed Gull
+169;Lachseeschwalbe;Charadriiformes;Laridae;Gelochelidon nilotica;Gull-billed Tern
+170;Raubseeschwalbe;Charadriiformes;Laridae;Hydroprogne caspia;Caspian Tern
+171;Rüppellseeschwalbe;Charadriiformes;Laridae;Thalasseus bengalensis;Lesser Crested Tern
+172;Brandseeschwalbe;Charadriiformes;Laridae;Thalasseus sandvicensis;Sandwich Tern
+173;Zwergseeschwalbe;Charadriiformes;Laridae;Sternula albifrons;Little Tern
+174;Rosenseeschwalbe;Charadriiformes;Laridae;Sterna dougallii;Roseate Tern
+175;Flussseeschwalbe;Charadriiformes;Laridae;Sterna hirundo;Common Tern
+176;Küstenseeschwalbe;Charadriiformes;Laridae;Sterna paradisaea;Arctic Tern
+177;Weißbart-Seeschwalbe;Charadriiformes;Laridae;Chlidonias hybrida;Whiskered Tern
+178;Weißflügel-Seeschwalbe;Charadriiformes;Laridae;Chlidonias leucopterus;White-winged Tern
+179;Trauerseeschwalbe;Charadriiformes;Laridae;Chlidonias niger;Black Tern
+180;Skua;Charadriiformes;Stercorariidae;Stercorarius skua;Great Skua
+181;Spatelraubmöwe;Charadriiformes;Stercorariidae;Stercorarius pomarinus;Pomarine Jaeger
+182;Schmarotzerraubmöwe;Charadriiformes;Stercorariidae;Stercorarius parasiticus;Parasitic Jaeger
+183;Falkenraubmöwe;Charadriiformes;Stercorariidae;Stercorarius longicaudus;Long-tailed Jaeger
+184;Krabbentaucher;Charadriiformes;Alcidae;Alle alle;Little Auk
+185;Dickschnabellumme;Charadriiformes;Alcidae;Uria lomvia;Thick-billed Murre
+186;Trottellumme;Charadriiformes;Alcidae;Uria aalge;Common Murre
+187;Tordalk;Charadriiformes;Alcidae;Alca torda;Razorbill
+188;Papageitaucher;Charadriiformes;Alcidae;Fratercula arctica;Atlantic Puffin
+189;Sterntaucher;Gaviiformes;Gaviidae;Gavia stellata;Red-throated Loon
+190;Prachttaucher;Gaviiformes;Gaviidae;Gavia arctica;Black-throated Loon
+191;Eistaucher;Gaviiformes;Gaviidae;Gavia immer;Common Loon
+192;Gelbschnabeltaucher;Gaviiformes;Gaviidae;Gavia adamsii;Yellow-billed Loon
+193;Sturmwellenläufer;Procellariiformes;Hydrobatidae;Hydrobates pelagicus;European Storm Petrel
+194;Wellenläufer;Procellariiformes;Hydrobatidae;Hydrobates leucorhous;Leach's Storm Petrel
+195;Sepiasturmtaucher;Procellariiformes;Procellariidae;Calonectris diomedea;Scopoli's Shearwater
+196;Mittelmeer-Sturmtaucher;Procellariiformes;Procellariidae;Puffinus yelkouan;Yelkouan Shearwater
+197;Schwarzstorch;Ciconiiformes;Ciconiidae;Ciconia nigra;Black Stork
+198;Weißstorch;Ciconiiformes;Ciconiidae;Ciconia ciconia;White Stork
+199;Basstölpel;Suliformes;Sulidae;Morus bassanus;Northern Gannet
+200;Zwergscharbe;Suliformes;Phalacrocoracidae;Microcarbo pygmaeus;Pygmy Cormorant
+201;Kormoran;Suliformes;Phalacrocoracidae;Phalacrocorax carbo;Great Cormorant
+202;Krähenscharbe;Suliformes;Phalacrocoracidae;Gulosus aristotelis;European Shag
+203;Heiliger Ibis (Pharaonenibis);Pelecaniformes;Threskiornithidae;Threskiornis aethiopicus;African Sacred Ibis
+204;Waldrapp;Pelecaniformes;Threskiornithidae;Geronticus eremita;Northern Bald Ibis
+206;Sichler;Pelecaniformes;Threskiornithidae;Plegadis falcinellus;Glossy Ibis
+207;Löffler;Pelecaniformes;Threskiornithidae;Platalea leucorodia;Eurasian Spoonbill
+208;Rohrdommel;Pelecaniformes;Ardeidae;Botaurus stellaris;Eurasian Bittern
+209;Zwergdommel;Pelecaniformes;Ardeidae;Ixobrychus minutus;Little Bittern
+210;Nachtreiher;Pelecaniformes;Ardeidae;Nycticorax nycticorax;Black-crowned Night Heron
+211;Rallenreiher;Pelecaniformes;Ardeidae;Ardeola ralloides;Squacco Heron
+212;Kuhreiher;Pelecaniformes;Ardeidae;Bubulcus ibis;Western Cattle Egret
+213;Graureiher;Pelecaniformes;Ardeidae;Ardea cinerea;Grey Heron
+214;Purpurreiher;Pelecaniformes;Ardeidae;Ardea purpurea;Purple Heron
+215;Silberreiher;Pelecaniformes;Ardeidae;Ardea alba;Great Egret
+216;Seidenreiher;Pelecaniformes;Ardeidae;Egretta garzetta;Little Egret
+217;Rosapelikan;Pelecaniformes;Pelecanidae;Pelecanus onocrotalus;Great White Pelican
+218;Rötelpelikan;Pelecaniformes;Pelecanidae;Pelecanus rufescens;Pink-backed Pelican
+219;Krauskopfpelikan;Pelecaniformes;Pelecanidae;Pelecanus crispus;Dalmatian Pelican
+220;Fischadler;Accipitriformes;Pandionidae;Pandion haliaetus;Osprey
+221;Gleitaar;Accipitriformes;Accipitridae;Elanus caeruleus;Black-winged Kite
+222;Bartgeier;Accipitriformes;Accipitridae;Gypaetus barbatus;Bearded Vulture
+223;Schmutzgeier;Accipitriformes;Accipitridae;Neophron percnopterus;Egyptian Vulture
+224;Wespenbussard;Accipitriformes;Accipitridae;Pernis apivorus;European Honey Buzzard
+226;Gänsegeier;Accipitriformes;Accipitridae;Gyps fulvus;Griffon Vulture
+227;Mönchsgeier;Accipitriformes;Accipitridae;Aegypius monachus;Cinereous Vulture
+228;Schlangenadler;Accipitriformes;Accipitridae;Circaetus gallicus;Short-toed Snake Eagle
+229;Schreiadler;Accipitriformes;Accipitridae;Clanga pomarina;Lesser Spotted Eagle
+230;Schelladler;Accipitriformes;Accipitridae;Clanga clanga;Greater Spotted Eagle
+231;Zwergadler;Accipitriformes;Accipitridae;Hieraaetus pennatus;Booted Eagle
+232;Steppenadler;Accipitriformes;Accipitridae;Aquila nipalensis;Steppe Eagle
+233;Kaiseradler;Accipitriformes;Accipitridae;Aquila heliaca;Eastern Imperial Eagle
+234;Steinadler;Accipitriformes;Accipitridae;Aquila chrysaetos;Golden Eagle
+235;Habichtsadler;Accipitriformes;Accipitridae;Aquila fasciata;Bonelli's Eagle
+236;Kurzfangsperber;Accipitriformes;Accipitridae;Accipiter brevipes;Levant Sparrowhawk
+237;Sperber;Accipitriformes;Accipitridae;Accipiter nisus;Eurasian Sparrowhawk
+238;Habicht;Accipitriformes;Accipitridae;Accipiter gentilis;Eurasian Goshawk
+239;Rohrweihe;Accipitriformes;Accipitridae;Circus aeruginosus;Western Marsh Harrier
+240;Kornweihe;Accipitriformes;Accipitridae;Circus cyaneus;Hen Harrier
+241;Steppenweihe;Accipitriformes;Accipitridae;Circus macrourus;Pallid Harrier
+242;Wiesenweihe;Accipitriformes;Accipitridae;Circus pygargus;Montagu's Harrier
+243;Rotmilan;Accipitriformes;Accipitridae;Milvus milvus;Red Kite
+244;Schwarzmilan;Accipitriformes;Accipitridae;Milvus migrans;Black Kite
+245;Seeadler;Accipitriformes;Accipitridae;Haliaeetus albicilla;White-tailed Eagle
+246;Raufußbussard;Accipitriformes;Accipitridae;Buteo lagopus;Rough-legged Buzzard
+247;Adlerbussard;Accipitriformes;Accipitridae;Buteo rufinus;Long-legged Buzzard
+248;Mäusebussard;Accipitriformes;Accipitridae;Buteo buteo;Common Buzzard
+249;Schleiereule;Strigiformes;Tytonidae;Tyto alba;Western Barn Owl
+250;Raufußkauz;Strigiformes;Strigidae;Aegolius funereus;Boreal Owl
+251;Steinkauz;Strigiformes;Strigidae;Athene noctua;Little Owl
+252;Sperbereule;Strigiformes;Strigidae;Surnia ulula;Northern Hawk-Owl
+253;Sperlingskauz;Strigiformes;Strigidae;Glaucidium passerinum;Eurasian Pygmy Owl
+254;Zwergohreule;Strigiformes;Strigidae;Otus scops;Eurasian Scops Owl
+255;Waldohreule;Strigiformes;Strigidae;Asio otus;Long-eared Owl
+256;Sumpfohreule;Strigiformes;Strigidae;Asio flammeus;Short-eared Owl
+257;Schneeeule;Strigiformes;Strigidae;Bubo scandiacus;Snowy Owl
+258;Uhu;Strigiformes;Strigidae;Bubo bubo;Eurasian Eagle-Owl
+259;Waldkauz;Strigiformes;Strigidae;Strix aluco;Tawny Owl
+260;Habichtskauz;Strigiformes;Strigidae;Strix uralensis;Ural Owl
+262;Wiedehopf;Bucerotiformes;Upupidae;Upupa epops;Eurasian Hoopoe
+263;Blauracke;Coraciiformes;Coraciidae;Coracias garrulus;European Roller
+264;Eisvogel;Coraciiformes;Alcedinidae;Alcedo atthis;Common Kingfisher
+265;Blauwangenspint;Coraciiformes;Meropidae;Merops persicus;Blue-cheeked Bee-eater
+266;Bienenfresser;Coraciiformes;Meropidae;Merops apiaster;European Bee-eater
+267;Wendehals;Piciformes;Picidae;Jynx torquilla;Eurasian Wryneck
+268;Dreizehenspecht;Piciformes;Picidae;Picoides tridactylus;Eurasian Three-toed Woodpecker
+269;Mittelspecht;Piciformes;Picidae;Dendrocoptes medius;Middle Spotted Woodpecker
+270;Kleinspecht;Piciformes;Picidae;Dryobates minor;Lesser Spotted Woodpecker
+271;Blutspecht;Piciformes;Picidae;Dendrocopos syriacus;Syrian Woodpecker
+272;Buntspecht;Piciformes;Picidae;Dendrocopos major;Great Spotted Woodpecker
+273;Weißrückenspecht;Piciformes;Picidae;Dendrocopos leucotos;White-backed Woodpecker
+274;Schwarzspecht;Piciformes;Picidae;Dryocopus martius;Black Woodpecker
+275;Grünspecht;Piciformes;Picidae;Picus viridis;European Green Woodpecker
+276;Grauspecht;Piciformes;Picidae;Picus canus;Grey-headed Woodpecker
+277;Rötelfalke;Falconiformes;Falconidae;Falco naumanni;Lesser Kestrel
+278;Turmfalke;Falconiformes;Falconidae;Falco tinnunculus;Common Kestrel
+279;Rotfußfalke;Falconiformes;Falconidae;Falco vespertinus;Red-footed Falcon
+280;Eleonorenfalke;Falconiformes;Falconidae;Falco eleonorae;Eleonora's Falcon
+281;Merlin;Falconiformes;Falconidae;Falco columbarius;Merlin
+282;Baumfalke;Falconiformes;Falconidae;Falco subbuteo;Eurasian Hobby
+283;Lannerfalke;Falconiformes;Falconidae;Falco biarmicus;Lanner Falcon
+284;Sakerfalke (Würgfalke);Falconiformes;Falconidae;Falco cherrug;Saker Falcon
+285;Gerfalke;Falconiformes;Falconidae;Falco rusticolus;Gyrfalcon
+286;Wanderfalke;Falconiformes;Falconidae;Falco peregrinus;Peregrine Falcon
+287;Mönchssittich;Psittaciformes;Psittacidae;Myiopsitta monachus;Monk Parakeet
+289;Halsbandsittich;Psittaciformes;Psittaculidae;Psittacula krameri;Rose-ringed Parakeet
+290;Pirol;Passeriformes;Oriolidae;Oriolus oriolus;Eurasian Golden Oriole
+291;Raubwürger;Passeriformes;Laniidae;Lanius excubitor;Great Grey Shrike
+292;Schwarzstirnwürger;Passeriformes;Laniidae;Lanius minor;Lesser Grey Shrike
+293;Rotkopfwürger;Passeriformes;Laniidae;Lanius senator;Woodchat Shrike
+294;Isabellwürger/Rotschwanzwürger;Passeriformes;Laniidae;Lanius isabellinus/L. phoenicuroides;Isabelline Shrike/Red-tailed Shrike
+295;Neuntöter;Passeriformes;Laniidae;Lanius collurio;Red-backed Shrike
+296;Eichelhäher;Passeriformes;Corvidae;Garrulus glandarius;Eurasian Jay
+297;Elster;Passeriformes;Corvidae;Pica pica;Eurasian Magpie
+298;Tannenhäher;Passeriformes;Corvidae;Nucifraga caryocatactes;Spotted Nutcracker
+299;Alpenkrähe;Passeriformes;Corvidae;Pyrrhocorax pyrrhocorax;Red-billed Chough
+300;Alpendohle;Passeriformes;Corvidae;Pyrrhocorax graculus;Alpine Chough
+301;Dohle;Passeriformes;Corvidae;Coloeus monedula;Western Jackdaw
+302;Saatkrähe;Passeriformes;Corvidae;Corvus frugilegus;Rook
+303;Rabenkrähe;Passeriformes;Corvidae;Corvus corone;Carrion Crow
+304;Nebelkrähe;Passeriformes;Corvidae;Corvus cornix;Hooded Crow
+305;Kolkrabe;Passeriformes;Corvidae;Corvus corax;Northern Raven
+306;Seidenschwanz;Passeriformes;Bombycillidae;Bombycilla garrulus;Bohemian Waxwing
+307;Tannenmeise;Passeriformes;Paridae;Periparus ater;Coal Tit
+308;Haubenmeise;Passeriformes;Paridae;Lophophanes cristatus;Crested Tit
+309;Sumpfmeise;Passeriformes;Paridae;Poecile palustris;Marsh Tit
+310;Weidenmeise;Passeriformes;Paridae;Poecile montanus;Willow Tit
+311;Blaumeise;Passeriformes;Paridae;Cyanistes caeruleus;Eurasian Blue Tit
+312;Lasurmeise;Passeriformes;Paridae;Cyanistes cyanus;Azure Tit
+313;Kohlmeise;Passeriformes;Paridae;Parus major;Great Tit
+314;Beutelmeise;Passeriformes;Remizidae;Remiz pendulinus;Eurasian Penduline Tit
+315;Bartmeise;Passeriformes;Panuridae;Panurus biarmicus;Bearded Reedling
+316;Heidelerche;Passeriformes;Alaudidae;Lullula arborea;Woodlark
+317;Weißflügellerche;Passeriformes;Alaudidae;Alauda leucoptera;White-winged Lark
+318;Feldlerche;Passeriformes;Alaudidae;Alauda arvensis;Eurasian Skylark
+319;Haubenlerche;Passeriformes;Alaudidae;Galerida cristata;Crested Lark
+320;Ohrenlerche;Passeriformes;Alaudidae;Eremophila alpestris;Horned Lark
+321;Kurzzehenlerche;Passeriformes;Alaudidae;Calandrella brachydactyla;Greater Short-toed Lark
+322;Bergkalanderlerche;Passeriformes;Alaudidae;Melanocorypha bimaculata;Bimaculated Lark
+323;Kalanderlerche;Passeriformes;Alaudidae;Melanocorypha calandra;Calandra Lark
+324;Schwarzsteppenlerche;Passeriformes;Alaudidae;Melanocorypha yeltoniensis;Black Lark
+325;Turkestanlerche;Passeriformes;Alaudidae;Alaudala heinei;Turkestan Short-toed Lark
+326;Uferschwalbe;Passeriformes;Hirundinidae;Riparia riparia;Sand Martin
+327;Felsenschwalbe;Passeriformes;Hirundinidae;Ptyonoprogne rupestris;Eurasian Crag Martin
+328;Rauchschwalbe;Passeriformes;Hirundinidae;Hirundo rustica;Barn Swallow
+329;Mehlschwalbe;Passeriformes;Hirundinidae;Delichon urbicum;Western House Martin
+330;Rötelschwalbe;Passeriformes;Hirundinidae;Cecropis daurica;Red-rumped Swallow
+331;Seidensänger;Passeriformes;Cettiidae;Cettia cetti;Cetti's Warbler
+332;Schwanzmeise;Passeriformes;Aegithalidae;Aegithalos caudatus;Long-tailed Tit
+333;Waldlaubsänger;Passeriformes;Phylloscopidae;Phylloscopus sibilatrix;Wood Warbler
+334;Berglaubsänger;Passeriformes;Phylloscopidae;Phylloscopus bonelli;Western Bonelli's Warbler
+335;Tienschan-Laubsänger;Passeriformes;Phylloscopidae;Phylloscopus humei;Hume‘s Leaf Warbler
+336;Gelbbrauen-Laubsänger;Passeriformes;Phylloscopidae;Phylloscopus inornatus;Yellow-browed Warbler
+337;Goldhähnchen-Laubsänger;Passeriformes;Phylloscopidae;Phylloscopus proregulus;Pallas's Leaf Warbler
+338;Dunkellaubsänger;Passeriformes;Phylloscopidae;Phylloscopus fuscatus;Dusky Warbler
+339;Fitis;Passeriformes;Phylloscopidae;Phylloscopus trochilus;Willow Warbler
+340;Zilpzalp;Passeriformes;Phylloscopidae;Phylloscopus collybita;Common Chiffchaff
+341;Iberienzilpzalp ;Passeriformes;Phylloscopidae;Phylloscopus ibericus;Iberian Chiffchaff
+342;Grünlaubsänger;Passeriformes;Phylloscopidae;Phylloscopus trochiloides;Greenish Warbler
+343;Drosselrohrsänger;Passeriformes;Acrocephalidae;Acrocephalus arundinaceus;Great Reed Warbler
+344;Mariskenrohrsänger;Passeriformes;Acrocephalidae;Acrocephalus melanopogon;Moustached Warbler
+345;Seggenrohrsänger;Passeriformes;Acrocephalidae;Acrocephalus paludicola;Aquatic Warbler
+346;Schilfrohrsänger;Passeriformes;Acrocephalidae;Acrocephalus schoenobaenus;Sedge Warbler
+347;Feldrohrsänger;Passeriformes;Acrocephalidae;Acrocephalus agricola;Paddyfield Warbler
+348;Buschrohrsänger;Passeriformes;Acrocephalidae;Acrocephalus dumetorum;Blyth's Reed Warbler
+349;Teichrohrsänger;Passeriformes;Acrocephalidae;Acrocephalus scirpaceus;Common Reed Warbler
+350;Sumpfrohrsänger;Passeriformes;Acrocephalidae;Acrocephalus palustris;Marsh Warbler
+351;Buschspötter;Passeriformes;Acrocephalidae;Iduna caligata;Booted Warbler
+352;Blassspötter;Passeriformes;Acrocephalidae;Iduna pallida;Eastern Olivaceous Warbler
+353;Orpheusspötter;Passeriformes;Acrocephalidae;Hippolais polyglotta;Melodious Warbler
+354;Gelbspötter;Passeriformes;Acrocephalidae;Hippolais icterina;Icterine Warbler
+355;Schlagschwirl;Passeriformes;Locustellidae;Locustella fluviatilis;River Warbler
+356;Rohrschwirl;Passeriformes;Locustellidae;Locustella luscinioides;Savi's Warbler
+357;Feldschwirl;Passeriformes;Locustellidae;Locustella naevia;Common Grasshopper Warbler
+358;Zistensänger;Passeriformes;Cisticolidae;Cisticola juncidis;Zitting Cisticola
+359;Mönchsgrasmücke;Passeriformes;Sylviidae;Sylvia atricapilla;Eurasian Blackcap
+360;Gartengrasmücke;Passeriformes;Sylviidae;Sylvia borin;Garden Warbler
+361;Sperbergrasmücke;Passeriformes;Sylviidae;Curruca nisoria;Barred Warbler
+362;Klappergrasmücke;Passeriformes;Sylviidae;Curruca curruca;Lesser Whitethroat
+363;Orpheusgrasmücke;Passeriformes;Sylviidae;Curruca hortensis;Western Orphean Warbler
+364;Wüstengrasmücke;Passeriformes;Sylviidae;Curruca nana;Asian Desert Warbler
+365;Samtkopf-Grasmücke;Passeriformes;Sylviidae;Curruca melanocephala;Sardinian Warbler
+366;Balkan-Bartgrasmücke;Passeriformes;Sylviidae;Curruca cantillans;Eastern Subalpine Warbler
+367;Dorngrasmücke;Passeriformes;Sylviidae;Curruca communis;Common Whitethroat
+368;Brillengrasmücke;Passeriformes;Sylviidae;Curruca conspicillata;Spectacled Warbler
+369;Sommergoldhähnchen;Passeriformes;Regulidae;Regulus ignicapilla;Common Firecrest
+370;Wintergoldhähnchen;Passeriformes;Regulidae;Regulus regulus;Goldcrest
+371;Zaunkönig;Passeriformes;Troglodytidae;Troglodytes troglodytes;Eurasian Wren
+372;Kleiber;Passeriformes;Sittidae;Sitta europaea;Eurasian Nuthatch
+373;Mauerläufer;Passeriformes;Tichodromidae;Tichodroma muraria;Wallcreeper
+374;Waldbaumläufer;Passeriformes;Certhiidae;Certhia familiaris;Eurasian Treecreeper
+375;Gartenbaumläufer;Passeriformes;Certhiidae;Certhia brachydactyla;Short-toed Treecreeper
+376;Haubenmaina;Passeriformes;Sturnidae;Acridotheres cristatellus;Crested Myna
+377;Rosenstar;Passeriformes;Sturnidae;Pastor roseus;Rosy Starling
+378;Star;Passeriformes;Sturnidae;Sturnus vulgaris;Common Starling
+379;Erddrossel;Passeriformes;Turdidae;Zoothera aurea;White‘s Thrush
+380;Singdrossel;Passeriformes;Turdidae;Turdus philomelos;Song Thrush
+381;Misteldrossel;Passeriformes;Turdidae;Turdus viscivorus;Mistle Thrush
+382;Rotdrossel;Passeriformes;Turdidae;Turdus iliacus;Redwing
+383;Amsel;Passeriformes;Turdidae;Turdus merula;Common Blackbird
+384;Wacholderdrossel;Passeriformes;Turdidae;Turdus pilaris;Fieldfare
+385;Ringdrossel;Passeriformes;Turdidae;Turdus torquatus;Ring Ouzel
+386;Schwarzkehldrossel;Passeriformes;Turdidae;Turdus atrogularis;Black-throated Thrush
+387;Rostflügeldrossel;Passeriformes;Turdidae;Turdus eunomus;Dusky Thrush
+388;Rostschwanzdrossel;Passeriformes;Turdidae;Turdus naumanni;Naumann's Thrush
+389;Wanderdrossel;Passeriformes;Turdidae;Turdus migratorius;American Robin
+390;Grauschnäpper;Passeriformes;Muscicapidae;Muscicapa striata;Spotted Flycatcher
+391;Rotkehlchen;Passeriformes;Muscicapidae;Erithacus rubecula;European Robin
+392;Sprosser;Passeriformes;Muscicapidae;Luscinia luscinia;Thrush Nightingale
+393;Nachtigall;Passeriformes;Muscicapidae;Luscinia megarhynchos;Common Nightingale
+394;Blaukehlchen;Passeriformes;Muscicapidae;Luscinia svecica;Bluethroat
+395;Zwergschnäpper;Passeriformes;Muscicapidae;Ficedula parva;Red-breasted Flycatcher
+396;Halbringschnäpper;Passeriformes;Muscicapidae;Ficedula semitorquata;Semicollared Flycatcher
+397;Trauerschnäpper;Passeriformes;Muscicapidae;Ficedula hypoleuca;European Pied Flycatcher
+398;Halsbandschnäpper;Passeriformes;Muscicapidae;Ficedula albicollis;Collared Flycatcher
+399;Hausrotschwanz;Passeriformes;Muscicapidae;Phoenicurus ochruros;Black Redstart
+400;Gartenrotschwanz;Passeriformes;Muscicapidae;Phoenicurus phoenicurus;Common Redstart
+401;Steinrötel;Passeriformes;Muscicapidae;Monticola saxatilis;Common Rock Thrush
+402;Blaumerle;Passeriformes;Muscicapidae;Monticola solitarius;Blue Rock Thrush
+403;Braunkehlchen;Passeriformes;Muscicapidae;Saxicola rubetra;Whinchat
+404;Sibirisches Schwarzkehlchen;Passeriformes;Muscicapidae;Saxicola maurus;Siberian Stonechat
+405;Europäisches Schwarzkehlchen (Schwarzkehlchen);Passeriformes;Muscicapidae;Saxicola rubicola;European Stonechat
+406;Steinschmätzer;Passeriformes;Muscicapidae;Oenanthe oenanthe;Northern Wheatear
+407;Isabellsteinschmätzer;Passeriformes;Muscicapidae;Oenanthe isabellina;Isabelline Wheatear
+408;Wüstensteinschmätzer;Passeriformes;Muscicapidae;Oenanthe deserti;Desert Wheatear
+409;Nonnensteinschmätzer;Passeriformes;Muscicapidae;Oenanthe pleschanka;Pied Wheatear
+410;Balkansteinschmätzer;Passeriformes;Muscicapidae;Oenanthe melanoleuca;Eastern Black-eared Wheatear
+411;Wasseramsel;Passeriformes;Cinclidae;Cinclus cinclus;White-throated Dipper
+412;Steinsperling;Passeriformes;Passeridae;Petronia petronia;Rock Sparrow
+413;Schneesperling;Passeriformes;Passeridae;Montifringilla nivalis;White-winged Snowfinch
+414;Feldsperling;Passeriformes;Passeridae;Passer montanus;Eurasian Tree Sparrow
+415;Italiensperling;Passeriformes;Passeridae;Passer italiae;Italian Sparrow
+416;Haussperling;Passeriformes;Passeridae;Passer domesticus;House Sparrow
+417;Alpenbraunelle;Passeriformes;Prunellidae;Prunella collaris;Alpine Accentor
+418;Bergbraunelle;Passeriformes;Prunellidae;Prunella montanella;Siberian Accentor
+419;Heckenbraunelle;Passeriformes;Prunellidae;Prunella modularis;Dunnock
+420;Schafstelze;Passeriformes;Motacillidae;Motacilla flava;Western Yellow Wagtail
+421;Zitronenstelze;Passeriformes;Motacillidae;Motacilla citreola;Citrine Wagtail
+422;Gebirgsstelze;Passeriformes;Motacillidae;Motacilla cinerea;Grey Wagtail
+423;Bachstelze;Passeriformes;Motacillidae;Motacilla alba;White Wagtail
+424;Spornpieper;Passeriformes;Motacillidae;Anthus richardi;Richard's Pipit
+425;Brachpieper;Passeriformes;Motacillidae;Anthus campestris;Tawny Pipit
+426;Wiesenpieper;Passeriformes;Motacillidae;Anthus pratensis;Meadow Pipit
+427;Baumpieper;Passeriformes;Motacillidae;Anthus trivialis;Tree Pipit
+428;Waldpieper;Passeriformes;Motacillidae;Anthus hodgsoni;Olive-backed Pipit
+429;Rotkehlpieper;Passeriformes;Motacillidae;Anthus cervinus;Red-throated Pipit
+430;Bergpieper;Passeriformes;Motacillidae;Anthus spinoletta;Water Pipit
+431;Strandpieper;Passeriformes;Motacillidae;Anthus petrosus;European Rock Pipit
+432;Buchfink;Passeriformes;Fringillidae;Fringilla coelebs;Eurasian Chaffinch
+433;Bergfink;Passeriformes;Fringillidae;Fringilla montifringilla;Brambling
+434;Kernbeißer;Passeriformes;Fringillidae;Coccothraustes coccothraustes;Hawfinch
+435;Hakengimpel;Passeriformes;Fringillidae;Pinicola enucleator;Pine Grosbeak
+436;Gimpel;Passeriformes;Fringillidae;Pyrrhula pyrrhula;Eurasian Bullfinch
+437;Wüstengimpel;Passeriformes;Fringillidae;Bucanetes githagineus;Trumpeter Finch
+438;Karmingimpel;Passeriformes;Fringillidae;Carpodacus erythrinus;Common Rosefinch
+439;Grünling (Grünfink);Passeriformes;Fringillidae;Chloris chloris;European Greenfinch
+440;Berghänfling;Passeriformes;Fringillidae;Linaria flavirostris;Twite
+441;Bluthänfling;Passeriformes;Fringillidae;Linaria cannabina;Common Linnet
+442;Taigabirkenzeisig;Passeriformes;Fringillidae;Acanthis flammea;Common Redpoll
+443;Alpenbirkenzeisig;Passeriformes;Fringillidae;Acanthis cabaret;Lesser Redpoll
+444;Polarbirkenzeisig;Passeriformes;Fringillidae;Acanthis hornemanni;Arctic Redpoll
+445;Kiefernkreuzschnabel;Passeriformes;Fringillidae;Loxia pytyopsittacus;Parrot Crossbill
+446;Fichtenkreuzschnabel;Passeriformes;Fringillidae;Loxia curvirostra;Red Crossbill
+447;Bindenkreuzschnabel;Passeriformes;Fringillidae;Loxia leucoptera;Two-barred Crossbill
+448;Stieglitz;Passeriformes;Fringillidae;Carduelis carduelis;European Goldfinch
+449;Zitronenzeisig;Passeriformes;Fringillidae;Carduelis citrinella;Citril Finch
+450;Girlitz;Passeriformes;Fringillidae;Serinus serinus;European Serin
+451;Erlenzeisig;Passeriformes;Fringillidae;Spinus spinus;Eurasian Siskin
+452;Spornammer;Passeriformes;Calcariidae;Calcarius lapponicus;Lapland Longspur
+453;Schneeammer;Passeriformes;Calcariidae;Plectrophenax nivalis;Snow Bunting
+454;Grauammer;Passeriformes;Emberizidae;Emberiza calandra;Corn Bunting
+455;Goldammer;Passeriformes;Emberizidae;Emberiza citrinella;Yellowhammer
+456;Fichtenammer;Passeriformes;Emberizidae;Emberiza leucocephalos;Pine Bunting
+457;Zippammer;Passeriformes;Emberizidae;Emberiza cia;Rock Bunting
+458;Ortolan;Passeriformes;Emberizidae;Emberiza hortulana;Ortolan Bunting
+459;Grauortolan;Passeriformes;Emberizidae;Emberiza caesia;Cretzschmar's Bunting
+460;Zaunammer;Passeriformes;Emberizidae;Emberiza cirlus;Cirl Bunting
+461;Zwergammer;Passeriformes;Emberizidae;Emberiza pusilla;Little Bunting
+462;Waldammer;Passeriformes;Emberizidae;Emberiza rustica;Rustic Bunting
+463;Kappenammer;Passeriformes;Emberizidae;Emberiza melanocephala;Black-headed Bunting
+464;Rohrammer;Passeriformes;Emberizidae;Emberiza schoeniclus;Common Reed Bunting

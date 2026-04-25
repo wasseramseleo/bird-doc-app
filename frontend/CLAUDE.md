@@ -11,7 +11,7 @@ ng test           # Unit tests via Karma/Jasmine
 ng generate component <name>  # Scaffold a new standalone component
 ```
 
-The Django REST Framework backend must be running separately at `http://localhost:8000` (see `BACKEND_REFERENCE.md`).
+The Django REST Framework backend must be running separately at `http://localhost:8000` (see `../backend/CLAUDE.md`).
 
 ## Architecture
 
