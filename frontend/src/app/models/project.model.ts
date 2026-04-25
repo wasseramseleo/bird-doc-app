@@ -1,0 +1,18 @@
+import {Organization} from './organization.model';
+import {Scientist} from './scientist.model';
+
+export interface Project {
+  id: string;
+  title: string;
+  description: string;
+  organization: Organization;
+  scientists: Scientist[];
+  created: string;
+  updated: string;
+}
+
+export interface ProjectCreatePayload {
+  title: string;
+  description?: string;
+  organization_id: string;
+}

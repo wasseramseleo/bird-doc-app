@@ -70,9 +70,7 @@ class Command(BaseCommand):
                     else:
                         updated += 1
                 except IntegrityError as e:
-                    self.stderr.write(
-                        f"Skipped row (integrity error) — {scientific_name!r}: {e}"
-                    )
+                    self.stderr.write(f"Skipped row (integrity error) — {scientific_name!r}: {e}")
                     skipped += 1
 
         self.stdout.write(

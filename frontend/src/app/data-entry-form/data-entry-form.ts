@@ -11,7 +11,7 @@ import {
 import {toSignal} from '@angular/core/rxjs-interop';
 import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
 import {CommonModule, DatePipe, DecimalPipe} from '@angular/common';
-import {ActivatedRoute, RouterLink} from '@angular/router';
+import {ActivatedRoute, Router, RouterLink} from '@angular/router';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatSelect, MatSelectModule} from '@angular/material/select';
@@ -41,6 +41,7 @@ import {
   SelectOption, FatClass
 } from '../models/data-entry.model';
 import {ApiService} from '../service/api.service';
+import {ProjectService} from '../service/project.service';
 import {Species} from '../models/species.model';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {RingingStation} from '../models/ringing-station.model';
@@ -82,9 +83,13 @@ export class DataEntryFormComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly apiService = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly projectService = inject(ProjectService);
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+
+  readonly currentProject = this.projectService.currentProject;
 
   // Component State
   private readonly entryId = signal<string | null>(this.route.snapshot.paramMap.get('id'));
@@ -100,7 +105,6 @@ export class DataEntryFormComponent implements OnInit {
 
   // Form Definition
   entryForm = this.fb.group({
-    organization: ['AUW', Validators.required],
     ringing_station: [null as RingingStation | null, Validators.required],
     staff: [null as Scientist | null, Validators.required],
     date_time: [this.getInitialDateTime(), Validators.required],
@@ -289,6 +293,11 @@ export class DataEntryFormComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    if (!this.currentProject() && !this.isEditMode()) {
+      this.router.navigateByUrl('/');
+      return;
+    }
+
     // Autocomplete setup (no changes needed)
     this.filteredSpecies = this.entryForm.get('species')!.valueChanges.pipe(
       startWith(''),
@@ -303,7 +312,7 @@ export class DataEntryFormComponent implements OnInit {
       debounceTime(300),
       map(value => (typeof value === 'string' ? value : value?.name ?? '')),
       distinctUntilChanged(),
-      switchMap(name => this.apiService.getRingingStations(name).pipe(map(response => response.results)))
+      switchMap(name => this.apiService.getRingingStations(name, this.currentProject()?.organization.handle).pipe(map(response => response.results)))
     );
 
     this.filteredScientists = this.entryForm.get('staff')!.valueChanges.pipe(
@@ -421,6 +430,11 @@ export class DataEntryFormComponent implements OnInit {
     payload.ringing_station_id = formValue.ringing_station?.handle;
     payload.staff_id = formValue.staff?.id;
 
+    const project = this.currentProject();
+    if (project) {
+      payload.project_id = project.id;
+    }
+
     delete payload.species;
     delete payload.ringing_station;
     delete payload.staff;
@@ -456,7 +470,6 @@ export class DataEntryFormComponent implements OnInit {
     const preservedValues = {
       ringing_station: this.entryForm.get('ringing_station')?.value,
       staff: this.entryForm.get('staff')?.value,
-      organization: this.entryForm.get('organization')?.value,
     };
 
     this.entryForm.reset({

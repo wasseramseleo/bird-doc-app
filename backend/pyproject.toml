@@ -1,0 +1,32 @@
+[project]
+name = "birddoc"
+version = "0.1.0"
+description = "Django REST API for bird ringing documentation"
+requires-python = ">=3.13"
+dependencies = [
+    "django>=5.2,<5.3",
+    "djangorestframework>=3.16,<4",
+    "django-cors-headers>=4.7,<5",
+    "django-environ>=0.12,<1",
+    "gunicorn>=23,<24",
+    "psycopg[binary]>=3.2,<4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "pytest-django>=4.9,<5",
+    "ruff>=0.7,<1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "birddoc.settings"
+python_files = ["test_*.py", "*_test.py", "tests.py"]

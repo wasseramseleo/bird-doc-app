@@ -1,0 +1,27 @@
+<section class="home">
+  <header class="home__header">
+    <h1>Projekt auswählen</h1>
+    <button mat-flat-button color="primary" (click)="openCreateDialog()">
+      <mat-icon>add</mat-icon>
+      Neues Projekt
+    </button>
+  </header>
+
+  @if (loading()) {
+    <mat-spinner diameter="32"></mat-spinner>
+  } @else if (projects().length === 0) {
+    <p>Du bist noch keinem Projekt zugeordnet. Lege ein neues Projekt an, um mit der Dateneingabe zu beginnen.</p>
+  } @else {
+    <mat-nav-list class="home__list">
+      @for (project of projects(); track project.id) {
+        <a mat-list-item (click)="selectProject(project)">
+          <span matListItemTitle>{{ project.title }}</span>
+          <span matListItemLine>{{ project.organization.name }}</span>
+          @if (project.description) {
+            <span matListItemLine>{{ project.description }}</span>
+          }
+        </a>
+      }
+    </mat-nav-list>
+  }
+</section>

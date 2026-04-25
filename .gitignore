@@ -1,8 +1,28 @@
 # IDE
 .idea/
+.vscode/
 
 # Angular build cache
 .angular/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.ruff_cache/
+.pytest_cache/
+
+# Django
+backend/staticfiles/
+backend/db.sqlite3
+backend/db.sqlite3-journal
+
+# Env files
+.env
+.env.local
+*.env
+!.env.example

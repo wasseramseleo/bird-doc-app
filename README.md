@@ -18,17 +18,17 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for a full system overview.
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
+cp .env.example .env
+uv sync
+uv run python manage.py migrate
+uv run python manage.py createsuperuser
+uv run python manage.py runserver
 ```
 
 Load species reference data (required for autocomplete):
 
 ```bash
-python manage.py import_species res/artenliste_2024.csv
+uv run python manage.py import_species res/artenliste_2024.csv
 ```
 
 ### Frontend
@@ -47,8 +47,24 @@ Both processes run independently. There is no root-level build script — start 
 
 | Service | URL | Command |
 |---------|-----|---------|
-| Django API | http://localhost:8000 | `python manage.py runserver` (in `backend/`) |
-| Angular app | http://localhost:4200 | `ng serve` (in `frontend/`) |
+| Django API | http://localhost:8000 | `uv run python manage.py runserver` (in `backend/`) |
+| Angular app | http://localhost:4200 | `npm start` (in `frontend/`) |
 | Django admin | http://localhost:8000/admin | login with superuser credentials |
 
 For details, see [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend/README.md).
+
+### Full stack via Docker
+
+For a Postgres-backed local environment matching production:
+
+```bash
+docker compose up --build
+```
+
+Brings up `db` (Postgres 16), `backend` (Django on `:8000`), and `frontend` (Angular on `:4200`).
+
+## Deployment
+
+`main` deploys automatically: GitHub Actions builds backend + frontend images, pushes them to GHCR, and rolls out `docker-compose.prod.yml` on the VPS via SSH. Caddy fronts the stack with auto Let's Encrypt TLS.
+
+See [`deploy/README.md`](deploy/README.md) for the one-time VPS bootstrap and the list of required GitHub secrets.

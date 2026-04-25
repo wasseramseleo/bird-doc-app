@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: birddoc
+      POSTGRES_USER: birddoc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - /opt/bird-doc-app/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U birddoc -d birddoc"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  backend:
+    image: ghcr.io/leothetryhard/bird-doc-app-backend:latest
+    restart: unless-stopped
+    env_file:
+      - /opt/bird-doc-app/.env
+    volumes:
+      - staticfiles:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: ghcr.io/leothetryhard/bird-doc-app-frontend:latest
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - /opt/bird-doc-app/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/bird-doc-app/caddy_data:/data
+      - /opt/bird-doc-app/caddy_config:/config
+      - staticfiles:/srv/staticfiles:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  staticfiles:

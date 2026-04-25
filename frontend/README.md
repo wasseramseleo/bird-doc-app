@@ -28,19 +28,29 @@ ng generate component <name>      # Scaffold a new standalone component
 ## Project Structure
 
 ```
-src/app/
-├── data-entry-form/
-│   ├── data-entry-form.ts        # Main form component (create/edit)
-│   └── data-entry-detail-dialog/ # View-only record detail dialog
-├── nav-bar/                      # Top navigation bar
-├── service/
-│   └── api.service.ts            # All HTTP calls to the backend
-├── models/                       # TypeScript interfaces mirroring Django models
-├── core/directives/
-│   └── select-on-tab.ts          # Confirms autocomplete on Tab keypress
-└── shared/directives/
-    └── focus-next.ts             # Advances focus to next field on Enter/selection
+src/
+├── environments/
+│   ├── environment.ts            # Production defaults (apiUrl: '/api', adminUrl: '/admin')
+│   └── environment.development.ts # Dev override → http://localhost:8000
+└── app/
+    ├── data-entry-form/
+    │   ├── data-entry-form.ts        # Main form component (create/edit)
+    │   └── data-entry-detail-dialog/ # View-only record detail dialog
+    ├── nav-bar/                      # Top navigation bar
+    ├── service/
+    │   └── api.service.ts            # All HTTP calls to the backend
+    ├── models/                       # TypeScript interfaces mirroring Django models
+    ├── core/directives/
+    │   └── select-on-tab.ts          # Confirms autocomplete on Tab keypress
+    └── shared/directives/
+        └── focus-next.ts             # Advances focus to next field on Enter/selection
 ```
+
+## Environments
+
+`ng serve` and `ng build --configuration development` swap in `environment.development.ts` (which targets the dev backend at `http://localhost:8000`). Production builds use `environment.ts`, which assumes the API is reachable at `/api` and admin at `/admin` (both fronted by Caddy in deployment).
+
+Add new runtime config to **both** files when introducing new fields.
 
 ## Key Behaviours
 

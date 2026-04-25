@@ -2,6 +2,7 @@ import {Ring} from './ring.model';
 import {Species} from './species.model';
 import {Scientist} from './scientist.model';
 import {RingingStation} from './ringing-station.model';
+import {Project} from './project.model';
 
 export enum Direction {
   Left = 'L',
@@ -74,6 +75,7 @@ export interface DataEntry {
   ring: Ring;
   staff: Scientist;
   ringing_station: RingingStation;
+  project: Project | null;
   net_location: number;
   net_height: number;
   net_direction: Direction;

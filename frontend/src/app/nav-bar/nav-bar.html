@@ -1,11 +1,25 @@
 <mat-toolbar>
-  <button matIconButton class="example-icon" aria-label="Example icon-button with menu icon">
-    <mat-icon>menu</mat-icon>
-  </button>
-  <span>BirdDoc</span>
-  <span class="example-spacer"></span>
-  <a type="button" matIconButton class="example-icon favorite-icon" aria-label="Example icon-button with heart icon"
-     href="http://localhost:8000/admin">
+  <a routerLink="/" mat-button class="brand">
+    <mat-icon>flight</mat-icon>
+    <span>BirdDoc</span>
+  </a>
+  <span class="spacer"></span>
+  <a
+    type="button"
+    mat-icon-button
+    aria-label="Open Django admin"
+    [href]="adminUrl"
+  >
     <mat-icon>build</mat-icon>
   </a>
+  <button mat-button [matMenuTriggerFor]="userMenu" class="user-trigger">
+    <span>{{ userLabel() }}</span>
+    <mat-icon>arrow_drop_down</mat-icon>
+  </button>
+  <mat-menu #userMenu="matMenu">
+    <button mat-menu-item (click)="onLogout()">
+      <mat-icon>logout</mat-icon>
+      <span>Logout</span>
+    </button>
+  </mat-menu>
 </mat-toolbar>

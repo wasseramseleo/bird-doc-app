@@ -5,25 +5,49 @@ Django REST API for a bird ringing (ornithology) data capture system. Part of th
 ## Stack
 
 - Python 3.13 / Django 5.2 / Django REST Framework 3.16
-- SQLite (development)
-- CORS open for `localhost:4200`
+- [uv](https://docs.astral.sh/uv/) for packaging + virtualenv management
+- SQLite for native dev (default), Postgres in compose / production
+- CORS / CSRF origins controlled via env
 
 ## Quick Start
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver          # http://localhost:8000
+cp .env.example .env                # adjust DJANGO_SECRET_KEY, etc.
+uv sync                             # creates .venv from uv.lock
+uv run python manage.py migrate
+uv run python manage.py createsuperuser
+uv run python manage.py runserver   # http://localhost:8000
+```
+
+`uv sync` installs runtime deps; the PEP 735 `dev` group (pytest, ruff) is included by default. Pass `--no-dev` to skip it.
+
+### Tooling
+
+```bash
+uv run ruff check                   # lint
+uv run ruff format                  # auto-format
+uv run pytest                       # tests (no specs yet — exits 5)
 ```
 
 ### Load species data
 
 ```bash
-python manage.py import_species res/artenliste_2024.csv
+uv run python manage.py import_species res/artenliste_2024.csv
 # Options: --clear (wipe first), --no-other (skip "Andere Art" catch-all)
 ```
+
+### Configuration
+
+Environment variables (see `.env.example`):
+
+| Var | Purpose |
+|---|---|
+| `DJANGO_SECRET_KEY` | Required in production |
+| `DJANGO_DEBUG` | `true` for dev, `false` in prod |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated hostnames |
+| `DATABASE_URL` | Omit to fall back to local sqlite |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins |
+| `CSRF_TRUSTED_ORIGINS` | Comma-separated trusted origins |
 
 ## API Overview
 

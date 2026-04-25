@@ -72,10 +72,12 @@
     <h2>{{ isEditMode() ? 'Daten bearbeiten' : 'Neuer Beringungseintrag' }}</h2>
 
     <div class="form-section">
-      <mat-form-field appearance="outline" floatLabel="always">
-        <mat-label>Zentrale</mat-label>
-        <input type="text" matInput formControlName="organization">
-      </mat-form-field>
+      @if (currentProject(); as project) {
+        <mat-form-field appearance="outline" floatLabel="always">
+          <mat-label>Projekt</mat-label>
+          <input type="text" matInput [value]="project.title" disabled>
+        </mat-form-field>
+      }
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Station</mat-label>
         <input type="text" matInput formControlName="ringing_station" [matAutocomplete]="stationAuto">

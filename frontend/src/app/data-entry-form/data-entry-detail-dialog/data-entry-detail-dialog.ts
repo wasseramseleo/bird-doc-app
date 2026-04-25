@@ -15,6 +15,7 @@ import {
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
 } from '../../models/data-entry.model';
+import {environment} from '../../../environments/environment';
 
 @Component({
   selector: 'app-data-entry-detail-dialog',
@@ -102,6 +103,6 @@ export class DataEntryDetailDialogComponent {
   }
 
   openInBackend(): void {
-    window.open(`http://localhost:8000/admin/birds/dataentry/${this.entry.id}/change/`, '_blank');
+    window.open(`${environment.adminUrl}/birds/dataentry/${this.entry.id}/change/`, '_blank');
   }
 }

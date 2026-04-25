@@ -9,13 +9,16 @@ import {RingSize} from '../models/ring.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist} from '../models/scientist.model';
+import {Organization} from '../models/organization.model';
+import {Project, ProjectCreatePayload} from '../models/project.model';
+import {environment} from '../../environments/environment';
 
 @Injectable({
   providedIn: 'root',
 })
 export class ApiService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = 'http://localhost:8000/api/birds';
+  private readonly apiUrl = `${environment.apiUrl}/birds`;
 
   getDataEntries(): Observable<DataEntry[]> {
     return this.http.get<DataEntry[]>(`${this.apiUrl}/data-entries/`);
@@ -53,10 +56,13 @@ export class ApiService {
     return this.http.get<{ next_number: number }>(`${this.apiUrl}/rings/next-number/`, {params});
   }
 
-  getRingingStations(searchTerm?: string): Observable<PaginatedApiResponse<RingingStation>> {
+  getRingingStations(searchTerm?: string, organizationHandle?: string): Observable<PaginatedApiResponse<RingingStation>> {
     let params = new HttpParams();
     if (searchTerm) {
       params = params.set('search', searchTerm);
+    }
+    if (organizationHandle) {
+      params = params.set('organization', organizationHandle);
     }
     return this.http.get<PaginatedApiResponse<RingingStation>>(`${this.apiUrl}/ringing-stations/`, {params});
   }
@@ -67,5 +73,17 @@ export class ApiService {
       params = params.set('search', searchTerm);
     }
     return this.http.get<PaginatedApiResponse<Scientist>>(`${this.apiUrl}/scientists/`, {params});
+  }
+
+  getOrganizations(): Observable<PaginatedApiResponse<Organization>> {
+    return this.http.get<PaginatedApiResponse<Organization>>(`${this.apiUrl}/organizations/`);
+  }
+
+  getProjects(): Observable<PaginatedApiResponse<Project>> {
+    return this.http.get<PaginatedApiResponse<Project>>(`${this.apiUrl}/projects/`);
+  }
+
+  createProject(payload: ProjectCreatePayload): Observable<Project> {
+    return this.http.post<Project>(`${this.apiUrl}/projects/`, payload);
   }
 }
