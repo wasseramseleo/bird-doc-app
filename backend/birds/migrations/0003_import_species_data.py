@@ -17,7 +17,7 @@ def forwards_func(apps, schema_editor):
 
     species_to_create = []
     try:
-        with open(csv_file_path, 'r', encoding='iso-8859-1') as file:
+        with open(csv_file_path, 'r', encoding='utf-8') as file:
             reader = csv.DictReader(file, delimiter=';')
             for row in reader:
                 if not row['scientific_name'] or not row['common_name_en'] or not row['common_name_de']:
