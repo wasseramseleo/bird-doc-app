@@ -1,7 +1,7 @@
-{$DOMAIN} {
+http://{$DOMAIN}:80 {
     encode gzip
 
-    # Django backend: API + admin (path NOT stripped — Django mounts at /api/birds/ and /admin/)
+    # Django backend: API + admin (path NOT stripped)
     handle /api/* {
         reverse_proxy backend:8000
     }
@@ -9,7 +9,7 @@
         reverse_proxy backend:8000
     }
 
-    # Static files served directly from the shared volume (collectstatic output)
+    # Static files served directly from the shared volume
     handle_path /static/* {
         root * /srv/staticfiles
         file_server
