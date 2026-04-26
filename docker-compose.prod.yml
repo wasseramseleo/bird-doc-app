@@ -15,7 +15,7 @@ services:
       retries: 6
 
   backend:
-    image: ghcr.io/leothetryhard/bird-doc-app-backend:latest
+    image: ghcr.io/wasseramseleo/bird-doc-app-backend:latest
     restart: unless-stopped
     env_file:
       - /opt/bird-doc-app/.env
@@ -26,7 +26,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ghcr.io/leothetryhard/bird-doc-app-frontend:latest
+    image: ghcr.io/wasseramseleo/bird-doc-app-frontend:latest
     restart: unless-stopped
 
   caddy:
