@@ -13,7 +13,7 @@ def forwards_func(apps, schema_editor):
     # Get the directory of the current migration file
     migration_dir = os.path.dirname(os.path.abspath(__file__))
     # Construct the full path to the CSV file
-    csv_file_path = os.path.join(migration_dir, 'global-birds.csv')
+    csv_file_path = os.path.join(migration_dir, 'artenliste_2024.csv')
 
     species_to_create = []
     try:
