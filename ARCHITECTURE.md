@@ -19,6 +19,38 @@
                                               └────────────────┘
 ```
 
+## Deployment Topology
+
+```
+                        Internet
+                           │ HTTPS
+                           ▼
+                    Cloudflare Edge
+                           │ Tunnel
+                           ▼
+        ┌────────── Proxmox LXC ──────────────┐
+        │                                     │
+        │  cloudflared (systemd)              │
+        │     │                               │
+        │     ▼  http://127.0.0.1:80          │
+        │  Caddy ──┬─▶ /api/*, /admin/*  → backend:8000  (gunicorn, UID 1001)
+        │          ├─▶ /static/*         → /srv/staticfiles  (shared volume)
+        │          └─▶ /                 → frontend:80       (nginx + Angular bundle)
+        │                                                    │
+        │                                                    ▼
+        │                                          Postgres 16 (named volume)
+        │                                                    ▲
+        └─────────────── tailscaled ─────────────────────────┘
+                            ▲
+                            │ Tailscale
+                            │
+              GitHub Actions runner ──▶ SSH ──▶ docker compose pull && up -d
+```
+
+- Public traffic enters via Cloudflare Tunnel only — the LXC publishes no host ports.
+- Admin / deploy access is over Tailscale; `SSH_HOST` in GitHub secrets is the LXC's MagicDNS name.
+- `staticfiles` is a named docker volume shared read-only into Caddy; it is seeded by `collectstatic` on every backend start.
+
 ## Backend (`backend/`)
 
 **Stack:** Python 3.13, Django 5.2, Django REST Framework 3.16, SQLite

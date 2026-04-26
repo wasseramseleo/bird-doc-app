@@ -36,6 +36,10 @@ RUN groupadd --system --gid 1001 app \
 
 COPY --from=builder --chown=app:app /app /app
 
+# Pre-create staticfiles so the named volume inherits app:app ownership on first mount.
+# Without this, Docker creates the volume root-owned and collectstatic fails as non-root.
+RUN mkdir -p /app/staticfiles && chown app:app /app/staticfiles
+
 USER app
 
 EXPOSE 8000

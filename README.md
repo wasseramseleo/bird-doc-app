@@ -65,6 +65,6 @@ Brings up `db` (Postgres 16), `backend` (Django on `:8000`), and `frontend` (Ang
 
 ## Deployment
 
-`main` deploys automatically: GitHub Actions builds backend + frontend images, pushes them to GHCR, and rolls out `docker-compose.prod.yml` on the VPS via SSH. Caddy fronts the stack with auto Let's Encrypt TLS.
+`main` deploys automatically: GitHub Actions builds backend + frontend images, pushes them to GHCR, joins the tailnet, then SSHes into a Proxmox LXC container at home and rolls out `docker-compose.prod.yml`. Public traffic reaches the LXC through a Cloudflare Tunnel (`cloudflared` runs as a systemd service on the LXC); TLS terminates at Cloudflare and Caddy serves plain HTTP on `127.0.0.1:80` inside the LXC. The host publishes no public ports.
 
-See [`deploy/README.md`](deploy/README.md) for the one-time VPS bootstrap and the list of required GitHub secrets.
+See [`deploy/README.md`](deploy/README.md) for the one-time LXC bootstrap and the list of required GitHub secrets.

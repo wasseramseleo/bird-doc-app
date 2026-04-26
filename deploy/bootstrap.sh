@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# One-time VPS bootstrap for bird-doc-app.
-# Run as root on a fresh Debian/Ubuntu host with SSH access:
+# One-time bootstrap for bird-doc-app on a Proxmox LXC container (Debian/Ubuntu).
+# Installs Docker, Tailscale, and cloudflared, then prepares /opt/bird-doc-app.
+# Run as root on a fresh LXC:
 #   curl -fsSL https://raw.githubusercontent.com/<owner>/bird-doc-app/main/deploy/bootstrap.sh | sudo bash
 # or scp this file over and run `sudo bash bootstrap.sh`.
 
@@ -38,6 +39,25 @@ else
   echo "   docker already installed: $(docker --version)"
 fi
 
+echo ">> Installing Tailscale"
+if ! command -v tailscale >/dev/null 2>&1; then
+  curl -fsSL https://tailscale.com/install.sh | sh
+else
+  echo "   tailscale already installed: $(tailscale version | head -n1)"
+fi
+systemctl enable --now tailscaled
+
+echo ">> Installing cloudflared"
+if ! command -v cloudflared >/dev/null 2>&1; then
+  arch="$(dpkg --print-architecture)"
+  curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}.deb" \
+    -o /tmp/cloudflared.deb
+  apt-get install -y /tmp/cloudflared.deb
+  rm -f /tmp/cloudflared.deb
+else
+  echo "   cloudflared already installed: $(cloudflared --version | head -n1)"
+fi
+
 echo ">> Creating ${APP_DIR} directory tree"
 mkdir -p "${APP_DIR}"/{pgdata,caddy_data,caddy_config}
 chmod 700 "${APP_DIR}/pgdata"
@@ -48,23 +68,31 @@ cat <<'EOF'
 
 Next steps:
 
-1. Add the following secrets in GitHub → Settings → Secrets and variables → Actions:
-     SSH_HOST                  this server's hostname or IP
-     SSH_USER                  the deploy user (must be in the docker group, or root)
+1. Join the tailnet:
+     tailscale up
+   (or non-interactively: tailscale up --authkey=tskey-...)
+
+2. Connect the Cloudflare Tunnel:
+     sudo cloudflared service install <TUNNEL_TOKEN>
+   Create the tunnel in the Cloudflare Zero Trust dashboard first; point the public
+   hostname at http://localhost:80 (Caddy listens on 127.0.0.1:80 inside the LXC).
+
+3. Add the following secrets in GitHub → Settings → Secrets and variables → Actions:
+     TAILSCALE_AUTHKEY         ephemeral authkey for the deploy workflow's runner
+     SSH_HOST                  Tailscale IP or MagicDNS name of this LXC
+     SSH_USER                  deploy user (must be in the docker group, or root)
      SSH_PRIVATE_KEY           private key authorized on the deploy user
-     DOMAIN                    e.g. birddoc.example.com (must point to this server's IP)
+     DOMAIN                    e.g. birddoc.example.com (the Cloudflare Tunnel hostname)
      DJANGO_SECRET_KEY         long random string (`openssl rand -hex 64`)
      DJANGO_ALLOWED_HOSTS      e.g. birddoc.example.com
      POSTGRES_PASSWORD         database password
      CORS_ALLOWED_ORIGINS      e.g. https://birddoc.example.com
      CSRF_TRUSTED_ORIGINS      e.g. https://birddoc.example.com
 
-2. Make sure DNS for $DOMAIN points to this server (Caddy needs it for Let's Encrypt).
+4. Push to main — GitHub Actions builds images, pushes to GHCR, connects to the
+   tailnet, then SSHes in to roll out docker-compose.prod.yml.
 
-3. Push to main — GitHub Actions will build images, push to GHCR, and roll out
-   docker-compose.prod.yml on this host. The first run grabs a TLS cert via Let's Encrypt.
-
-4. Verify after first deploy:
+5. Verify after first deploy:
      curl -I https://<DOMAIN>/
      docker compose -f /opt/bird-doc-app/docker-compose.prod.yml logs backend
 
