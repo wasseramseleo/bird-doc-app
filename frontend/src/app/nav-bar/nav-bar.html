@@ -5,12 +5,12 @@
   </a>
   <span class="spacer"></span>
   <a
-    type="button"
-    mat-icon-button
+    mat-button
     aria-label="Open Django admin"
     [href]="adminUrl"
   >
     <mat-icon>build</mat-icon>
+    <span>Administration</span>
   </a>
   <button mat-button [matMenuTriggerFor]="userMenu" class="user-trigger">
     <span>{{ userLabel() }}</span>
