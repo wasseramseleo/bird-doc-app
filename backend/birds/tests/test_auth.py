@@ -36,9 +36,7 @@ def test_login_with_missing_fields_returns_401(api_client):
 
 @pytest.mark.django_db
 def test_login_with_invalid_credentials_returns_401(api_client, user):
-    response = api_client.post(
-        LOGIN_URL, {"username": "alice", "password": "wrong"}, format="json"
-    )
+    response = api_client.post(LOGIN_URL, {"username": "alice", "password": "wrong"}, format="json")
     assert response.status_code == 401
 
 

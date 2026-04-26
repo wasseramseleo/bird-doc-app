@@ -39,9 +39,7 @@ def test_list_returns_paginated_results(auth_client, data_entry):
 
 
 @pytest.mark.django_db
-def test_list_orders_by_date_time_desc(
-    auth_client, species, ring, scientist, ringing_station
-):
+def test_list_orders_by_date_time_desc(auth_client, species, ring, scientist, ringing_station):
     older = DataEntry.objects.create(
         species=species,
         ring=ring,
@@ -64,9 +62,7 @@ def test_list_orders_by_date_time_desc(
 
 
 @pytest.mark.django_db
-def test_create_creates_ring_when_missing(
-    auth_client, species, scientist, ringing_station
-):
+def test_create_creates_ring_when_missing(auth_client, species, scientist, ringing_station):
     response = auth_client.post(
         LIST_URL,
         _payload(species, scientist, ringing_station, ring_number="300"),
@@ -78,9 +74,7 @@ def test_create_creates_ring_when_missing(
 
 
 @pytest.mark.django_db
-def test_create_reuses_existing_ring(
-    auth_client, species, scientist, ringing_station
-):
+def test_create_reuses_existing_ring(auth_client, species, scientist, ringing_station):
     Ring.objects.create(number="400", size=Ring.RingSizes.V)
     response = auth_client.post(
         LIST_URL,
@@ -115,9 +109,7 @@ def test_delete_removes_entry(auth_client, data_entry):
 
 
 @pytest.mark.django_db
-def test_filter_by_ring_size_and_number(
-    auth_client, species, scientist, ringing_station
-):
+def test_filter_by_ring_size_and_number(auth_client, species, scientist, ringing_station):
     target_ring = Ring.objects.create(number="123", size=Ring.RingSizes.V)
     other_ring = Ring.objects.create(number="124", size=Ring.RingSizes.V)
 

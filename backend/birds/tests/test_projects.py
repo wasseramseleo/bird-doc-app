@@ -28,9 +28,7 @@ def test_scientist_sees_only_projects_they_belong_to(
 
 
 @pytest.mark.django_db
-def test_create_auto_adds_creator_scientist(
-    auth_client, scientist, organization
-):
+def test_create_auto_adds_creator_scientist(auth_client, scientist, organization):
     response = auth_client.post(
         LIST_URL,
         {"title": "P", "description": "", "organization_id": organization.handle},

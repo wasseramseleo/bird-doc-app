@@ -15,9 +15,7 @@ def test_user_with_no_active_list_sees_all_species(auth_client, species, species
 
 
 @pytest.mark.django_db
-def test_user_with_active_list_sees_only_list_species(
-    auth_client, user, species, species_other
-):
+def test_user_with_active_list_sees_only_list_species(auth_client, user, species, species_other):
     sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
     sl.species.add(species)
 
@@ -28,9 +26,7 @@ def test_user_with_active_list_sees_only_list_species(
 
 
 @pytest.mark.django_db
-def test_inactive_lists_do_not_filter_species(
-    auth_client, user, species, species_other
-):
+def test_inactive_lists_do_not_filter_species(auth_client, user, species, species_other):
     sl = SpeciesList.objects.create(name="Mine", user=user, is_active=False)
     sl.species.add(species)
 

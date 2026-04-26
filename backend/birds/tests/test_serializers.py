@@ -99,9 +99,7 @@ def test_project_create_appends_creator_scientist(user, scientist, organization)
 
 
 @pytest.mark.django_db
-def test_project_create_does_not_duplicate_creator(
-    user, scientist, organization, other_scientist
-):
+def test_project_create_does_not_duplicate_creator(user, scientist, organization, other_scientist):
     request = MagicMock()
     request.user = user
 
