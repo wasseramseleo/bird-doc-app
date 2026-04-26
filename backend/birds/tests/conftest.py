@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from django.contrib.auth.models import User
@@ -95,7 +95,7 @@ def data_entry(species, ring, scientist, ringing_station):
         ring=ring,
         staff=scientist,
         ringing_station=ringing_station,
-        date_time=datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc),
+        date_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
     )
 
 

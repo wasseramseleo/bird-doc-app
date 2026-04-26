@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -47,7 +47,7 @@ def test_list_orders_by_date_time_desc(
         ring=ring,
         staff=scientist,
         ringing_station=ringing_station,
-        date_time=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        date_time=datetime(2025, 1, 1, tzinfo=UTC),
     )
     newer_ring = Ring.objects.create(number="201", size=Ring.RingSizes.V)
     newer = DataEntry.objects.create(
@@ -55,7 +55,7 @@ def test_list_orders_by_date_time_desc(
         ring=newer_ring,
         staff=scientist,
         ringing_station=ringing_station,
-        date_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
     response = auth_client.get(LIST_URL)
@@ -126,14 +126,14 @@ def test_filter_by_ring_size_and_number(
         ring=target_ring,
         staff=scientist,
         ringing_station=ringing_station,
-        date_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
     )
     DataEntry.objects.create(
         species=species,
         ring=other_ring,
         staff=scientist,
         ringing_station=ringing_station,
-        date_time=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        date_time=datetime(2026, 1, 2, tzinfo=UTC),
     )
 
     response = auth_client.get(LIST_URL, {"ring_size": "V", "ring_number": "123"})

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,7 +14,7 @@ def _entry_payload(species, scientist, ringing_station, *, ring_number, ring_siz
         "ringing_station_id": ringing_station.handle,
         "ring_number": ring_number,
         "ring_size": ring_size,
-        "date_time": datetime(2026, 2, 1, 8, 0, tzinfo=timezone.utc),
+        "date_time": datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
     }
 
 
@@ -70,7 +70,7 @@ def test_update_keeps_old_ring_when_still_referenced(
         ring=old_ring,
         staff=scientist,
         ringing_station=ringing_station,
-        date_time=datetime(2026, 2, 2, 8, 0, tzinfo=timezone.utc),
+        date_time=datetime(2026, 2, 2, 8, 0, tzinfo=UTC),
     )
 
     serializer = DataEntrySerializer(

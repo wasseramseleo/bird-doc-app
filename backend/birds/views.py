@@ -80,7 +80,11 @@ class SpeciesListViewSet(viewsets.ModelViewSet):
         """
         This view should only return the lists for the currently authenticated user.
         """
-        return SpeciesList.objects.filter(user=self.request.user).prefetch_related("species")
+        return (
+            SpeciesList.objects.filter(user=self.request.user)
+            .prefetch_related("species")
+            .order_by("name")
+        )
 
     def perform_create(self, serializer):
         """
@@ -103,17 +107,13 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": "Ring size parameter is required."}, status=400)
 
         latest_ring = (
-            Ring.objects.annotate(number_int=Cast("number", IntegerField()))
-            .filter(size=ring_size)
+            Ring.objects.filter(size=ring_size, number__regex=r"^\d+$")
+            .annotate(number_int=Cast("number", IntegerField()))
             .order_by("-number_int")
             .first()
         )
 
-        if latest_ring and latest_ring.number.isdigit():
-            next_number = int(latest_ring.number) + 1
-        else:
-            next_number = 1
-
+        next_number = int(latest_ring.number) + 1 if latest_ring else 1
         return Response({"next_number": next_number})
 
 
