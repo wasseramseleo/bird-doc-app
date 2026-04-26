@@ -7,11 +7,37 @@ from django.utils.translation import gettext_lazy as _
 
 class Ring(models.Model):
     class RingSizes(models.TextChoices):
-        V = "V", _("V")
-        T = "T", _("T")
-        S = "S", _("S")
-        X = "X", _("X")
+        # Austrian ringing scheme (AOC / Österreichische Vogelwarte).
+        # Ordered largest → smallest inner diameter. The "A" suffix denotes
+        # Stahl (steel); the "S" suffix denotes "mit Lasche" (with tab).
+        AS = "AS", _("AS")
+        BS = "BS", _("BS")
+        C = "C", _("C")
+        D = "D", _("D")
+        DS = "DS", _("DS")
+        DA = "DA", _("DA")
+        F = "F", _("F")
+        FA = "FA", _("FA")
+        G = "G", _("G")
+        GA = "GA", _("GA")
+        H = "H", _("H")
+        HA = "HA", _("HA")
+        K = "K", _("K")
+        KA = "KA", _("KA")
+        L = "L", _("L")
+        LA = "LA", _("LA")
+        M = "M", _("M")
+        N = "N", _("N")
+        NA = "NA", _("NA")
         P = "P", _("P")
+        PA = "PA", _("PA")
+        R = "R", _("R")
+        S = "S", _("S")
+        SA = "SA", _("SA")
+        T = "T", _("T")
+        TA = "TA", _("TA")
+        V = "V", _("V")
+        X = "X", _("X")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     number = models.CharField(max_length=64)

@@ -1,0 +1,124 @@
+leo@Leo-XPS:~/WebstormProjects/bird-doc-app/frontend$ ng serve
+Initial chunk files | Names         |  Raw size
+styles.css          | styles        | 285.56 kB |
+main.js             | main          | 149.77 kB |
+chunk-725RMKNQ.js   | -             |   2.83 kB |
+polyfills.js        | polyfills     | 206 bytes |
+
+                    | Initial total | 438.36 kB
+
+Lazy chunk files    | Names         |  Raw size
+chunk-DC62ZSEB.js   | login         |  11.86 kB |
+
+Application bundle generation complete. [5.787 seconds].
+
+▲ [WARNING] NG8102: The left side of this nullish coalescing operation does not include 'null' or 'undefined' in its type, therefore the '??' operator can be safely removed. [plugin angular-compiler]
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.html:39:13:
+      39 │       <dd>{{ entry.net_location ?? '��' }}</dd>
+         ╵              ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  Warning occurs in the template of component DataEntryDetailDialogComponent.
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.ts:23:15:
+      23 │   templateUrl: './data-entry-detail-dialog.html',
+         ╵                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+▲ [WARNING] NG8102: The left side of this nullish coalescing operation does not include 'null' or 'undefined' in its type, therefore the '??' operator can be safely removed. [plugin angular-compiler]
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.html:41:13:
+      41 │       <dd>{{ entry.net_height ?? '��' }}</dd>
+         ╵              ~~~~~~~~~~~~~~~~~~~~~~~
+
+  Warning occurs in the template of component DataEntryDetailDialogComponent.
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.ts:23:15:
+      23 │   templateUrl: './data-entry-detail-dialog.html',
+         ╵                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+▲ [WARNING] NG8102: The left side of this nullish coalescing operation does not include 'null' or 'undefined' in its type, therefore the '??' operator can be safely removed. [plugin angular-compiler]
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.html:73:13:
+      73 │       <dd>{{ entry.tarsus ?? '��' }}</dd>
+         ╵              ~~~~~~~~~~~~~~~~~~~
+
+  Warning occurs in the template of component DataEntryDetailDialogComponent.
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.ts:23:15:
+      23 │   templateUrl: './data-entry-detail-dialog.html',
+         ╵                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+▲ [WARNING] NG8102: The left side of this nullish coalescing operation does not include 'null' or 'undefined' in its type, therefore the '??' operator can be safely removed. [plugin angular-compiler]
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.html:75:13:
+      75 │       <dd>{{ entry.feather_span ?? '��' }}</dd>
+         ╵              ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  Warning occurs in the template of component DataEntryDetailDialogComponent.
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.ts:23:15:
+      23 │   templateUrl: './data-entry-detail-dialog.html',
+         ╵                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+▲ [WARNING] NG8102: The left side of this nullish coalescing operation does not include 'null' or 'undefined' in its type, therefore the '??' operator can be safely removed. [plugin angular-compiler]
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.html:77:13:
+      77 │       <dd>{{ entry.wing_span ?? '��' }}</dd>
+         ╵              ~~~~~~~~~~~~~~~~~~~~~~
+
+  Warning occurs in the template of component DataEntryDetailDialogComponent.
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.ts:23:15:
+      23 │   templateUrl: './data-entry-detail-dialog.html',
+         ╵                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+▲ [WARNING] NG8102: The left side of this nullish coalescing operation does not include 'null' or 'undefined' in its type, therefore the '??' operator can be safely removed. [plugin angular-compiler]
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.html:79:13:
+      79 │       <dd>{{ entry.weight_gram ?? '��' }}</dd>
+         ╵              ~~~~~~~~~~~~~~~~~~~~~~~~
+
+  Warning occurs in the template of component DataEntryDetailDialogComponent.
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.ts:23:15:
+      23 │   templateUrl: './data-entry-detail-dialog.html',
+         ╵                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+▲ [WARNING] NG8102: The left side of this nullish coalescing operation does not include 'null' or 'undefined' in its type, therefore the '??' operator can be safely removed. [plugin angular-compiler]
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.html:81:13:
+      81 │       <dd>{{ entry.notch_f2 ?? '��' }}</dd>
+         ╵              ~~~~~~~~~~~~~~~~~~~~~
+
+  Warning occurs in the template of component DataEntryDetailDialogComponent.
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.ts:23:15:
+      23 │   templateUrl: './data-entry-detail-dialog.html',
+         ╵                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+▲ [WARNING] NG8102: The left side of this nullish coalescing operation does not include 'null' or 'undefined' in its type, therefore the '??' operator can be safely removed. [plugin angular-compiler]
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.html:83:13:
+      83 │       <dd>{{ entry.inner_foot ?? '��' }}</dd>
+         ╵              ~~~~~~~~~~~~~~~~~~~~~~~
+
+  Warning occurs in the template of component DataEntryDetailDialogComponent.
+
+    src/app/data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog.ts:23:15:
+      23 │   templateUrl: './data-entry-detail-dialog.html',
+         ╵                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Watch mode enabled. Watching for file changes...
+NOTE: Raw file sizes do not reflect development server per-request transformations.
+18:29:18 [vite] (ssr) Re-optimizing dependencies because lockfile has changed
+18:29:18 [vite] (client) Re-optimizing dependencies because lockfile has changed (x2)
+An unhandled exception occurred: EACCES: permission denied, unlink '/home/leo/WebstormProjects/bird-doc-app/frontend/.angular/cache/20.1.6/bird-doc/vite/deps_ssr/_metadata.json'
+See "/tmp/ng-rSmhJs/angular-errors.log" for further details.
