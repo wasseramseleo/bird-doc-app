@@ -64,10 +64,10 @@ export class DataEntryDetailDialogComponent {
 
   getMuscleLabel(value: MuscleClass | null): string {
     const map: Record<number, string> = {
-      [MuscleClass.Null]: '0 – Kiel gut sichtbar',
-      [MuscleClass.One]: '1 – Kiel gut fühlbar',
-      [MuscleClass.Two]: '2 – Kiel kaum fühlbar',
-      [MuscleClass.Three]: '3 – Kiel nicht fühlbar (konvex)',
+      [MuscleClass.Null]: '0 – Brustbein gut sichtbar',
+      [MuscleClass.One]: '1 – Brustbein gut fühlbar',
+      [MuscleClass.Two]: '2 – Brustbein kaum fühlbar',
+      [MuscleClass.Three]: '3 – Brustbein nicht fühlbar (konvex)',
     };
     return value !== null && value !== undefined ? (map[value] ?? String(value)) : '—';
   }

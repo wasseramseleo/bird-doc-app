@@ -168,13 +168,13 @@ export class DataEntryFormComponent implements OnInit {
 
   muscleClassOptions: SelectOption<MuscleClass | null>[] = [{value: null, viewValue: '---'}, {
     value: MuscleClass.Null,
-    viewValue: '0 - Kiel nicht fühlbar',
+    viewValue: '0 - Brustbein nicht fühlbar',
     key: '0'
-  }, {value: MuscleClass.One, viewValue: '1 - Kiel gut fühlbar', key: '1'}, {
+  }, {value: MuscleClass.One, viewValue: '1 - Brustbein gut fühlbar', key: '1'}, {
     value: MuscleClass.Two,
-    viewValue: '2 - Kiel kaum fühlbar',
+    viewValue: '2 - Brustbein kaum fühlbar',
     key: '2'
-  }, {value: MuscleClass.Three, viewValue: '3 - Kiel nicht fühlbar (konvex)', key: '3'},];
+  }, {value: MuscleClass.Three, viewValue: '3 - Brustbein nicht fühlbar (konvex)', key: '3'},];
 
   ageClassOptions: SelectOption<AgeClass>[] = [{
     value: AgeClass.Nest,
