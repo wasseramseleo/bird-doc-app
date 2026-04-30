@@ -5,6 +5,7 @@ export interface Project {
   id: string;
   title: string;
   description: string;
+  show_optional_fields: boolean;
   organization: Organization;
   scientists: Scientist[];
   created: string;
@@ -21,4 +22,5 @@ export interface ProjectUpdatePayload {
   title: string;
   description: string;
   scientist_ids: string[];
+  show_optional_fields?: boolean;
 }

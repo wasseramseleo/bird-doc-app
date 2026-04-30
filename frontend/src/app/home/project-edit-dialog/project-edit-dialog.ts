@@ -2,6 +2,7 @@ import {ChangeDetectionStrategy, Component, inject} from '@angular/core';
 import {CommonModule} from '@angular/common';
 import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
 import {MatButtonModule} from '@angular/material/button';
+import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatDialogModule, MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
@@ -18,6 +19,7 @@ export interface ProjectEditDialogResult {
   title: string;
   description: string;
   scientistIds: string[];
+  showOptionalFields: boolean;
 }
 
 @Component({
@@ -27,6 +29,7 @@ export interface ProjectEditDialogResult {
     ReactiveFormsModule,
     MatDialogModule,
     MatButtonModule,
+    MatCheckboxModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
@@ -48,6 +51,7 @@ export class ProjectEditDialogComponent {
       this.data.project.scientists.map((s) => s.id),
       [Validators.required, Validators.minLength(1)],
     ],
+    showOptionalFields: [this.data.project.show_optional_fields],
   });
 
   submit(): void {

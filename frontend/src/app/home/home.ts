@@ -113,6 +113,7 @@ export class HomeComponent implements OnInit {
         title: result.title,
         description: result.description,
         scientist_ids: result.scientistIds,
+        show_optional_fields: result.showOptionalFields,
       }).subscribe({
         next: (updated) => {
           this.snackBar.open(`Projekt "${updated.title}" wurde aktualisiert.`, 'Schließen', {duration: 3000});

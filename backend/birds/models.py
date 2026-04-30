@@ -122,6 +122,10 @@ class Project(models.Model):
         blank=True,
         verbose_name=_("Beringer"),
     )
+    show_optional_fields = models.BooleanField(
+        default=True,
+        verbose_name=_("Optionale Felder anzeigen"),
+    )
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 

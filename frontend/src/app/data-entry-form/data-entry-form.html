@@ -279,27 +279,29 @@
         <textarea matInput formControlName="comment" rows="3"></textarea>
       </mat-form-field>
     </div>
-    <div class="form-section-checkboxes">
-      <mat-checkbox formControlName="has_mites">Milben</mat-checkbox>
-      <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
-      <mat-checkbox formControlName="has_brood_patch">Brutfleck</mat-checkbox>
-      <mat-checkbox formControlName="has_cpl_plus">CPL+</mat-checkbox>
-    </div>
+    @if (showOptionalFields()) {
+      <div class="form-section-checkboxes">
+        <mat-checkbox formControlName="has_mites">Milben</mat-checkbox>
+        <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
+        <mat-checkbox formControlName="has_brood_patch">Brutfleck</mat-checkbox>
+        <mat-checkbox formControlName="has_cpl_plus">CPL+</mat-checkbox>
+      </div>
 
-    <div class="biometrics-section">
-      <div class="column">
-        <mat-form-field appearance="outline" floatLabel="always">
-          <mat-label>Kerbe F2 (mm)</mat-label>
-          <input matInput type="number" formControlName="notch_f2">
-        </mat-form-field>
+      <div class="biometrics-section">
+        <div class="column">
+          <mat-form-field appearance="outline" floatLabel="always">
+            <mat-label>Kerbe F2 (mm)</mat-label>
+            <input matInput type="number" formControlName="notch_f2">
+          </mat-form-field>
+        </div>
+        <div class="column">
+          <mat-form-field appearance="outline" floatLabel="always">
+            <mat-label>Innenfuß (mm)</mat-label>
+            <input matInput type="number" formControlName="inner_foot">
+          </mat-form-field>
+        </div>
       </div>
-      <div class="column">
-        <mat-form-field appearance="outline" floatLabel="always">
-          <mat-label>Innenfuß (mm)</mat-label>
-          <input matInput type="number" formControlName="inner_foot">
-        </mat-form-field>
-      </div>
-    </div>
+    }
 
     <div class="action-buttons">
       <button mat-stroked-button type="button" routerLink="/">Abbrechen</button>

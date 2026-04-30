@@ -90,6 +90,7 @@ export class DataEntryFormComponent implements OnInit {
   private readonly dialog = inject(MatDialog);
 
   readonly currentProject = this.projectService.currentProject;
+  readonly showOptionalFields = computed(() => this.currentProject()?.show_optional_fields ?? true);
 
   // Component State
   private readonly entryId = signal<string | null>(this.route.snapshot.paramMap.get('id'));

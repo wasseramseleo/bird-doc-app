@@ -70,6 +70,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "show_optional_fields",
             "organization",
             "organization_id",
             "scientists",
