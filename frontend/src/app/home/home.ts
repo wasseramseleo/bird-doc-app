@@ -11,7 +11,13 @@ import {ApiService} from '../service/api.service';
 import {ProjectService} from '../service/project.service';
 import {Project} from '../models/project.model';
 import {Organization} from '../models/organization.model';
+import {Scientist} from '../models/scientist.model';
 import {ProjectCreateDialogComponent, ProjectCreateDialogResult} from './project-create-dialog/project-create-dialog';
+import {
+  ProjectEditDialogComponent,
+  ProjectEditDialogData,
+  ProjectEditDialogResult,
+} from './project-edit-dialog/project-edit-dialog';
 
 @Component({
   selector: 'app-home',
@@ -38,11 +44,15 @@ export class HomeComponent implements OnInit {
   readonly loading = signal<boolean>(true);
   readonly projects = signal<Project[]>([]);
   private readonly organizations = signal<Organization[]>([]);
+  private readonly scientists = signal<Scientist[]>([]);
 
   ngOnInit(): void {
     this.loadProjects();
     this.api.getOrganizations().subscribe({
       next: (res) => this.organizations.set(res.results),
+    });
+    this.api.getScientists().subscribe({
+      next: (res) => this.scientists.set(res.results),
     });
   }
 
@@ -80,6 +90,39 @@ export class HomeComponent implements OnInit {
         },
         error: () => {
           this.snackBar.open('Projekt konnte nicht erstellt werden.', 'Schließen', {duration: 3000});
+        },
+      });
+    });
+  }
+
+  openEditDialog(project: Project, event: MouseEvent): void {
+    event.stopPropagation();
+    const ref = this.dialog.open<
+      ProjectEditDialogComponent,
+      ProjectEditDialogData,
+      ProjectEditDialogResult
+    >(ProjectEditDialogComponent, {
+      data: {project, scientists: this.scientists()},
+      width: '480px',
+    });
+    ref.afterClosed().subscribe((result) => {
+      if (!result) {
+        return;
+      }
+      this.api.updateProject(project.id, {
+        title: result.title,
+        description: result.description,
+        scientist_ids: result.scientistIds,
+      }).subscribe({
+        next: (updated) => {
+          this.snackBar.open(`Projekt "${updated.title}" wurde aktualisiert.`, 'Schließen', {duration: 3000});
+          this.projects.update((current) => current.map((p) => (p.id === updated.id ? updated : p)));
+          if (this.projectService.currentProject()?.id === updated.id) {
+            this.projectService.setCurrent(updated);
+          }
+        },
+        error: () => {
+          this.snackBar.open('Projekt konnte nicht aktualisiert werden.', 'Schließen', {duration: 3000});
         },
       });
     });

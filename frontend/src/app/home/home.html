@@ -20,6 +20,14 @@
           @if (project.description) {
             <span matListItemLine>{{ project.description }}</span>
           }
+          <button
+            mat-icon-button
+            matListItemMeta
+            type="button"
+            aria-label="Projekt bearbeiten"
+            (click)="openEditDialog(project, $event)">
+            <mat-icon>edit</mat-icon>
+          </button>
         </a>
       }
     </mat-nav-list>

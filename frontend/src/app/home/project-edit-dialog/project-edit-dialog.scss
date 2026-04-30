@@ -1,0 +1,19 @@
+.full-width {
+  width: 100%;
+}
+
+mat-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.organization-line {
+  margin: 0 0 0.5rem;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.organization-label {
+  font-weight: 500;
+  margin-right: 0.25rem;
+}

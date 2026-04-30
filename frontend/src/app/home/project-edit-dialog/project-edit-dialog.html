@@ -1,0 +1,32 @@
+<h2 mat-dialog-title>Projekt bearbeiten</h2>
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <mat-dialog-content>
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Titel</mat-label>
+      <input matInput formControlName="title" autocomplete="off" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Beschreibung (optional)</mat-label>
+      <textarea matInput rows="3" formControlName="description"></textarea>
+    </mat-form-field>
+
+    <p class="organization-line">
+      <span class="organization-label">Organisation:</span>
+      {{ data.project.organization.name }}
+    </p>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Wissenschaftler:innen</mat-label>
+      <mat-select multiple formControlName="scientistIds">
+        @for (s of data.scientists; track s.id) {
+          <mat-option [value]="s.id">{{ s.full_name || s.handle }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" (click)="cancel()">Abbrechen</button>
+    <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid">Speichern</button>
+  </mat-dialog-actions>
+</form>

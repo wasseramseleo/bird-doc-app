@@ -16,3 +16,9 @@ export interface ProjectCreatePayload {
   description?: string;
   organization_id: string;
 }
+
+export interface ProjectUpdatePayload {
+  title: string;
+  description: string;
+  scientist_ids: string[];
+}

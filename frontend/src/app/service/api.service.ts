@@ -10,7 +10,7 @@ import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist} from '../models/scientist.model';
 import {Organization} from '../models/organization.model';
-import {Project, ProjectCreatePayload} from '../models/project.model';
+import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {environment} from '../../environments/environment';
 
 @Injectable({
@@ -85,5 +85,9 @@ export class ApiService {
 
   createProject(payload: ProjectCreatePayload): Observable<Project> {
     return this.http.post<Project>(`${this.apiUrl}/projects/`, payload);
+  }
+
+  updateProject(id: string, payload: ProjectUpdatePayload): Observable<Project> {
+    return this.http.patch<Project>(`${this.apiUrl}/projects/${id}/`, payload);
   }
 }
