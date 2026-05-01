@@ -20,14 +20,23 @@
           @if (project.description) {
             <span matListItemLine>{{ project.description }}</span>
           }
-          <button
-            mat-icon-button
-            matListItemMeta
-            type="button"
-            aria-label="Projekt bearbeiten"
-            (click)="openEditDialog(project, $event)">
-            <mat-icon>edit</mat-icon>
-          </button>
+          <div matListItemMeta class="home__list-actions">
+            <button
+              mat-icon-button
+              type="button"
+              aria-label="Als IWM Excel exportieren"
+              title="Als IWM Excel exportieren"
+              (click)="exportIwm(project, $event)">
+              <mat-icon>download</mat-icon>
+            </button>
+            <button
+              mat-icon-button
+              type="button"
+              aria-label="Projekt bearbeiten"
+              (click)="openEditDialog(project, $event)">
+              <mat-icon>edit</mat-icon>
+            </button>
+          </div>
         </a>
       }
     </mat-nav-list>

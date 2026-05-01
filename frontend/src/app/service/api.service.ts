@@ -1,7 +1,7 @@
 // src/app/service/api.service.ts
 
 import {Injectable, inject} from '@angular/core';
-import {HttpClient, HttpParams} from '@angular/common/http';
+import {HttpClient, HttpParams, HttpResponse} from '@angular/common/http';
 import {Observable} from 'rxjs';
 import {DataEntry} from '../models/data-entry.model';
 import {Species} from '../models/species.model';
@@ -89,5 +89,12 @@ export class ApiService {
 
   updateProject(id: string, payload: ProjectUpdatePayload): Observable<Project> {
     return this.http.patch<Project>(`${this.apiUrl}/projects/${id}/`, payload);
+  }
+
+  exportIwm(projectId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.apiUrl}/projects/${projectId}/export-iwm/`, {
+      responseType: 'blob',
+      observe: 'response',
+    });
   }
 }

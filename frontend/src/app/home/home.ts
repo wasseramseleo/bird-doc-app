@@ -19,6 +19,22 @@ import {
   ProjectEditDialogResult,
 } from './project-edit-dialog/project-edit-dialog';
 
+function parseFilenameFromContentDisposition(header: string | null): string | null {
+  if (!header) {
+    return null;
+  }
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8Match) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+  const quotedMatch = /filename="([^"]+)"/i.exec(header);
+  if (quotedMatch) {
+    return quotedMatch[1];
+  }
+  const bareMatch = /filename=([^;]+)/i.exec(header);
+  return bareMatch ? bareMatch[1].trim() : null;
+}
+
 @Component({
   selector: 'app-home',
   imports: [
@@ -92,6 +108,33 @@ export class HomeComponent implements OnInit {
           this.snackBar.open('Projekt konnte nicht erstellt werden.', 'Schließen', {duration: 3000});
         },
       });
+    });
+  }
+
+  exportIwm(project: Project, event: MouseEvent): void {
+    event.stopPropagation();
+    this.api.exportIwm(project.id).subscribe({
+      next: (response) => {
+        const blob = response.body;
+        if (!blob) {
+          this.snackBar.open('Export ist leer.', 'Schließen', {duration: 3000});
+          return;
+        }
+        const filename =
+          parseFilenameFromContentDisposition(response.headers.get('Content-Disposition')) ??
+          `IWM_${project.title}.xlsx`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      },
+      error: () => {
+        this.snackBar.open('IWM-Export fehlgeschlagen.', 'Schließen', {duration: 3000});
+      },
     });
   }
 
