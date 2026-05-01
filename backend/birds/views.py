@@ -1,9 +1,13 @@
+import datetime
+
 from django.db.models import IntegerField
 from django.db.models.functions import Cast
+from django.http import HttpResponse
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from .iwm_export import build_iwm_workbook
 from .models import (
     DataEntry,
     Organization,
@@ -159,3 +163,22 @@ class ProjectViewSet(viewsets.ModelViewSet):
             .prefetch_related("scientists__user")
             .order_by("-updated")
         )
+
+    @action(detail=True, methods=["get"], url_path="export-iwm")
+    def export_iwm(self, request, pk=None):
+        project = self.get_object()
+        entries = (
+            DataEntry.objects.filter(project=project)
+            .select_related("species", "ring", "staff", "ringing_station")
+            .order_by("date_time")
+        )
+        content = build_iwm_workbook(entries)
+        filename = f"IWM_{project.title}_{datetime.date.today():%Y-%m-%d}.xlsx"
+        response = HttpResponse(
+            content,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
