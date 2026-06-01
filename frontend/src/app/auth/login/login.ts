@@ -54,9 +54,11 @@ export class LoginComponent {
       error: (err: unknown) => {
         this.submitting.set(false);
         if (err instanceof HttpErrorResponse && err.status === 401) {
-          this.errorMessage.set('Invalid username or password.');
+          this.errorMessage.set(
+            'Anmeldung fehlgeschlagen. Bitte überprüfe Benutzernamen und Passwort.',
+          );
         } else {
-          this.errorMessage.set('Login failed, please try again.');
+          this.errorMessage.set('Anmeldung fehlgeschlagen. Bitte versuche es erneut.');
         }
       },
     });

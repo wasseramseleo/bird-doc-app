@@ -9,14 +9,16 @@
     <span class="brand__word">BirdDoc</span>
   </a>
   <span class="spacer"></span>
-  <a
-    mat-button
-    aria-label="Open Django admin"
-    [href]="adminUrl"
-  >
-    <mat-icon>build</mat-icon>
-    <span>Administration</span>
-  </a>
+  @if (isStaff()) {
+    <a
+      mat-button
+      aria-label="Open Django admin"
+      [href]="adminUrl"
+    >
+      <mat-icon>build</mat-icon>
+      <span>Administration</span>
+    </a>
+  }
   <button mat-button [matMenuTriggerFor]="userMenu" class="user-trigger">
     <span>{{ userLabel() }}</span>
     <mat-icon>arrow_drop_down</mat-icon>

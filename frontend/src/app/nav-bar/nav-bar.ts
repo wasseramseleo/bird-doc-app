@@ -32,6 +32,8 @@ export class NavBar {
     return user.handle ?? user.username;
   });
 
+  readonly isStaff = computed(() => this.auth.currentUser()?.isStaff ?? false);
+
   onLogout(): void {
     this.auth.logout().subscribe({
       next: () => this.router.navigate(['/login']),

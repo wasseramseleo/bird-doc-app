@@ -16,23 +16,33 @@
   padding: 2rem;
   background: var(--bd-paper-elev);
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--bd-line);
+}
+
+.login-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 24px;
+  object-fit: contain;
 }
 
 .login-title {
   margin: 0;
+  font-family: 'Lora', Georgia, serif;
   font-size: 1.75rem;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .login-subtitle {
   margin: 0 0 0.75rem;
+  font-size: 14px;
   color: var(--bd-ink-soft);
 }
 
 .login-error {
   margin: 0;
-  color: var(--mat-sys-error, #b00020);
+  color: var(--bd-error);
   font-size: 0.875rem;
 }
 

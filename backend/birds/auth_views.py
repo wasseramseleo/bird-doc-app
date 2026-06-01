@@ -24,14 +24,14 @@ def login_view(request):
     password = request.data.get("password")
     if not username or not password:
         return Response(
-            {"detail": "Invalid username or password."},
+            {"detail": "Anmeldung fehlgeschlagen. Bitte überprüfe Benutzernamen und Passwort."},
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
     user = authenticate(request, username=username, password=password)
     if user is None:
         return Response(
-            {"detail": "Invalid username or password."},
+            {"detail": "Anmeldung fehlgeschlagen. Bitte überprüfe Benutzernamen und Passwort."},
             status=status.HTTP_401_UNAUTHORIZED,
         )
 

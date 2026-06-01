@@ -1,10 +1,16 @@
 <div class="login-page">
   <form class="login-card" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+    <img
+      src="/birddoc-logo-1930x1930.png"
+      alt="BirdDoc"
+      class="login-logo"
+      width="64"
+      height="64" />
     <h1 class="login-title">BirdDoc</h1>
-    <p class="login-subtitle">Sign in to continue</p>
+    <p class="login-subtitle">Beringungsdokumentation</p>
 
     <mat-form-field appearance="outline">
-      <mat-label>Username</mat-label>
+      <mat-label>Benutzername</mat-label>
       <input
         matInput
         type="text"
@@ -13,12 +19,12 @@
         autofocus
       />
       @if (form.controls.username.touched && form.controls.username.errors?.['required']) {
-        <mat-error>Username is required.</mat-error>
+        <mat-error>Benutzername ist erforderlich.</mat-error>
       }
     </mat-form-field>
 
     <mat-form-field appearance="outline">
-      <mat-label>Password</mat-label>
+      <mat-label>Passwort</mat-label>
       <input
         matInput
         type="password"
@@ -26,7 +32,7 @@
         formControlName="password"
       />
       @if (form.controls.password.touched && form.controls.password.errors?.['required']) {
-        <mat-error>Password is required.</mat-error>
+        <mat-error>Passwort ist erforderlich.</mat-error>
       }
     </mat-form-field>
 
@@ -43,7 +49,7 @@
       @if (submitting()) {
         <mat-spinner diameter="20"></mat-spinner>
       } @else {
-        Sign in
+        Anmelden
       }
     </button>
   </form>
