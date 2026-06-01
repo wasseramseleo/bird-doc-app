@@ -25,7 +25,7 @@
   } @else {
     <div class="home__list">
       @for (project of projects(); track project.id) {
-        <div class="project-card">
+        <div class="project-card" [style.--i]="$index">
           <button type="button" class="project-card__main" (click)="selectProject(project)">
             <span class="project-card__title">{{ project.title }}</span>
             <span class="project-card__org">{{ project.organization.name }}</span>

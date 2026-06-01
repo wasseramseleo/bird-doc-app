@@ -24,6 +24,23 @@
   gap: 24px;
 }
 
+// MO-1 page-load reveal: each section (heading + fields) cascades in on first
+// mount, 50ms stagger via the inline `--i` index. `backwards` fill keeps the
+// element hidden during its delay. DOM persists across clearForm(), so the
+// cascade never replays after a submit.
+@keyframes bd-reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.form-section-heading,
+.form-section,
+.form-section-checkboxes,
+.biometrics-section {
+  animation: bd-reveal 220ms ease-out backwards;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+
 .form-section-heading {
   font-family: 'Lora', Georgia, serif;
   font-weight: 600;
@@ -67,6 +84,26 @@
 
 .full-width {
   grid-column: 1 / -1;
+}
+
+// MO-4 recapture history reveal: the always-present wrapper animates its grid
+// row from 0fr to 1fr (plus opacity) over 200ms so the history slides down when
+// it first matches. The inner element clips overflow during the transition.
+.recapture-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 200ms ease-out, opacity 200ms ease-out;
+
+  &.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+
+.recapture-reveal__inner {
+  overflow: hidden;
+  min-height: 0;
 }
 
 .recapture-section {
@@ -134,6 +171,18 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+// MO-3 submit feedback: the primary button briefly turns success-green with a
+// "Gespeichert ✓" label for 900ms. clearForm() leaves the form invalid (button
+// disabled) during that window, so the overrides must beat Material's disabled
+// styling. Text uses --bd-paper (the on-accent color) — never a #fff literal.
+.action-buttons button.is-saved,
+.action-buttons button.is-saved:disabled {
+  background-color: var(--bd-success) !important;
+  color: var(--bd-paper) !important;
+  opacity: 1 !important;
+  transition: background-color 200ms ease;
 }
 
 .form-section-checkboxes {

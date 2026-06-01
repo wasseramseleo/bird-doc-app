@@ -103,3 +103,32 @@ h3 { font-size: 20px; line-height: 28px; }
   color: var(--bd-ink-soft);
 }
 .bd-num-tabular { font-variant-numeric: tabular-nums; }
+
+// MO-2 Focused-field treatment. Material's outlined text fields default to a
+// rose-tinted focus ring; retint to the brand palette and lift the input track
+// on focus so the field visually rises. Driven through MDC component tokens so
+// no per-component overrides are needed.
+.mat-mdc-form-field {
+  --mdc-outlined-text-field-hover-outline-color: var(--bd-ink-soft);
+  --mdc-outlined-text-field-focus-outline-color: var(--bd-accent);
+  --mdc-outlined-text-field-focus-outline-width: 2px;
+}
+
+.mat-mdc-text-field-wrapper {
+  transition: background-color 120ms ease-out;
+}
+
+.mat-mdc-form-field.mat-focused .mat-mdc-text-field-wrapper {
+  background-color: var(--bd-paper-elev);
+}
+
+// MO-6 Reduced motion: collapse every transition/animation to effectively
+// instant when the user requests reduced motion.
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

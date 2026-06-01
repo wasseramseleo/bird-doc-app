@@ -96,6 +96,8 @@ export class DataEntryFormComponent implements OnInit {
   private readonly entryId = signal<string | null>(this.route.snapshot.paramMap.get('id'));
   readonly isEditMode = computed(() => !!this.entryId());
   readonly loading = signal<boolean>(false);
+  // MO-3 submit feedback: drives the brief green "Gespeichert ✓" button state.
+  readonly saved = signal<boolean>(false);
 
   // Recapture History State
   readonly recaptureHistory = signal<DataEntry[]>([]);
@@ -397,7 +399,13 @@ export class DataEntryFormComponent implements OnInit {
 
     saveOperation.subscribe({
       next: () => {
-        this.snackBar.open('Eintrag wurde gespeichert.', 'Schließen', {duration: 3000});
+        this.snackBar.open('Beringungseintrag gespeichert.', undefined, {
+          duration: 2000,
+          horizontalPosition: 'center',
+          verticalPosition: 'bottom',
+        });
+        this.saved.set(true);
+        setTimeout(() => this.saved.set(false), 900);
         this.clearForm();
       },
       error: (err) => {

@@ -5,7 +5,9 @@
 }
 
 <div>
-  @if (recaptureHistory().length > 0) {
+  <div class="recapture-reveal" [class.is-open]="recaptureHistory().length > 0">
+    <div class="recapture-reveal__inner">
+      @if (recaptureHistory().length > 0) {
     <div class="recapture-section">
       <h3>Bisherige Fänge ({{ recaptureHistory().length }})</h3>
       <table mat-table [dataSource]="recaptureHistory()" class="mat-elevation-z2">
@@ -66,13 +68,15 @@
         <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" class="history-entry"></tr>
       </table>
     </div>
-  }
+      }
+    </div>
+  </div>
 
   <form [formGroup]="entryForm" (ngSubmit)="onSubmit()" class="data-entry-form" novalidate>
     <h2>{{ isEditMode() ? 'Daten bearbeiten' : 'Neuer Beringungseintrag' }}</h2>
 
-    <h3 class="form-section-heading">Fang</h3>
-    <div class="form-section">
+    <h3 class="form-section-heading" style="--i: 0">Fang</h3>
+    <div class="form-section" style="--i: 0">
       @if (currentProject(); as project) {
         <mat-form-field appearance="outline" floatLabel="always">
           <mat-label>Projekt</mat-label>
@@ -105,8 +109,8 @@
       </mat-form-field>
     </div>
 
-    <h3 class="form-section-heading">Art & Ring</h3>
-    <div class="form-section">
+    <h3 class="form-section-heading" style="--i: 1">Art & Ring</h3>
+    <div class="form-section" style="--i: 1">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Art</mat-label>
         <input
@@ -165,8 +169,8 @@
       }
     </div>
 
-    <h3 class="form-section-heading">Netz</h3>
-    <div class="form-section">
+    <h3 class="form-section-heading" style="--i: 2">Netz</h3>
+    <div class="form-section" style="--i: 2">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Netznummer</mat-label>
         <input matInput type="number" formControlName="net_location">
@@ -188,8 +192,8 @@
       </mat-form-field>
     </div>
 
-    <h3 class="form-section-heading">Klassifikation</h3>
-    <div class="form-section">
+    <h3 class="form-section-heading" style="--i: 3">Klassifikation</h3>
+    <div class="form-section" style="--i: 3">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Alter</mat-label>
         <mat-select formControlName="age_class" #ageClassSelect
@@ -211,8 +215,8 @@
       </mat-form-field>
     </div>
 
-    <h3 class="form-section-heading">Mauser & Kondition</h3>
-    <div class="form-section">
+    <h3 class="form-section-heading" style="--i: 4">Mauser & Kondition</h3>
+    <div class="form-section" style="--i: 4">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Fett</mat-label>
         <mat-select formControlName="fat_deposit" #fatClassSelect
@@ -260,8 +264,8 @@
       </mat-form-field>
     </div>
 
-    <h3 class="form-section-heading">Biometrie</h3>
-    <div class="form-section">
+    <h3 class="form-section-heading" style="--i: 5">Biometrie</h3>
+    <div class="form-section" style="--i: 5">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Tarsus (mm)</mat-label>
         <input matInput type="number" formControlName="tarsus">
@@ -280,22 +284,22 @@
       </mat-form-field>
     </div>
 
-    <h3 class="form-section-heading">Bemerkungen</h3>
-    <div class="form-section">
+    <h3 class="form-section-heading" style="--i: 6">Bemerkungen</h3>
+    <div class="form-section" style="--i: 6">
       <mat-form-field appearance="outline" floatLabel="always" class="full-width">
         <mat-label>Bemerkungen</mat-label>
         <textarea matInput formControlName="comment" rows="3"></textarea>
       </mat-form-field>
     </div>
     @if (showOptionalFields()) {
-      <div class="form-section-checkboxes">
+      <div class="form-section-checkboxes" style="--i: 6">
         <mat-checkbox formControlName="has_mites">Milben</mat-checkbox>
         <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
         <mat-checkbox formControlName="has_brood_patch">Brutfleck</mat-checkbox>
         <mat-checkbox formControlName="has_cpl_plus">CPL+</mat-checkbox>
       </div>
 
-      <div class="biometrics-section">
+      <div class="biometrics-section" style="--i: 6">
         <div class="column">
           <mat-form-field appearance="outline" floatLabel="always">
             <mat-label>Kerbe F2 (mm)</mat-label>
@@ -313,8 +317,9 @@
 
     <div class="action-buttons">
       <button mat-stroked-button type="button" routerLink="/">Abbrechen</button>
-      <button mat-flat-button color="primary" type="submit" [disabled]="entryForm.invalid || loading()">
-        {{ isEditMode() ? 'Speichern' : 'Erstellen' }}
+      <button mat-flat-button color="primary" type="submit"
+              [class.is-saved]="saved()" [disabled]="entryForm.invalid || loading()">
+        {{ saved() ? 'Gespeichert ✓' : (isEditMode() ? 'Speichern' : 'Erstellen') }}
       </button>
     </div>
   </form>
