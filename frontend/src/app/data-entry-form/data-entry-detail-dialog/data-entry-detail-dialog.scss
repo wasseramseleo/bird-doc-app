@@ -51,13 +51,13 @@ dd {
   line-height: 1.6;
 
   &.erstfang {
-    background-color: #e8f5e9;
-    color: #2e7d32;
+    background-color: var(--bd-paper-sunk);
+    color: var(--bd-ink);
   }
 
   &.wiederfang {
-    background-color: #fff3e0;
-    color: #e65100;
+    background-color: var(--bd-accent-soft);
+    color: var(--bd-accent-deep);
   }
 }
 

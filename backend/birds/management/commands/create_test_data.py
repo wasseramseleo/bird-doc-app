@@ -4,7 +4,14 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from birds.models import DataEntry, Ring, RingingStation, Scientist, Species
+from birds.models import (
+    DataEntry,
+    Organization,
+    Ring,
+    RingingStation,
+    Scientist,
+    Species,
+)
 
 SPECIES_DATA = [
     {
@@ -334,9 +341,13 @@ class Command(BaseCommand):
     help = "Populate the database with realistic test data for development."
 
     def handle(self, *args, **options):
+        org, _ = Organization.objects.get_or_create(
+            handle="TEST",
+            defaults={"name": "Testorganisation", "country": "AT"},
+        )
         station, _ = RingingStation.objects.get_or_create(
             handle="TEST",
-            defaults={"name": "Teststation"},
+            defaults={"name": "Teststation", "organization": org},
         )
         self.stdout.write("Ensured ringing station.")
 

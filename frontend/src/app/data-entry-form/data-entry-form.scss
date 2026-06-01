@@ -176,7 +176,7 @@
 // MO-3 submit feedback: the primary button briefly turns success-green with a
 // "Gespeichert ✓" label for 900ms. clearForm() leaves the form invalid (button
 // disabled) during that window, so the overrides must beat Material's disabled
-// styling. Text uses --bd-paper (the on-accent color) — never a #fff literal.
+// styling. Text uses --bd-paper (the on-accent color) — never a pure-white literal.
 .action-buttons button.is-saved,
 .action-buttons button.is-saved:disabled {
   background-color: var(--bd-success) !important;

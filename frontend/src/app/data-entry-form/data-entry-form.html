@@ -85,7 +85,7 @@
       }
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Station</mat-label>
-        <input type="text" matInput formControlName="ringing_station" [matAutocomplete]="stationAuto">
+        <input type="text" matInput formControlName="ringing_station" [matAutocomplete]="stationAuto" selectOnTab>
         <mat-autocomplete #stationAuto="matAutocomplete" [displayWith]="displayStation">
           @for (option of filteredStations | async; track option.handle) {
             <mat-option [value]="option">{{ option.name }}</mat-option>
@@ -96,7 +96,7 @@
 
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Beringer</mat-label>
-        <input type="text" matInput formControlName="staff" [matAutocomplete]="staffAuto">
+        <input type="text" matInput formControlName="staff" [matAutocomplete]="staffAuto" selectOnTab>
         <mat-autocomplete #staffAuto="matAutocomplete" [displayWith]="displayScientist">
           @for (option of filteredScientists | async; track option.id) {
             <mat-option [value]="option">{{ option.full_name }} ({{ option.handle }})</mat-option>

@@ -152,8 +152,9 @@ export class DataEntryFormComponent implements OnInit {
     'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'ring_size', 'ring_number',
     'net_location', 'net_height', 'net_direction', 'age_class', 'sex', 'fat_deposit', 'muscle_class',
     'small_feather_int', 'small_feather_app', 'hand_wing',
-    'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'comment', 'notch_f2',
-    'inner_foot', 'has_mites'
+    'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'comment',
+    'has_mites', 'has_hunger_stripes', 'has_brood_patch', 'has_cpl_plus',
+    'notch_f2', 'inner_foot'
   ];
 
 
