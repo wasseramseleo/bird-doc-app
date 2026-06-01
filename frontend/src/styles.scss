@@ -122,6 +122,29 @@ h3 { font-size: 20px; line-height: 28px; }
   background-color: var(--bd-paper-elev);
 }
 
+// A11Y-4 Visible focus ring. Guarantee a brand-accent focus indicator on every
+// keyboard-focused interactive element that doesn't already render a Material
+// focus state (e.g. the navbar brand link).
+:focus-visible {
+  outline: 2px solid var(--bd-accent);
+  outline-offset: 2px;
+}
+
+// Material buttons (flat / stroked / icon) only draw a faint state-layer overlay
+// on keyboard focus and set outline:none on the host, so the global rule above
+// loses. Force the brand-accent ring on them so no tab stop is left invisible.
+.mat-mdc-button-base:focus-visible {
+  outline: 2px solid var(--bd-accent);
+  outline-offset: 2px;
+}
+
+// Material outlined text fields already carry the MO-2 accent focus outline, so
+// suppress the global ring on their inputs to avoid a doubled rectangle inside
+// the field box.
+.mat-mdc-input-element:focus-visible {
+  outline: none;
+}
+
 // MO-6 Reduced motion: collapse every transition/animation to effectively
 // instant when the user requests reduced motion.
 @media (prefers-reduced-motion: reduce) {

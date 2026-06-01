@@ -357,16 +357,16 @@ export class DataEntryFormComponent implements OnInit {
       next: (response) => {
         if (response.results.length > 0) {
           this.recaptureHistory.set(response.results);
-          this.snackBar.open(`${response.results.length} previous entries found for this ring.`, 'Close', {duration: 3000});
+          this.snackBar.open(`${response.results.length} frühere Einträge für diesen Ring gefunden.`, 'Schließen', {duration: 3000});
         } else {
           this.recaptureHistory.set([]);
-          this.snackBar.open('Error: No previous entries found for this ring.', 'Close', {duration: 3000});
+          this.snackBar.open('Keine früheren Einträge für diesen Ring gefunden.', 'Schließen', {duration: 3000});
         }
         this.loading.set(false);
       },
       error: () => {
         this.loading.set(false);
-        this.snackBar.open('An error occurred while fetching ring history.', 'Close', {duration: 3000});
+        this.snackBar.open('Fehler beim Laden der Ringhistorie.', 'Schließen', {duration: 3000});
       }
     });
   }
@@ -410,7 +410,7 @@ export class DataEntryFormComponent implements OnInit {
       },
       error: (err) => {
         console.error('Error saving data entry', err);
-        this.snackBar.open(`Error: ${err.message}`, 'Close');
+        this.snackBar.open(`Fehler beim Speichern: ${err.message}`, 'Schließen');
         this.loading.set(false);
       },
       complete: () => this.loading.set(false)

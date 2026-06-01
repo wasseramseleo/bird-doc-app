@@ -6,7 +6,7 @@
     "bird-doc": {
       "projectType": "application",
       "i18n": {
-        "sourceLocale": "de"
+        "sourceLocale": "de-AT"
       },
       "schematics": {
         "@schematics/angular:component": {
