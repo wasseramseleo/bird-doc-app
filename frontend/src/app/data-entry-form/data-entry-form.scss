@@ -73,7 +73,7 @@
   margin-bottom: 2rem;
   padding: 1rem;
   background-color: var(--bd-paper-sunk);
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--bd-line);
   border-radius: 8px;
 
   h3 {
@@ -95,11 +95,17 @@
   }
 
   .history-entry {
+    height: 44px;
     transition: background-color 150ms ease;
 
     &:hover {
       background-color: rgba(0, 0, 0, 0.04);
     }
+  }
+
+  .mat-mdc-cell,
+  .mat-mdc-header-cell {
+    padding: 8px 12px;
   }
 
   .status-chip {
@@ -111,13 +117,14 @@
     line-height: 1.5;
 
     &.chip-erstfang {
-      background-color: #e8f5e9;
-      color: #2e7d32;
+      background-color: var(--bd-paper-sunk);
+      color: var(--bd-ink);
+      border: 1px solid var(--bd-line);
     }
 
     &.chip-wiederfang {
-      background-color: #fff3e0;
-      color: #e65100;
+      background-color: var(--bd-accent-soft);
+      color: var(--bd-accent-deep);
     }
   }
 }
