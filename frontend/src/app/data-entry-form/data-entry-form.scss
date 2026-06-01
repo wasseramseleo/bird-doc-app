@@ -54,13 +54,15 @@
   h3 {
     margin-top: 0;
     margin-bottom: 1rem;
-    font-size: 1.2rem;
-    font-weight: 500;
-    color: rgba(0, 0, 0, 0.7);
   }
 
   table {
     width: 100%;
+  }
+
+  .mat-column-wing_span,
+  .mat-column-weight_gram {
+    font-variant-numeric: tabular-nums;
   }
 
   .mat-elevation-z2 {

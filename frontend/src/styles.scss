@@ -37,7 +37,7 @@ html {
       primary: mat.$rose-palette,
       tertiary: mat.$red-palette,
     ),
-    typography: Roboto,
+    typography: Inter,
     density: 0,
   ), (
     // Map BirdDoc tokens into Material 3 system tokens. mat.theme()'s second
@@ -75,4 +75,31 @@ body {
 /* You can add global styles to this file, and also import other style files */
 
 html, body { height: 100%; }
-body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+body { margin: 0; font-family: 'Inter', "Helvetica Neue", sans-serif; }
+
+// BR-2 Type scale
+h1, h2, h3 {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  color: var(--bd-ink);
+  margin: 0;
+}
+h1 { font-size: 32px; line-height: 40px; }
+h2 { font-size: 24px; line-height: 32px; }
+h3 { font-size: 20px; line-height: 28px; }
+
+.bd-wordmark {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 24px;
+  color: var(--bd-ink);
+}
+
+.bd-body-strong { font-weight: 600; }
+.bd-caption {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--bd-ink-soft);
+}
+.bd-num-tabular { font-variant-numeric: tabular-nums; }
