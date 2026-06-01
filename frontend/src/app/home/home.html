@@ -1,6 +1,9 @@
 <section class="home">
   <header class="home__header">
-    <h1>Projekt auswählen</h1>
+    <div class="home__title">
+      <h1>Projekte</h1>
+      <p class="home__subhead">Wähle ein Projekt, um mit der Dateneingabe zu beginnen.</p>
+    </div>
     <button mat-flat-button color="primary" (click)="openCreateDialog()">
       <mat-icon>add</mat-icon>
       Neues Projekt
@@ -10,17 +13,27 @@
   @if (loading()) {
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (projects().length === 0) {
-    <p>Du bist noch keinem Projekt zugeordnet. Lege ein neues Projekt an, um mit der Dateneingabe zu beginnen.</p>
+    <div class="home__empty">
+      <img
+        src="/birddoc-logo-1930x1930.png"
+        alt=""
+        aria-hidden="true"
+        class="home__empty-logo"
+        width="96" height="96" />
+      <p>Du bist noch keinem Projekt zugeordnet. Lege ein neues Projekt an, um mit der Dateneingabe zu beginnen.</p>
+    </div>
   } @else {
-    <mat-nav-list class="home__list">
+    <div class="home__list">
       @for (project of projects(); track project.id) {
-        <a mat-list-item (click)="selectProject(project)">
-          <span matListItemTitle>{{ project.title }}</span>
-          <span matListItemLine>{{ project.organization.name }}</span>
-          @if (project.description) {
-            <span matListItemLine>{{ project.description }}</span>
-          }
-          <div matListItemMeta class="home__list-actions">
+        <div class="project-card">
+          <button type="button" class="project-card__main" (click)="selectProject(project)">
+            <span class="project-card__title">{{ project.title }}</span>
+            <span class="project-card__org">{{ project.organization.name }}</span>
+            @if (project.description) {
+              <span class="project-card__desc">{{ project.description }}</span>
+            }
+          </button>
+          <div class="project-card__actions">
             <button
               mat-icon-button
               type="button"
@@ -37,8 +50,8 @@
               <mat-icon>edit</mat-icon>
             </button>
           </div>
-        </a>
+        </div>
       }
-    </mat-nav-list>
+    </div>
   }
 </section>

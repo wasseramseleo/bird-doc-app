@@ -3,7 +3,6 @@ import {Router} from '@angular/router';
 import {CommonModule} from '@angular/common';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
-import {MatListModule} from '@angular/material/list';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
@@ -41,7 +40,6 @@ function parseFilenameFromContentDisposition(header: string | null): string | nu
     CommonModule,
     MatButtonModule,
     MatIconModule,
-    MatListModule,
     MatProgressSpinnerModule,
     MatDialogModule,
     MatSnackBarModule,
