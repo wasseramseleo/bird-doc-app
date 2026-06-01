@@ -6,6 +6,31 @@
 // custom components at https://material.angular.dev/guide/theming
 @use '@angular/material' as mat;
 
+:root {
+  // Surfaces
+  --bd-paper:        #F7F2E8;
+  --bd-paper-elev:   #FBF7EE;
+  --bd-paper-sunk:   #EFE9DC;
+
+  // Ink
+  --bd-ink:          #2B2A26;
+  --bd-ink-soft:     #6B655B;
+  --bd-ink-faint:    #A6A095;
+
+  // Accent (warm ink-brown drawn from the logo)
+  --bd-accent:       #8B5A3C;
+  --bd-accent-soft:  #D9C3B0;
+  --bd-accent-deep:  #6B4530;
+
+  // Line work
+  --bd-line:         #C9C0AE;
+
+  // Semantic
+  --bd-success:      #4F7A4A;
+  --bd-warning:      #B07A24;
+  --bd-error:        #A8412D;
+}
+
 html {
   @include mat.theme((
     color: (
@@ -14,6 +39,20 @@ html {
     ),
     typography: Roboto,
     density: 0,
+  ), (
+    // Map BirdDoc tokens into Material 3 system tokens. mat.theme()'s second
+    // arg is an $overrides map that re-emits --mat-sys-* with these values,
+    // so Material components inherit the palette without per-component overrides.
+    primary:                var(--bd-accent),
+    on-primary:             var(--bd-paper),
+    surface:                var(--bd-paper),
+    on-surface:             var(--bd-ink),
+    surface-container:      var(--bd-paper-elev),
+    surface-container-low:  var(--bd-paper-elev),
+    surface-container-high: var(--bd-paper-sunk),
+    outline:                var(--bd-line),
+    outline-variant:        var(--bd-line),
+    error:                  var(--bd-error),
   ));
 }
 

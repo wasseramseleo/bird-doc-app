@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  background-color: #fafafa;
+  background-color: var(--bd-paper);
 }
 
 .login-card {
@@ -14,7 +14,7 @@
   flex-direction: column;
   gap: 0.75rem;
   padding: 2rem;
-  background: #fff;
+  background: var(--bd-paper-elev);
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
@@ -27,7 +27,7 @@
 
 .login-subtitle {
   margin: 0 0 0.75rem;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--bd-ink-soft);
 }
 
 .login-error {
