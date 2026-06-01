@@ -21,47 +21,7 @@
 .data-entry-form {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-}
-
-// MO-1 page-load reveal: each section (heading + fields) cascades in on first
-// mount, 50ms stagger via the inline `--i` index. `backwards` fill keeps the
-// element hidden during its delay. DOM persists across clearForm(), so the
-// cascade never replays after a submit.
-@keyframes bd-reveal {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.form-section-heading,
-.form-section,
-.form-section-checkboxes,
-.biometrics-section {
-  animation: bd-reveal 220ms ease-out backwards;
-  animation-delay: calc(var(--i, 0) * 50ms);
-}
-
-.form-section-heading {
-  font-family: 'Lora', Georgia, serif;
-  font-weight: 600;
-  font-size: 20px;
-  line-height: 28px;
-  color: var(--bd-ink);
-  margin: 32px 0 12px;
-
-  &::after {
-    content: '';
-    display: block;
-    height: 1px;
-    margin-top: 8px;
-    background-color: var(--bd-line);
-    transform: skewX(-2deg);
-    transform-origin: left center;
-  }
-
-  &:first-of-type {
-    margin-top: 0;
-  }
+  gap: 16px;
 }
 
 .form-section {
