@@ -72,8 +72,21 @@ class Species(models.Model):
 
 
 class Scientist(models.Model):
-    user = models.OneToOneField(User, on_delete=models.PROTECT, verbose_name=_("Beringer"))
+    user = models.OneToOneField(
+        User, on_delete=models.PROTECT, null=True, blank=True, verbose_name=_("Beringer")
+    )
+    first_name = models.CharField(max_length=150, blank=True, verbose_name=_("Vorname"))
+    last_name = models.CharField(max_length=150, blank=True, verbose_name=_("Nachname"))
     handle = models.CharField(unique=True, max_length=11, verbose_name=_("Kürzel"))
+
+    @property
+    def full_name(self):
+        own = f"{self.first_name} {self.last_name}".strip()
+        if own:
+            return own
+        if self.user:
+            return self.user.get_full_name()
+        return ""
 
     def __str__(self):
         return f"{self.handle}"

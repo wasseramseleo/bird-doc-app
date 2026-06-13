@@ -43,11 +43,11 @@ class RingingStationSerializer(serializers.ModelSerializer):
 
 
 class ScientistSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(source="user.get_full_name", read_only=True)
+    full_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Scientist
-        fields = ["id", "handle", "full_name"]
+        fields = ["id", "handle", "first_name", "last_name", "full_name"]
 
 
 class ProjectSerializer(serializers.ModelSerializer):

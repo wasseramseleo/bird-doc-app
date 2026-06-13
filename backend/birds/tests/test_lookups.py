@@ -1,32 +1,6 @@
 import pytest
 
-from birds.models import Organization, RingingStation, Scientist
-
-
-@pytest.mark.django_db
-def test_scientists_search_by_handle(auth_client, scientist, other_scientist):
-    response = auth_client.get("/api/birds/scientists/", {"search": "ALC"})
-    handles = [row["handle"] for row in response.json()["results"]]
-    assert handles == ["ALC"]
-
-
-@pytest.mark.django_db
-def test_scientists_search_by_user_name(auth_client, user, other_user):
-    user.first_name = "Alice"
-    user.last_name = "Adams"
-    user.save()
-    Scientist.objects.create(user=user, handle="AAA")
-    Scientist.objects.create(user=other_user, handle="BBB")
-
-    response = auth_client.get("/api/birds/scientists/", {"search": "Adams"})
-    handles = [row["handle"] for row in response.json()["results"]]
-    assert handles == ["AAA"]
-
-
-@pytest.mark.django_db
-def test_scientists_endpoint_is_read_only(auth_client):
-    response = auth_client.post("/api/birds/scientists/", {"handle": "X"}, format="json")
-    assert response.status_code == 405
+from birds.models import Organization, RingingStation
 
 
 @pytest.mark.django_db

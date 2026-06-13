@@ -51,17 +51,19 @@ Environment variables (see `.env.example`):
 
 ## API Overview
 
-All routes under `/api/birds/`. Pagination: 10 per page.
+All routes under `/api/birds/`. Pagination: 10 per page. **Every endpoint requires authentication** (`IsAuthenticated` + `SessionAuthentication`); there are no public routes.
 
-| Endpoint | Access | Notes |
+| Endpoint | Methods | Notes |
 |---|---|---|
-| `GET/POST/PUT/DELETE /data-entries/` | Public | Core bird capture records |
-| `GET /species/` | Public | ~1M rows — always search, never load all |
-| `GET /rings/` | Public | All registered rings |
-| `GET /rings/next-number?size=<V\|T\|S\|X\|P>` | Public | Returns `max(number) + 1` for that size |
-| `GET /ringing-stations/` | Public | Searchable by name/handle |
-| `GET /scientists/` | Public | Searchable by handle/name |
-| `GET/POST/PUT/DELETE /species-lists/` | Authenticated | Per-user species filter lists |
+| `/data-entries/` | GET/POST/PUT/DELETE | Core bird capture records |
+| `/species/` | GET | ~1M rows — always search, never load all |
+| `/rings/` | GET | All registered rings |
+| `/rings/next-number?size=<V\|T\|S\|X\|P>` | GET | Returns `max(number) + 1` for that size |
+| `/ringing-stations/` | GET | Searchable by name/handle; filterable by `organization` |
+| `/scientists/` | GET | Searchable by handle/name |
+| `/organizations/` | GET | Searchable by name/handle |
+| `/projects/` | GET/POST/PUT/DELETE | Scoped to the requesting user's Beringer |
+| `/species-lists/` | GET/POST/PUT/DELETE | Per-user species filter lists |
 
 ## Key Behaviors
 
@@ -69,7 +71,7 @@ All routes under `/api/birds/`. Pagination: 10 per page.
 
 **Smart ring numbering** — `next-number` casts all existing numbers to `int` and returns `max + 1`, tolerating gaps and non-numeric values.
 
-**Species filtering** — If the authenticated user has an active `SpeciesList`, `GET /species/` returns only those species. Unauthenticated requests get all species. Only one list per user can be `is_active=True` (enforced in `SpeciesList.save()`).
+**Species filtering** — If the authenticated user has an active `SpeciesList`, `GET /species/` returns only those species; otherwise it returns all species. The endpoint requires authentication either way. Only one list per user can be `is_active=True` (enforced in `SpeciesList.save()`).
 
 **DataEntry write vs. read shape** — Write uses flat fields (`species_id`, `staff_id`, `ringing_station_id`, `ring_number`, `ring_size`); read returns nested objects.
 
@@ -78,10 +80,12 @@ All routes under `/api/birds/`. Pagination: 10 per page.
 | Model | Key fields |
 |---|---|
 | `DataEntry` | Core record: species, ring, scientist, station, date/time, biometrics, moult stages, condition flags |
-| `Ring` | `(size, number)` unique pair; sizes: V, T, S, X, P |
+| `Ring` | `(size, number)` unique pair; full Austrian size scheme (frontend surfaces V, T, S, X, P) |
 | `Species` | German/English/scientific names, family, recommended ring size |
-| `Scientist` | OneToOne with User; `handle` (e.g. `MUS`) |
-| `RingingStation` | `handle` as PK (e.g. `STAMT`), name |
+| `Scientist` | The Beringer; OneToOne with User; `handle` (e.g. `MUS`) |
+| `RingingStation` | `handle` as PK (e.g. `STAMT`), name; belongs to an `Organization` |
+| `Organization` | Ringing scheme/body; `handle` as PK |
+| `Project` | Named campaign scoped to one `Organization` and a set of `Scientist` |
 | `SpeciesList` | Per-user M2M to Species; `is_active` filter toggle |
 
 ## Admin

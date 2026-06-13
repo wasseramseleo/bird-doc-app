@@ -62,23 +62,29 @@ Single Django app (`birds/`) with project config in `birddoc/`. All routes are u
 | Model | Role |
 |-------|------|
 | `DataEntry` | Core record — one row per captured bird |
-| `Ring` | Unique `(size, number)` pair; sizes: `V T S X P` |
+| `Ring` | Unique `(size, number)` pair; full Austrian size scheme (frontend surfaces `V T S X P`) |
 | `Species` | ~1M-row lookup table with recommended ring size |
-| `Scientist` | OneToOne with Django User; identified by `handle` (e.g. `MUS`) |
-| `RingingStation` | `handle` as PK (e.g. `STAMT`), name |
+| `Scientist` | The Beringer; OneToOne with Django User; identified by `handle` (e.g. `MUS`) |
+| `RingingStation` | `handle` as PK (e.g. `STAMT`), name, belongs to an `Organization` |
+| `Organization` | Ringing scheme/body; `handle` as PK |
+| `Project` | Named campaign scoped to one `Organization` and a set of `Scientist` |
 | `SpeciesList` | Per-user M2M to Species for filtering |
 
 ### API Endpoints
 
+**The entire API requires authentication** — DRF defaults are `IsAuthenticated` + `SessionAuthentication` (`birddoc/settings.py`). There are no public endpoints; the "Access" column below describes the shape, not the auth level.
+
 | Endpoint | Access | Notes |
 |----------|--------|-------|
-| `/data-entries/` | Public CRUD | Core capture records |
-| `/species/` | Public read + search | Filter by user's active SpeciesList if authenticated |
-| `/rings/` | Public read | All rings |
-| `/rings/next-number?size=<size>` | Public | Returns `max(number) + 1` for that ring size |
-| `/ringing-stations/` | Public read + search | |
-| `/scientists/` | Public read + search | |
-| `/species-lists/` | Authenticated CRUD | Per-user species filter lists |
+| `/data-entries/` | CRUD | Core capture records |
+| `/species/` | Read + search | Filtered by the user's active SpeciesList when one exists |
+| `/rings/` | Read | All rings |
+| `/rings/next-number?size=<size>` | Read | Returns `max(number) + 1` for that ring size |
+| `/ringing-stations/` | Read + search | Filterable by `organization` handle |
+| `/scientists/` | Read + search | |
+| `/organizations/` | Read + search | |
+| `/projects/` | CRUD | Scoped to the requesting user's Beringer |
+| `/species-lists/` | CRUD | Per-user species filter lists |
 
 ### Key Design Decisions
 
@@ -86,7 +92,7 @@ Single Django app (`birds/`) with project config in `birddoc/`. All routes are u
 
 **Write vs. read shape** — POST/PUT/PATCH accepts flat IDs (`species_id`, `staff_id`, `ringing_station_id`, `ring_number`, `ring_size`). GET returns nested objects. The two shapes are intentionally different — never use GET response bodies as POST payloads.
 
-**Species filtering** — `SpeciesViewSet.get_queryset()` returns only species in the user's active `SpeciesList` when authenticated. Unauthenticated requests see all species. Only one `SpeciesList` per user can have `is_active=True` (enforced in `SpeciesList.save()`).
+**Species filtering** — `SpeciesViewSet.get_queryset()` returns only species in the user's active `SpeciesList` when one exists; otherwise all species. The endpoint requires authentication either way. Only one `SpeciesList` per user can have `is_active=True` (enforced in `SpeciesList.save()`).
 
 **Smart ring numbering** — `next-number` casts all existing numbers to `int` and returns `max + 1`, tolerating gaps and non-numeric legacy values.
 
