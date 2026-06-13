@@ -8,7 +8,7 @@ import {Species} from '../models/species.model';
 import {RingSize} from '../models/ring.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {RingingStation} from '../models/ringing-station.model';
-import {Scientist} from '../models/scientist.model';
+import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {environment} from '../../environments/environment';
@@ -73,6 +73,10 @@ export class ApiService {
       params = params.set('search', searchTerm);
     }
     return this.http.get<PaginatedApiResponse<Scientist>>(`${this.apiUrl}/scientists/`, {params});
+  }
+
+  createScientist(payload: ScientistCreatePayload): Observable<Scientist> {
+    return this.http.post<Scientist>(`${this.apiUrl}/scientists/`, payload);
   }
 
   getOrganizations(): Observable<PaginatedApiResponse<Organization>> {

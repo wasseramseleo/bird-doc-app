@@ -4,6 +4,8 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from .kuerzel import derive_handle
+
 
 class Ring(models.Model):
     class RingSizes(models.TextChoices):
@@ -72,8 +74,27 @@ class Species(models.Model):
 
 
 class Scientist(models.Model):
-    user = models.OneToOneField(User, on_delete=models.PROTECT, verbose_name=_("Beringer"))
-    handle = models.CharField(unique=True, max_length=11, verbose_name=_("Kürzel"))
+    user = models.OneToOneField(
+        User, on_delete=models.PROTECT, null=True, blank=True, verbose_name=_("Beringer")
+    )
+    first_name = models.CharField(max_length=150, blank=True, verbose_name=_("Vorname"))
+    last_name = models.CharField(max_length=150, blank=True, verbose_name=_("Nachname"))
+    handle = models.CharField(unique=True, max_length=11, blank=True, verbose_name=_("Kürzel"))
+
+    @property
+    def full_name(self):
+        own = f"{self.first_name} {self.last_name}".strip()
+        if own:
+            return own
+        if self.user:
+            return self.user.get_full_name()
+        return ""
+
+    def save(self, *args, **kwargs):
+        # Derive the Kürzel only while it is empty; a typed value is respected.
+        if not self.handle:
+            self.handle = derive_handle(self.first_name, self.last_name)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.handle}"
@@ -115,6 +136,14 @@ class Project(models.Model):
         on_delete=models.PROTECT,
         related_name="projects",
         verbose_name=_("Organisation"),
+    )
+    default_station = models.ForeignKey(
+        RingingStation,
+        on_delete=models.SET_NULL,
+        related_name="default_for_projects",
+        null=True,
+        blank=True,
+        verbose_name=_("Standard-Station"),
     )
     scientists = models.ManyToManyField(
         Scientist,

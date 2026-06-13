@@ -3,7 +3,7 @@ import datetime
 from django.db.models import IntegerField
 from django.db.models.functions import Cast
 from django.http import HttpResponse
-from rest_framework import filters, viewsets
+from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -134,11 +134,18 @@ class RingingStationViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
-class ScientistViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Scientist.objects.select_related("user").all().order_by("user__last_name")
+class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
+    """List/retrieve plus authenticated create.
+
+    A Beringer can be created mid-session with no linked account (an unknown
+    Kürzel prompts a "Neuer Beringer" dialog); editing and deletion stay closed.
+    See ADR 0001-account-independent-beringer.
+    """
+
+    queryset = Scientist.objects.select_related("user").all().order_by("last_name", "first_name")
     serializer_class = ScientistSerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ["handle", "user__first_name", "user__last_name"]
+    search_fields = ["handle", "first_name", "last_name"]
 
 
 class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
@@ -159,7 +166,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             return Project.objects.none()
         return (
             Project.objects.filter(scientists=scientist)
-            .select_related("organization")
+            .select_related("organization", "default_station__organization")
             .prefetch_related("scientists__user")
             .order_by("-updated")
         )

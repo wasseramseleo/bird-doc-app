@@ -25,7 +25,7 @@ import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatIconModule} from '@angular/material/icon';
 
-import {debounceTime, distinctUntilChanged, switchMap, startWith, map} from 'rxjs/operators';
+import {debounceTime, distinctUntilChanged, switchMap, startWith, map, tap} from 'rxjs/operators';
 import {Observable} from 'rxjs';
 
 import {
@@ -42,6 +42,7 @@ import {
 } from '../models/data-entry.model';
 import {ApiService} from '../service/api.service';
 import {ProjectService} from '../service/project.service';
+import {WorkbenchStorageService} from '../service/workbench-storage.service';
 import {Species} from '../models/species.model';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {RingingStation} from '../models/ringing-station.model';
@@ -50,6 +51,10 @@ import {RingSize} from '../models/ring.model';
 import {SelectOnTabDirective} from '../core/directives/select-on-tab';
 import {MatTableModule} from '@angular/material/table';
 import {DataEntryDetailDialogComponent} from './data-entry-detail-dialog/data-entry-detail-dialog';
+import {
+  BeringerCreateDialogComponent,
+  BeringerCreateDialogResult,
+} from './beringer-create-dialog/beringer-create-dialog';
 
 @Component({
   selector: 'app-data-entry-form',
@@ -85,6 +90,7 @@ export class DataEntryFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly projectService = inject(ProjectService);
+  private readonly storage = inject(WorkbenchStorageService);
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -102,7 +108,7 @@ export class DataEntryFormComponent implements OnInit {
   // Recapture History State
   readonly recaptureHistory = signal<DataEntry[]>([]);
   readonly displayedHistoryColumns: string[] = [
-    'date_time', 'species', 'bird_status', 'ringing_station', 'staff', 'wing_span', 'weight_gram', 'actions'
+    'date_time', 'species', 'bird_status', 'staff', 'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'actions'
   ];
   readonly BirdStatus = BirdStatus;
 
@@ -147,6 +153,22 @@ export class DataEntryFormComponent implements OnInit {
   filteredSpecies!: Observable<Species[]>;
   filteredStations!: Observable<RingingStation[]>;
   filteredScientists!: Observable<Scientist[]>;
+
+  // Kürzel-first Beringer field: track the typed text and the matches so the
+  // template can offer inline creation when an unknown Kürzel is typed.
+  private readonly staffSearchTerm = signal('');
+  private readonly staffResults = signal<Scientist[]>([]);
+  readonly newBeringerKuerzel = computed(() => this.staffSearchTerm().trim());
+  readonly showCreateBeringer = computed(() => {
+    const term = this.newBeringerKuerzel();
+    if (!term) {
+      return false;
+    }
+    const needle = term.toLowerCase();
+    return !this.staffResults().some(
+      (s) => s.handle.toLowerCase() === needle || s.full_name.toLowerCase() === needle,
+    );
+  });
 
   private readonly focusOrder: string[] = [
     'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'ring_size', 'ring_number',
@@ -297,9 +319,18 @@ export class DataEntryFormComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    if (!this.currentProject() && !this.isEditMode()) {
+    const project = this.currentProject();
+    if (!project && !this.isEditMode()) {
       this.router.navigateByUrl('/');
       return;
+    }
+
+    // Pre-fill the Station from the Projekt default in create mode. It is a
+    // starting value, not a lock: only set it while empty so a manual change
+    // within the session (preserved by clearForm) is never reset by the default.
+    const stationControl = this.entryForm.get('ringing_station')!;
+    if (!this.isEditMode() && project?.default_station && !stationControl.value) {
+      stationControl.setValue(project.default_station);
     }
 
     // Autocomplete setup (no changes needed)
@@ -324,8 +355,63 @@ export class DataEntryFormComponent implements OnInit {
       debounceTime(300),
       map(value => (typeof value === 'string' ? value : value?.full_name ?? '')),
       distinctUntilChanged(),
-      switchMap(name => this.apiService.getScientists(name).pipe(map(response => response.results)))
+      tap(term => this.staffSearchTerm.set(term)),
+      switchMap(name => this.apiService.getScientists(name).pipe(map(response => response.results))),
+      tap(results => this.staffResults.set(results)),
     );
+
+    this.prefillRememberedBeringer();
+  }
+
+  // Issue #10: in create mode, pre-fill the Beringer with the one last used on
+  // the active Projekt, so the field only needs touching when the ringer changes.
+  private prefillRememberedBeringer(): void {
+    const project = this.currentProject();
+    if (!project || this.isEditMode()) {
+      return;
+    }
+    const remembered = this.storage.loadLastBeringer(project.id);
+    if (remembered) {
+      this.entryForm.get('staff')!.setValue(remembered);
+    }
+  }
+
+  // Issue #10: remember this Projekt's Beringer after each successful save so it
+  // survives a reload and pre-fills next time.
+  private rememberBeringer(): void {
+    const project = this.currentProject();
+    const staff = this.entryForm.get('staff')!.value;
+    if (project && staff) {
+      this.storage.saveLastBeringer(project.id, staff);
+    }
+  }
+
+  onCreateBeringer(handle: string): void {
+    const ref = this.dialog.open<
+      BeringerCreateDialogComponent,
+      {handle: string},
+      BeringerCreateDialogResult
+    >(BeringerCreateDialogComponent, {data: {handle}, width: '480px'});
+
+    ref.afterClosed().subscribe(result => {
+      if (!result) {
+        return;
+      }
+      this.apiService.createScientist(result).subscribe({
+        next: created => {
+          this.entryForm.get('staff')?.setValue(created);
+          this.snackBar.open(
+            `Beringer "${created.full_name} (${created.handle})" wurde angelegt.`,
+            undefined,
+            {duration: 2000},
+          );
+          this.focusNext('staff');
+        },
+        error: () => {
+          this.snackBar.open('Beringer konnte nicht angelegt werden.', 'Schließen', {duration: 3000});
+        },
+      });
+    });
   }
 
   onSpeciesSelected(event: MatAutocompleteSelectedEvent): void {
@@ -400,6 +486,7 @@ export class DataEntryFormComponent implements OnInit {
 
     saveOperation.subscribe({
       next: () => {
+        this.rememberBeringer();
         this.snackBar.open('Beringungseintrag gespeichert.', undefined, {
           duration: 2000,
           horizontalPosition: 'center',

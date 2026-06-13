@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from .models import (
@@ -43,16 +44,17 @@ class RingingStationSerializer(serializers.ModelSerializer):
 
 
 class ScientistSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(source="user.get_full_name", read_only=True)
+    full_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Scientist
-        fields = ["id", "handle", "full_name"]
+        fields = ["id", "handle", "first_name", "last_name", "full_name"]
 
 
 class ProjectSerializer(serializers.ModelSerializer):
     organization = OrganizationSerializer(read_only=True)
     scientists = ScientistSerializer(many=True, read_only=True)
+    default_station = RingingStationSerializer(read_only=True)
     organization_id = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.all(), source="organization", write_only=True
     )
@@ -62,6 +64,13 @@ class ProjectSerializer(serializers.ModelSerializer):
         many=True,
         write_only=True,
         required=False,
+    )
+    default_station_id = serializers.PrimaryKeyRelatedField(
+        queryset=RingingStation.objects.all(),
+        source="default_station",
+        write_only=True,
+        required=False,
+        allow_null=True,
     )
 
     class Meta:
@@ -73,12 +82,30 @@ class ProjectSerializer(serializers.ModelSerializer):
             "show_optional_fields",
             "organization",
             "organization_id",
+            "default_station",
+            "default_station_id",
             "scientists",
             "scientist_ids",
             "created",
             "updated",
         ]
         read_only_fields = ["id", "created", "updated"]
+
+    def validate(self, attrs):
+        station = attrs.get("default_station")
+        if station is not None:
+            organization = attrs.get("organization")
+            if organization is None and self.instance is not None:
+                organization = self.instance.organization
+            if organization is not None and station.organization_id != organization.pk:
+                raise serializers.ValidationError(
+                    {
+                        "default_station_id": _(
+                            "Die Station muss zur Organisation des Projekts gehören."
+                        )
+                    }
+                )
+        return attrs
 
     def create(self, validated_data):
         scientists = validated_data.pop("scientists", [])

@@ -1,6 +1,6 @@
 import pytest
 
-from birds.models import Project
+from birds.models import Organization, Project, RingingStation
 
 LIST_URL = "/api/birds/projects/"
 
@@ -56,3 +56,73 @@ def test_create_does_not_duplicate_creator_when_in_scientist_ids(
     assert response.status_code == 201, response.json()
     project = Project.objects.get(title="P")
     assert project.scientists.count() == 2
+
+
+@pytest.mark.django_db
+def test_create_project_with_default_station_round_trips(
+    auth_client, scientist, organization, ringing_station
+):
+    response = auth_client.post(
+        LIST_URL,
+        {
+            "title": "P",
+            "organization_id": organization.handle,
+            "default_station_id": ringing_station.handle,
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.json()
+    assert response.json()["default_station"]["handle"] == ringing_station.handle
+    project = Project.objects.get(title="P")
+    assert project.default_station == ringing_station
+
+
+@pytest.mark.django_db
+def test_default_station_from_other_organization_is_rejected(auth_client, scientist, organization):
+    other_org = Organization.objects.create(handle="ORG2", name="Other Org")
+    foreign_station = RingingStation.objects.create(
+        handle="STN2", name="Foreign", organization=other_org
+    )
+    response = auth_client.post(
+        LIST_URL,
+        {
+            "title": "P",
+            "organization_id": organization.handle,
+            "default_station_id": foreign_station.handle,
+        },
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "default_station_id" in response.json()
+
+
+@pytest.mark.django_db
+def test_set_and_clear_default_station_on_update(auth_client, project, ringing_station):
+    url = f"{LIST_URL}{project.id}/"
+
+    set_response = auth_client.patch(
+        url, {"default_station_id": ringing_station.handle}, format="json"
+    )
+    assert set_response.status_code == 200, set_response.json()
+    project.refresh_from_db()
+    assert project.default_station == ringing_station
+
+    clear_response = auth_client.patch(url, {"default_station_id": None}, format="json")
+    assert clear_response.status_code == 200, clear_response.json()
+    project.refresh_from_db()
+    assert project.default_station is None
+
+
+@pytest.mark.django_db
+def test_update_rejects_default_station_from_other_organization(auth_client, project):
+    other_org = Organization.objects.create(handle="ORG2", name="Other Org")
+    foreign_station = RingingStation.objects.create(
+        handle="STN2", name="Foreign", organization=other_org
+    )
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"default_station_id": foreign_station.handle},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "default_station_id" in response.json()

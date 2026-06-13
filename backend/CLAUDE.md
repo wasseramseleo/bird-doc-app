@@ -8,32 +8,41 @@ Django REST API backend for a bird ringing (ornithology) documentation system. I
 
 ## Commands
 
+Dependencies are managed with `uv` (`pyproject.toml` + `uv.lock`); there is no `requirements.txt`.
+
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (incl. dev group: pytest, ruff)
+uv sync
 
 # Apply migrations
-python manage.py migrate
+uv run python manage.py migrate
 
 # Run development server (http://localhost:8000)
-python manage.py runserver
+uv run python manage.py runserver
 
 # Create admin user
-python manage.py createsuperuser
+uv run python manage.py createsuperuser
 
 # Make new migrations after model changes
-python manage.py makemigrations
+uv run python manage.py makemigrations
+
+# Run the test suite (pytest + pytest-django)
+uv run pytest
+
+# Lint / format
+uv run ruff check .
+uv run ruff format .
 ```
 
-There is no linting, formatting, or test suite currently configured.
+Tests live in `birds/tests/` (one `test_*.py` per area), driven through the DRF HTTP API with shared fixtures in `birds/tests/conftest.py`. Lint config (`ruff`) and pytest config are in `pyproject.toml`.
 
 ## Architecture
 
 **Single Django app** (`birds/`) with project config in `birddoc/`.
 
-All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. The six ViewSets map directly to the six models:
+All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The entire API requires authentication** — DRF defaults are `IsAuthenticated` with `SessionAuthentication` (`birddoc/settings.py`); there are no public endpoints. The eight ViewSets map directly to the eight models:
 
-| Endpoint | Model | Access |
+| Endpoint | Model | Access (all authenticated) |
 |---|---|---|
 | `/data-entries/` | `DataEntry` | Full CRUD |
 | `/species/` | `Species` | Read-only + search |
@@ -41,6 +50,8 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. The si
 | `/ringing-stations/` | `RingingStation` | Read-only + search |
 | `/scientists/` | `Scientist` | Read-only + search |
 | `/species-lists/` | `SpeciesList` | Full CRUD (per-user) |
+| `/organizations/` | `Organization` | Read-only + search |
+| `/projects/` | `Project` | Full CRUD (scoped to the user's Beringer) |
 
 ### Key Non-Obvious Behaviors
 
@@ -48,7 +59,7 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. The si
 
 **Smart ring numbering** — `GET /api/birds/rings/next-number?size=V` casts all ring numbers to integers and returns `max + 1`. This handles gaps and non-numeric values gracefully.
 
-**Species filtering by user list** — `SpeciesViewSet.get_queryset()` checks if the authenticated user has an active `SpeciesList`; if so, it returns only those species. Unauthenticated requests get all species. Only one `SpeciesList` per user can be `active=True` (enforced in `SpeciesList.save()`).
+**Species filtering by user list** — `SpeciesViewSet.get_queryset()` checks if the authenticated user has an active `SpeciesList`; if so, it returns only those species. An authenticated user without an active list gets all species (the endpoint itself still requires authentication). Only one `SpeciesList` per user can be `active=True` (enforced in `SpeciesList.save()`).
 
 **CSV export** — `DataEntryAdmin` includes a bulk export action that serializes biometric fields and appends boolean flags (mites, hunger stripes, brood patch, CPL+) as text into the comment column.
 
@@ -62,7 +73,7 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. The si
 - Moult stages: small feathers, hand wing stages
 - Boolean flags: mites, hunger stripes, brood patch, CPL+
 
-`Ring` has a unique constraint on `(size, number)`. Sizes are: `V, T, S, X, P`.
+`Ring` has a unique constraint on `(size, number)`. Sizes are the full Austrian scheme (`Ring.RingSizes`: `AS, BS, C, D, DS, DA, F, FA, G, GA, H, HA, K, KA, L, LA, M, N, NA, P, PA, R, S, SA, T, TA, V, X`); the frontend currently surfaces the common subset `V, T, S, X, P`.
 
 `Species` is a large lookup table (~1M rows) loaded from a CSV migration. It carries the recommended ring size per species, which the frontend uses to pre-fill the ring size field.
 

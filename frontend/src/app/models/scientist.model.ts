@@ -3,3 +3,9 @@ export interface Scientist {
   handle: string;
   full_name: string;
 }
+
+export interface ScientistCreatePayload {
+  first_name: string;
+  last_name: string;
+  handle: string;
+}
