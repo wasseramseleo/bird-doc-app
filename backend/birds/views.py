@@ -168,7 +168,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             return Project.objects.none()
         return (
             Project.objects.filter(scientists=scientist)
-            .select_related("organization")
+            .select_related("organization", "default_station__organization")
             .prefetch_related("scientists__user")
             .order_by("-updated")
         )

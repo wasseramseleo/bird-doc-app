@@ -137,6 +137,14 @@ class Project(models.Model):
         related_name="projects",
         verbose_name=_("Organisation"),
     )
+    default_station = models.ForeignKey(
+        RingingStation,
+        on_delete=models.SET_NULL,
+        related_name="default_for_projects",
+        null=True,
+        blank=True,
+        verbose_name=_("Standard-Station"),
+    )
     scientists = models.ManyToManyField(
         Scientist,
         related_name="projects",

@@ -108,7 +108,7 @@ export class DataEntryFormComponent implements OnInit {
   // Recapture History State
   readonly recaptureHistory = signal<DataEntry[]>([]);
   readonly displayedHistoryColumns: string[] = [
-    'date_time', 'species', 'bird_status', 'ringing_station', 'staff', 'wing_span', 'weight_gram', 'actions'
+    'date_time', 'species', 'bird_status', 'staff', 'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'actions'
   ];
   readonly BirdStatus = BirdStatus;
 
@@ -319,9 +319,18 @@ export class DataEntryFormComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    if (!this.currentProject() && !this.isEditMode()) {
+    const project = this.currentProject();
+    if (!project && !this.isEditMode()) {
       this.router.navigateByUrl('/');
       return;
+    }
+
+    // Pre-fill the Station from the Projekt default in create mode. It is a
+    // starting value, not a lock: only set it while empty so a manual change
+    // within the session (preserved by clearForm) is never reset by the default.
+    const stationControl = this.entryForm.get('ringing_station')!;
+    if (!this.isEditMode() && project?.default_station && !stationControl.value) {
+      stationControl.setValue(project.default_station);
     }
 
     // Autocomplete setup (no changes needed)

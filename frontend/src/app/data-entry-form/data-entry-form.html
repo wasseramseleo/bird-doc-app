@@ -33,14 +33,19 @@
           </td>
         </ng-container>
 
-        <ng-container matColumnDef="ringing_station">
-          <th mat-header-cell *matHeaderCellDef>Station</th>
-          <td mat-cell *matCellDef="let element">{{ element.ringing_station.name }}</td>
-        </ng-container>
-
         <ng-container matColumnDef="staff">
           <th mat-header-cell *matHeaderCellDef>Beringer</th>
           <td mat-cell *matCellDef="let element">{{ element.staff.full_name }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="tarsus">
+          <th mat-header-cell *matHeaderCellDef>Tarsus (mm)</th>
+          <td mat-cell *matCellDef="let element">{{ element.tarsus ?? '—' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="feather_span">
+          <th mat-header-cell *matHeaderCellDef>Federlänge (mm)</th>
+          <td mat-cell *matCellDef="let element">{{ element.feather_span ?? '—' }}</td>
         </ng-container>
 
         <ng-container matColumnDef="wing_span">

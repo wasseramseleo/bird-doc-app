@@ -1,4 +1,5 @@
 import {Organization} from './organization.model';
+import {RingingStation} from './ringing-station.model';
 import {Scientist} from './scientist.model';
 
 export interface Project {
@@ -7,6 +8,7 @@ export interface Project {
   description: string;
   show_optional_fields: boolean;
   organization: Organization;
+  default_station: RingingStation | null;
   scientists: Scientist[];
   created: string;
   updated: string;
@@ -16,6 +18,7 @@ export interface ProjectCreatePayload {
   title: string;
   description?: string;
   organization_id: string;
+  default_station_id?: string | null;
 }
 
 export interface ProjectUpdatePayload {
@@ -23,4 +26,5 @@ export interface ProjectUpdatePayload {
   description: string;
   scientist_ids: string[];
   show_optional_fields?: boolean;
+  default_station_id?: string | null;
 }

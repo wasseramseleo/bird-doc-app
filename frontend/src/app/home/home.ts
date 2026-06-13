@@ -96,6 +96,7 @@ export class HomeComponent implements OnInit {
         title: result.title,
         description: result.description,
         organization_id: result.organizationHandle,
+        default_station_id: result.defaultStationHandle || null,
       }).subscribe({
         next: (project) => {
           this.snackBar.open(`Projekt "${project.title}" wurde erstellt.`, 'Schließen', {duration: 3000});
@@ -155,6 +156,7 @@ export class HomeComponent implements OnInit {
         description: result.description,
         scientist_ids: result.scientistIds,
         show_optional_fields: result.showOptionalFields,
+        default_station_id: result.defaultStationHandle || null,
       }).subscribe({
         next: (updated) => {
           this.snackBar.open(`Projekt "${updated.title}" wurde aktualisiert.`, 'Schließen', {duration: 3000});

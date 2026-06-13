@@ -11,6 +11,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     description: '',
     show_optional_fields: true,
     organization: {id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT'},
+    default_station: null,
     scientists: [],
     created: '2026-01-01T00:00:00Z',
     updated: '2026-01-01T00:00:00Z',
