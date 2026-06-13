@@ -42,6 +42,7 @@ import {
 } from '../models/data-entry.model';
 import {ApiService} from '../service/api.service';
 import {ProjectService} from '../service/project.service';
+import {WorkbenchStorageService} from '../service/workbench-storage.service';
 import {Species} from '../models/species.model';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {RingingStation} from '../models/ringing-station.model';
@@ -89,6 +90,7 @@ export class DataEntryFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly projectService = inject(ProjectService);
+  private readonly storage = inject(WorkbenchStorageService);
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -348,6 +350,31 @@ export class DataEntryFormComponent implements OnInit {
       switchMap(name => this.apiService.getScientists(name).pipe(map(response => response.results))),
       tap(results => this.staffResults.set(results)),
     );
+
+    this.prefillRememberedBeringer();
+  }
+
+  // Issue #10: in create mode, pre-fill the Beringer with the one last used on
+  // the active Projekt, so the field only needs touching when the ringer changes.
+  private prefillRememberedBeringer(): void {
+    const project = this.currentProject();
+    if (!project || this.isEditMode()) {
+      return;
+    }
+    const remembered = this.storage.loadLastBeringer(project.id);
+    if (remembered) {
+      this.entryForm.get('staff')!.setValue(remembered);
+    }
+  }
+
+  // Issue #10: remember this Projekt's Beringer after each successful save so it
+  // survives a reload and pre-fills next time.
+  private rememberBeringer(): void {
+    const project = this.currentProject();
+    const staff = this.entryForm.get('staff')!.value;
+    if (project && staff) {
+      this.storage.saveLastBeringer(project.id, staff);
+    }
   }
 
   onCreateBeringer(handle: string): void {
@@ -450,6 +477,7 @@ export class DataEntryFormComponent implements OnInit {
 
     saveOperation.subscribe({
       next: () => {
+        this.rememberBeringer();
         this.snackBar.open('Beringungseintrag gespeichert.', undefined, {
           duration: 2000,
           horizontalPosition: 'center',
