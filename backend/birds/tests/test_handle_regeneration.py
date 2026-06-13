@@ -8,9 +8,7 @@ from birds.models import DataEntry, Scientist
 
 @pytest.mark.django_db
 def test_regenerates_non_standard_handle_to_austrian_standard():
-    beringer = Scientist.objects.create(
-        first_name="Filip", last_name="Reiter", handle="XYZ"
-    )
+    beringer = Scientist.objects.create(first_name="Filip", last_name="Reiter", handle="XYZ")
 
     regenerate_handles(Scientist)
 

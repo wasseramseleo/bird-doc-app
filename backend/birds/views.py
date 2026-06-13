@@ -142,9 +142,7 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
     See ADR 0001-account-independent-beringer.
     """
 
-    queryset = (
-        Scientist.objects.select_related("user").all().order_by("last_name", "first_name")
-    )
+    queryset = Scientist.objects.select_related("user").all().order_by("last_name", "first_name")
     serializer_class = ScientistSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["handle", "first_name", "last_name"]
