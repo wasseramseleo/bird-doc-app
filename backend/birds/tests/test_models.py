@@ -1,6 +1,20 @@
 import pytest
 
-from birds.models import SpeciesList
+from birds.models import Scientist, SpeciesList
+
+
+@pytest.mark.django_db
+def test_scientist_derives_kuerzel_on_save_when_blank():
+    beringer = Scientist.objects.create(first_name="Filip", last_name="Reiter")
+
+    assert beringer.handle == "FRE"
+
+
+@pytest.mark.django_db
+def test_scientist_keeps_supplied_kuerzel_on_save():
+    beringer = Scientist.objects.create(first_name="Filip", last_name="Reiter", handle="XYZ")
+
+    assert beringer.handle == "XYZ"
 
 
 @pytest.mark.django_db

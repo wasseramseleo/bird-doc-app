@@ -89,6 +89,31 @@ def test_authenticated_user_can_create_accountless_beringer(auth_client):
 
 
 @pytest.mark.django_db
+def test_create_derives_kuerzel_when_omitted(auth_client):
+    response = auth_client.post(
+        "/api/birds/scientists/",
+        {"first_name": "Filip", "last_name": "Reiter"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.json()["handle"] == "FRE"
+    assert Scientist.objects.get(first_name="Filip").handle == "FRE"
+
+
+@pytest.mark.django_db
+def test_create_respects_supplied_kuerzel(auth_client):
+    response = auth_client.post(
+        "/api/birds/scientists/",
+        {"first_name": "Filip", "last_name": "Reiter", "handle": "XYZ"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.json()["handle"] == "XYZ"
+
+
+@pytest.mark.django_db
 def test_beringer_cannot_be_edited_or_deleted_via_api(auth_client):
     beringer = Scientist.objects.create(handle="FRE", first_name="Filip", last_name="Reiter")
     detail = f"/api/birds/scientists/{beringer.id}/"
