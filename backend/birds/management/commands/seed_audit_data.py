@@ -63,9 +63,7 @@ class Command(BaseCommand):
             )
             return
 
-        claude_sci, _ = Scientist.objects.get_or_create(
-            user=claude, defaults={"handle": "CL"}
-        )
+        claude_sci, _ = Scientist.objects.get_or_create(user=claude, defaults={"handle": "CL"})
 
         viewer, created = User.objects.get_or_create(
             username="viewer",
@@ -79,9 +77,7 @@ class Command(BaseCommand):
         if created:
             viewer.set_password("viewer")
             viewer.save()
-        viewer_sci, _ = Scientist.objects.get_or_create(
-            user=viewer, defaults={"handle": "VB"}
-        )
+        viewer_sci, _ = Scientist.objects.get_or_create(user=viewer, defaults={"handle": "VB"})
 
         # --- Organizations ---------------------------------------------------
         orgs = {}
@@ -114,13 +110,11 @@ class Command(BaseCommand):
 
         # --- Species ---------------------------------------------------------
         species = (
-            Species.objects.filter(common_name_de="Kohlmeise").first()
-            or Species.objects.first()
+            Species.objects.filter(common_name_de="Kohlmeise").first() or Species.objects.first()
         )
         if species is None:
             self.stderr.write(
-                "No species found. Run 'manage.py migrate' and "
-                "'manage.py create_test_data' first."
+                "No species found. Run 'manage.py migrate' and 'manage.py create_test_data' first."
             )
             return
 
@@ -161,9 +155,7 @@ class Command(BaseCommand):
             )
 
         # --- Give existing project-less entries a home -----------------------
-        attached = DataEntry.objects.filter(project__isnull=True).update(
-            project=main_project
-        )
+        attached = DataEntry.objects.filter(project__isnull=True).update(project=main_project)
 
         self.stdout.write(
             self.style.SUCCESS(
