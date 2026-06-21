@@ -72,7 +72,7 @@ export class HomeComponent implements OnInit {
 
   selectProject(project: Project): void {
     this.projectService.setCurrent(project);
-    this.router.navigateByUrl('/data-entry');
+    this.router.navigateByUrl('/data-entries');
   }
 
   openCreateDialog(): void {

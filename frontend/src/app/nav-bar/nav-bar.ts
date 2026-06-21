@@ -5,6 +5,7 @@ import {MatIconModule} from '@angular/material/icon';
 import {MatButtonModule} from '@angular/material/button';
 import {MatMenuModule} from '@angular/material/menu';
 import {AuthService} from '../service/auth.service';
+import {ProjectService} from '../service/project.service';
 import {environment} from '../../environments/environment';
 
 @Component({
@@ -22,9 +23,11 @@ import {environment} from '../../environments/environment';
 })
 export class NavBar {
   private readonly auth = inject(AuthService);
+  private readonly projectService = inject(ProjectService);
   private readonly router = inject(Router);
 
   readonly adminUrl = environment.adminUrl;
+  readonly currentProject = this.projectService.currentProject;
 
   readonly userLabel = computed(() => {
     const user = this.auth.currentUser();

@@ -8,6 +8,13 @@
       width="28" height="28" />
     <span class="brand__word">BirdDoc</span>
   </a>
+  @if (currentProject(); as project) {
+    <span class="project-context" aria-label="Aktives Projekt">{{ project.title }}</span>
+    <a mat-button routerLink="/data-entries">
+      <mat-icon>list</mat-icon>
+      <span>Letzte Fänge</span>
+    </a>
+  }
   <span class="spacer"></span>
   @if (isStaff()) {
     <a
