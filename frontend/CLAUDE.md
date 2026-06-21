@@ -18,12 +18,13 @@ The Django REST Framework backend must be running separately at `http://localhos
 From `frontend/`:
 
 ```bash
-CHROME_BIN=/usr/bin/google-chrome npx ng test --watch=false --browsers=ChromeHeadless
+CHROME_BIN=/usr/bin/google-chrome ./node_modules/.bin/ng test --watch=false --browsers=ChromeHeadless
 ```
 
 The builder is `@angular/build:karma` (no `karma.conf.js`, no `src/test.ts`). The suite finishes in **~3 seconds**, exits **0**, and leaves **no** lingering `ng`/`karma`/`ChromeHeadless` processes.
 
 **Invocation rules — follow these or the run will appear to "hang":**
+- Call the **direct binary `./node_modules/.bin/ng`** — do **NOT** use `npx ng test`. The RTK hook rewrites `npx ...` to `rtk npx ...`, and ng test wrapped by the rtk proxy **hangs until timeout and emits zero output** (this is why "ng test produces no output even in the foreground"). The direct binary is passed through unchanged by rtk, so output streams normally. (As a backstop, `npx` is in `exclude_commands` in `~/.config/rtk/config.toml`, but the env-var prefix above defeats that match — always use the direct binary.)
 - Run it in the **FOREGROUND**. Never run it as a background task — a background shell stays open after the inner command exits, so the task only ends when its timeout fires (looks like a 5-minute hang; the tests actually finished in 3s).
 - Use a **short timeout** (the default ~120s is plenty). Never set a 300s/5-min timeout — there is nothing to wait for.
 - `--watch=false` is **mandatory** (plain `ng test` defaults to watch mode and never exits).

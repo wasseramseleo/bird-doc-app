@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, Component, OnInit, inject, signal} from '@angular/core';
+import {ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal} from '@angular/core';
 import {CommonModule} from '@angular/common';
 import {Router} from '@angular/router';
 import {FormControl, ReactiveFormsModule} from '@angular/forms';
@@ -37,6 +37,7 @@ export class DataEntryListComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly projectService = inject(ProjectService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly currentProject = this.projectService.currentProject;
 
@@ -66,7 +67,7 @@ export class DataEntryListComponent implements OnInit {
 
     // Debounced species search; any change resets to the first page.
     this.searchControl.valueChanges
-      .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed())
+      .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         this.pageIndex.set(0);
         this.loadEntries();
