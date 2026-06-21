@@ -7,11 +7,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 ng serve          # Dev server at http://localhost:4200
 ng build          # Production build → dist/
-ng test           # Unit tests via Karma/Jasmine
+ng test           # Unit tests via Karma/Jasmine (watch mode — never exits)
 ng generate component <name>  # Scaffold a new standalone component
 ```
 
 The Django REST Framework backend must be running separately at `http://localhost:8000` (see `../backend/CLAUDE.md`).
+
+### Running unit tests headless (do this, in this exact way)
+
+From `frontend/`:
+
+```bash
+CHROME_BIN=/usr/bin/google-chrome npx ng test --watch=false --browsers=ChromeHeadless
+```
+
+The builder is `@angular/build:karma` (no `karma.conf.js`, no `src/test.ts`). The suite finishes in **~3 seconds**, exits **0**, and leaves **no** lingering `ng`/`karma`/`ChromeHeadless` processes.
+
+**Invocation rules — follow these or the run will appear to "hang":**
+- Run it in the **FOREGROUND**. Never run it as a background task — a background shell stays open after the inner command exits, so the task only ends when its timeout fires (looks like a 5-minute hang; the tests actually finished in 3s).
+- Use a **short timeout** (the default ~120s is plenty). Never set a 300s/5-min timeout — there is nothing to wait for.
+- `--watch=false` is **mandatory** (plain `ng test` defaults to watch mode and never exits).
+- Do **not** `pkill` afterward — nothing lingers, and `pkill` returns 144 (SIGTERM), which falsely reads as a test failure.
+- `chrome` processes with `--profile-directory=Default` are the user's desktop browser, not the test runner — never kill them.
+- If the build fails with `Could not resolve "@angular/animations/browser"`, run `npm install` first (deps can be incompletely installed even though `@angular/animations` is in package.json).
 
 ## Architecture
 
