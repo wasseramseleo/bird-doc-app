@@ -77,7 +77,11 @@
     </div>
   </div>
 
-  <form [formGroup]="entryForm" (ngSubmit)="onSubmit()" class="data-entry-form" novalidate>
+  <form [formGroup]="entryForm" (ngSubmit)="onSubmit()" class="data-entry-form" novalidate
+        [class.edit-mode]="isEditMode()">
+    @if (isEditMode()) {
+      <div class="edit-mode-badge">Bearbeitungsmodus</div>
+    }
     <h2>{{ isEditMode() ? 'Daten bearbeiten' : 'Neuer Beringungseintrag' }}</h2>
 
     <div class="form-section">
@@ -333,10 +337,10 @@
     }
 
     <div class="action-buttons">
-      <button mat-stroked-button type="button" routerLink="/">Abbrechen</button>
+      <button mat-stroked-button type="button" (click)="onCancel()">Abbrechen</button>
       <button mat-flat-button color="primary" type="submit"
               [class.is-saved]="saved()" [disabled]="entryForm.invalid || loading()">
-        {{ saved() ? 'Gespeichert ✓' : (isEditMode() ? 'Speichern' : 'Erstellen') }}
+        {{ saved() ? 'Gespeichert ✓' : (isEditMode() ? 'Änderungen speichern' : 'Erstellen') }}
       </button>
     </div>
   </form>

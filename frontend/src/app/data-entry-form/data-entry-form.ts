@@ -10,8 +10,8 @@ import {
 // Import toSignal
 import {toSignal} from '@angular/core/rxjs-interop';
 import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
-import {CommonModule, DatePipe, DecimalPipe} from '@angular/common';
-import {ActivatedRoute, Router, RouterLink} from '@angular/router';
+import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
+import {ActivatedRoute, Router} from '@angular/router';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatSelect, MatSelectModule} from '@angular/material/select';
@@ -55,6 +55,7 @@ import {
   BeringerCreateDialogComponent,
   BeringerCreateDialogResult,
 } from './beringer-create-dialog/beringer-create-dialog';
+import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 
 @Component({
   selector: 'app-data-entry-form',
@@ -70,7 +71,6 @@ import {
     MatDatepickerModule,
     MatNativeDateModule,
     MatProgressSpinnerModule,
-    RouterLink,
     SelectOnTabDirective,
     MatCheckboxModule,
     MatSnackBarModule,
@@ -467,6 +467,34 @@ export class DataEntryFormComponent implements OnInit {
     });
   }
 
+  onCancel(): void {
+    if (!this.isEditMode()) {
+      this.router.navigateByUrl('/');
+      return;
+    }
+    if (!this.entryForm.dirty) {
+      this.router.navigateByUrl('/data-entries');
+      return;
+    }
+    const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
+      ConfirmDialogComponent,
+      {
+        data: {
+          title: 'Bearbeitung abbrechen?',
+          message: 'Es gibt ungespeicherte Änderungen. Möchtest du die Bearbeitung wirklich abbrechen?',
+          confirmLabel: 'Verwerfen',
+          cancelLabel: 'Weiter bearbeiten',
+        },
+        width: '420px',
+      },
+    );
+    ref.afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        this.router.navigateByUrl('/data-entries');
+      }
+    });
+  }
+
   onSubmit(): void {
     if (this.entryForm.invalid) {
       Object.values(this.entryForm.controls).forEach(control => {
@@ -492,6 +520,11 @@ export class DataEntryFormComponent implements OnInit {
           horizontalPosition: 'center',
           verticalPosition: 'bottom',
         });
+        if (this.isEditMode()) {
+          // Edits return to the list hub; high-speed create flow stays put.
+          this.router.navigateByUrl('/data-entries');
+          return;
+        }
         this.saved.set(true);
         setTimeout(() => this.saved.set(false), 900);
         this.clearForm();

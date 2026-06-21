@@ -4,6 +4,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 
 import { ApiService } from './api.service';
 import { Scientist } from '../models/scientist.model';
+import { DataEntry } from '../models/data-entry.model';
+import { PaginatedApiResponse } from '../models/paginated-api-response.model';
 
 describe('ApiService', () => {
   let service: ApiService;
@@ -38,5 +40,30 @@ describe('ApiService', () => {
     req.flush(created);
 
     expect(result).toEqual(created);
+  });
+
+  it('getDataEntries issues a project-scoped paginated request and maps the response', () => {
+    const response: PaginatedApiResponse<DataEntry> = {
+      count: 1,
+      next: null,
+      previous: null,
+      results: [{ id: 'entry-1' } as DataEntry],
+    };
+    let result: PaginatedApiResponse<DataEntry> | undefined;
+
+    service
+      .getDataEntries({ projectId: 'proj-1', page: 2, pageSize: 50, search: 'Amsel' })
+      .subscribe((r) => (result = r));
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'),
+    );
+    expect(req.request.params.get('project')).toBe('proj-1');
+    expect(req.request.params.get('page')).toBe('2');
+    expect(req.request.params.get('page_size')).toBe('50');
+    expect(req.request.params.get('search')).toBe('Amsel');
+    req.flush(response);
+
+    expect(result).toEqual(response);
   });
 });

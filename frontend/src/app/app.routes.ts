@@ -11,6 +11,13 @@ export const routes: Routes = [
     canActivate: [guestGuard],
   },
   {path: '', component: HomeComponent, canActivate: [authGuard], pathMatch: 'full'},
+  {
+    path: 'data-entries',
+    loadComponent: () =>
+      import('./data-entry-list/data-entry-list').then((m) => m.DataEntryListComponent),
+    canActivate: [authGuard],
+  },
   {path: 'data-entry', component: DataEntryFormComponent, canActivate: [authGuard]},
+  {path: 'data-entry/:id', component: DataEntryFormComponent, canActivate: [authGuard]},
   {path: '**', redirectTo: ''},
 ];

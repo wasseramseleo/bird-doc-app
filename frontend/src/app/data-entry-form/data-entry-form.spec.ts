@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -8,10 +8,11 @@ import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 
 import { DataEntryFormComponent } from './data-entry-form';
-import { BirdStatus, DataEntry } from '../models/data-entry.model';
+import { AgeClass, BirdStatus, DataEntry, Sex } from '../models/data-entry.model';
 import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
+import { RingSize } from '../models/ring.model';
 
 describe('DataEntryFormComponent', () => {
   let component: DataEntryFormComponent;
@@ -190,6 +191,116 @@ describe('DataEntryFormComponent', () => {
       expect(cellText('tarsus')).toBe('19');
       expect(cellText('feather_span')).toBe('54');
       expect(fixture.nativeElement.querySelector('td.mat-column-ringing_station')).toBeNull();
+    });
+  });
+
+  describe('edit mode (opening an existing entry via /data-entry/:id)', () => {
+    const station: RingingStation = {
+      handle: 'STAMT',
+      name: 'Linz, Botanischer Garten',
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+    };
+
+    function savedEntry(): DataEntry {
+      return {
+        id: '42',
+        species: {
+          id: 's1',
+          common_name_de: 'Kohlmeise',
+          scientific_name: 'Parus major',
+          ring_size: RingSize.Medium,
+        },
+        ring: { id: 'r1', number: '901234', size: RingSize.Medium },
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+        ringing_station: station,
+        project: null,
+        net_location: 3,
+        net_height: 2,
+        net_direction: null,
+        feather_span: 54,
+        wing_span: 73,
+        tarsus: 19,
+        notch_f2: null,
+        inner_foot: null,
+        weight_gram: 18,
+        bird_status: BirdStatus.ReCatch,
+        fat_deposit: null,
+        muscle_class: null,
+        age_class: AgeClass.ThisYear,
+        sex: Sex.Female,
+        small_feather_int: null,
+        small_feather_app: null,
+        hand_wing: null,
+        date_time: '2024-05-01T08:30:00Z',
+        created: '2024-05-01T08:30:00Z',
+        updated: '2024-05-01T08:30:00Z',
+        comment: 'Wiederfang am Hauptnetz',
+        has_mites: false,
+        has_hunger_stripes: false,
+        has_brood_patch: false,
+        has_cpl_plus: false,
+      } as unknown as DataEntry;
+    }
+
+    async function setupEditMode(entryId: string) {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? entryId : null) } },
+      };
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+        ],
+      }).compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      return { f, httpMock };
+    }
+
+    it('fetches the entry and pre-fills the form with its saved values', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'),
+      );
+      req.flush(savedEntry());
+
+      const form = f.componentInstance.entryForm;
+      expect(f.componentInstance.isEditMode()).toBe(true);
+      expect(form.get('species')!.value).toEqual(savedEntry().species);
+      expect(form.get('ring_size')!.value).toBe(RingSize.Medium);
+      expect(form.get('ring_number')!.value).toBe('901234');
+      expect(form.get('bird_status')!.value).toBe(BirdStatus.ReCatch);
+      expect(form.get('comment')!.value).toBe('Wiederfang am Hauptnetz');
+    });
+
+    it('saves an edit via PUT, then returns to the list without clearing the form', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+
+      const router = TestBed.inject(Router);
+      const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+
+      f.componentInstance.onSubmit();
+
+      const putReq = httpMock.expectOne(
+        (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
+      );
+      putReq.flush(savedEntry());
+
+      expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+      // No clearForm() on edit: the loaded values must survive the save.
+      expect(f.componentInstance.entryForm.get('species')!.value).toEqual(savedEntry().species);
+      expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
     });
   });
 });

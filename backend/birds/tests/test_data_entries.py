@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from birds.models import DataEntry, Ring
+from birds.models import DataEntry, Project, Ring
 
 LIST_URL = "/api/birds/data-entries/"
 
@@ -99,6 +99,145 @@ def test_update_switches_ring_and_cleans_orphan(
     assert response.status_code == 200, response.json()
     assert not Ring.objects.filter(id=old_ring_id).exists()
     assert Ring.objects.filter(number="555", size=Ring.RingSizes.V).exists()
+
+
+@pytest.mark.django_db
+def test_filter_by_project_returns_only_that_projects_entries(
+    auth_client, species, ring, scientist, ringing_station, project, organization
+):
+    other_project = Project.objects.create(title="Other Project", organization=organization)
+    other_project.scientists.add(scientist)
+
+    mine = DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    other_ring = Ring.objects.create(number="900", size=Ring.RingSizes.V)
+    DataEntry.objects.create(
+        species=species,
+        ring=other_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=other_project,
+        date_time=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    response = auth_client.get(LIST_URL, {"project": str(project.id)})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["id"] == str(mine.id)
+
+
+def _bulk_entries(n, *, species, ring, scientist, ringing_station, project=None):
+    DataEntry.objects.bulk_create(
+        DataEntry(
+            species=species,
+            ring=ring,
+            staff=scientist,
+            ringing_station=ringing_station,
+            project=project,
+            date_time=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        for _ in range(n)
+    )
+
+
+@pytest.mark.django_db
+def test_page_size_query_param_is_honoured(auth_client, species, ring, scientist, ringing_station):
+    _bulk_entries(
+        12, species=species, ring=ring, scientist=scientist, ringing_station=ringing_station
+    )
+
+    response = auth_client.get(LIST_URL, {"page_size": 50})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 12
+    assert len(body["results"]) == 12
+
+
+@pytest.mark.django_db
+def test_search_filters_by_species_name_partial_match(
+    auth_client, species, species_other, ring, scientist, ringing_station
+):
+    target = DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    other_ring = Ring.objects.create(number="901", size=Ring.RingSizes.V)
+    DataEntry.objects.create(
+        species=species_other,
+        ring=other_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    response = auth_client.get(LIST_URL, {"search": "Zzztestus al"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["id"] == str(target.id)
+
+
+@pytest.mark.django_db
+def test_project_list_ordered_by_created_desc(
+    auth_client, species, scientist, ringing_station, project
+):
+    # date_time order is the inverse of created order, so the two orderings disagree.
+    newer_date = DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="910", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+    older_date = DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="911", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    DataEntry.objects.filter(id=newer_date.id).update(created=datetime(2026, 1, 1, tzinfo=UTC))
+    DataEntry.objects.filter(id=older_date.id).update(created=datetime(2026, 6, 1, tzinfo=UTC))
+
+    response = auth_client.get(LIST_URL, {"project": str(project.id)})
+    ids = [row["id"] for row in response.json()["results"]]
+    assert ids == [str(older_date.id), str(newer_date.id)]
+
+
+@pytest.mark.django_db
+def test_page_size_above_max_clamps_to_100(auth_client, species, ring, scientist, ringing_station):
+    _bulk_entries(
+        101, species=species, ring=ring, scientist=scientist, ringing_station=ringing_station
+    )
+
+    response = auth_client.get(LIST_URL, {"page_size": 200})
+    body = response.json()
+    assert body["count"] == 101
+    assert len(body["results"]) == 100
+
+
+@pytest.mark.django_db
+def test_page_size_absent_defaults_to_10(auth_client, species, ring, scientist, ringing_station):
+    _bulk_entries(
+        12, species=species, ring=ring, scientist=scientist, ringing_station=ringing_station
+    )
+
+    response = auth_client.get(LIST_URL)
+    body = response.json()
+    assert body["count"] == 12
+    assert len(body["results"]) == 10
 
 
 @pytest.mark.django_db

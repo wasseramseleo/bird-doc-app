@@ -7,11 +7,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 ng serve          # Dev server at http://localhost:4200
 ng build          # Production build → dist/
-ng test           # Unit tests via Karma/Jasmine
+ng test           # Unit tests via Karma/Jasmine (watch mode — never exits)
 ng generate component <name>  # Scaffold a new standalone component
 ```
 
 The Django REST Framework backend must be running separately at `http://localhost:8000` (see `../backend/CLAUDE.md`).
+
+### Running unit tests headless (do this, in this exact way)
+
+From `frontend/`:
+
+```bash
+CHROME_BIN=/usr/bin/google-chrome ./node_modules/.bin/ng test --watch=false --browsers=ChromeHeadless
+```
+
+The builder is `@angular/build:karma` (no `karma.conf.js`, no `src/test.ts`). The suite finishes in **~3 seconds**, exits **0**, and leaves **no** lingering `ng`/`karma`/`ChromeHeadless` processes.
+
+**Invocation rules — follow these or the run will appear to "hang":**
+- Call the **direct binary `./node_modules/.bin/ng`** — do **NOT** use `npx ng test`. The RTK hook rewrites `npx ...` to `rtk npx ...`, and ng test wrapped by the rtk proxy **hangs until timeout and emits zero output** (this is why "ng test produces no output even in the foreground"). The direct binary is passed through unchanged by rtk, so output streams normally. (As a backstop, `npx` is in `exclude_commands` in `~/.config/rtk/config.toml`, but the env-var prefix above defeats that match — always use the direct binary.)
+- Run it in the **FOREGROUND**. Never run it as a background task — a background shell stays open after the inner command exits, so the task only ends when its timeout fires (looks like a 5-minute hang; the tests actually finished in 3s).
+- Use a **short timeout** (the default ~120s is plenty). Never set a 300s/5-min timeout — there is nothing to wait for.
+- `--watch=false` is **mandatory** (plain `ng test` defaults to watch mode and never exits).
+- Do **not** `pkill` afterward — nothing lingers, and `pkill` returns 144 (SIGTERM), which falsely reads as a test failure.
+- `chrome` processes with `--profile-directory=Default` are the user's desktop browser, not the test runner — never kill them.
+- If the build fails with `Could not resolve "@angular/animations/browser"`, run `npm install` first (deps can be incompletely installed even though `@angular/animations` is in package.json).
+
+### Running e2e tests (Playwright)
+
+End-to-end tests live in `e2e/` and drive the real app in a browser via `@playwright/test` (`playwright.config.ts`).
+
+From `frontend/`:
+
+```bash
+./node_modules/.bin/playwright test            # all e2e tests (~2s once the server is up)
+./node_modules/.bin/playwright test e2e/navigation-hub.spec.ts   # one file
+npm run e2e                                     # same as the bare `playwright test`
+```
+
+How it's wired (and why it's fast and backend-free):
+- **System Chrome, no browser download.** The config sets `channel: 'chrome'`, reusing `/usr/bin/google-chrome` (same browser Karma uses). Do **not** run `playwright install` — it's unnecessary and may fail offline.
+- **The backend is stubbed, not run.** Every test intercepts `**/api/**` via `page.route(...)` and fulfils canned JSON, so **no Django backend at `:8000` is needed**. Always stub `GET /api/auth/me/` to an authenticated user — the `provideAppInitializer` → `AuthService.bootstrap()` call blocks routing, and `authGuard` redirects to `/login` without it.
+- **`ng serve` starts automatically.** The `webServer` block launches `./node_modules/.bin/ng serve` and waits for `:4200` (`reuseExistingServer` is on locally, so an already-running dev server is reused). The dev build points the API at `:8000`, but the route stubs intercept those calls regardless.
+
+**Invocation rules — same spirit as the unit tests:**
+- Call the **direct binary `./node_modules/.bin/playwright`** (or `npm run e2e`) — never `npx playwright`, which the RTK hook would wrap and hang.
+- Run in the **FOREGROUND** with the default timeout. The first run spends up to ~120s only if it has to cold-start `ng serve`; the tests themselves take ~1–2s.
+- Output dirs (`test-results/`, `playwright-report/`) are git-ignored — don't commit them.
 
 ## Architecture
 

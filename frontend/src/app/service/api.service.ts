@@ -20,8 +20,22 @@ export class ApiService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = `${environment.apiUrl}/birds`;
 
-  getDataEntries(): Observable<DataEntry[]> {
-    return this.http.get<DataEntry[]>(`${this.apiUrl}/data-entries/`);
+  getDataEntries(params: {
+    projectId: string;
+    page: number;
+    pageSize: number;
+    search?: string;
+  }): Observable<PaginatedApiResponse<DataEntry>> {
+    let httpParams = new HttpParams()
+      .set('project', params.projectId)
+      .set('page', params.page)
+      .set('page_size', params.pageSize);
+    if (params.search) {
+      httpParams = httpParams.set('search', params.search);
+    }
+    return this.http.get<PaginatedApiResponse<DataEntry>>(`${this.apiUrl}/data-entries/`, {
+      params: httpParams,
+    });
   }
 
   getDataEntriesByRing(ringSize: RingSize, ringNumber: string): Observable<PaginatedApiResponse<DataEntry>> {

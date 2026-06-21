@@ -36,6 +36,14 @@
   }
 }
 
+.project-context {
+  margin-left: 16px;
+  padding-left: 16px;
+  border-left: 1px solid var(--bd-line);
+  font-weight: 500;
+  color: var(--bd-ink-soft);
+}
+
 .user-trigger {
   display: inline-flex;
   align-items: center;
