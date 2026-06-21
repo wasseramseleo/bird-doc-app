@@ -1,6 +1,6 @@
 import {ChangeDetectionStrategy, Component, inject, signal} from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
-import {CommonModule} from '@angular/common';
+
 import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
 import {MatButtonModule} from '@angular/material/button';
 import {MatDialogModule, MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
@@ -25,14 +25,13 @@ export interface ProjectCreateDialogResult {
 @Component({
   selector: 'app-project-create-dialog',
   imports: [
-    CommonModule,
     ReactiveFormsModule,
     MatDialogModule,
     MatButtonModule,
     MatFormFieldModule,
     MatInputModule,
-    MatSelectModule,
-  ],
+    MatSelectModule
+],
   templateUrl: './project-create-dialog.html',
   styleUrl: './project-create-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

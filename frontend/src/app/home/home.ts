@@ -1,6 +1,6 @@
 import {ChangeDetectionStrategy, Component, OnInit, inject, signal} from '@angular/core';
 import {Router} from '@angular/router';
-import {CommonModule} from '@angular/common';
+
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
@@ -37,13 +37,12 @@ function parseFilenameFromContentDisposition(header: string | null): string | nu
 @Component({
   selector: 'app-home',
   imports: [
-    CommonModule,
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
     MatDialogModule,
-    MatSnackBarModule,
-  ],
+    MatSnackBarModule
+],
   templateUrl: './home.html',
   styleUrl: './home.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

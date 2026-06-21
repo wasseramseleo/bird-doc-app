@@ -1,5 +1,5 @@
 import {ChangeDetectionStrategy, Component, inject, signal} from '@angular/core';
-import {CommonModule} from '@angular/common';
+
 import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
 import {MatButtonModule} from '@angular/material/button';
 import {MatCheckboxModule} from '@angular/material/checkbox';
@@ -28,15 +28,14 @@ export interface ProjectEditDialogResult {
 @Component({
   selector: 'app-project-edit-dialog',
   imports: [
-    CommonModule,
     ReactiveFormsModule,
     MatDialogModule,
     MatButtonModule,
     MatCheckboxModule,
     MatFormFieldModule,
     MatInputModule,
-    MatSelectModule,
-  ],
+    MatSelectModule
+],
   templateUrl: './project-edit-dialog.html',
   styleUrl: './project-edit-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

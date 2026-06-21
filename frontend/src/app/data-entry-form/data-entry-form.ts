@@ -10,7 +10,7 @@ import {
 // Import toSignal
 import {toSignal} from '@angular/core/rxjs-interop';
 import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
-import {CommonModule, DatePipe, DecimalPipe} from '@angular/common';
+import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
 import {ActivatedRoute, Router} from '@angular/router';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
