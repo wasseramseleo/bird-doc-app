@@ -10,6 +10,11 @@
 npm-debug.log
 yarn-error.log
 .playwright-mcp/*
+# Playwright e2e output
+/test-results
+/playwright-report
+/blob-report
+/.playwright
 # IDEs and editors
 ../.idea/
 .project

@@ -32,6 +32,28 @@ The builder is `@angular/build:karma` (no `karma.conf.js`, no `src/test.ts`). Th
 - `chrome` processes with `--profile-directory=Default` are the user's desktop browser, not the test runner — never kill them.
 - If the build fails with `Could not resolve "@angular/animations/browser"`, run `npm install` first (deps can be incompletely installed even though `@angular/animations` is in package.json).
 
+### Running e2e tests (Playwright)
+
+End-to-end tests live in `e2e/` and drive the real app in a browser via `@playwright/test` (`playwright.config.ts`).
+
+From `frontend/`:
+
+```bash
+./node_modules/.bin/playwright test            # all e2e tests (~2s once the server is up)
+./node_modules/.bin/playwright test e2e/navigation-hub.spec.ts   # one file
+npm run e2e                                     # same as the bare `playwright test`
+```
+
+How it's wired (and why it's fast and backend-free):
+- **System Chrome, no browser download.** The config sets `channel: 'chrome'`, reusing `/usr/bin/google-chrome` (same browser Karma uses). Do **not** run `playwright install` — it's unnecessary and may fail offline.
+- **The backend is stubbed, not run.** Every test intercepts `**/api/**` via `page.route(...)` and fulfils canned JSON, so **no Django backend at `:8000` is needed**. Always stub `GET /api/auth/me/` to an authenticated user — the `provideAppInitializer` → `AuthService.bootstrap()` call blocks routing, and `authGuard` redirects to `/login` without it.
+- **`ng serve` starts automatically.** The `webServer` block launches `./node_modules/.bin/ng serve` and waits for `:4200` (`reuseExistingServer` is on locally, so an already-running dev server is reused). The dev build points the API at `:8000`, but the route stubs intercept those calls regardless.
+
+**Invocation rules — same spirit as the unit tests:**
+- Call the **direct binary `./node_modules/.bin/playwright`** (or `npm run e2e`) — never `npx playwright`, which the RTK hook would wrap and hang.
+- Run in the **FOREGROUND** with the default timeout. The first run spends up to ~120s only if it has to cold-start `ng serve`; the tests themselves take ~1–2s.
+- Output dirs (`test-results/`, `playwright-report/`) are git-ignored — don't commit them.
+
 ## Architecture
 
 Single-page Angular 20 app for bird-ringing field data entry. The app has one primary route (`/`) rendering `DataEntryFormComponent`, with a `NavBarComponent` at the top.
