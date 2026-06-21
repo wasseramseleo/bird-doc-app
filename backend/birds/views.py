@@ -5,6 +5,7 @@ from django.db.models.functions import Cast
 from django.http import HttpResponse
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from .iwm_export import build_iwm_workbook
@@ -30,7 +31,16 @@ from .serializers import (
 )
 
 
+class DataEntryPagination(PageNumberPagination):
+    """Pagination scoped to the data-entries list (selectable 10/50/100)."""
+
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
 class DataEntryViewSet(viewsets.ModelViewSet):
+    pagination_class = DataEntryPagination
     queryset = (
         DataEntry.objects.select_related(
             "species", "ring", "staff", "ringing_station", "project", "project__organization"
@@ -39,6 +49,8 @@ class DataEntryViewSet(viewsets.ModelViewSet):
         .order_by("-date_time")
     )
     serializer_class = DataEntrySerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["species__common_name_de", "species__scientific_name"]
 
     def get_queryset(self):
         """
@@ -48,9 +60,13 @@ class DataEntryViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         ring_size = self.request.query_params.get("ring_size")
         ring_number = self.request.query_params.get("ring_number")
+        project = self.request.query_params.get("project")
 
         if ring_size and ring_number:
             queryset = queryset.filter(ring__size=ring_size, ring__number=ring_number)
+
+        if project:
+            queryset = queryset.filter(project=project).order_by("-created")
 
         return queryset
 
