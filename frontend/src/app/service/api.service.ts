@@ -57,10 +57,13 @@ export class ApiService {
     return this.http.put<DataEntry>(`${this.apiUrl}/data-entries/${id}/`, dataEntry);
   }
 
-  getSpecies(searchTerm?: string): Observable<PaginatedApiResponse<Species>> {
+  getSpecies(searchTerm?: string, projectId?: string): Observable<PaginatedApiResponse<Species>> {
     let params = new HttpParams();
     if (searchTerm) {
       params = params.set('search', searchTerm);
+    }
+    if (projectId) {
+      params = params.set('project', projectId);
     }
     return this.http.get<PaginatedApiResponse<Species>>(`${this.apiUrl}/species/`, {params});
   }

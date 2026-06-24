@@ -406,7 +406,7 @@ export class DataEntryFormComponent implements OnInit {
       debounceTime(300),
       map(value => (typeof value === 'string' ? value : value?.common_name_de ?? '')),
       distinctUntilChanged(),
-      switchMap(name => this.apiService.getSpecies(name).pipe(map(response => response.results)))
+      switchMap(name => this.apiService.getSpecies(name, this.currentProject()?.id).pipe(map(response => response.results)))
     );
 
     this.filteredStations = this.entryForm.get('ringing_station')!.valueChanges.pipe(
@@ -431,7 +431,7 @@ export class DataEntryFormComponent implements OnInit {
 
     // Issue #19: load the "Ring Vernichtet" sentinel Art so the quick-button can
     // apply it in one click. It is identified by the is_sentinel flag.
-    this.apiService.getSpecies('').subscribe(response => {
+    this.apiService.getSpecies('', this.currentProject()?.id).subscribe(response => {
       this.sentinelSpecies.set(response.results.find(s => s.is_sentinel) ?? null);
     });
   }

@@ -1,8 +1,27 @@
+from datetime import UTC, datetime
+
 import pytest
 
-from birds.models import SpeciesList
+from birds.models import DataEntry, Ring, SpeciesList
 
 LIST_URL = "/api/birds/species/"
+
+
+def _use_species(species, scientist, ringing_station, *, project=None, ring_number):
+    """Record one capture of ``species`` (optionally in ``project``)."""
+    ring = Ring.objects.create(number=ring_number, size=Ring.RingSizes.V)
+    return DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+
+
+def _order(response):
+    return [row["id"] for row in response.json()["results"]]
 
 
 @pytest.mark.django_db
@@ -81,6 +100,60 @@ def test_search_matches_scientific_name(auth_client, species, species_other):
     response = auth_client.get(LIST_URL, {"search": "Yyytestus"})
     ids = {row["id"] for row in response.json()["results"]}
     assert ids == {str(species_other.id)}
+
+
+@pytest.mark.django_db
+def test_results_ordered_by_project_usage_then_alphabetically(
+    auth_client, species, species_other, scientist, ringing_station, project
+):
+    """species_other is used more in the project, so it sorts ahead of species."""
+    _use_species(species, scientist, ringing_station, project=project, ring_number="1")
+    _use_species(species_other, scientist, ringing_station, project=project, ring_number="2")
+    _use_species(species_other, scientist, ringing_station, project=project, ring_number="3")
+
+    order = _order(auth_client.get(LIST_URL, {"project": str(project.id)}))
+    assert order.index(str(species_other.id)) < order.index(str(species.id))
+
+
+@pytest.mark.django_db
+def test_empty_project_falls_back_to_global_usage(
+    auth_client, species, species_other, scientist, ringing_station, project
+):
+    """The queried project has no captures, so global usage decides the order."""
+    _use_species(species, scientist, ringing_station, ring_number="1")
+    _use_species(species_other, scientist, ringing_station, ring_number="2")
+    _use_species(species_other, scientist, ringing_station, ring_number="3")
+
+    order = _order(auth_client.get(LIST_URL, {"project": str(project.id)}))
+    assert order.index(str(species_other.id)) < order.index(str(species.id))
+
+
+@pytest.mark.django_db
+def test_short_or_empty_search_returns_most_used_first(
+    auth_client, species, species_other, scientist, ringing_station, project
+):
+    """An empty search field surfaces the most-used species at the top."""
+    _use_species(species, scientist, ringing_station, project=project, ring_number="1")
+
+    top = _order(auth_client.get(LIST_URL, {"project": str(project.id)}))[0]
+    assert top == str(species.id)
+
+
+@pytest.mark.django_db
+def test_active_list_filter_still_limits_which_species_appear(
+    auth_client, user, species, species_other, sentinel_species, scientist, ringing_station, project
+):
+    """Frequency reorders, but the active list still decides membership."""
+    # species_other is used more, but it is not on the active list -> stays out.
+    _use_species(species_other, scientist, ringing_station, project=project, ring_number="1")
+    _use_species(species_other, scientist, ringing_station, project=project, ring_number="2")
+    _use_species(species, scientist, ringing_station, project=project, ring_number="3")
+
+    sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
+    sl.species.add(species)
+
+    ids = set(_order(auth_client.get(LIST_URL, {"project": str(project.id)})))
+    assert ids == {str(species.id), str(sentinel_species.id)}
 
 
 @pytest.mark.django_db

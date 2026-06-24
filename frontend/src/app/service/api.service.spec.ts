@@ -69,6 +69,23 @@ describe('ApiService', () => {
     req.flush({ next_number: 1 });
   });
 
+  it('getSpecies scopes the species query to the given project', () => {
+    service.getSpecies('Ams', 'proj-1').subscribe();
+
+    const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'));
+    expect(req.request.params.get('search')).toBe('Ams');
+    expect(req.request.params.get('project')).toBe('proj-1');
+    req.flush({ count: 0, next: null, previous: null, results: [] });
+  });
+
+  it('getSpecies omits the project param when none is given', () => {
+    service.getSpecies('').subscribe();
+
+    const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'));
+    expect(req.request.params.has('project')).toBe(false);
+    req.flush({ count: 0, next: null, previous: null, results: [] });
+  });
+
   it('getDataEntries issues a project-scoped paginated request and maps the response', () => {
     const response: PaginatedApiResponse<DataEntry> = {
       count: 1,
