@@ -523,6 +523,50 @@ describe('DataEntryFormComponent', () => {
       expect(f.componentInstance.isSentinel()).toBe(true);
       expect(f.nativeElement.querySelector('[formControlName="age_class"]')).toBeNull();
     });
+
+    it('restores the saved values (not an empty form) when Zurücksetzen is confirmed (#24)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+
+      const component = f.componentInstance;
+      const form = component.entryForm;
+      // The user edits the record, then changes their mind.
+      form.get('comment')!.setValue('etwas anderes');
+      form.get('weight_gram')!.setValue(99);
+      form.markAsDirty();
+      spyOn((component as unknown as { dialog: MatDialog }).dialog, 'open').and.returnValue({
+        afterClosed: () => of(true),
+      } as never);
+
+      component.onReset();
+
+      // Restored to the saved record, not emptied.
+      expect(form.get('comment')!.value).toBe('Wiederfang am Hauptnetz');
+      expect(form.get('weight_gram')!.value).toBe(18);
+      expect(form.get('species')!.value).toEqual(savedEntry().species);
+      expect(form.get('ring_number')!.value).toBe('901234');
+      expect(form.pristine).toBe(true);
+    });
+
+    it('keeps a separate navigation back to the list in edit mode (#24)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      const backButton: HTMLButtonElement | null = f.nativeElement.querySelector('.action-buttons button');
+      expect(backButton?.textContent?.trim()).toBe('Zur Liste');
+
+      const router = TestBed.inject(Router);
+      const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+      f.componentInstance.onBackToList();
+      expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+    });
   });
 
   describe('keyboard save shortcut (Strg+S / Cmd+S) (#23)', () => {
@@ -769,6 +813,143 @@ describe('DataEntryFormComponent', () => {
       component.onKeyup(keyEvent(false));
       fixture.detectChanges();
       expect(hint()).toBeNull();
+    });
+  });
+
+  describe('clean-reset and Zurücksetzen (#24)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.Medium,
+        ring_number: '901234',
+      });
+    }
+
+    function submitForm(): void {
+      // Go through the real form submit so the FormGroupDirective marks itself
+      // submitted — the exact state that makes empty required fields show errors.
+      const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
+
+    it('shows no required-field errors after a successful save and focuses the species field', fakeAsync(() => {
+      fillValidWiederfang();
+      submitForm();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      fixture.detectChanges();
+
+      // The bird-specific fields are empty again, but the form is pristine and no
+      // longer "submitted", so Material renders no error messages.
+      expect(fixture.nativeElement.querySelectorAll('mat-error').length).toBe(0);
+      const species = fixture.nativeElement.querySelector('[formControlName="species"]');
+      expect(document.activeElement).toBe(species);
+
+      tick(900); // drain the brief "Gespeichert ✓" timer
+    }));
+
+    it('keeps Station and Beringer, clears the bird-specific fields and resets the date on save', fakeAsync(() => {
+      const station = { handle: 'STAMT', name: 'Linz' };
+      const beringer = { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' };
+      fillValidWiederfang();
+      component.entryForm.patchValue({
+        ringing_station: station as never,
+        staff: beringer as never,
+        tarsus: 19,
+        comment: 'Notiz',
+      });
+      submitForm();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      tick(50);
+
+      const form = component.entryForm;
+      expect(form.get('ringing_station')!.value).toEqual(station as never);
+      expect(form.get('staff')!.value).toEqual(beringer as never);
+      expect(form.get('species')!.value).toBeNull();
+      expect(form.get('ring_number')!.value).toBeNull();
+      expect(form.get('bird_status')!.value).toBeNull();
+      expect(form.get('tarsus')!.value).toBeNull();
+      expect(form.get('comment')!.value).toBeNull();
+      expect(form.get('date_time')!.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+      // Pristine and untouched: the reset returns the form to a clean slate.
+      expect(form.pristine).toBe(true);
+      expect(form.untouched).toBe(true);
+
+      tick(900);
+    }));
+
+    const species = { id: 's1', common_name_de: 'Kohlmeise' };
+
+    // The component imports MatDialogModule, so it holds its own MatDialog
+    // instance — spy on that one, not the root injector's.
+    const spyOnDialog = (confirmed?: boolean) =>
+      spyOn((component as unknown as { dialog: MatDialog }).dialog, 'open').and.returnValue({
+        afterClosed: () => of(confirmed),
+      } as never);
+
+    it('resets without a confirmation when the form is not dirty', () => {
+      const openSpy = spyOnDialog();
+      expect(component.entryForm.dirty).toBe(false);
+
+      component.onReset();
+
+      expect(openSpy).not.toHaveBeenCalled();
+    });
+
+    it('confirms before resetting when the form has unsaved changes, and resets on confirm', () => {
+      const openSpy = spyOnDialog(true);
+      component.entryForm.get('species')!.setValue(species as never);
+      component.entryForm.markAsDirty();
+
+      component.onReset();
+
+      expect(openSpy).toHaveBeenCalled();
+      expect(component.entryForm.get('species')!.value).toBeNull();
+      expect(component.entryForm.pristine).toBe(true);
+    });
+
+    it('keeps the changes when the confirmation is dismissed', () => {
+      spyOnDialog(false);
+      component.entryForm.get('species')!.setValue(species as never);
+      component.entryForm.markAsDirty();
+
+      component.onReset();
+
+      expect(component.entryForm.get('species')!.value).toEqual(species as never);
+      expect(component.entryForm.dirty).toBe(true);
+    });
+
+    it('renders a Zurücksetzen button in place of Abbrechen and wires it to onReset', () => {
+      const labels = Array.from(
+        fixture.nativeElement.querySelectorAll('.action-buttons button'),
+      ).map((b) => (b as HTMLElement).textContent!.trim());
+      expect(labels).toContain('Zurücksetzen');
+      expect(labels).not.toContain('Abbrechen');
+      // No list navigation in create mode — that button belongs to edit mode only.
+      expect(labels).not.toContain('Zur Liste');
+
+      const resetButton = Array.from(
+        fixture.nativeElement.querySelectorAll('.action-buttons button'),
+      ).find((b) => (b as HTMLElement).textContent!.trim() === 'Zurücksetzen') as HTMLButtonElement;
+      const spy = spyOn(component, 'onReset');
+      resetButton.click();
+      expect(spy).toHaveBeenCalled();
     });
   });
 });
