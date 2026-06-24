@@ -156,6 +156,15 @@ export class DataEntryFormComponent implements OnInit {
   private readonly birdStatus = toSignal(this.entryForm.get('bird_status')!.valueChanges);
   readonly isRecatch = computed(() => this.birdStatus() === BirdStatus.ReCatch);
 
+  // #26: the Kleingefieder (small-feather) moult fields are recorded only for
+  // diesjährige birds (Alter = 3). Track the age class so the two fields can
+  // react to changes; seed with the form's current value since valueChanges
+  // does not emit until the first change.
+  private readonly ageClass = toSignal(this.entryForm.get('age_class')!.valueChanges, {
+    initialValue: this.entryForm.get('age_class')!.value,
+  });
+  readonly smallFeatherActive = computed(() => this.ageClass() === AgeClass.ThisYear);
+
   // Issue #19: the selected Art drives whether this is a "Ring Vernichtet"
   // sentinel record. A sentinel collapses the form to the essentials.
   readonly selectedSpecies = signal<Species | null>(null);
@@ -334,6 +343,24 @@ export class DataEntryFormComponent implements OnInit {
         const control = this.entryForm.get(name)!;
         control.setValidators(sentinel ? [] : [Validators.required]);
         control.updateValueAndValidity({ emitEvent: false });
+      }
+    });
+
+    // #26: keep the Kleingefieder fields in lockstep with the age class. Only a
+    // diesjähriger Vogel (Alter = 3) moults its small feathers, so for every
+    // other age class the two fields are cleared and disabled (greyed out but
+    // still visible). Clearing matters: the export reads getRawValue(), which
+    // includes disabled controls, so a stale value would otherwise leak through.
+    effect(() => {
+      const active = this.smallFeatherActive();
+      for (const name of ['small_feather_int', 'small_feather_app']) {
+        const control = this.entryForm.get(name)!;
+        if (active) {
+          control.enable({ emitEvent: false });
+        } else {
+          control.setValue(null, { emitEvent: false });
+          control.disable({ emitEvent: false });
+        }
       }
     });
 
@@ -749,13 +776,21 @@ export class DataEntryFormComponent implements OnInit {
 
   private focusNext(currentControlName: string): void {
     const currentIndex = this.focusOrder.indexOf(currentControlName);
-    if (currentIndex > -1 && currentIndex < this.focusOrder.length - 1) {
-      const nextControlName = this.focusOrder[currentIndex + 1];
-      setTimeout(() => {
-        const nextEl = document.querySelector(`[formControlName="${nextControlName}"]`) as HTMLElement;
-        nextEl?.focus();
-      }, 50);
+    if (currentIndex < 0) {
+      return;
     }
+    // #26: skip disabled fields (e.g. the greyed-out Kleingefieder fields for a
+    // non-diesjährigen Vogel) so the keyboard run never lands on a dead field.
+    const nextControlName = this.focusOrder
+      .slice(currentIndex + 1)
+      .find((name) => !this.entryForm.get(name)?.disabled);
+    if (!nextControlName) {
+      return;
+    }
+    setTimeout(() => {
+      const nextEl = document.querySelector(`[formControlName="${nextControlName}"]`) as HTMLElement;
+      nextEl?.focus();
+    }, 50);
   }
 
   private clearForm(): void {
