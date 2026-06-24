@@ -175,3 +175,13 @@
   gap: 24px;
   padding: 10px 0;
 }
+
+// Issue #19: the "Ring vernichtet" quick-button. Deliberately understated so it
+// never competes with the common case (a real bird) — a small, muted text link.
+.destroyed-ring-link {
+  align-self: center;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--bd-ink-soft);
+  letter-spacing: 0.01em;
+}

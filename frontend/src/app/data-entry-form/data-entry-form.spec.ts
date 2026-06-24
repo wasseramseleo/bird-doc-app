@@ -5,10 +5,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatDialog } from '@angular/material/dialog';
+import { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { of } from 'rxjs';
 
 import { DataEntryFormComponent } from './data-entry-form';
 import { AgeClass, BirdStatus, DataEntry, Sex } from '../models/data-entry.model';
+import { Species } from '../models/species.model';
 import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
@@ -194,6 +196,160 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  describe('Ring Vernichtet sentinel (collapsing the form)', () => {
+    const sentinel: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      is_sentinel: true,
+    };
+
+    function selectSpecies(species: Species) {
+      component.onSpeciesSelected({ option: { value: species } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+    }
+
+    const has = (selector: string) =>
+      fixture.nativeElement.querySelector(selector) !== null;
+
+    it('hides the bird fields and keeps only Ringgröße/Ringnummer/Bemerkung when a sentinel Art is selected', () => {
+      expect(has('[formControlName="age_class"]')).toBe(true);
+
+      selectSpecies(sentinel);
+
+      expect(component.isSentinel()).toBe(true);
+      expect(has('[formControlName="age_class"]')).toBe(false);
+      expect(has('[formControlName="sex"]')).toBe(false);
+      expect(has('[formControlName="bird_status"]')).toBe(false);
+      expect(has('[formControlName="tarsus"]')).toBe(false);
+      // The essentials stay.
+      expect(has('[formControlName="ring_size"]')).toBe(true);
+      expect(has('[formControlName="ring_number"]')).toBe(true);
+      expect(has('[formControlName="comment"]')).toBe(true);
+    });
+
+    it('relaxes the bird-field validators so a sentinel record is submittable with only the essentials', () => {
+      const form = component.entryForm;
+      form.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: sentinel as never,
+        ring_size: RingSize.Medium,
+        ring_number: '901234',
+        bird_status: null,
+      });
+
+      // Normal mode: bird_status is required, so the form is invalid.
+      expect(form.valid).toBe(false);
+
+      selectSpecies(sentinel);
+
+      expect(form.valid).toBe(true);
+    });
+
+    it('keeps the bird fields visible when a normal Art is selected', () => {
+      const normal: Species = { ...sentinel, id: 's1', common_name_de: 'Kohlmeise', is_sentinel: false };
+
+      selectSpecies(normal);
+
+      expect(component.isSentinel()).toBe(false);
+      expect(has('[formControlName="age_class"]')).toBe(true);
+      expect(has('[formControlName="bird_status"]')).toBe(true);
+    });
+  });
+
+  describe('Schnell-Button "Ring vernichtet" (quick-button with confirmation)', () => {
+    const sentinel: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      is_sentinel: true,
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const dialogMock = { open: jasmine.createSpy('open') };
+    let httpMock: HttpTestingController;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: { currentProject: signal<Project | null>(project), setCurrent: () => {}, clear: () => {} },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      // The component fetches the sentinel Art once on init.
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 1, next: null, previous: null, results: [sentinel] });
+    });
+
+    it('opens a confirmation modal and sets the sentinel Art when confirmed', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onDestroyedRing();
+
+      expect(dialogMock.open).toHaveBeenCalled();
+      expect(component.entryForm.get('species')!.value).toEqual(sentinel);
+      expect(component.isSentinel()).toBe(true);
+    });
+
+    it('leaves the form untouched when the confirmation is cancelled', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+
+      component.onDestroyedRing();
+
+      expect(dialogMock.open).toHaveBeenCalled();
+      expect(component.isSentinel()).toBe(false);
+      expect(component.entryForm.get('species')!.value).not.toEqual(sentinel);
+    });
+
+    it('renders a discreet quick-button near the Ringnummer field that triggers the flow', () => {
+      const button: HTMLButtonElement | null = fixture.nativeElement.querySelector(
+        'button[data-testid="destroyed-ring-button"]',
+      );
+      expect(button).not.toBeNull();
+
+      const spy = spyOn(component, 'onDestroyedRing');
+      button!.click();
+      expect(spy).toHaveBeenCalled();
+    });
+  });
+
   describe('edit mode (opening an existing entry via /data-entry/:id)', () => {
     const station: RingingStation = {
       handle: 'STAMT',
@@ -301,6 +457,27 @@ describe('DataEntryFormComponent', () => {
       // No clearForm() on edit: the loaded values must survive the save.
       expect(f.componentInstance.entryForm.get('species')!.value).toEqual(savedEntry().species);
       expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
+    });
+
+    it('collapses the form when the loaded entry is a sentinel "Ring Vernichtet"', async () => {
+      const { f, httpMock } = await setupEditMode('43');
+      f.detectChanges();
+
+      const sentinelEntry = {
+        ...savedEntry(),
+        id: '43',
+        species: { id: 'sent', common_name_de: 'Ring Vernichtet', scientific_name: '', is_sentinel: true },
+        bird_status: null,
+        age_class: null,
+        sex: null,
+      } as unknown as DataEntry;
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/43/'))
+        .flush(sentinelEntry);
+      f.detectChanges();
+
+      expect(f.componentInstance.isSentinel()).toBe(true);
+      expect(f.nativeElement.querySelector('[formControlName="age_class"]')).toBeNull();
     });
   });
 });
