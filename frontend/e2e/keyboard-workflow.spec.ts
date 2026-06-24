@@ -120,9 +120,11 @@ test.describe('Keyboard workflow happy-path (#23)', () => {
     await page.locator('mat-select[formControlName="bird_status"]').click();
     await page.locator('mat-option', { hasText: 'Wiederfang' }).click();
 
-    // Ringgröße: pick a size so the ring search has both parts.
+    // Ringgröße: pick a size so the ring search has both parts. The field now
+    // shows only the bare code (#25), so match the option exactly — 'S' must not
+    // also match SA/AS/BS/DS.
     await page.locator('mat-select[formControlName="ring_size"]').click();
-    await page.locator('mat-option', { hasText: 'S (Medium)' }).click();
+    await page.getByRole('option', { name: 'S', exact: true }).click();
 
     // Ringnummer + Enter → ring-history search → Art/Geschlecht prefill.
     await page.locator('input[formControlName="ring_number"]').fill('901234');
