@@ -149,6 +149,15 @@ export class DataEntryFormComponent implements OnInit {
   private readonly birdStatus = toSignal(this.entryForm.get('bird_status')!.valueChanges);
   readonly isRecatch = computed(() => this.birdStatus() === BirdStatus.ReCatch);
 
+  // Issue #19: the selected Art drives whether this is a "Ring Vernichtet"
+  // sentinel record. A sentinel collapses the form to the essentials.
+  readonly selectedSpecies = signal<Species | null>(null);
+  readonly isSentinel = computed(() => !!this.selectedSpecies()?.is_sentinel);
+  // The sentinel Art the quick-button applies, fetched once on init (the backend
+  // always includes sentinels in the species list). Keyed off the is_sentinel
+  // flag, not the German name.
+  private readonly sentinelSpecies = signal<Species | null>(null);
+
   // Autocomplete Observables
   filteredSpecies!: Observable<Species[]>;
   filteredStations!: Observable<RingingStation[]>;
@@ -306,12 +315,26 @@ export class DataEntryFormComponent implements OnInit {
       }
     });
 
+    // Issue #19: a sentinel "Ring Vernichtet" record carries no bird data, so
+    // the bird-field validators must step aside or the collapsed form could
+    // never be submitted. Ringnummer/Ringgröße stay required.
+    effect(() => {
+      const sentinel = this.isSentinel();
+      for (const name of ['bird_status', 'age_class', 'sex']) {
+        const control = this.entryForm.get(name)!;
+        control.setValidators(sentinel ? [] : [Validators.required]);
+        control.updateValueAndValidity({ emitEvent: false });
+      }
+    });
+
     effect(() => {
       const id = this.entryId();
       if (id) {
         this.loading.set(true);
         this.apiService.getDataEntry(id).subscribe(entry => {
           this.entryForm.patchValue(this.transformToForm(entry));
+          // Issue #19: a loaded sentinel entry must collapse the same way.
+          this.selectedSpecies.set(entry.species ?? null);
           this.loading.set(false);
         });
       }
@@ -361,6 +384,12 @@ export class DataEntryFormComponent implements OnInit {
     );
 
     this.prefillRememberedBeringer();
+
+    // Issue #19: load the "Ring Vernichtet" sentinel Art so the quick-button can
+    // apply it in one click. It is identified by the is_sentinel flag.
+    this.apiService.getSpecies('').subscribe(response => {
+      this.sentinelSpecies.set(response.results.find(s => s.is_sentinel) ?? null);
+    });
   }
 
   // Issue #10: in create mode, pre-fill the Beringer with the one last used on
@@ -414,8 +443,37 @@ export class DataEntryFormComponent implements OnInit {
     });
   }
 
+  // Issue #19: the discreet quick-button near the Ringnummer field. It confirms
+  // the rare destroyed-ring case before collapsing the form to the essentials.
+  onDestroyedRing(): void {
+    const sentinel = this.sentinelSpecies();
+    if (!sentinel) {
+      return;
+    }
+    const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
+      ConfirmDialogComponent,
+      {
+        data: {
+          title: 'Ring als vernichtet erfassen?',
+          message:
+            'Dieser Datensatz hält nur Ringnummer und Bemerkung fest — alle Vogel-Messwerte entfallen.',
+          confirmLabel: 'Ring vernichtet',
+          cancelLabel: 'Abbrechen',
+        },
+        width: '420px',
+      },
+    );
+    ref.afterClosed().subscribe(confirmed => {
+      if (confirmed) {
+        this.entryForm.get('species')!.setValue(sentinel);
+        this.selectedSpecies.set(sentinel);
+      }
+    });
+  }
+
   onSpeciesSelected(event: MatAutocompleteSelectedEvent): void {
     const species: Species = event.option.value;
+    this.selectedSpecies.set(species ?? null);
     if (species && species.ring_size) {
       this.entryForm.get('ring_size')?.setValue(species.ring_size);
     }

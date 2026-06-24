@@ -6,6 +6,24 @@ LIST_URL = "/api/birds/species/"
 
 
 @pytest.mark.django_db
+def test_active_list_still_includes_sentinel_species(auth_client, user, species, sentinel_species):
+    """An active list that omits 'Ring Vernichtet' must not hide it."""
+    sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
+    sl.species.add(species)
+
+    ids = {row["id"] for row in auth_client.get(LIST_URL).json()["results"]}
+    assert str(sentinel_species.id) in ids
+    assert str(species.id) in ids
+
+
+@pytest.mark.django_db
+def test_searching_ring_finds_sentinel(auth_client, sentinel_species):
+    response = auth_client.get(LIST_URL, {"search": "Ring"})
+    ids = {row["id"] for row in response.json()["results"]}
+    assert str(sentinel_species.id) in ids
+
+
+@pytest.mark.django_db
 def test_user_with_no_active_list_sees_all_species(auth_client, species, species_other):
     """No active list -> default queryset includes both fixtures (and the rest)."""
     alpha = auth_client.get(LIST_URL, {"search": "Zzztest"}).json()["results"]
@@ -15,14 +33,16 @@ def test_user_with_no_active_list_sees_all_species(auth_client, species, species
 
 
 @pytest.mark.django_db
-def test_user_with_active_list_sees_only_list_species(auth_client, user, species, species_other):
+def test_user_with_active_list_sees_list_species_and_sentinel_only(
+    auth_client, user, species, species_other, sentinel_species
+):
     sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
     sl.species.add(species)
 
     body = auth_client.get(LIST_URL).json()
     ids = {row["id"] for row in body["results"]}
-    assert ids == {str(species.id)}
-    assert body["count"] == 1
+    # The active list filters out species_other but never the sentinel.
+    assert ids == {str(species.id), str(sentinel_species.id)}
 
 
 @pytest.mark.django_db

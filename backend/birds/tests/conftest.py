@@ -72,6 +72,12 @@ def species(db):
 
 
 @pytest.fixture
+def sentinel_species(db):
+    """The 'Ring Vernichtet' sentinel created by data migration 0032."""
+    return Species.objects.get(is_sentinel=True)
+
+
+@pytest.fixture
 def species_other(db):
     return Species.objects.create(
         common_name_de="Yyytestvogel Beta",

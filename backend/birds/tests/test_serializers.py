@@ -19,6 +19,62 @@ def _entry_payload(species, scientist, ringing_station, *, ring_number, ring_siz
 
 
 @pytest.mark.django_db
+def test_sentinel_entry_nulls_bird_data_even_when_payload_supplies_it(
+    sentinel_species, scientist, ringing_station
+):
+    payload = _entry_payload(sentinel_species, scientist, ringing_station, ring_number="601")
+    payload.update(
+        {
+            "age_class": DataEntry.AgeClass.THIS_YEAR,
+            "sex": DataEntry.Sex.MALE,
+            "bird_status": DataEntry.BirdStatus.FIRST_CATCH,
+            "wing_span": "73.0",
+            "weight_gram": "18.0",
+            "tarsus": "19.0",
+            "fat_deposit": 3,
+            "comment": "Produktionsfehler",
+        }
+    )
+
+    serializer = DataEntrySerializer(data=payload)
+    assert serializer.is_valid(), serializer.errors
+    entry = serializer.save()
+
+    assert entry.age_class is None
+    assert entry.sex is None
+    assert entry.bird_status is None
+    assert entry.wing_span is None
+    assert entry.weight_gram is None
+    assert entry.tarsus is None
+    assert entry.fat_deposit is None
+    # The destroyed-ring essentials survive.
+    assert entry.ring.number == "601"
+    assert entry.comment == "Produktionsfehler"
+
+
+@pytest.mark.django_db
+def test_normal_entry_keeps_its_bird_data(species, scientist, ringing_station):
+    payload = _entry_payload(species, scientist, ringing_station, ring_number="602")
+    payload.update(
+        {
+            "age_class": DataEntry.AgeClass.THIS_YEAR,
+            "sex": DataEntry.Sex.MALE,
+            "bird_status": DataEntry.BirdStatus.FIRST_CATCH,
+            "wing_span": "73.0",
+        }
+    )
+
+    serializer = DataEntrySerializer(data=payload)
+    assert serializer.is_valid(), serializer.errors
+    entry = serializer.save()
+
+    assert entry.age_class == DataEntry.AgeClass.THIS_YEAR
+    assert entry.sex == DataEntry.Sex.MALE
+    assert entry.bird_status == DataEntry.BirdStatus.FIRST_CATCH
+    assert entry.wing_span == 73.0
+
+
+@pytest.mark.django_db
 def test_create_reuses_existing_ring(species, scientist, ringing_station):
     existing = Ring.objects.create(number="500", size=Ring.RingSizes.V)
 

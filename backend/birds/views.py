@@ -1,6 +1,6 @@
 import datetime
 
-from django.db.models import IntegerField
+from django.db.models import IntegerField, Q
 from django.db.models.functions import Cast
 from django.http import HttpResponse
 from rest_framework import filters, mixins, viewsets
@@ -78,13 +78,19 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """
-        If the user has an active species list, return species from that list.
-        Otherwise, return all species.
+        If the user has an active species list, return species from that list
+        plus the sentinel species (e.g. 'Ring Vernichtet'), which must stay
+        selectable even when a filtered list is active. Otherwise, return all
+        species.
         """
         user = self.request.user
         active_list = SpeciesList.objects.filter(user=user, is_active=True).first()
         if active_list:
-            return active_list.species.all().order_by("common_name_de")
+            return (
+                Species.objects.filter(Q(lists=active_list) | Q(is_sentinel=True))
+                .distinct()
+                .order_by("common_name_de")
+            )
 
         return Species.objects.all().order_by("common_name_de")
 

@@ -1,6 +1,14 @@
 import pytest
 
-from birds.models import Scientist, SpeciesList
+from birds.models import Scientist, Species, SpeciesList
+
+
+@pytest.mark.django_db
+def test_data_migration_creates_single_ring_vernichtet_sentinel():
+    sentinels = Species.objects.filter(is_sentinel=True)
+
+    assert sentinels.count() == 1
+    assert sentinels.first().common_name_de == "Ring Vernichtet"
 
 
 @pytest.mark.django_db

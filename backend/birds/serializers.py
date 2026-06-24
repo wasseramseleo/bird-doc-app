@@ -17,7 +17,14 @@ from .models import (
 class SpeciesSerializer(serializers.ModelSerializer):
     class Meta:
         model = Species
-        fields = ["id", "common_name_de", "common_name_en", "scientific_name", "ring_size"]
+        fields = [
+            "id",
+            "common_name_de",
+            "common_name_en",
+            "scientific_name",
+            "ring_size",
+            "is_sentinel",
+        ]
 
 
 class RingSerializer(serializers.ModelSerializer):
@@ -189,6 +196,28 @@ class DataEntrySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created", "updated"]
 
+    # Fields that describe a bird. A destroyed ring carries none of them, so
+    # they are forced null for a sentinel species regardless of client input.
+    BIRD_DATA_FIELDS = (
+        "age_class",
+        "sex",
+        "bird_status",
+        "net_location",
+        "net_height",
+        "net_direction",
+        "feather_span",
+        "wing_span",
+        "tarsus",
+        "notch_f2",
+        "inner_foot",
+        "weight_gram",
+        "fat_deposit",
+        "muscle_class",
+        "small_feather_int",
+        "small_feather_app",
+        "hand_wing",
+    )
+
     def _get_or_create_ring(self, validated_data):
         ring_number = validated_data.pop("ring_number")
         ring_size = validated_data.pop("ring_size")
@@ -196,14 +225,25 @@ class DataEntrySerializer(serializers.ModelSerializer):
         validated_data["ring"] = ring
         return ring
 
+    def _null_bird_data_for_sentinel(self, validated_data):
+        """A sentinel species (e.g. 'Ring Vernichtet') has no bird, so the
+        backend authoritatively blanks every bird-data field, whatever the
+        client sent. Ring, Beringer, Station and Datum stay required."""
+        species = validated_data.get("species")
+        if species is not None and species.is_sentinel:
+            for field in self.BIRD_DATA_FIELDS:
+                validated_data[field] = None
+
     def create(self, validated_data):
         self._get_or_create_ring(validated_data)
+        self._null_bird_data_for_sentinel(validated_data)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         with transaction.atomic():
             old_ring = instance.ring
             new_ring = self._get_or_create_ring(validated_data)
+            self._null_bird_data_for_sentinel(validated_data)
             updated_instance = super().update(instance, validated_data)
             if old_ring and old_ring != new_ring:
                 if not DataEntry.objects.filter(ring=old_ring).exists():

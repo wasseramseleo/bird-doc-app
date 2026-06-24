@@ -147,16 +147,18 @@
         </mat-autocomplete>
         <mat-error>Art ist erforderlich.</mat-error>
       </mat-form-field>
-      <mat-form-field appearance="outline" floatLabel="always">
-        <mat-label>Status</mat-label>
-        <mat-select formControlName="bird_status" #statusSelect
-                    (keydown)="onSelectKeydown($event, 'bird_status', birdStatusOptions, statusSelect)">
-          @for (option of birdStatusOptions; track option.value) {
-            <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
-          }
-        </mat-select>
-        <mat-error>Status ist erforderlich.</mat-error>
-      </mat-form-field>
+      @if (!isSentinel()) {
+        <mat-form-field appearance="outline" floatLabel="always">
+          <mat-label>Status</mat-label>
+          <mat-select formControlName="bird_status" #statusSelect
+                      (keydown)="onSelectKeydown($event, 'bird_status', birdStatusOptions, statusSelect)">
+            @for (option of birdStatusOptions; track option.value) {
+              <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
+            }
+          </mat-select>
+          <mat-error>Status ist erforderlich.</mat-error>
+        </mat-form-field>
+      }
 
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Ringgröße</mat-label>
@@ -182,6 +184,14 @@
         }
       </mat-form-field>
 
+      @if (!isSentinel()) {
+        <button mat-button type="button" class="destroyed-ring-link"
+                data-testid="destroyed-ring-button"
+                (click)="onDestroyedRing()">
+          Ring vernichtet
+        </button>
+      }
+
       @if (isRecatch()) {
         <button mat-icon-button type="button" (click)="fetchRingHistory()"
                 [disabled]="!entryForm.get('ring_size')?.value || !entryForm.get('ring_number')?.value"
@@ -195,6 +205,7 @@
       }
     </div>
 
+    @if (!isSentinel()) {
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Netznummer</mat-label>
@@ -305,6 +316,7 @@
         <input matInput type="number" formControlName="weight_gram">
       </mat-form-field>
     </div>
+    }
 
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always" class="full-width">
@@ -312,7 +324,7 @@
         <textarea matInput formControlName="comment" rows="3"></textarea>
       </mat-form-field>
     </div>
-    @if (showOptionalFields()) {
+    @if (showOptionalFields() && !isSentinel()) {
       <div class="form-section-checkboxes">
         <mat-checkbox formControlName="has_mites">Milben</mat-checkbox>
         <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
