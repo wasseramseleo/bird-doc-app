@@ -68,6 +68,10 @@ class Species(models.Model):
         blank=True,
         verbose_name=_("Empfohlene Ringgröße"),
     )
+    is_sentinel = models.BooleanField(
+        default=False,
+        verbose_name=_("Spezial-Art (kein Vogel)"),
+    )
 
     def __str__(self):
         return f"{self.common_name_de} ({self.scientific_name})"
@@ -255,6 +259,8 @@ class DataEntry(models.Model):
         choices=BirdStatus.choices,
         default=BirdStatus.FIRST_CATCH,
         verbose_name=_("Status"),
+        null=True,
+        blank=True,
     )
     fat_deposit = models.PositiveSmallIntegerField(null=True, blank=True)
     muscle_class = models.PositiveSmallIntegerField(
@@ -265,10 +271,18 @@ class DataEntry(models.Model):
         blank=True,
     )
     age_class = models.PositiveSmallIntegerField(
-        choices=AgeClass.choices, default=AgeClass.UNKNOWN, verbose_name=_("Alter")
+        choices=AgeClass.choices,
+        default=AgeClass.UNKNOWN,
+        verbose_name=_("Alter"),
+        null=True,
+        blank=True,
     )
     sex = models.PositiveSmallIntegerField(
-        choices=Sex.choices, default=Sex.UNKNOWN, verbose_name=_("Geschlecht")
+        choices=Sex.choices,
+        default=Sex.UNKNOWN,
+        verbose_name=_("Geschlecht"),
+        null=True,
+        blank=True,
     )
     small_feather_int = models.PositiveSmallIntegerField(
         choices=SmallFeatherIntMoult.choices,

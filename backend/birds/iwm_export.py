@@ -30,7 +30,7 @@ def _build_comment(entry):
 COLUMN_MAP = {
     "Ring": lambda e: SCHEME_CODE,
     "Ringnummer": lambda e: f"{e.ring.size}{e.ring.number}",
-    "Ringstatus": lambda e: e.bird_status.upper(),
+    "Ringstatus": lambda e: e.bird_status.upper() if e.bird_status else None,
     "Art": lambda e: e.species.common_name_de,
     "Geschlecht": lambda e: e.sex,
     "Alter": lambda e: e.age_class,
