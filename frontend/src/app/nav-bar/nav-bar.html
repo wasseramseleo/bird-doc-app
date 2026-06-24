@@ -34,20 +34,16 @@
         <span>Alle Projekte …</span>
       </button>
     </mat-menu>
-    <a mat-button routerLink="/data-entries">
-      <mat-icon>list</mat-icon>
-      <span>Letzte Fänge</span>
-    </a>
   }
   <span class="spacer"></span>
-  @if (isStaff()) {
+  @if (currentProject()) {
     <a
       mat-button
-      aria-label="Django-Administration öffnen"
-      [href]="adminUrl"
+      class="letzte-faenge"
+      routerLink="/data-entries"
+      routerLinkActive="letzte-faenge--active"
     >
-      <mat-icon>build</mat-icon>
-      <span>Administration</span>
+      <span>Letzte Fänge</span>
     </a>
   }
   @if (currentProject()) {
@@ -66,6 +62,17 @@
     <mat-icon>arrow_drop_down</mat-icon>
   </button>
   <mat-menu #userMenu="matMenu">
+    @if (isStaff()) {
+      <a
+        mat-menu-item
+        aria-label="Django-Administration öffnen"
+        [href]="adminUrl"
+      >
+        <mat-icon>build</mat-icon>
+        <span>Administration</span>
+      </a>
+      <mat-divider></mat-divider>
+    }
     <button mat-menu-item (click)="onLogout()">
       <mat-icon>logout</mat-icon>
       <span>Abmelden</span>

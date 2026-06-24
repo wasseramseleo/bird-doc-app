@@ -7,7 +7,9 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 
 import { NavBar } from './nav-bar';
 import { ProjectService } from '../service/project.service';
+import { AuthService } from '../service/auth.service';
 import { Project } from '../models/project.model';
+import { environment } from '../../environments/environment';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -59,6 +61,23 @@ function activate(
   ctx.fixture.detectChanges();
   ctx.httpMock.expectOne((r) => r.url.endsWith('/projects/')).flush(page0(list));
   ctx.fixture.detectChanges();
+}
+
+function signIn(ctx: ReturnType<typeof setup>, isStaff: boolean): void {
+  TestBed.inject(AuthService).currentUser.set({
+    username: 'fre',
+    handle: 'FRE',
+    isStaff,
+  });
+}
+
+function openUserMenu(ctx: ReturnType<typeof setup>): HTMLElement[] {
+  const trigger = ctx.fixture.nativeElement.querySelector('.user-trigger') as HTMLElement;
+  trigger.click();
+  ctx.fixture.detectChanges();
+  return Array.from(
+    ctx.overlay.getContainerElement().querySelectorAll('.mat-mdc-menu-item'),
+  ) as HTMLElement[];
 }
 
 function openSwitcher(ctx: ReturnType<typeof setup>): HTMLElement[] {
@@ -163,5 +182,103 @@ describe('NavBar', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.new-fang')).toBeNull();
+  });
+
+  it('renders "Letzte Fänge" in the right zone linking to /data-entries', () => {
+    const ctx = setup();
+    activate(ctx, makeProject());
+
+    const el: HTMLElement = ctx.fixture.nativeElement;
+    const link = el.querySelector('.letzte-faenge') as HTMLAnchorElement;
+    expect(link).withContext('Letzte Fänge link').not.toBeNull();
+    expect(link.getAttribute('href')).toBe('/data-entries');
+    expect(link.textContent).toContain('Letzte Fänge');
+
+    const spacer = el.querySelector('.spacer') as HTMLElement;
+    expect(
+      spacer.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).withContext('Letzte Fänge sits after the spacer (right zone)').toBeTruthy();
+  });
+
+  it('does not render "Letzte Fänge" in the picker state', () => {
+    const { fixture, projectService } = setup();
+    expect(projectService.currentProject()).toBeNull();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.letzte-faenge')).toBeNull();
+  });
+
+  it('highlights "Letzte Fänge" when on /data-entries via routerLinkActive', async () => {
+    TestBed.configureTestingModule({
+      imports: [NavBar],
+      providers: [
+        provideRouter([{ path: 'data-entries', children: [] }]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+      ],
+    });
+    const fixture = TestBed.createComponent(NavBar);
+    const projectService = TestBed.inject(ProjectService);
+    const httpMock = TestBed.inject(HttpTestingController);
+    const router = TestBed.inject(Router);
+
+    projectService.setCurrent(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/')).flush(page0([makeProject()]));
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('.letzte-faenge') as HTMLElement;
+    expect(link.classList.contains('letzte-faenge--active'))
+      .withContext('not active before navigation')
+      .toBeFalse();
+
+    await router.navigateByUrl('/data-entries');
+    fixture.detectChanges();
+
+    expect(link.classList.contains('letzte-faenge--active'))
+      .withContext('active once on /data-entries')
+      .toBeTrue();
+  });
+
+  it('does not render a top-level "Administration" button in the bar', () => {
+    const ctx = setup();
+    signIn(ctx, true);
+    activate(ctx, makeProject());
+
+    const bar: HTMLElement = ctx.fixture.nativeElement;
+    expect(bar.textContent).not.toContain('Administration');
+  });
+
+  it('shows Administration in the user menu before Abmelden for staff, linking to admin', () => {
+    const ctx = setup();
+    signIn(ctx, true);
+    activate(ctx, makeProject());
+
+    const items = openUserMenu(ctx);
+    const labels = items.map((i) => i.textContent ?? '');
+    const adminIndex = labels.findIndex((t) => t.includes('Administration'));
+    const logoutIndex = labels.findIndex((t) => t.includes('Abmelden'));
+
+    expect(adminIndex).withContext('Administration present in user menu').toBeGreaterThan(-1);
+    expect(logoutIndex).withContext('Abmelden present in user menu').toBeGreaterThan(-1);
+    expect(adminIndex).withContext('Administration sits above Abmelden').toBeLessThan(logoutIndex);
+
+    const adminItem = items[adminIndex] as HTMLAnchorElement;
+    expect(adminItem.getAttribute('href')).toBe(environment.adminUrl);
+  });
+
+  it('never shows Administration for non-staff users', () => {
+    const ctx = setup();
+    signIn(ctx, false);
+    activate(ctx, makeProject());
+
+    expect(ctx.fixture.nativeElement.textContent).not.toContain('Administration');
+
+    const labels = openUserMenu(ctx).map((i) => i.textContent ?? '');
+    expect(labels.some((t) => t.includes('Administration')))
+      .withContext('no Administration in the user menu for non-staff')
+      .toBeFalse();
+    expect(labels.some((t) => t.includes('Abmelden'))).toBeTrue();
   });
 });
