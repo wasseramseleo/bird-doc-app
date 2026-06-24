@@ -41,6 +41,11 @@ function setup() {
 }
 
 describe('HomeComponent', () => {
+  // selectProject() persists the chosen Projekt to localStorage via the real
+  // ProjectService; clear it so the choice can't leak into other specs (e.g.
+  // NavBar rehydrating a stale project under Jasmine's random test order).
+  afterEach(() => localStorage.clear());
+
   it('lands on the data-entry hub when a project is selected', () => {
     const { component, router, projectService } = setup();
     const navigate = spyOn(router, 'navigateByUrl').and.stub();

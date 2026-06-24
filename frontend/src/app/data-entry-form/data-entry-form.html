@@ -79,6 +79,11 @@
 
   <form [formGroup]="entryForm" (ngSubmit)="onSubmit()" class="data-entry-form" novalidate
         [class.edit-mode]="isEditMode()">
+    @if (capsLockOn()) {
+      <div class="capslock-hint" data-testid="capslock-hint" role="status">
+        ⚠️ Feststelltaste (Caps Lock) ist aktiv
+      </div>
+    }
     @if (isEditMode()) {
       <div class="edit-mode-badge">Bearbeitungsmodus</div>
     }
@@ -94,7 +99,8 @@
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Station</mat-label>
         <input type="text" matInput formControlName="ringing_station" [matAutocomplete]="stationAuto" selectOnTab>
-        <mat-autocomplete #stationAuto="matAutocomplete" [displayWith]="displayStation">
+        <mat-autocomplete #stationAuto="matAutocomplete" [displayWith]="displayStation"
+                          (optionSelected)="onAutocompleteAccepted('ringing_station', $event)">
           @for (option of filteredStations | async; track option.handle) {
             <mat-option [value]="option">{{ option.name }}</mat-option>
           }
@@ -105,7 +111,8 @@
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Beringer</mat-label>
         <input type="text" matInput formControlName="staff" [matAutocomplete]="staffAuto" selectOnTab>
-        <mat-autocomplete #staffAuto="matAutocomplete" [displayWith]="displayScientist">
+        <mat-autocomplete #staffAuto="matAutocomplete" [displayWith]="displayScientist"
+                          (optionSelected)="onAutocompleteAccepted('staff', $event)">
           @for (option of filteredScientists | async; track option.id) {
             <mat-option [value]="option">{{ option.full_name }} ({{ option.handle }})</mat-option>
           }

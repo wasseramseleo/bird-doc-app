@@ -82,6 +82,10 @@ import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialo
   templateUrl: './data-entry-form.html',
   styleUrls: ['./data-entry-form.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '(keydown)': 'onKeydown($event)',
+    '(keyup)': 'onKeyup($event)',
+  },
 })
 export class DataEntryFormComponent implements OnInit {
   // Services and Router
@@ -104,6 +108,9 @@ export class DataEntryFormComponent implements OnInit {
   readonly loading = signal<boolean>(false);
   // MO-3 submit feedback: drives the brief green "Gespeichert ✓" button state.
   readonly saved = signal<boolean>(false);
+  // #23: a prominent CapsLock warning. Beringer type ring numbers and codes
+  // blind; an unnoticed CapsLock would silently corrupt single-char shortcuts.
+  readonly capsLockOn = signal<boolean>(false);
 
   // Recapture History State
   readonly recaptureHistory = signal<DataEntry[]>([]);
@@ -480,6 +487,17 @@ export class DataEntryFormComponent implements OnInit {
     if (species && species.ring_size) {
       this.entryForm.get('ring_size')?.setValue(species.ring_size);
     }
+    this.onAutocompleteAccepted('species', event);
+  }
+
+  // #23: accepting an autocomplete option (via Enter or click) advances focus to
+  // the next field, keeping the keyboard workflow moving. The inline "neuer
+  // Beringer" option carries a null value and must not advance — its own flow
+  // handles focus once the dialog closes.
+  onAutocompleteAccepted(controlName: string, event: MatAutocompleteSelectedEvent): void {
+    if (event.option.value) {
+      this.focusNext(controlName);
+    }
   }
 
   displaySpecies(species: Species): string {
@@ -505,9 +523,11 @@ export class DataEntryFormComponent implements OnInit {
       next: (response) => {
         if (response.results.length > 0) {
           this.recaptureHistory.set(response.results);
+          this.prefillFromPriorCatch(response.results);
           this.snackBar.open(`${response.results.length} frühere Einträge für diesen Ring gefunden.`, 'Schließen', {duration: 3000});
         } else {
           this.recaptureHistory.set([]);
+          // Non-blocking: a bird ringed outside the app can still be recorded.
           this.snackBar.open('Keine früheren Einträge für diesen Ring gefunden.', 'Schließen', {duration: 3000});
         }
         this.loading.set(false);
@@ -517,6 +537,21 @@ export class DataEntryFormComponent implements OnInit {
         this.snackBar.open('Fehler beim Laden der Ringhistorie.', 'Schließen', {duration: 3000});
       }
     });
+  }
+
+
+  // #23: identify the bird from its ring history. Art + Geschlecht carry over
+  // from the most recent prior catch; age changes between catches and every
+  // measurement is taken afresh, so those are deliberately left empty.
+  private prefillFromPriorCatch(history: DataEntry[]): void {
+    const mostRecent = history.reduce((latest, entry) =>
+      entry.date_time > latest.date_time ? entry : latest,
+    );
+    this.entryForm.patchValue({
+      species: mostRecent.species ?? null,
+      sex: mostRecent.sex ?? null,
+    });
+    this.selectedSpecies.set(mostRecent.species ?? null);
   }
 
 
@@ -563,6 +598,7 @@ export class DataEntryFormComponent implements OnInit {
           control.markAsTouched();
         }
       });
+      this.focusFirstInvalid();
       return;
     }
 
@@ -632,6 +668,60 @@ export class DataEntryFormComponent implements OnInit {
     return payload;
   }
 
+  // #23: a single form-level keyboard dispatch. Every keydown refreshes the
+  // CapsLock indicator and routes save / Enter handling.
+  onKeydown(event: KeyboardEvent): void {
+    this.capsLockOn.set(event.getModifierState('CapsLock'));
+
+    // Strg+S / Cmd+S saves and suppresses the browser "save page" dialog. Works
+    // in both create and edit mode; onSubmit() shows errors on an invalid form.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      this.onSubmit();
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      this.onEnter(event);
+    }
+  }
+
+  // #23: a single context-dependent Enter dispatch. Enter never submits the
+  // record except when the save button itself is focused; everywhere else it
+  // advances the field workflow instead of firing the implicit form submit.
+  private onEnter(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement;
+
+    // The save button: let Enter activate it (native button → submit).
+    if (target instanceof HTMLButtonElement && target.type === 'submit') {
+      return;
+    }
+    // A textarea (Bemerkungen): Enter inserts a newline.
+    if (target instanceof HTMLTextAreaElement) {
+      return;
+    }
+
+    // Otherwise Enter must never submit the form.
+    event.preventDefault();
+
+    const controlName = target.getAttribute('formControlName');
+
+    // In a Wiederfang, Enter in the Ringnummer field runs the ring-history
+    // lookup (and prefill) instead of advancing — the Beringer's first move.
+    if (controlName === 'ring_number' && this.isRecatch()) {
+      this.fetchRingHistory();
+      return;
+    }
+
+    if (controlName) {
+      this.focusNext(controlName);
+    }
+  }
+
+  onKeyup(event: KeyboardEvent): void {
+    this.capsLockOn.set(event.getModifierState('CapsLock'));
+  }
+
   onSelectKeydown(event: KeyboardEvent, controlName: string, options: SelectOption<any>[], selectComponent: MatSelect): void {
     if (event.ctrlKey || event.altKey || event.metaKey) {
       return;
@@ -644,6 +734,17 @@ export class DataEntryFormComponent implements OnInit {
       selectComponent.close();
       this.focusNext(controlName);
     }
+  }
+
+  // #23: on a rejected save, jump to the first invalid field in focus order so
+  // the Beringer can fix it without hunting for the offending field.
+  private focusFirstInvalid(): void {
+    const firstInvalid = this.focusOrder.find(name => this.entryForm.get(name)?.invalid);
+    if (!firstInvalid) {
+      return;
+    }
+    const el = document.querySelector(`[formControlName="${firstInvalid}"]`) as HTMLElement | null;
+    el?.focus();
   }
 
   private focusNext(currentControlName: string): void {

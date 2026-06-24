@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -19,6 +19,50 @@ import { RingSize } from '../models/ring.model';
 describe('DataEntryFormComponent', () => {
   let component: DataEntryFormComponent;
   let fixture: ComponentFixture<DataEntryFormComponent>;
+
+  // Shared create-mode setup for the #23 keyboard tests: a project so the form
+  // does not redirect home, plus the one-off sentinel-Art fetch on init.
+  const createProject = (): Project =>
+    ({
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    }) as Project;
+
+  async function setupCreateMode(): Promise<HttpTestingController> {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [DataEntryFormComponent],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+        {
+          provide: ProjectService,
+          useValue: {
+            currentProject: signal<Project | null>(createProject()),
+            setCurrent: () => {},
+            clear: () => {},
+          },
+        },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(DataEntryFormComponent);
+    component = fixture.componentInstance;
+    const httpMock = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+      .flush({ count: 0, next: null, previous: null, results: [] });
+    return httpMock;
+  }
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -478,6 +522,253 @@ describe('DataEntryFormComponent', () => {
 
       expect(f.componentInstance.isSentinel()).toBe(true);
       expect(f.nativeElement.querySelector('[formControlName="age_class"]')).toBeNull();
+    });
+  });
+
+  describe('keyboard save shortcut (Strg+S / Cmd+S) (#23)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.Medium,
+        ring_number: '901234',
+      });
+    }
+
+    it('saves the new record (POST) and prevents the browser save-page dialog', () => {
+      fillValidWiederfang();
+      const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true });
+
+      component.onKeydown(event);
+
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('also saves on Cmd+S, but a bare "s" keystroke never saves', () => {
+      const submitSpy = spyOn(component, 'onSubmit').and.callThrough();
+
+      component.onKeydown(new KeyboardEvent('keydown', { key: 's', metaKey: true, cancelable: true }));
+      expect(submitSpy).toHaveBeenCalledTimes(1);
+
+      component.onKeydown(new KeyboardEvent('keydown', { key: 's', cancelable: true }));
+      expect(submitSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('on an invalid form shows errors and focuses the first invalid field, without saving', () => {
+      // A fresh create form is missing the required Station (first in focus order).
+      expect(component.entryForm.valid).toBe(false);
+
+      component.onKeydown(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }));
+
+      httpMock.expectNone((r) => r.method === 'POST');
+      expect(component.entryForm.get('ringing_station')!.touched).toBe(true);
+      const station = fixture.nativeElement.querySelector('[formControlName="ringing_station"]');
+      expect(document.activeElement).toBe(station);
+    });
+  });
+
+  describe('Enter dispatch (#23)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    const el = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
+
+    it('advances focus to the next field on Enter and suppresses the implicit submit', fakeAsync(() => {
+      const netLocation = el('net_location');
+      const netHeight = el('net_height');
+      netLocation.focus();
+
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      netLocation.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(netHeight);
+    }));
+
+    it('lets Enter on the focused save button submit the form (the one allowed case)', () => {
+      const saveButton = fixture.nativeElement.querySelector(
+        'button[type="submit"]',
+      ) as HTMLButtonElement;
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      saveButton.dispatchEvent(event);
+
+      // Not suppressed: the native button activation (→ submit) is allowed to run.
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('keeps Enter as a newline inside the Bemerkungen textarea', () => {
+      const textarea = el('comment');
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      textarea.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('runs the ring-history search on Enter in the Ringnummer field during a Wiederfang', () => {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.Medium,
+        ring_number: '901234',
+      });
+      fixture.detectChanges();
+
+      const ringNumber = el('ring_number');
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      ringNumber.dispatchEvent(event);
+
+      const search = httpMock.expectOne(
+        (r) =>
+          r.method === 'GET' &&
+          r.url.endsWith('/birds/data-entries/') &&
+          r.params.get('ring_number') === '901234',
+      );
+      search.flush({ count: 0, next: null, previous: null, results: [] });
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('advances focus to the next field when an autocomplete option is accepted', fakeAsync(() => {
+      const staff = el('staff'); // the field after ringing_station in focus order
+      const selected = { option: { value: { handle: 'STAMT', name: 'Linz' } } } as never;
+
+      component.onAutocompleteAccepted('ringing_station', selected);
+      tick(50);
+
+      expect(document.activeElement).toBe(staff);
+    }));
+
+    it('does not advance for the inline "neuer Beringer" option (null value)', fakeAsync(() => {
+      const staffField = el('staff');
+      staffField.focus();
+      const createOption = { option: { value: null } } as never;
+
+      component.onAutocompleteAccepted('staff', createOption);
+      tick(50);
+
+      // Focus stays put so the create-Beringer dialog flow is not disrupted.
+      expect(document.activeElement).toBe(staffField);
+    }));
+  });
+
+  describe('recapture prefill from ring history (#23)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function startWiederfangAndSearch(results: Partial<DataEntry>[]) {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.Medium,
+        ring_number: '901234',
+      });
+      component.fetchRingHistory();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .flush({ count: results.length, next: null, previous: null, results });
+    }
+
+    it('prefills Art and Geschlecht from the prior catch on a single match, leaving age and measurements empty', () => {
+      const priorSpecies = { id: 's1', common_name_de: 'Kohlmeise' } as unknown as Species;
+      startWiederfangAndSearch([
+        {
+          id: '9',
+          species: priorSpecies,
+          sex: Sex.Female,
+          age_class: AgeClass.NotThisYear,
+          tarsus: 19,
+          wing_span: 73,
+          weight_gram: 18,
+          date_time: '2024-05-01T08:30:00Z',
+        } as unknown as DataEntry,
+      ]);
+
+      expect(component.entryForm.get('species')!.value).toEqual(priorSpecies);
+      expect(component.entryForm.get('sex')!.value).toBe(Sex.Female);
+      // Age changes between catches and measurements are re-measured: never copied.
+      expect(component.entryForm.get('age_class')!.value).toBe(AgeClass.Unknown);
+      expect(component.entryForm.get('tarsus')!.value).toBeNull();
+      expect(component.entryForm.get('wing_span')!.value).toBeNull();
+      expect(component.entryForm.get('weight_gram')!.value).toBeNull();
+    });
+
+    it('takes Art and Geschlecht from the most recent catch when several exist', () => {
+      const older = {
+        id: '1',
+        species: { id: 'old', common_name_de: 'Blaumeise' } as unknown as Species,
+        sex: Sex.Male,
+        date_time: '2020-01-01T00:00:00Z',
+      } as unknown as DataEntry;
+      const newer = {
+        id: '2',
+        species: { id: 'new', common_name_de: 'Kohlmeise' } as unknown as Species,
+        sex: Sex.Female,
+        date_time: '2024-05-01T08:30:00Z',
+      } as unknown as DataEntry;
+
+      // Deliberately out of order to prove selection is by date, not position.
+      startWiederfangAndSearch([older, newer]);
+
+      expect(component.entryForm.get('species')!.value).toEqual(newer.species);
+      expect(component.entryForm.get('sex')!.value).toBe(Sex.Female);
+    });
+
+    it('leaves Art and Geschlecht empty and stays non-blocking when no prior catch is found', () => {
+      startWiederfangAndSearch([]);
+
+      expect(component.entryForm.get('species')!.value).toBeNull();
+      expect(component.entryForm.get('sex')!.value).toBe(Sex.Unknown);
+      expect(component.recaptureHistory()).toEqual([]);
+    });
+  });
+
+  describe('CapsLock indicator (#23)', () => {
+    function keyEvent(capsLockOn: boolean): KeyboardEvent {
+      return {
+        key: 'a',
+        getModifierState: (modifier: string) => modifier === 'CapsLock' && capsLockOn,
+        preventDefault: () => {},
+      } as unknown as KeyboardEvent;
+    }
+
+    const hint = () =>
+      fixture.nativeElement.querySelector('[data-testid="capslock-hint"]') as HTMLElement | null;
+
+    it('shows a hint while CapsLock is active and hides it when released', () => {
+      expect(hint()).toBeNull();
+
+      component.onKeydown(keyEvent(true));
+      fixture.detectChanges();
+      expect(hint()).not.toBeNull();
+
+      component.onKeyup(keyEvent(false));
+      fixture.detectChanges();
+      expect(hint()).toBeNull();
     });
   });
 });

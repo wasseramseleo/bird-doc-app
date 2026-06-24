@@ -33,7 +33,7 @@ Override the base with `--base <branch>` if needed.
 ```bash
 cd ../bda-23
 claude
-> implement GitHub issue #23; follow its acceptance criteria, run the tests, open a PR against feedback-impl
+> /tdd implement GitHub issue #23; follow its acceptance criteria, run the tests, open a PR against feedback-impl. Use the playwright plugin for visual validation if you change the frontend. 
 ```
 
 In WebStorm: open each `../bda-<n>` as its own project window and run `claude` in
