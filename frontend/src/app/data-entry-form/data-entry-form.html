@@ -170,9 +170,8 @@
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Ringgröße</mat-label>
         <mat-select
-          #ringSizeSelect
           formControlName="ring_size"
-          (keydown)="onSelectKeydown($event, 'ring_size', ringSizeOptions, ringSizeSelect)">
+          (selectionChange)="onRingSizeSelected($event)">
           @for (option of ringSizeOptions; track option.value) {
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
@@ -182,7 +181,7 @@
 
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Ringnummer</mat-label>
-        <span matTextPrefix></span>
+        <span matTextPrefix class="ring-size-prefix">{{ ringSizePrefix() }}</span>
         <input matInput formControlName="ring_number" pattern="[0-9]*" inputmode="numeric">
         @if (entryForm.controls.ring_number.hasError('required')) {
           <mat-error>Ringnummer ist erforderlich.</mat-error>

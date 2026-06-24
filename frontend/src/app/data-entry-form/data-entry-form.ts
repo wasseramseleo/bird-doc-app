@@ -14,7 +14,7 @@ import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
 import {ActivatedRoute, Router} from '@angular/router';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
-import {MatSelect, MatSelectModule} from '@angular/material/select';
+import {MatSelect, MatSelectChange, MatSelectModule} from '@angular/material/select';
 import {MatButtonModule} from '@angular/material/button';
 import {MatAutocompleteModule, MatAutocompleteSelectedEvent} from '@angular/material/autocomplete';
 import {MatDatepickerModule} from '@angular/material/datepicker';
@@ -153,6 +153,9 @@ export class DataEntryFormComponent implements OnInit {
 
   // Signals for reactive form values
   private readonly ringSize = toSignal(this.entryForm.get('ring_size')!.valueChanges);
+  // #25: the selected ring size reads together with the number — it is shown as a
+  // text prefix directly before the Ringnummer field (e.g. `V 1234`).
+  readonly ringSizePrefix = computed(() => this.ringSize() ?? '');
   private readonly birdStatus = toSignal(this.entryForm.get('bird_status')!.valueChanges);
   readonly isRecatch = computed(() => this.birdStatus() === BirdStatus.ReCatch);
 
@@ -295,19 +298,14 @@ export class DataEntryFormComponent implements OnInit {
     key: '6'
   }, {value: FatClass.Seven, viewValue: '7', key: '7'}, {value: FatClass.Eight, viewValue: '8', key: '8'},];
 
-  ringSizeOptions: SelectOption<RingSize>[] = [{
-    value: RingSize.XSmall,
-    viewValue: 'V ()',
-    key: 'v'
-  }, {value: RingSize.Small, viewValue: 'T ()', key: 't'}, {
-    value: RingSize.Medium,
-    viewValue: 'S (Medium)',
-    key: 's'
-  }, {value: RingSize.Large, viewValue: 'X ()', key: 'x'}, {
-    value: RingSize.XLarge,
-    viewValue: 'P ()',
-    key: 'p'
-  },];
+  // #25: every Austrian ring size, ordered largest → smallest (the RingSize
+  // member order). The field shows only the bare code; selection is by native
+  // type-ahead, so there is no single-character `key` shortcut (codes like AS/DS
+  // are multi-letter).
+  ringSizeOptions: SelectOption<RingSize>[] = Object.values(RingSize).map((size) => ({
+    value: size,
+    viewValue: size,
+  }));
 
   constructor() {
     // Corrected effect to auto-set ring number.
@@ -477,6 +475,39 @@ export class DataEntryFormComponent implements OnInit {
       if (confirmed) {
         this.entryForm.get('species')!.setValue(sentinel);
         this.selectedSpecies.set(sentinel);
+      }
+    });
+  }
+
+  // #25: an off-recommendation ring size must be a deliberate choice. When the
+  // Beringer picks a size that differs from the species' *existing* Empfohlene
+  // Ringgröße, confirm it immediately on selection — not at save time. Species
+  // with no recommendation (including the sex-dimorphic NULL species) are freely
+  // selectable with no prompt. Cancelling reverts to the recommended size.
+  //
+  // Only user-initiated selections reach this handler: the auto-fill on species
+  // selection uses setValue(), which does not emit MatSelect.selectionChange.
+  onRingSizeSelected(event: MatSelectChange): void {
+    const recommended = this.selectedSpecies()?.ring_size ?? null;
+    const chosen = event.value as RingSize;
+    if (!recommended || chosen === recommended) {
+      return;
+    }
+    const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
+      ConfirmDialogComponent,
+      {
+        data: {
+          title: 'Von empfohlener Ringgröße abweichen?',
+          message: `Für diese Art ist Ringgröße ${recommended} empfohlen. Möchtest du wirklich die abweichende Größe ${chosen} verwenden?`,
+          confirmLabel: 'Größe übernehmen',
+          cancelLabel: 'Abbrechen',
+        },
+        width: '420px',
+      },
+    );
+    ref.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) {
+        this.entryForm.get('ring_size')?.setValue(recommended);
       }
     });
   }

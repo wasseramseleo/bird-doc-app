@@ -282,7 +282,7 @@ describe('DataEntryFormComponent', () => {
         ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
         staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
         species: sentinel as never,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
         bird_status: null,
       });
@@ -408,9 +408,9 @@ describe('DataEntryFormComponent', () => {
           id: 's1',
           common_name_de: 'Kohlmeise',
           scientific_name: 'Parus major',
-          ring_size: RingSize.Medium,
+          ring_size: RingSize.S,
         },
-        ring: { id: 'r1', number: '901234', size: RingSize.Medium },
+        ring: { id: 'r1', number: '901234', size: RingSize.S },
         staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
         ringing_station: station,
         project: null,
@@ -474,7 +474,7 @@ describe('DataEntryFormComponent', () => {
       const form = f.componentInstance.entryForm;
       expect(f.componentInstance.isEditMode()).toBe(true);
       expect(form.get('species')!.value).toEqual(savedEntry().species);
-      expect(form.get('ring_size')!.value).toBe(RingSize.Medium);
+      expect(form.get('ring_size')!.value).toBe(RingSize.S);
       expect(form.get('ring_number')!.value).toBe('901234');
       expect(form.get('bird_status')!.value).toBe(BirdStatus.ReCatch);
       expect(form.get('comment')!.value).toBe('Wiederfang am Hauptnetz');
@@ -540,7 +540,7 @@ describe('DataEntryFormComponent', () => {
         staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
         species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
         bird_status: BirdStatus.ReCatch,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
       });
     }
@@ -630,7 +630,7 @@ describe('DataEntryFormComponent', () => {
     it('runs the ring-history search on Enter in the Ringnummer field during a Wiederfang', () => {
       component.entryForm.patchValue({
         bird_status: BirdStatus.ReCatch,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
       });
       fixture.detectChanges();
@@ -684,7 +684,7 @@ describe('DataEntryFormComponent', () => {
     function startWiederfangAndSearch(results: Partial<DataEntry>[]) {
       component.entryForm.patchValue({
         bird_status: BirdStatus.ReCatch,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
       });
       component.fetchRingHistory();
@@ -744,6 +744,159 @@ describe('DataEntryFormComponent', () => {
       expect(component.entryForm.get('species')!.value).toBeNull();
       expect(component.entryForm.get('sex')!.value).toBe(Sex.Unknown);
       expect(component.recaptureHistory()).toEqual([]);
+    });
+  });
+
+  describe('Ringgröße selector — all 28 sizes (#25)', () => {
+    it('offers all 28 Austrian ring sizes, ordered by inner diameter largest → smallest', () => {
+      const expected = [
+        'AS', 'BS', 'C', 'D', 'DS', 'DA', 'F', 'FA', 'G', 'GA', 'H', 'HA', 'K',
+        'KA', 'L', 'LA', 'M', 'N', 'NA', 'P', 'PA', 'R', 'S', 'SA', 'T', 'TA',
+        'V', 'X',
+      ];
+      expect(component.ringSizeOptions.map((o) => o.value)).toEqual(expected as never[]);
+    });
+
+    it('shows only the bare code as the label — no parenthesised description', () => {
+      for (const option of component.ringSizeOptions) {
+        expect(option.viewValue).toBe(option.value);
+        expect(option.viewValue).not.toContain('(');
+      }
+    });
+
+    it('drops the single-character ring-size shortcut so multi-letter codes work via type-ahead', () => {
+      for (const option of component.ringSizeOptions) {
+        expect(option.key).toBeUndefined();
+      }
+    });
+  });
+
+  describe('Ringgröße prefix before the Ringnummer (#25)', () => {
+    const prefix = () =>
+      fixture.nativeElement.querySelector(
+        '[formControlName="ring_number"]',
+      )?.closest('mat-form-field')?.querySelector('[matTextPrefix]') as HTMLElement | null;
+
+    it('shows no size prefix while no Ringgröße is selected', () => {
+      expect(prefix()?.textContent?.trim()).toBe('');
+    });
+
+    it('shows the selected size code as the prefix before the Ringnummer (e.g. V 1234)', () => {
+      component.entryForm.get('ring_size')!.setValue(RingSize.V);
+      fixture.detectChanges();
+
+      expect(prefix()?.textContent?.trim()).toBe('V');
+    });
+
+    it('updates the prefix when the size changes to a multi-letter code', () => {
+      component.entryForm.get('ring_size')!.setValue(RingSize.AS);
+      fixture.detectChanges();
+
+      expect(prefix()?.textContent?.trim()).toBe('AS');
+    });
+  });
+
+  describe('off-recommendation Ringgröße confirmation modal (#25)', () => {
+    const speciesWith = (ring_size: RingSize | null): Species => ({
+      id: 's1',
+      common_name_de: 'Kohlmeise',
+      common_name_en: '',
+      scientific_name: 'Parus major',
+      family_name: '',
+      order_name: '',
+      ring_size,
+      is_sentinel: false,
+    });
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const dialogMock = { open: jasmine.createSpy('open') };
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: { currentProject: signal<Project | null>(project), setCurrent: () => {}, clear: () => {} },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+    });
+
+    function selectSpecies(species: Species) {
+      component.onSpeciesSelected({ option: { value: species } } as MatAutocompleteSelectedEvent);
+    }
+
+    it('opens a confirmation modal when the chosen size differs from an existing recommendation', () => {
+      selectSpecies(speciesWith(RingSize.S)); // Empfohlene Ringgröße = S
+
+      component.onRingSizeSelected({ value: RingSize.X } as never);
+
+      expect(dialogMock.open).toHaveBeenCalled();
+    });
+
+    it('keeps the off-recommendation size when the modal is confirmed', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      selectSpecies(speciesWith(RingSize.S));
+
+      component.entryForm.get('ring_size')!.setValue(RingSize.X);
+      component.onRingSizeSelected({ value: RingSize.X } as never);
+
+      expect(component.entryForm.get('ring_size')!.value).toBe(RingSize.X);
+    });
+
+    it('reverts to the recommended size when the modal is cancelled', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+      selectSpecies(speciesWith(RingSize.S));
+
+      component.entryForm.get('ring_size')!.setValue(RingSize.X);
+      component.onRingSizeSelected({ value: RingSize.X } as never);
+
+      expect(component.entryForm.get('ring_size')!.value).toBe(RingSize.S);
+    });
+
+    it('does not prompt when the species has no recommended ring size', () => {
+      selectSpecies(speciesWith(null));
+
+      component.onRingSizeSelected({ value: RingSize.X } as never);
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+
+    it('does not prompt when the chosen size equals the recommendation', () => {
+      selectSpecies(speciesWith(RingSize.S));
+
+      component.onRingSizeSelected({ value: RingSize.S } as never);
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
     });
   });
 
