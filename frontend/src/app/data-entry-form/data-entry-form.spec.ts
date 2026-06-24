@@ -9,7 +9,14 @@ import { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { of } from 'rxjs';
 
 import { DataEntryFormComponent } from './data-entry-form';
-import { AgeClass, BirdStatus, DataEntry, Sex } from '../models/data-entry.model';
+import {
+  AgeClass,
+  BirdStatus,
+  DataEntry,
+  Sex,
+  SmallFeatherAppMoult,
+  SmallFeatherIntMoult,
+} from '../models/data-entry.model';
 import { Species } from '../models/species.model';
 import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
@@ -791,6 +798,75 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  describe('conditional Kleingefieder fields (only for Diesjährig / Alter = 3) (#26)', () => {
+    const intControl = () => component.entryForm.get('small_feather_int')!;
+    const appControl = () => component.entryForm.get('small_feather_app')!;
+
+    function setAge(age: AgeClass | null): void {
+      component.entryForm.get('age_class')!.setValue(age as AgeClass);
+      fixture.detectChanges();
+    }
+
+    it('disables both small-feather fields at the initial age class (not Diesjährig)', () => {
+      // The form starts at AgeClass.Unknown (2), so the fields are recorded for
+      // no bird yet and must be disabled.
+      expect(intControl().disabled).toBe(true);
+      expect(appControl().disabled).toBe(true);
+    });
+
+    it('enables both small-feather fields when the age class is Diesjährig (3)', () => {
+      setAge(AgeClass.ThisYear);
+
+      expect(intControl().enabled).toBe(true);
+      expect(appControl().enabled).toBe(true);
+    });
+
+    it('clears and disables both fields when the age class changes away from Diesjährig, leaving no stale value for the export', () => {
+      // Record Kleingefieder for a diesjähriger Vogel...
+      setAge(AgeClass.ThisYear);
+      intControl().setValue(SmallFeatherIntMoult.Many);
+      appControl().setValue(SmallFeatherAppMoult.New);
+
+      // ...then correct the age class to a non-diesjährig value.
+      setAge(AgeClass.NotThisYear);
+
+      expect(intControl().disabled).toBe(true);
+      expect(appControl().disabled).toBe(true);
+      // getRawValue() is the export shape and includes disabled controls, so the
+      // cleared value must hold here, not just in value.
+      const raw = component.entryForm.getRawValue();
+      expect(raw.small_feather_int).toBeNull();
+      expect(raw.small_feather_app).toBeNull();
+    });
+
+    it('keeps the disabled fields visible in the layout (greyed out, not removed)', () => {
+      setAge(AgeClass.NotThisYear);
+
+      const el = (name: string) =>
+        fixture.nativeElement.querySelector(`[formControlName="${name}"]`);
+      expect(el('small_feather_int')).not.toBeNull();
+      expect(el('small_feather_app')).not.toBeNull();
+    });
+
+    it('skips the disabled small-feather fields in the keyboard focus run', fakeAsync(() => {
+      // muscle_class → (small_feather_int, small_feather_app) → hand_wing.
+      // With a non-diesjährig age class the two middle fields are disabled and
+      // must be jumped over, landing focus on hand_wing.
+      setAge(AgeClass.NotThisYear);
+
+      const el = (name: string) =>
+        fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
+      const muscle = el('muscle_class');
+      muscle.focus();
+
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      muscle.dispatchEvent(event);
+      tick(50);
+
+      expect(document.activeElement).toBe(el('hand_wing'));
+    }));
+  });
+
   describe('Ringgröße selector — all 28 sizes (#25)', () => {
     it('offers all 28 Austrian ring sizes, ordered by inner diameter largest → smallest', () => {
       const expected = [
@@ -984,7 +1060,7 @@ describe('DataEntryFormComponent', () => {
         staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
         species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
         bird_status: BirdStatus.ReCatch,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
       });
     }
