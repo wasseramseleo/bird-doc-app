@@ -126,21 +126,45 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["get"], url_path="next-number")
     def next_number(self, request):
         """
-        Calculates the next available ring number for a given ring size.
+        Suggests the next ring number for a given ring size.
+
+        The suggestion is ``max(number) + 1`` over the *first-catch* (Erstfang)
+        rings of that size — rings whose number was newly applied to a bird,
+        excluding recaptures (Wiederfang) of foreign marks. It is scoped to the
+        current project when one is given, falling back to the global first-catch
+        maximum when the project has no such ring, and to ``1`` when none exists
+        anywhere. See issue #22.
         """
         ring_size = request.query_params.get("size")
         if not ring_size:
             return Response({"error": "Ring size parameter is required."}, status=400)
 
-        latest_ring = (
-            Ring.objects.filter(size=ring_size, number__regex=r"^\d+$")
-            .annotate(number_int=Cast("number", IntegerField()))
+        project = request.query_params.get("project")
+
+        first_catches = Ring.objects.filter(
+            size=ring_size,
+            number__regex=r"^\d+$",
+            dataentry__bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+        )
+
+        latest = None
+        if project:
+            latest = self._max_number(first_catches.filter(dataentry__project=project))
+        if latest is None:
+            latest = self._max_number(first_catches)
+
+        next_number = latest + 1 if latest is not None else 1
+        return Response({"next_number": next_number})
+
+    @staticmethod
+    def _max_number(queryset):
+        """Largest integer ring number in the queryset, or None if it is empty."""
+        latest = (
+            queryset.annotate(number_int=Cast("number", IntegerField()))
             .order_by("-number_int")
             .first()
         )
-
-        next_number = int(latest_ring.number) + 1 if latest_ring else 1
-        return Response({"next_number": next_number})
+        return latest.number_int if latest else None
 
 
 class RingingStationViewSet(viewsets.ReadOnlyModelViewSet):

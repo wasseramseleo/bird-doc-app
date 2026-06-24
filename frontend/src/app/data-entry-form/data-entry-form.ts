@@ -309,7 +309,10 @@ export class DataEntryFormComponent implements OnInit {
       const size = this.ringSize();
       const status = this.birdStatus();
       if (size && status === BirdStatus.FirstCatch && !this.isEditMode()) {
-        this.apiService.getNextRingNumber(size).subscribe(res => {
+        // Scope the suggestion to the current Projekt so the next number tracks
+        // this campaign's Erstfang rings rather than the global maximum (#22).
+        const projectId = this.currentProject()?.id;
+        this.apiService.getNextRingNumber(size, projectId).subscribe(res => {
           this.entryForm.get('ring_number')?.setValue(res.next_number.toString());
         });
       }

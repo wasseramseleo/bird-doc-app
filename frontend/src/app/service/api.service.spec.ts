@@ -6,6 +6,7 @@ import { ApiService } from './api.service';
 import { Scientist } from '../models/scientist.model';
 import { DataEntry } from '../models/data-entry.model';
 import { PaginatedApiResponse } from '../models/paginated-api-response.model';
+import { RingSize } from '../models/ring.model';
 
 describe('ApiService', () => {
   let service: ApiService;
@@ -40,6 +41,32 @@ describe('ApiService', () => {
     req.flush(created);
 
     expect(result).toEqual(created);
+  });
+
+  it('getNextRingNumber scopes the suggestion to the given project', () => {
+    let result: number | undefined;
+
+    service.getNextRingNumber(RingSize.XSmall, 'proj-1').subscribe((r) => (result = r.next_number));
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
+    );
+    expect(req.request.params.get('size')).toBe('V');
+    expect(req.request.params.get('project')).toBe('proj-1');
+    req.flush({ next_number: 42 });
+
+    expect(result).toBe(42);
+  });
+
+  it('getNextRingNumber omits the project param when none is given', () => {
+    service.getNextRingNumber(RingSize.XSmall).subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
+    );
+    expect(req.request.params.get('size')).toBe('V');
+    expect(req.request.params.has('project')).toBe(false);
+    req.flush({ next_number: 1 });
   });
 
   it('getDataEntries issues a project-scoped paginated request and maps the response', () => {

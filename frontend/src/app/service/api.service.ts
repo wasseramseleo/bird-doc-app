@@ -65,8 +65,11 @@ export class ApiService {
     return this.http.get<PaginatedApiResponse<Species>>(`${this.apiUrl}/species/`, {params});
   }
 
-  getNextRingNumber(size: RingSize): Observable<{ next_number: number }> {
-    const params = new HttpParams().set('size', size);
+  getNextRingNumber(size: RingSize, projectId?: string): Observable<{ next_number: number }> {
+    let params = new HttpParams().set('size', size);
+    if (projectId) {
+      params = params.set('project', projectId);
+    }
     return this.http.get<{ next_number: number }>(`${this.apiUrl}/rings/next-number/`, {params});
   }
 
