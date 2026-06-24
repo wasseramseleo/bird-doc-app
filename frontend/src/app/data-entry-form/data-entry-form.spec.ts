@@ -1,5 +1,7 @@
-import { signal } from '@angular/core';
+import { LOCALE_ID, signal } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { registerLocaleData } from '@angular/common';
+import localeDeAt from '@angular/common/locales/de-AT';
 import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -22,6 +24,8 @@ import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
+
+registerLocaleData(localeDeAt);
 
 describe('DataEntryFormComponent', () => {
   let component: DataEntryFormComponent;
@@ -79,6 +83,7 @@ describe('DataEntryFormComponent', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideNoopAnimations(),
+        { provide: LOCALE_ID, useValue: 'de-AT' },
       ],
     }).compileComponents();
 
@@ -208,18 +213,51 @@ describe('DataEntryFormComponent', () => {
         'feather_span',
         'wing_span',
         'weight_gram',
+        'fat_deposit',
+        'muscle_class',
         'actions',
       ]);
       expect(component.displayedHistoryColumns).not.toContain('ringing_station');
     });
 
-    it('renders Beringer, Tarsus and Federlänge for a Wiederfang row', () => {
+    it('shows Fett and Muskel columns with their class codes', () => {
       component.recaptureHistory.set([
         {
           date_time: '2024-05-01T08:30:00Z',
           species: { common_name_de: 'Kohlmeise' },
           bird_status: BirdStatus.ReCatch,
-          staff: { full_name: 'Filip Reiter' },
+          staff: { full_name: 'Filip Reiter', handle: 'FRE' },
+          tarsus: 19,
+          feather_span: 54,
+          wing_span: 73,
+          weight_gram: 18,
+          fat_deposit: 3,
+          muscle_class: 2,
+        } as unknown as DataEntry,
+      ]);
+      fixture.detectChanges();
+
+      const headers = Array.from(
+        fixture.nativeElement.querySelectorAll('th[mat-header-cell]'),
+      ).map((th) => (th as HTMLElement).textContent!.trim());
+      expect(headers).toContain('Fett');
+      expect(headers).toContain('Muskel');
+
+      const cellText = (column: string) =>
+        (
+          fixture.nativeElement.querySelector(`td.mat-column-${column}`) as HTMLElement
+        ).textContent!.trim();
+      expect(cellText('fat_deposit')).toBe('3');
+      expect(cellText('muscle_class')).toBe('2');
+    });
+
+    it('renders Beringer (Kürzel), Tarsus and Federlänge for a Wiederfang row', () => {
+      component.recaptureHistory.set([
+        {
+          date_time: '2024-05-01T08:30:00Z',
+          species: { common_name_de: 'Kohlmeise' },
+          bird_status: BirdStatus.ReCatch,
+          staff: { full_name: 'Filip Reiter', handle: 'FRE' },
           tarsus: 19,
           feather_span: 54,
           wing_span: 73,
@@ -240,10 +278,37 @@ describe('DataEntryFormComponent', () => {
         (
           fixture.nativeElement.querySelector(`td.mat-column-${column}`) as HTMLElement
         ).textContent!.trim();
-      expect(cellText('staff')).toBe('Filip Reiter');
-      expect(cellText('tarsus')).toBe('19');
-      expect(cellText('feather_span')).toBe('54');
+      // The recapture table shows the Kürzel/handle to make room, not the full name.
+      expect(cellText('staff')).toBe('FRE');
+      expect(cellText('tarsus')).toBe('19,0');
+      expect(cellText('feather_span')).toBe('54,0');
       expect(fixture.nativeElement.querySelector('td.mat-column-ringing_station')).toBeNull();
+    });
+
+    it('formats biometric values with one decimal place in de-AT format', () => {
+      component.recaptureHistory.set([
+        {
+          date_time: '2024-05-01T08:30:00Z',
+          species: { common_name_de: 'Kohlmeise' },
+          bird_status: BirdStatus.ReCatch,
+          staff: { full_name: 'Filip Reiter', handle: 'FRE' },
+          tarsus: 12.54,
+          feather_span: 54,
+          wing_span: 73.25,
+          weight_gram: 18.96,
+        } as unknown as DataEntry,
+      ]);
+      fixture.detectChanges();
+
+      const cellText = (column: string) =>
+        (
+          fixture.nativeElement.querySelector(`td.mat-column-${column}`) as HTMLElement
+        ).textContent!.trim();
+      // One decimal place, rounded, Austrian comma — display only.
+      expect(cellText('tarsus')).toBe('12,5');
+      expect(cellText('feather_span')).toBe('54,0');
+      expect(cellText('wing_span')).toBe('73,3');
+      expect(cellText('weight_gram')).toBe('19,0');
     });
   });
 
