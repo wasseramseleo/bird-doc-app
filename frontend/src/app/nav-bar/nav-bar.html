@@ -9,7 +9,31 @@
     <span class="brand__word">BirdDoc</span>
   </a>
   @if (currentProject(); as project) {
-    <span class="project-context" aria-label="Aktives Projekt">{{ project.title }}</span>
+    <button
+      mat-button
+      class="project-switcher"
+      [matMenuTriggerFor]="projectMenu"
+      aria-label="Projekt wechseln"
+    >
+      <span class="project-switcher__title">{{ project.title }}</span>
+      <mat-icon>arrow_drop_down</mat-icon>
+    </button>
+    <mat-menu #projectMenu="matMenu">
+      @for (p of projects(); track p.id) {
+        <button
+          mat-menu-item
+          [class.project-switcher__item--active]="p.id === project.id"
+          (click)="switchProject(p)"
+        >
+          <mat-icon>{{ p.id === project.id ? 'check' : '' }}</mat-icon>
+          <span>{{ p.title }}</span>
+        </button>
+      }
+      <mat-divider></mat-divider>
+      <button mat-menu-item class="project-switcher__all" (click)="goToPicker()">
+        <span>Alle Projekte …</span>
+      </button>
+    </mat-menu>
     <a mat-button routerLink="/data-entries">
       <mat-icon>list</mat-icon>
       <span>Letzte Fänge</span>

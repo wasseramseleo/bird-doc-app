@@ -36,12 +36,21 @@
   }
 }
 
-.project-context {
+.project-switcher {
   margin-left: 16px;
   padding-left: 16px;
   border-left: 1px solid var(--bd-line);
+  border-radius: 0;
   font-weight: 500;
   color: var(--bd-ink-soft);
+
+  &__title {
+    font-weight: 500;
+  }
+}
+
+.project-switcher__item--active {
+  font-weight: 600;
 }
 
 .user-trigger {
