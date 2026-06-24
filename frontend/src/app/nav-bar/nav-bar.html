@@ -50,6 +50,17 @@
       <span>Administration</span>
     </a>
   }
+  @if (currentProject()) {
+    <a
+      mat-flat-button
+      color="primary"
+      class="new-fang"
+      routerLink="/data-entry"
+    >
+      <mat-icon>add</mat-icon>
+      <span>Neuer Fang</span>
+    </a>
+  }
   <button mat-button [matMenuTriggerFor]="userMenu" class="user-trigger">
     <span>{{ userLabel() }}</span>
     <mat-icon>arrow_drop_down</mat-icon>

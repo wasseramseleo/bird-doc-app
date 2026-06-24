@@ -146,4 +146,22 @@ describe('NavBar', () => {
 
     expect(navigate).toHaveBeenCalledWith('/');
   });
+
+  it('shows a "Neuer Fang" action linking to /data-entry in the workbench', () => {
+    const ctx = setup();
+    activate(ctx, makeProject());
+
+    const action = ctx.fixture.nativeElement.querySelector('.new-fang') as HTMLAnchorElement;
+    expect(action).withContext('Neuer Fang action').not.toBeNull();
+    expect(action.getAttribute('href')).toBe('/data-entry');
+    expect(action.textContent).toContain('Neuer Fang');
+  });
+
+  it('does not render the "Neuer Fang" action in the picker state', () => {
+    const { fixture, projectService } = setup();
+    expect(projectService.currentProject()).toBeNull();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.new-fang')).toBeNull();
+  });
 });

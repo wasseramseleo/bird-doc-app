@@ -95,6 +95,16 @@ test.describe('Data-entry list as navigation hub', () => {
     await expect(page.locator('.project-switcher')).toContainText('Donau-Auen');
   });
 
+  test('the "Neuer Fang" action routes to the data-entry form', async ({page}) => {
+    await page.goto('/');
+    await page.locator('.project-card__main', {hasText: 'Schilfgürtel Linz'}).click();
+    await expect(page).toHaveURL(/\/data-entries$/);
+
+    await page.locator('.new-fang').click();
+
+    await expect(page).toHaveURL(/\/data-entry$/);
+  });
+
   test('"Alle Projekte …" returns to the picker', async ({page}) => {
     await page.goto('/');
     await page.locator('.project-card__main', {hasText: 'Schilfgürtel Linz'}).click();
