@@ -27,3 +27,23 @@ _Avoid_: Campaign
 **Erstfang / Wiederfang**:
 First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird.
 _Avoid_: First catch / recatch (English), recapture
+
+**Diesjährig**:
+A bird hatched in the current calendar year (age class 3). Only diesjährige birds undergo post-juvenile Kleingefieder (small-feather) moult, so those moult fields are recorded for them alone.
+_Avoid_: Juvenile, first-year
+
+**Empfohlene Ringgröße**:
+The ring size suggested by default for a species. May be absent — e.g. for species whose sexes take different sizes — and may be overridden for an individual bird when its leg dictates otherwise.
+_Avoid_: Required size, fixed size, locked size
+
+**Fangmethode**:
+How a bird was caught, recorded as an IWM code (e.g. M = Japannetz). A property of the Projekt, constant across its captures.
+_Avoid_: Trap type, method (English)
+
+**Lockmittel**:
+Any lure used to attract the bird, recorded as an IWM code (e.g. N = no lure). A property of the Projekt.
+_Avoid_: Bait, decoy
+
+**Umstand**:
+The circumstance under which a bird was caught, recorded as an IWM code (e.g. 25 = caught by humans for a scientific project). A property of the Projekt. Distinct from _Zustand_ (the bird's condition, a separate IWM field).
+_Avoid_: Reason, condition
