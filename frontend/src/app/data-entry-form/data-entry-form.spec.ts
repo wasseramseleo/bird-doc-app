@@ -289,7 +289,7 @@ describe('DataEntryFormComponent', () => {
         ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
         staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
         species: sentinel as never,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
         bird_status: null,
       });
@@ -415,9 +415,9 @@ describe('DataEntryFormComponent', () => {
           id: 's1',
           common_name_de: 'Kohlmeise',
           scientific_name: 'Parus major',
-          ring_size: RingSize.Medium,
+          ring_size: RingSize.S,
         },
-        ring: { id: 'r1', number: '901234', size: RingSize.Medium },
+        ring: { id: 'r1', number: '901234', size: RingSize.S },
         staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
         ringing_station: station,
         project: null,
@@ -481,7 +481,7 @@ describe('DataEntryFormComponent', () => {
       const form = f.componentInstance.entryForm;
       expect(f.componentInstance.isEditMode()).toBe(true);
       expect(form.get('species')!.value).toEqual(savedEntry().species);
-      expect(form.get('ring_size')!.value).toBe(RingSize.Medium);
+      expect(form.get('ring_size')!.value).toBe(RingSize.S);
       expect(form.get('ring_number')!.value).toBe('901234');
       expect(form.get('bird_status')!.value).toBe(BirdStatus.ReCatch);
       expect(form.get('comment')!.value).toBe('Wiederfang am Hauptnetz');
@@ -530,6 +530,50 @@ describe('DataEntryFormComponent', () => {
       expect(f.componentInstance.isSentinel()).toBe(true);
       expect(f.nativeElement.querySelector('[formControlName="age_class"]')).toBeNull();
     });
+
+    it('restores the saved values (not an empty form) when Zurücksetzen is confirmed (#24)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+
+      const component = f.componentInstance;
+      const form = component.entryForm;
+      // The user edits the record, then changes their mind.
+      form.get('comment')!.setValue('etwas anderes');
+      form.get('weight_gram')!.setValue(99);
+      form.markAsDirty();
+      spyOn((component as unknown as { dialog: MatDialog }).dialog, 'open').and.returnValue({
+        afterClosed: () => of(true),
+      } as never);
+
+      component.onReset();
+
+      // Restored to the saved record, not emptied.
+      expect(form.get('comment')!.value).toBe('Wiederfang am Hauptnetz');
+      expect(form.get('weight_gram')!.value).toBe(18);
+      expect(form.get('species')!.value).toEqual(savedEntry().species);
+      expect(form.get('ring_number')!.value).toBe('901234');
+      expect(form.pristine).toBe(true);
+    });
+
+    it('keeps a separate navigation back to the list in edit mode (#24)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      const backButton: HTMLButtonElement | null = f.nativeElement.querySelector('.action-buttons button');
+      expect(backButton?.textContent?.trim()).toBe('Zur Liste');
+
+      const router = TestBed.inject(Router);
+      const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+      f.componentInstance.onBackToList();
+      expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+    });
   });
 
   describe('keyboard save shortcut (Strg+S / Cmd+S) (#23)', () => {
@@ -547,7 +591,7 @@ describe('DataEntryFormComponent', () => {
         staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
         species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
         bird_status: BirdStatus.ReCatch,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
       });
     }
@@ -637,7 +681,7 @@ describe('DataEntryFormComponent', () => {
     it('runs the ring-history search on Enter in the Ringnummer field during a Wiederfang', () => {
       component.entryForm.patchValue({
         bird_status: BirdStatus.ReCatch,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
       });
       fixture.detectChanges();
@@ -691,7 +735,7 @@ describe('DataEntryFormComponent', () => {
     function startWiederfangAndSearch(results: Partial<DataEntry>[]) {
       component.entryForm.patchValue({
         bird_status: BirdStatus.ReCatch,
-        ring_size: RingSize.Medium,
+        ring_size: RingSize.S,
         ring_number: '901234',
       });
       component.fetchRingHistory();
@@ -823,6 +867,159 @@ describe('DataEntryFormComponent', () => {
     }));
   });
 
+  describe('Ringgröße selector — all 28 sizes (#25)', () => {
+    it('offers all 28 Austrian ring sizes, ordered by inner diameter largest → smallest', () => {
+      const expected = [
+        'AS', 'BS', 'C', 'D', 'DS', 'DA', 'F', 'FA', 'G', 'GA', 'H', 'HA', 'K',
+        'KA', 'L', 'LA', 'M', 'N', 'NA', 'P', 'PA', 'R', 'S', 'SA', 'T', 'TA',
+        'V', 'X',
+      ];
+      expect(component.ringSizeOptions.map((o) => o.value)).toEqual(expected as never[]);
+    });
+
+    it('shows only the bare code as the label — no parenthesised description', () => {
+      for (const option of component.ringSizeOptions) {
+        expect(option.viewValue).toBe(option.value);
+        expect(option.viewValue).not.toContain('(');
+      }
+    });
+
+    it('drops the single-character ring-size shortcut so multi-letter codes work via type-ahead', () => {
+      for (const option of component.ringSizeOptions) {
+        expect(option.key).toBeUndefined();
+      }
+    });
+  });
+
+  describe('Ringgröße prefix before the Ringnummer (#25)', () => {
+    const prefix = () =>
+      fixture.nativeElement.querySelector(
+        '[formControlName="ring_number"]',
+      )?.closest('mat-form-field')?.querySelector('[matTextPrefix]') as HTMLElement | null;
+
+    it('shows no size prefix while no Ringgröße is selected', () => {
+      expect(prefix()?.textContent?.trim()).toBe('');
+    });
+
+    it('shows the selected size code as the prefix before the Ringnummer (e.g. V 1234)', () => {
+      component.entryForm.get('ring_size')!.setValue(RingSize.V);
+      fixture.detectChanges();
+
+      expect(prefix()?.textContent?.trim()).toBe('V');
+    });
+
+    it('updates the prefix when the size changes to a multi-letter code', () => {
+      component.entryForm.get('ring_size')!.setValue(RingSize.AS);
+      fixture.detectChanges();
+
+      expect(prefix()?.textContent?.trim()).toBe('AS');
+    });
+  });
+
+  describe('off-recommendation Ringgröße confirmation modal (#25)', () => {
+    const speciesWith = (ring_size: RingSize | null): Species => ({
+      id: 's1',
+      common_name_de: 'Kohlmeise',
+      common_name_en: '',
+      scientific_name: 'Parus major',
+      family_name: '',
+      order_name: '',
+      ring_size,
+      is_sentinel: false,
+    });
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const dialogMock = { open: jasmine.createSpy('open') };
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: { currentProject: signal<Project | null>(project), setCurrent: () => {}, clear: () => {} },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+    });
+
+    function selectSpecies(species: Species) {
+      component.onSpeciesSelected({ option: { value: species } } as MatAutocompleteSelectedEvent);
+    }
+
+    it('opens a confirmation modal when the chosen size differs from an existing recommendation', () => {
+      selectSpecies(speciesWith(RingSize.S)); // Empfohlene Ringgröße = S
+
+      component.onRingSizeSelected({ value: RingSize.X } as never);
+
+      expect(dialogMock.open).toHaveBeenCalled();
+    });
+
+    it('keeps the off-recommendation size when the modal is confirmed', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      selectSpecies(speciesWith(RingSize.S));
+
+      component.entryForm.get('ring_size')!.setValue(RingSize.X);
+      component.onRingSizeSelected({ value: RingSize.X } as never);
+
+      expect(component.entryForm.get('ring_size')!.value).toBe(RingSize.X);
+    });
+
+    it('reverts to the recommended size when the modal is cancelled', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+      selectSpecies(speciesWith(RingSize.S));
+
+      component.entryForm.get('ring_size')!.setValue(RingSize.X);
+      component.onRingSizeSelected({ value: RingSize.X } as never);
+
+      expect(component.entryForm.get('ring_size')!.value).toBe(RingSize.S);
+    });
+
+    it('does not prompt when the species has no recommended ring size', () => {
+      selectSpecies(speciesWith(null));
+
+      component.onRingSizeSelected({ value: RingSize.X } as never);
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+
+    it('does not prompt when the chosen size equals the recommendation', () => {
+      selectSpecies(speciesWith(RingSize.S));
+
+      component.onRingSizeSelected({ value: RingSize.S } as never);
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+  });
+
   describe('CapsLock indicator (#23)', () => {
     function keyEvent(capsLockOn: boolean): KeyboardEvent {
       return {
@@ -845,6 +1042,143 @@ describe('DataEntryFormComponent', () => {
       component.onKeyup(keyEvent(false));
       fixture.detectChanges();
       expect(hint()).toBeNull();
+    });
+  });
+
+  describe('clean-reset and Zurücksetzen (#24)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    function submitForm(): void {
+      // Go through the real form submit so the FormGroupDirective marks itself
+      // submitted — the exact state that makes empty required fields show errors.
+      const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
+
+    it('shows no required-field errors after a successful save and focuses the species field', fakeAsync(() => {
+      fillValidWiederfang();
+      submitForm();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      fixture.detectChanges();
+
+      // The bird-specific fields are empty again, but the form is pristine and no
+      // longer "submitted", so Material renders no error messages.
+      expect(fixture.nativeElement.querySelectorAll('mat-error').length).toBe(0);
+      const species = fixture.nativeElement.querySelector('[formControlName="species"]');
+      expect(document.activeElement).toBe(species);
+
+      tick(900); // drain the brief "Gespeichert ✓" timer
+    }));
+
+    it('keeps Station and Beringer, clears the bird-specific fields and resets the date on save', fakeAsync(() => {
+      const station = { handle: 'STAMT', name: 'Linz' };
+      const beringer = { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' };
+      fillValidWiederfang();
+      component.entryForm.patchValue({
+        ringing_station: station as never,
+        staff: beringer as never,
+        tarsus: 19,
+        comment: 'Notiz',
+      });
+      submitForm();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      tick(50);
+
+      const form = component.entryForm;
+      expect(form.get('ringing_station')!.value).toEqual(station as never);
+      expect(form.get('staff')!.value).toEqual(beringer as never);
+      expect(form.get('species')!.value).toBeNull();
+      expect(form.get('ring_number')!.value).toBeNull();
+      expect(form.get('bird_status')!.value).toBeNull();
+      expect(form.get('tarsus')!.value).toBeNull();
+      expect(form.get('comment')!.value).toBeNull();
+      expect(form.get('date_time')!.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+      // Pristine and untouched: the reset returns the form to a clean slate.
+      expect(form.pristine).toBe(true);
+      expect(form.untouched).toBe(true);
+
+      tick(900);
+    }));
+
+    const species = { id: 's1', common_name_de: 'Kohlmeise' };
+
+    // The component imports MatDialogModule, so it holds its own MatDialog
+    // instance — spy on that one, not the root injector's.
+    const spyOnDialog = (confirmed?: boolean) =>
+      spyOn((component as unknown as { dialog: MatDialog }).dialog, 'open').and.returnValue({
+        afterClosed: () => of(confirmed),
+      } as never);
+
+    it('resets without a confirmation when the form is not dirty', () => {
+      const openSpy = spyOnDialog();
+      expect(component.entryForm.dirty).toBe(false);
+
+      component.onReset();
+
+      expect(openSpy).not.toHaveBeenCalled();
+    });
+
+    it('confirms before resetting when the form has unsaved changes, and resets on confirm', () => {
+      const openSpy = spyOnDialog(true);
+      component.entryForm.get('species')!.setValue(species as never);
+      component.entryForm.markAsDirty();
+
+      component.onReset();
+
+      expect(openSpy).toHaveBeenCalled();
+      expect(component.entryForm.get('species')!.value).toBeNull();
+      expect(component.entryForm.pristine).toBe(true);
+    });
+
+    it('keeps the changes when the confirmation is dismissed', () => {
+      spyOnDialog(false);
+      component.entryForm.get('species')!.setValue(species as never);
+      component.entryForm.markAsDirty();
+
+      component.onReset();
+
+      expect(component.entryForm.get('species')!.value).toEqual(species as never);
+      expect(component.entryForm.dirty).toBe(true);
+    });
+
+    it('renders a Zurücksetzen button in place of Abbrechen and wires it to onReset', () => {
+      const labels = Array.from(
+        fixture.nativeElement.querySelectorAll('.action-buttons button'),
+      ).map((b) => (b as HTMLElement).textContent!.trim());
+      expect(labels).toContain('Zurücksetzen');
+      expect(labels).not.toContain('Abbrechen');
+      // No list navigation in create mode — that button belongs to edit mode only.
+      expect(labels).not.toContain('Zur Liste');
+
+      const resetButton = Array.from(
+        fixture.nativeElement.querySelectorAll('.action-buttons button'),
+      ).find((b) => (b as HTMLElement).textContent!.trim() === 'Zurücksetzen') as HTMLButtonElement;
+      const spy = spyOn(component, 'onReset');
+      resetButton.click();
+      expect(spy).toHaveBeenCalled();
     });
   });
 });

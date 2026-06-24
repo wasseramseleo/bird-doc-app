@@ -198,3 +198,12 @@
   color: var(--bd-ink-soft);
   letter-spacing: 0.01em;
 }
+
+// #25: the selected Ringgröße reads as a prefix directly before the Ringnummer
+// (e.g. "V 1234"). Emphasised a touch and spaced from the number so the size and
+// number read as one unit without being mistaken for a typed digit.
+.ring-size-prefix {
+  font-weight: 600;
+  color: var(--bd-ink);
+  margin-right: 0.4ch;
+}

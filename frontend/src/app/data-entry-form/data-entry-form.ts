@@ -6,15 +6,16 @@ import {
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 // Import toSignal
 import {toSignal} from '@angular/core/rxjs-interop';
-import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
+import {FormBuilder, FormGroupDirective, ReactiveFormsModule, Validators} from '@angular/forms';
 import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
 import {ActivatedRoute, Router} from '@angular/router';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
-import {MatSelect, MatSelectModule} from '@angular/material/select';
+import {MatSelect, MatSelectChange, MatSelectModule} from '@angular/material/select';
 import {MatButtonModule} from '@angular/material/button';
 import {MatAutocompleteModule, MatAutocompleteSelectedEvent} from '@angular/material/autocomplete';
 import {MatDatepickerModule} from '@angular/material/datepicker';
@@ -105,6 +106,13 @@ export class DataEntryFormComponent implements OnInit {
   // Component State
   private readonly entryId = signal<string | null>(this.route.snapshot.paramMap.get('id'));
   readonly isEditMode = computed(() => !!this.entryId());
+  // #24: the bound FormGroupDirective. Resets routed through it clear the
+  // "submitted" flag (entryForm.reset() alone leaves it set), which is what stops
+  // every empty required field from showing an error after a save.
+  private readonly formDirective = viewChild(FormGroupDirective);
+  // #24: the record loaded in edit mode, kept so Zurücksetzen can restore its
+  // saved values instead of emptying the form.
+  private readonly loadedEntry = signal<DataEntry | null>(null);
   readonly loading = signal<boolean>(false);
   // MO-3 submit feedback: drives the brief green "Gespeichert ✓" button state.
   readonly saved = signal<boolean>(false);
@@ -153,6 +161,9 @@ export class DataEntryFormComponent implements OnInit {
 
   // Signals for reactive form values
   private readonly ringSize = toSignal(this.entryForm.get('ring_size')!.valueChanges);
+  // #25: the selected ring size reads together with the number — it is shown as a
+  // text prefix directly before the Ringnummer field (e.g. `V 1234`).
+  readonly ringSizePrefix = computed(() => this.ringSize() ?? '');
   private readonly birdStatus = toSignal(this.entryForm.get('bird_status')!.valueChanges);
   readonly isRecatch = computed(() => this.birdStatus() === BirdStatus.ReCatch);
 
@@ -304,19 +315,14 @@ export class DataEntryFormComponent implements OnInit {
     key: '6'
   }, {value: FatClass.Seven, viewValue: '7', key: '7'}, {value: FatClass.Eight, viewValue: '8', key: '8'},];
 
-  ringSizeOptions: SelectOption<RingSize>[] = [{
-    value: RingSize.XSmall,
-    viewValue: 'V ()',
-    key: 'v'
-  }, {value: RingSize.Small, viewValue: 'T ()', key: 't'}, {
-    value: RingSize.Medium,
-    viewValue: 'S (Medium)',
-    key: 's'
-  }, {value: RingSize.Large, viewValue: 'X ()', key: 'x'}, {
-    value: RingSize.XLarge,
-    viewValue: 'P ()',
-    key: 'p'
-  },];
+  // #25: every Austrian ring size, ordered largest → smallest (the RingSize
+  // member order). The field shows only the bare code; selection is by native
+  // type-ahead, so there is no single-character `key` shortcut (codes like AS/DS
+  // are multi-letter).
+  ringSizeOptions: SelectOption<RingSize>[] = Object.values(RingSize).map((size) => ({
+    value: size,
+    viewValue: size,
+  }));
 
   constructor() {
     // Corrected effect to auto-set ring number.
@@ -369,6 +375,7 @@ export class DataEntryFormComponent implements OnInit {
       if (id) {
         this.loading.set(true);
         this.apiService.getDataEntry(id).subscribe(entry => {
+          this.loadedEntry.set(entry);
           this.entryForm.patchValue(this.transformToForm(entry));
           // Issue #19: a loaded sentinel entry must collapse the same way.
           this.selectedSpecies.set(entry.species ?? null);
@@ -508,6 +515,39 @@ export class DataEntryFormComponent implements OnInit {
     });
   }
 
+  // #25: an off-recommendation ring size must be a deliberate choice. When the
+  // Beringer picks a size that differs from the species' *existing* Empfohlene
+  // Ringgröße, confirm it immediately on selection — not at save time. Species
+  // with no recommendation (including the sex-dimorphic NULL species) are freely
+  // selectable with no prompt. Cancelling reverts to the recommended size.
+  //
+  // Only user-initiated selections reach this handler: the auto-fill on species
+  // selection uses setValue(), which does not emit MatSelect.selectionChange.
+  onRingSizeSelected(event: MatSelectChange): void {
+    const recommended = this.selectedSpecies()?.ring_size ?? null;
+    const chosen = event.value as RingSize;
+    if (!recommended || chosen === recommended) {
+      return;
+    }
+    const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
+      ConfirmDialogComponent,
+      {
+        data: {
+          title: 'Von empfohlener Ringgröße abweichen?',
+          message: `Für diese Art ist Ringgröße ${recommended} empfohlen. Möchtest du wirklich die abweichende Größe ${chosen} verwenden?`,
+          confirmLabel: 'Größe übernehmen',
+          cancelLabel: 'Abbrechen',
+        },
+        width: '420px',
+      },
+    );
+    ref.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) {
+        this.entryForm.get('ring_size')?.setValue(recommended);
+      }
+    });
+  }
+
   onSpeciesSelected(event: MatAutocompleteSelectedEvent): void {
     const species: Species = event.option.value;
     this.selectedSpecies.set(species ?? null);
@@ -590,22 +630,22 @@ export class DataEntryFormComponent implements OnInit {
     });
   }
 
-  onCancel(): void {
-    if (!this.isEditMode()) {
-      this.router.navigateByUrl('/');
-      return;
-    }
+  // #24: the Zurücksetzen button. An empty/pristine form resets straight away; a
+  // dirty form first asks for confirmation so unsaved work is never lost silently.
+  onReset(): void {
     if (!this.entryForm.dirty) {
-      this.router.navigateByUrl('/data-entries');
+      this.performReset();
       return;
     }
     const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
       ConfirmDialogComponent,
       {
         data: {
-          title: 'Bearbeitung abbrechen?',
-          message: 'Es gibt ungespeicherte Änderungen. Möchtest du die Bearbeitung wirklich abbrechen?',
-          confirmLabel: 'Verwerfen',
+          title: 'Eingaben zurücksetzen?',
+          message: this.isEditMode()
+            ? 'Es gibt ungespeicherte Änderungen. Möchtest du die gespeicherten Werte wiederherstellen?'
+            : 'Es gibt ungespeicherte Änderungen. Möchtest du das Formular wirklich zurücksetzen?',
+          confirmLabel: 'Zurücksetzen',
           cancelLabel: 'Weiter bearbeiten',
         },
         width: '420px',
@@ -613,9 +653,25 @@ export class DataEntryFormComponent implements OnInit {
     );
     ref.afterClosed().subscribe((confirmed) => {
       if (confirmed) {
-        this.router.navigateByUrl('/data-entries');
+        this.performReset();
       }
     });
+  }
+
+  // #24: in edit mode Zurücksetzen restores the record's saved values (discarding
+  // the user's changes); in create mode it runs the shared clean-reset.
+  private performReset(): void {
+    if (this.isEditMode()) {
+      this.resetToSaved();
+    } else {
+      this.cleanReset();
+    }
+  }
+
+  // #24: leave the list-bound back navigation in edit mode so an opened record can
+  // be left without saving, separate from Zurücksetzen.
+  onBackToList(): void {
+    this.router.navigateByUrl('/data-entries');
   }
 
   onSubmit(): void {
@@ -651,7 +707,7 @@ export class DataEntryFormComponent implements OnInit {
         }
         this.saved.set(true);
         setTimeout(() => this.saved.set(false), 900);
-        this.clearForm();
+        this.cleanReset();
       },
       error: (err) => {
         console.error('Error saving data entry', err);
@@ -793,14 +849,26 @@ export class DataEntryFormComponent implements OnInit {
     }, 50);
   }
 
-  private clearForm(): void {
-    const preservedValues = {
+  // #24: the single shared clean-reset routine. It clears the bird-specific
+  // fields, keeps Station, Beringer and Projekt (Projekt lives on the project
+  // signal, so it survives automatically), sets the date back to now, returns the
+  // form to a pristine/untouched and non-submitted state — so no required-field
+  // errors linger — and focuses the Art field so the next entry begins at once.
+  private cleanReset(): void {
+    const preserved = {
       ringing_station: this.entryForm.get('ringing_station')?.value,
       staff: this.entryForm.get('staff')?.value,
     };
 
-    this.entryForm.reset({
-      ...preservedValues,
+    // Move focus to Art *before* resetting. Focusing synchronously blurs whatever
+    // field was active (e.g. Ringnummer after a Strg+S save), and that blur marks
+    // it touched — which would otherwise re-trigger its required-field error after
+    // the reset. Doing it first lets the following resetForm() clear that touched
+    // state, leaving a genuinely pristine, error-free form.
+    this.focusField('species');
+
+    this.resetFormTo({
+      ...preserved,
       date_time: this.getInitialDateTime(),
       age_class: AgeClass.Unknown,
       sex: Sex.Unknown,
@@ -810,7 +878,38 @@ export class DataEntryFormComponent implements OnInit {
       has_cpl_plus: false,
     });
 
+    this.selectedSpecies.set(null);
     this.recaptureHistory.set([]);
+  }
 
+  // #24: restore the loaded record's saved values, dropping the user's edits and
+  // returning the form to a pristine, error-free state.
+  private resetToSaved(): void {
+    const entry = this.loadedEntry();
+    if (!entry) {
+      return;
+    }
+    this.resetFormTo(this.transformToForm(entry));
+    this.selectedSpecies.set(entry.species ?? null);
+    this.recaptureHistory.set([]);
+  }
+
+  // #24: reset through the FormGroupDirective when it is available so the
+  // "submitted" flag is cleared along with the values; entryForm.reset() alone
+  // leaves it set, which is the post-save required-field-error bug.
+  private resetFormTo(values: Record<string, unknown>): void {
+    const directive = this.formDirective();
+    if (directive) {
+      directive.resetForm(values);
+    } else {
+      this.entryForm.reset(values);
+    }
+  }
+
+  // Focus a field synchronously. Synchronous (unlike focusNext) so the resulting
+  // blur of the previously active field is settled before a following form reset.
+  private focusField(controlName: string): void {
+    const el = document.querySelector(`[formControlName="${controlName}"]`) as HTMLElement | null;
+    el?.focus();
   }
 }

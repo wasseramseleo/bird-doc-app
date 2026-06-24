@@ -46,7 +46,7 @@ describe('ApiService', () => {
   it('getNextRingNumber scopes the suggestion to the given project', () => {
     let result: number | undefined;
 
-    service.getNextRingNumber(RingSize.XSmall, 'proj-1').subscribe((r) => (result = r.next_number));
+    service.getNextRingNumber(RingSize.V, 'proj-1').subscribe((r) => (result = r.next_number));
 
     const req = httpMock.expectOne(
       (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
@@ -59,7 +59,7 @@ describe('ApiService', () => {
   });
 
   it('getNextRingNumber omits the project param when none is given', () => {
-    service.getNextRingNumber(RingSize.XSmall).subscribe();
+    service.getNextRingNumber(RingSize.V).subscribe();
 
     const req = httpMock.expectOne(
       (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
