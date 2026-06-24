@@ -1,11 +1,15 @@
-import { signal } from '@angular/core';
+import { LOCALE_ID, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { registerLocaleData } from '@angular/common';
+import localeDeAt from '@angular/common/locales/de-AT';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { DataEntryListComponent } from './data-entry-list';
+
+registerLocaleData(localeDeAt);
 import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
 import { BirdStatus, DataEntry } from '../models/data-entry.model';
@@ -51,6 +55,7 @@ describe('DataEntryListComponent', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideNoopAnimations(),
+        { provide: LOCALE_ID, useValue: 'de-AT' },
         {
           provide: ProjectService,
           useValue: { currentProject: signal<Project | null>(project), setCurrent: () => {}, clear: () => {} },
@@ -89,5 +94,29 @@ describe('DataEntryListComponent', () => {
 
     // The marked row carries a discreet "vernichtet" badge.
     expect(sentinelRows[0].textContent).toContain('vernichtet');
+  });
+
+  it('renders biometric values with one decimal place in de-AT format', () => {
+    flushEntries([row({ tarsus: 12.54, feather_span: 54, wing_span: 73.25, weight_gram: 18.96 })]);
+
+    const cells = Array.from(
+      fixture.nativeElement.querySelectorAll('tr.entry-row td'),
+    ) as HTMLElement[];
+    const text = cells.map((c) => c.textContent?.trim()).join('|');
+
+    // One decimal place, rounded, Austrian comma — display only.
+    expect(text).toContain('12,5');
+    expect(text).toContain('54,0');
+    expect(text).toContain('73,3');
+    expect(text).toContain('19,0');
+  });
+
+  it('keeps the full ringer name in the main list', () => {
+    flushEntries([row({ staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never })]);
+
+    const staffCell = fixture.nativeElement.querySelector(
+      'tr.entry-row td.mat-column-staff',
+    ) as HTMLElement;
+    expect(staffCell.textContent!.trim()).toBe('Filip Reiter');
   });
 });

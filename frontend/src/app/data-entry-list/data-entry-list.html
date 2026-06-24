@@ -83,22 +83,22 @@
 
       <ng-container matColumnDef="tarsus">
         <th mat-header-cell *matHeaderCellDef>Tarsus (mm)</th>
-        <td mat-cell *matCellDef="let element">{{ element.tarsus ?? '—' }}</td>
+        <td mat-cell *matCellDef="let element">{{ (element.tarsus | number:'1.1-1') ?? '—' }}</td>
       </ng-container>
 
       <ng-container matColumnDef="feather_span">
         <th mat-header-cell *matHeaderCellDef>Federlänge (mm)</th>
-        <td mat-cell *matCellDef="let element">{{ element.feather_span ?? '—' }}</td>
+        <td mat-cell *matCellDef="let element">{{ (element.feather_span | number:'1.1-1') ?? '—' }}</td>
       </ng-container>
 
       <ng-container matColumnDef="wing_span">
         <th mat-header-cell *matHeaderCellDef>Flügel (mm)</th>
-        <td mat-cell *matCellDef="let element">{{ element.wing_span ?? '—' }}</td>
+        <td mat-cell *matCellDef="let element">{{ (element.wing_span | number:'1.1-1') ?? '—' }}</td>
       </ng-container>
 
       <ng-container matColumnDef="weight_gram">
         <th mat-header-cell *matHeaderCellDef>Gewicht (g)</th>
-        <td mat-cell *matCellDef="let element">{{ element.weight_gram ?? '—' }}</td>
+        <td mat-cell *matCellDef="let element">{{ (element.weight_gram | number:'1.1-1') ?? '—' }}</td>
       </ng-container>
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>

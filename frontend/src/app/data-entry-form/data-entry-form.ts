@@ -115,7 +115,8 @@ export class DataEntryFormComponent implements OnInit {
   // Recapture History State
   readonly recaptureHistory = signal<DataEntry[]>([]);
   readonly displayedHistoryColumns: string[] = [
-    'date_time', 'species', 'bird_status', 'staff', 'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'actions'
+    'date_time', 'species', 'bird_status', 'staff', 'tarsus', 'feather_span', 'wing_span', 'weight_gram',
+    'fat_deposit', 'muscle_class', 'actions'
   ];
   readonly BirdStatus = BirdStatus;
 
