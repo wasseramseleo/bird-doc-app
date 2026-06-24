@@ -10,6 +10,14 @@ SHEET_NAME = "Fangdaten"
 SCHEME_CODE = "AUW"
 
 
+def _geo_coordinates(entry):
+    """Format the station's coordinates as ``lat, lon`` decimal degrees (dot separator)."""
+    station = entry.ringing_station
+    if not station or station.latitude is None or station.longitude is None:
+        return None
+    return f"{station.latitude}, {station.longitude}"
+
+
 def _build_comment(entry):
     parts = [entry.comment] if entry.comment else []
     if entry.has_mites:
@@ -24,9 +32,8 @@ def _build_comment(entry):
 
 
 # IWM header text → callable(entry) -> cell value (None = leave blank).
-# Headers absent from this map (Zusatzmarkierung, Fangmethode, Lockmittel,
-# Ortskodierung, Geo-Koordinaten, Zustand, Umstand, Brutfleck, Kloake, Region,
-# Land) are deferred per the task brief and written as empty.
+# Headers absent from this map (Zusatzmarkierung, Zustand, Brutfleck, Kloake)
+# are still deferred per the task brief and written as empty.
 COLUMN_MAP = {
     "Ring": lambda e: SCHEME_CODE,
     "Ringnummer": lambda e: f"{e.ring.size}{e.ring.number}",
@@ -47,6 +54,15 @@ COLUMN_MAP = {
     "Handschwingen": lambda e: e.hand_wing,
     "Netz": lambda e: e.net_location,
     "Ort": lambda e: e.ringing_station.name if e.ringing_station else None,
+    "Land": lambda e: e.ringing_station.country or None if e.ringing_station else None,
+    "Region": lambda e: e.ringing_station.region or None if e.ringing_station else None,
+    "Ortskodierung": (
+        lambda e: e.ringing_station.place_code or None if e.ringing_station else None
+    ),
+    "Geo-Koordinaten": _geo_coordinates,
+    "Umstand": lambda e: e.project.circumstance if e.project else None,
+    "Fangmethode": lambda e: e.project.capture_method if e.project else None,
+    "Lockmittel": lambda e: e.project.lure if e.project else None,
     "Bemerkungen": _build_comment,
     "BeringerIn": lambda e: e.staff.handle,
 }
