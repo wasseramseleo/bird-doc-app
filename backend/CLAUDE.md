@@ -57,7 +57,7 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 
 **Ring lifecycle** — Rings are not created by the client directly. `DataEntrySerializer._get_or_create_ring()` handles creation/lookup on `DataEntry` save. When a `DataEntry` ring changes, the old `Ring` is deleted if no longer referenced (transactional cleanup in `serializers.py`).
 
-**Smart ring numbering** — `GET /api/birds/rings/next-number?size=V` casts all ring numbers to integers and returns `max + 1`. This handles gaps and non-numeric values gracefully.
+**Smart ring numbering** — `GET /api/birds/rings/next-number?size=V&project=<uuid>` casts ring numbers to integers and returns `max + 1` over the **first-catch (Erstfang) rings** of that size — i.e. rings carried by a `DataEntry` with `bird_status='e'`, so recaptures of foreign marks don't inflate the suggestion. It is scoped to the given `project` when present, falls back to the global first-catch max when that project has none of that size, and returns `1` when no first-catch ring of the size exists anywhere. Non-numeric numbers are ignored (issue #22).
 
 **Species filtering by user list** — `SpeciesViewSet.get_queryset()` checks if the authenticated user has an active `SpeciesList`; if so, it returns only those species. An authenticated user without an active list gets all species (the endpoint itself still requires authentication). Only one `SpeciesList` per user can be `active=True` (enforced in `SpeciesList.save()`).
 

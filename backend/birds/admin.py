@@ -98,16 +98,32 @@ class OrganizationAdmin(admin.ModelAdmin):
 
 @admin.register(RingingStation)
 class RingingStationAdmin(admin.ModelAdmin):
-    list_display = ("handle", "name", "organization")
-    list_filter = ("organization",)
+    list_display = (
+        "handle",
+        "name",
+        "organization",
+        "country",
+        "region",
+        "place_code",
+        "latitude",
+        "longitude",
+    )
+    list_filter = ("organization", "country", "region")
     search_fields = ("handle", "name")
     ordering = ("handle",)
 
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ("title", "organization", "updated")
-    list_filter = ("organization",)
+    list_display = (
+        "title",
+        "organization",
+        "circumstance",
+        "capture_method",
+        "lure",
+        "updated",
+    )
+    list_filter = ("organization", "capture_method", "lure")
     search_fields = ("title",)
     ordering = ("-updated",)
     filter_horizontal = ("scientists",)

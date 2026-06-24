@@ -36,12 +36,44 @@
   }
 }
 
-.project-context {
+.project-switcher {
   margin-left: 16px;
   padding-left: 16px;
   border-left: 1px solid var(--bd-line);
+  border-radius: 0;
   font-weight: 500;
   color: var(--bd-ink-soft);
+
+  &__title {
+    font-weight: 500;
+  }
+}
+
+.project-switcher__item--active {
+  font-weight: 600;
+}
+
+.letzte-faenge {
+  position: relative;
+  font-weight: 500;
+  color: var(--bd-ink-soft);
+
+  &--active {
+    font-weight: 600;
+    color: var(--bd-ink);
+
+    // Subtle accent indicator underlining the active link.
+    &::after {
+      content: '';
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 4px;
+      height: 2px;
+      border-radius: 1px;
+      background: var(--bd-accent);
+    }
+  }
 }
 
 .user-trigger {

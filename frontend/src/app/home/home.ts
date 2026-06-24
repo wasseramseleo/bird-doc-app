@@ -55,7 +55,9 @@ export class HomeComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal<boolean>(true);
-  readonly projects = signal<Project[]>([]);
+  // Rendered from the shared ProjectService list so the picker and the navbar
+  // switcher can never disagree about which projects exist.
+  readonly projects = this.projectService.projects;
   private readonly organizations = signal<Organization[]>([]);
   private readonly scientists = signal<Scientist[]>([]);
 
@@ -99,7 +101,7 @@ export class HomeComponent implements OnInit {
       }).subscribe({
         next: (project) => {
           this.snackBar.open(`Projekt "${project.title}" wurde erstellt.`, 'Schließen', {duration: 3000});
-          this.projects.update((current) => [project, ...current]);
+          this.projectService.upsertProject(project);
           this.selectProject(project);
         },
         error: () => {
@@ -159,7 +161,7 @@ export class HomeComponent implements OnInit {
       }).subscribe({
         next: (updated) => {
           this.snackBar.open(`Projekt "${updated.title}" wurde aktualisiert.`, 'Schließen', {duration: 3000});
-          this.projects.update((current) => current.map((p) => (p.id === updated.id ? updated : p)));
+          this.projectService.upsertProject(updated);
           if (this.projectService.currentProject()?.id === updated.id) {
             this.projectService.setCurrent(updated);
           }
@@ -173,11 +175,8 @@ export class HomeComponent implements OnInit {
 
   private loadProjects(): void {
     this.loading.set(true);
-    this.api.getProjects().subscribe({
-      next: (res) => {
-        this.projects.set(res.results);
-        this.loading.set(false);
-      },
+    this.projectService.loadProjects().subscribe({
+      next: () => this.loading.set(false),
       error: () => {
         this.loading.set(false);
         this.snackBar.open('Projekte konnten nicht geladen werden.', 'Schließen', {duration: 3000});

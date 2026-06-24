@@ -9,21 +9,52 @@
     <span class="brand__word">BirdDoc</span>
   </a>
   @if (currentProject(); as project) {
-    <span class="project-context" aria-label="Aktives Projekt">{{ project.title }}</span>
-    <a mat-button routerLink="/data-entries">
-      <mat-icon>list</mat-icon>
+    <button
+      mat-button
+      class="project-switcher"
+      [matMenuTriggerFor]="projectMenu"
+      aria-label="Projekt wechseln"
+    >
+      <span class="project-switcher__title">{{ project.title }}</span>
+      <mat-icon>arrow_drop_down</mat-icon>
+    </button>
+    <mat-menu #projectMenu="matMenu">
+      @for (p of projects(); track p.id) {
+        <button
+          mat-menu-item
+          [class.project-switcher__item--active]="p.id === project.id"
+          (click)="switchProject(p)"
+        >
+          <mat-icon>{{ p.id === project.id ? 'check' : '' }}</mat-icon>
+          <span>{{ p.title }}</span>
+        </button>
+      }
+      <mat-divider></mat-divider>
+      <button mat-menu-item class="project-switcher__all" (click)="goToPicker()">
+        <span>Alle Projekte …</span>
+      </button>
+    </mat-menu>
+  }
+  <span class="spacer"></span>
+  @if (currentProject()) {
+    <a
+      mat-button
+      class="letzte-faenge"
+      routerLink="/data-entries"
+      routerLinkActive="letzte-faenge--active"
+    >
       <span>Letzte Fänge</span>
     </a>
   }
-  <span class="spacer"></span>
-  @if (isStaff()) {
+  @if (currentProject()) {
     <a
-      mat-button
-      aria-label="Django-Administration öffnen"
-      [href]="adminUrl"
+      mat-flat-button
+      color="primary"
+      class="new-fang"
+      routerLink="/data-entry"
     >
-      <mat-icon>build</mat-icon>
-      <span>Administration</span>
+      <mat-icon>add</mat-icon>
+      <span>Neuer Fang</span>
     </a>
   }
   <button mat-button [matMenuTriggerFor]="userMenu" class="user-trigger">
@@ -31,6 +62,17 @@
     <mat-icon>arrow_drop_down</mat-icon>
   </button>
   <mat-menu #userMenu="matMenu">
+    @if (isStaff()) {
+      <a
+        mat-menu-item
+        aria-label="Django-Administration öffnen"
+        [href]="adminUrl"
+      >
+        <mat-icon>build</mat-icon>
+        <span>Administration</span>
+      </a>
+      <mat-divider></mat-divider>
+    }
     <button mat-menu-item (click)="onLogout()">
       <mat-icon>logout</mat-icon>
       <span>Abmelden</span>

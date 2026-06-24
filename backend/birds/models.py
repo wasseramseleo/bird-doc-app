@@ -126,12 +126,51 @@ class RingingStation(models.Model):
         related_name="ringing_stations",
         verbose_name=_("Organisation"),
     )
+    country = models.CharField(max_length=64, blank=True, verbose_name=_("Land"))
+    region = models.CharField(max_length=128, blank=True, verbose_name=_("Region"))
+    place_code = models.CharField(max_length=16, blank=True, verbose_name=_("Ortskodierung"))
+    latitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True, verbose_name=_("Breitengrad")
+    )
+    longitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True, verbose_name=_("Längengrad")
+    )
 
     def __str__(self):
         return f"{self.handle}"
 
 
 class Project(models.Model):
+    class CaptureMethod(models.TextChoices):
+        # IWM "Fangmethode" codes (see Datenmeldung_Vorlage_IWM, Erläuterungen).
+        UNKNOWN = "Z", _("unbekannt")
+        HAND = "H", _("mit der Hand gefangen")
+        NEST = "N", _("am Nest, alle Methoden außer Handfang")
+        MIST_NET = "M", _("Japannetz")
+        CAGE_TRAP = "W", _("Käfigfalle (Reuse)")
+        CLAP_NET = "L", _("Klappnetz")
+        HOLLAND_TRAP = "U", _("Hollandfalle")
+        OTHER_NET = "O", _("mit sonstigem Netz")
+        HELGOLAND = "T", _("Helgolandreuse oder Entenlocke")
+        SNARE = "S", _("Ball-Chatri oder Schlingen-Falle")
+        DAZZLING = "D", _("mit Blend-Licht")
+        RINGER_TRIGGERED = "A", _("durch Beringer ausgelöste Falle")
+        BIRD_TRIGGERED = "B", _("durch Vogel selbst ausgelöste Falle")
+
+    class Lure(models.TextChoices):
+        # IWM "Lockmittel" codes (see Datenmeldung_Vorlage_IWM, Erläuterungen).
+        UNKNOWN = "U", _("unbekannt")
+        NONE = "N", _("sicher kein Lockmittel")
+        MULTIPLE = "M", _("mehr als ein Lockmittel")
+        FOOD = "A", _("Futter als Lockmittel")
+        WATER = "B", _("Wasser als Lockmittel")
+        LIGHT = "C", _("Licht als Lockmittel")
+        LIVE_DECOY = "D", _("lebender Lockvogel")
+        ARTIFICIAL_DECOY = "E", _("künstlicher/ausgestopfter Lockvogel")
+        TAPE_SAME = "F", _("Klangattrappe (gleiche Art)")
+        TAPE_OTHER = "G", _("Klangattrappe (andere Arten)")
+        WHISTLE = "H", _("Lockpfeife")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255, verbose_name=_("Titel"))
     description = models.TextField(blank=True, verbose_name=_("Beschreibung"))
@@ -158,6 +197,19 @@ class Project(models.Model):
     show_optional_fields = models.BooleanField(
         default=True,
         verbose_name=_("Optionale Felder anzeigen"),
+    )
+    circumstance = models.CharField(max_length=8, default="25", verbose_name=_("Umstand"))
+    capture_method = models.CharField(
+        max_length=1,
+        choices=CaptureMethod.choices,
+        default=CaptureMethod.MIST_NET,
+        verbose_name=_("Fangmethode"),
+    )
+    lure = models.CharField(
+        max_length=1,
+        choices=Lure.choices,
+        default=Lure.NONE,
+        verbose_name=_("Lockmittel"),
     )
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)

@@ -157,6 +157,19 @@
   white-space: nowrap;
 }
 
+// #23: a prominent CapsLock warning at the top of the form. Typed ring numbers
+// and single-char codes are entered blind, so this must be impossible to miss.
+.capslock-hint {
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background-color: var(--bd-warning);
+  color: var(--bd-paper);
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
 // MO-3 submit feedback: the primary button briefly turns success-green with a
 // "Gespeichert ✓" label for 900ms. clearForm() leaves the form invalid (button
 // disabled) during that window, so the overrides must beat Material's disabled
@@ -184,4 +197,13 @@
   font-weight: 400;
   color: var(--bd-ink-soft);
   letter-spacing: 0.01em;
+}
+
+// #25: the selected Ringgröße reads as a prefix directly before the Ringnummer
+// (e.g. "V 1234"). Emphasised a touch and spaced from the number so the size and
+// number read as one unit without being mistaken for a typed digit.
+.ring-size-prefix {
+  font-weight: 600;
+  color: var(--bd-ink);
+  margin-right: 0.4ch;
 }

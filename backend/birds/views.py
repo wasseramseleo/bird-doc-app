@@ -1,6 +1,6 @@
 import datetime
 
-from django.db.models import IntegerField, Q
+from django.db.models import Count, IntegerField, Q
 from django.db.models.functions import Cast
 from django.http import HttpResponse
 from rest_framework import filters, mixins, viewsets
@@ -78,21 +78,37 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """
-        If the user has an active species list, return species from that list
-        plus the sentinel species (e.g. 'Ring Vernichtet'), which must stay
-        selectable even when a filtered list is active. Otherwise, return all
-        species.
+        Candidate species are filtered exactly as before: an active species
+        list narrows the set to its members plus the always-selectable sentinel
+        species; otherwise all species are candidates. Frequency only reorders
+        the candidates — see ``_order_by_usage``.
         """
         user = self.request.user
         active_list = SpeciesList.objects.filter(user=user, is_active=True).first()
         if active_list:
-            return (
-                Species.objects.filter(Q(lists=active_list) | Q(is_sentinel=True))
-                .distinct()
-                .order_by("common_name_de")
-            )
+            candidate_ids = Species.objects.filter(
+                Q(lists=active_list) | Q(is_sentinel=True)
+            ).values_list("id", flat=True)
+            candidates = Species.objects.filter(id__in=candidate_ids)
+        else:
+            candidates = Species.objects.all()
 
-        return Species.objects.all().order_by("common_name_de")
+        return self._order_by_usage(candidates, self.request.query_params.get("project"))
+
+    @staticmethod
+    def _order_by_usage(candidates, project):
+        """
+        Order candidate species by how often they are actually used — most-used
+        first, alphabetically within equal counts. Usage is the number of related
+        data entries, scoped to the current project when it has any; when the
+        project is empty or unknown the count falls back to a global one, mirroring
+        the project/global fallback of the ring-number suggestion (issue #27).
+        """
+        if project and DataEntry.objects.filter(project=project).exists():
+            usage = Count("dataentry", filter=Q(dataentry__project=project))
+        else:
+            usage = Count("dataentry")
+        return candidates.annotate(usage=usage).order_by("-usage", "common_name_de")
 
 
 class SpeciesListViewSet(viewsets.ModelViewSet):
@@ -126,21 +142,45 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["get"], url_path="next-number")
     def next_number(self, request):
         """
-        Calculates the next available ring number for a given ring size.
+        Suggests the next ring number for a given ring size.
+
+        The suggestion is ``max(number) + 1`` over the *first-catch* (Erstfang)
+        rings of that size — rings whose number was newly applied to a bird,
+        excluding recaptures (Wiederfang) of foreign marks. It is scoped to the
+        current project when one is given, falling back to the global first-catch
+        maximum when the project has no such ring, and to ``1`` when none exists
+        anywhere. See issue #22.
         """
         ring_size = request.query_params.get("size")
         if not ring_size:
             return Response({"error": "Ring size parameter is required."}, status=400)
 
-        latest_ring = (
-            Ring.objects.filter(size=ring_size, number__regex=r"^\d+$")
-            .annotate(number_int=Cast("number", IntegerField()))
+        project = request.query_params.get("project")
+
+        first_catches = Ring.objects.filter(
+            size=ring_size,
+            number__regex=r"^\d+$",
+            dataentry__bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+        )
+
+        latest = None
+        if project:
+            latest = self._max_number(first_catches.filter(dataentry__project=project))
+        if latest is None:
+            latest = self._max_number(first_catches)
+
+        next_number = latest + 1 if latest is not None else 1
+        return Response({"next_number": next_number})
+
+    @staticmethod
+    def _max_number(queryset):
+        """Largest integer ring number in the queryset, or None if it is empty."""
+        latest = (
+            queryset.annotate(number_int=Cast("number", IntegerField()))
             .order_by("-number_int")
             .first()
         )
-
-        next_number = int(latest_ring.number) + 1 if latest_ring else 1
-        return Response({"next_number": next_number})
+        return latest.number_int if latest else None
 
 
 class RingingStationViewSet(viewsets.ReadOnlyModelViewSet):
