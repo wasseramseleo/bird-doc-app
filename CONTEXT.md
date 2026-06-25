@@ -36,6 +36,10 @@ _Avoid_: Juvenile, first-year
 The ring size suggested by default for a species. May be absent — e.g. for species whose sexes take different sizes — and may be overridden for an individual bird when its leg dictates otherwise.
 _Avoid_: Required size, fixed size, locked size
 
+**Ringserie**:
+A rope/string of sequentially-numbered rings of one Ringgröße, sliced up for use in the field. Slices are not necessarily used in number order, so a Projekt's ring numbers do **not** increase monotonically over time — a newer capture can carry a lower number than an older one. Consequently the suggested number for a new Erstfang is _last consumed + 1_: take the Projekt's most recent capture of that size that **drew a fresh number from the rope** — an Erstfang or a destroyed ring (sentinel) — regardless of Beringer, and add one. A Wiederfang consumes no rope number and is ignored, as is _max + 1_ (an old, higher-numbered slice must not pull the suggestion forward).
+_Avoid_: Ring batch, ring series (English), rope
+
 **Fangmethode**:
 How a bird was caught, recorded as an IWM code (e.g. M = Japannetz). A property of the Projekt, constant across its captures.
 _Avoid_: Trap type, method (English)
