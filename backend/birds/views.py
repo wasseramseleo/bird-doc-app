@@ -74,7 +74,7 @@ class DataEntryViewSet(viewsets.ModelViewSet):
 class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SpeciesSerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ["^common_name_de", "scientific_name"]
+    search_fields = ["common_name_de", "scientific_name"]
 
     def get_queryset(self):
         """
