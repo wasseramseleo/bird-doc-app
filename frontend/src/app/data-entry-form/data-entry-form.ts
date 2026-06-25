@@ -336,7 +336,9 @@ export class DataEntryFormComponent implements OnInit {
         // this campaign's Erstfang rings rather than the global maximum (#22).
         const projectId = this.currentProject()?.id;
         this.apiService.getNextRingNumber(size, projectId).subscribe(res => {
-          this.entryForm.get('ring_number')?.setValue(res.next_number.toString());
+          // Populate the field with the suggestion verbatim so leading zeros
+          // (e.g. "0043") survive; leave it empty when there is none (#42).
+          this.entryForm.get('ring_number')?.setValue(res.next_number ?? '');
         });
       }
     });
