@@ -1124,7 +1124,11 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
-  describe('CapsLock indicator (#23)', () => {
+  // #43: these specs drive the signal logic with synthetic events. The real
+  // OS-level Caps-Lock on/off-and-clear behavior is NOT asserted here — Karma
+  // mocks getModifierState and cannot toggle the physical key — and is verified
+  // manually in a real browser instead (see PR notes), not via a stand-in test.
+  describe('CapsLock indicator (#23, #43)', () => {
     function keyEvent(capsLockOn: boolean): KeyboardEvent {
       return {
         key: 'a',
@@ -1144,6 +1148,46 @@ describe('DataEntryFormComponent', () => {
       expect(hint()).not.toBeNull();
 
       component.onKeyup(keyEvent(false));
+      fixture.detectChanges();
+      expect(hint()).toBeNull();
+    });
+
+    it('toggles the warning across on→off→on as the CapsLock key itself is pressed (#43)', () => {
+      // The CapsLock key's own keydown reports an unreliable getModifierState
+      // mid-toggle, so the indicator must track the toggle, not the reading.
+      const capsKey = () => new KeyboardEvent('keydown', { key: 'CapsLock' });
+
+      expect(hint()).toBeNull();
+
+      component.onKeydown(capsKey());
+      fixture.detectChanges();
+      expect(hint()).not.toBeNull(); // on
+
+      component.onKeydown(capsKey());
+      fixture.detectChanges();
+      expect(hint()).toBeNull(); // off
+
+      component.onKeydown(capsKey());
+      fixture.detectChanges();
+      expect(hint()).not.toBeNull(); // on again
+    });
+
+    it('reveals the warning on the first pointer interaction when CapsLock is already on (#43)', () => {
+      // A real click delivers a MouseEvent, which carries getModifierState.
+      const pointerEvent = {
+        getModifierState: (modifier: string) => modifier === 'CapsLock',
+      } as unknown as Event;
+
+      expect(hint()).toBeNull();
+
+      component.onPointerOrFocus(pointerEvent);
+      fixture.detectChanges();
+      expect(hint()).not.toBeNull();
+    });
+
+    it('ignores a focus interaction that carries no modifier-state reading (#43)', () => {
+      // A FocusEvent has no getModifierState; the path must no-op, not throw.
+      expect(() => component.onPointerOrFocus({ type: 'focusin' } as Event)).not.toThrow();
       fixture.detectChanges();
       expect(hint()).toBeNull();
     });
