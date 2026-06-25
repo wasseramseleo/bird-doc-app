@@ -56,7 +56,7 @@ How it's wired (and why it's fast and backend-free):
 
 ## Architecture
 
-Single-page Angular 20 app for bird-ringing field data entry. The app has one primary route (`/`) rendering `DataEntryFormComponent`, with a `NavBarComponent` at the top.
+Single-page Angular 21 app for bird-ringing field data entry, behind a session-auth gate. `AppComponent` renders a `NavBarComponent` (only when authenticated) plus a `RouterOutlet`. Routes: `/` → `HomeComponent` (project hub), `/login` → `LoginComponent`, `/data-entry` → `DataEntryFormComponent` (create), `/data-entry/:id` → edit, `/data-entries` → `DataEntryListComponent`. `authGuard`/`guestGuard` gate them (`core/guards/`).
 
 **Key files:**
 - `src/app/data-entry-form/data-entry-form.ts` — the main form component; handles create/edit modes, autocomplete search, ring history lookup, and form submission
@@ -70,22 +70,13 @@ Single-page Angular 20 app for bird-ringing field data entry. The app has one pr
 2. When a species is selected, its `ring_size` pre-fills the ring size selector
 3. When ring size + `BirdStatus.FirstCatch` are set, the next ring number is fetched automatically via an Angular `effect()`
 4. On submit, `transformFromForm()` converts nested objects to flat write-only IDs (`species_id`, `staff_id`, `ringing_station_id`) before POSTing/PUTting
-5. After a successful save, `clearForm()` resets all fields except `ringing_station`, `staff`, and `organization`
+5. After a successful save, `cleanReset()` resets all fields except `ringing_station` and `staff` (Beringer). The active Projekt is not a form field — it lives on the project signal and survives automatically; the organization derives from `currentProject().organization`
 
 **Read vs. write shape:** The API returns nested objects on GET but expects flat IDs on POST/PUT/PATCH — the two shapes are intentionally different. Never POST to `/rings/` directly; send `ring_number` + `ring_size` and the backend handles ring creation.
 
-## Angular conventions (from LLM.md)
+## Angular conventions
 
-- Standalone components only — do **not** set `standalone: true` explicitly (it's the default in Angular 20)
-- Use `input()` / `output()` functions, not `@Input`/`@Output` decorators
-- Use signals and `computed()` for state; do **not** use `mutate()` on signals
-- `ChangeDetectionStrategy.OnPush` on every component
-- Native control flow: `@if`, `@for`, `@switch` — not `*ngIf`/`*ngFor`
-- `class` bindings instead of `ngClass`; `style` bindings instead of `ngStyle`
-- `inject()` function for DI, not constructor injection
-- `providedIn: 'root'` for singleton services
-- Reactive forms, not template-driven forms
-- Do **not** use `@HostBinding` / `@HostListener` — put host bindings in the `host` object of the decorator instead
+Canonical Angular guidance lives in [`LLM.md`](LLM.md) — standalone components, signals/`computed()`, `input()`/`output()` functions, `OnPush`, native control flow, `inject()`, reactive forms, and `host`-object bindings (no `@HostBinding`/`@HostListener`). Follow it for any frontend work.
 
 ## Locale
 

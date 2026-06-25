@@ -16,3 +16,7 @@ The IWM `Fangdaten` export needs columns the app didn't model: capture method (F
 - Editing these attributes is **admin-only**; existing Station and Project rows are seeded by data migration (Linz, Botanischer Garten → Austria / Oberösterreich / AU03 / 48.295892, 14.276697; default project → Umstand 25 / Fangmethode M / Lockmittel N).
 - Because capture-context is per-project, a project mixing genuinely different capture methods cannot be represented until per-entry override is added.
 - `Fangmethode` and `Lockmittel` are modelled as controlled choices (validated against IWM codes) since a typo would corrupt a regulated submission; `Umstand` is a plain field defaulting to "25".
+
+## Reference
+
+The export's target column layout is reproduced from [`docs/IWM_Linz_Vogelmonitoring_2026-06-24.xlsx`](../IWM_Linz_Vogelmonitoring_2026-06-24.xlsx) — the IWM-provided `Fangdaten` sheet that `iwm_export.py` (`build_iwm_workbook`) is written to match.

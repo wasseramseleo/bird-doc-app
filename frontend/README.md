@@ -1,6 +1,6 @@
 # BirdDoc — Frontend
 
-Angular 20 single-page application for bird ringing field data entry. Captures per-bird measurements and ring assignments through a keyboard-optimised form.
+Angular 21 single-page application for bird ringing field data entry. Captures per-bird measurements and ring assignments through a keyboard-optimised form.
 
 ## Prerequisites
 
@@ -33,15 +33,24 @@ src/
 │   ├── environment.ts            # Production defaults (apiUrl: '/api', adminUrl: '/admin')
 │   └── environment.development.ts # Dev override → http://localhost:8000
 └── app/
+    ├── home/                         # Project hub: list/create/edit/switch projects
     ├── data-entry-form/
     │   ├── data-entry-form.ts        # Main form component (create/edit)
-    │   └── data-entry-detail-dialog/ # View-only record detail dialog
-    ├── nav-bar/                      # Top navigation bar
+    │   ├── data-entry-detail-dialog/ # View-only record detail dialog
+    │   └── beringer-create-dialog/   # "Neuer Beringer" dialog
+    ├── data-entry-list/              # Paginated capture list
+    ├── auth/login/                   # Login screen
+    ├── nav-bar/                      # Top navigation bar (shown when authenticated)
     ├── service/
-    │   └── api.service.ts            # All HTTP calls to the backend
+    │   ├── api.service.ts            # All HTTP calls to the backend
+    │   ├── auth.service.ts           # Session bootstrap, login/logout, current user
+    │   ├── project.service.ts        # Active-project state and CRUD
+    │   └── workbench-storage.service.ts # localStorage persistence of the active project
     ├── models/                       # TypeScript interfaces mirroring Django models
-    ├── core/directives/
-    │   └── select-on-tab.ts          # Confirms autocomplete on Tab keypress
+    ├── core/
+    │   ├── guards/                   # auth.guard.ts / guest.guard.ts
+    │   ├── interceptors/             # auth.interceptor.ts (CSRF token)
+    │   └── directives/select-on-tab.ts  # Confirms autocomplete on Tab keypress
     └── shared/directives/
         └── focus-next.ts             # Advances focus to next field on Enter/selection
 ```
@@ -58,7 +67,7 @@ Add new runtime config to **both** files when introducing new fields.
 
 **Auto ring number** — when ring size and `BirdStatus.FirstCatch` are both set, the next ring number is fetched via a reactive `effect()`.
 
-**Form submit** — `transformFromForm()` flattens nested objects to flat write IDs (`species_id`, `staff_id`, `ringing_station_id`) before POST/PUT. After a successful save, `clearForm()` resets everything except station, scientist, and organisation.
+**Form submit** — `transformFromForm()` flattens nested objects to flat write IDs (`species_id`, `staff_id`, `ringing_station_id`) before POST/PUT. After a successful save, `cleanReset()` resets everything except station and Beringer (`staff`). The active Projekt is not a form field — it persists on its own signal.
 
 **Keyboard UX** — single-character shortcuts on `MatSelect` fields advance focus automatically through `focusOrder`. Tab on open autocomplete confirms the highlighted option.
 

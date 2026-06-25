@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────┐      HTTP / JSON
-│  Angular 20 SPA  (localhost:4200)   │ ──────────────────▶  Django REST API
+│  Angular 21 SPA  (localhost:4200)   │ ──────────────────▶  Django REST API
 │                                     │                       (localhost:8000)
 │  DataEntryFormComponent             │  POST /api/birds/data-entries/
 │  NavBarComponent                    │  GET  /api/birds/species/?search=…
@@ -53,7 +53,7 @@
 
 ## Backend (`backend/`)
 
-**Stack:** Python 3.13, Django 5.2, Django REST Framework 3.16, SQLite
+**Stack:** Python 3.13, Django 5.2 (`>=5.2,<5.3`), Django REST Framework 3.16 (`>=3.16,<4`), SQLite (dev) / Postgres (prod)
 
 Single Django app (`birds/`) with project config in `birddoc/`. All routes are under `/api/birds/` via a DRF `DefaultRouter`.
 
@@ -76,14 +76,15 @@ Single Django app (`birds/`) with project config in `birddoc/`. All routes are u
 
 | Endpoint | Access | Notes |
 |----------|--------|-------|
-| `/data-entries/` | CRUD | Core capture records |
-| `/species/` | Read + search | Filtered by the user's active SpeciesList when one exists |
+| `/data-entries/` | CRUD | Core capture records; filter by `?project`, or `?ring_size` + `?ring_number` |
+| `/species/` | Read + search | Narrowed to the user's active SpeciesList when one exists; ordered by per-project usage frequency (`?project`) |
 | `/rings/` | Read | All rings |
-| `/rings/next-number?size=<size>` | Read | Returns `max(number) + 1` for that ring size |
+| `/rings/next-number?size=<size>&project=<id>` | Read | "Last consumed + 1" for that size in the project (see below) |
 | `/ringing-stations/` | Read + search | Filterable by `organization` handle |
-| `/scientists/` | Read + search | |
+| `/scientists/` | Read + **Create** | List/retrieve plus authenticated create — a Beringer can be added mid-session (ADR 0001); no edit/delete |
 | `/organizations/` | Read + search | |
 | `/projects/` | CRUD | Scoped to the requesting user's Beringer |
+| `/projects/{id}/export-iwm/` | Read | Streams the project's captures as an IWM `.xlsx` workbook |
 | `/species-lists/` | CRUD | Per-user species filter lists |
 
 ### Key Design Decisions
@@ -94,29 +95,50 @@ Single Django app (`birds/`) with project config in `birddoc/`. All routes are u
 
 **Species filtering** — `SpeciesViewSet.get_queryset()` returns only species in the user's active `SpeciesList` when one exists; otherwise all species. The endpoint requires authentication either way. Only one `SpeciesList` per user can have `is_active=True` (enforced in `SpeciesList.save()`).
 
-**Smart ring numbering** — `next-number` casts all existing numbers to `int` and returns `max + 1`, tolerating gaps and non-numeric legacy values.
+**Smart ring numbering** — `next-number` returns "last consumed + 1", **not** `max + 1`. It takes the project's most recent capture of that size that drew a fresh number from the rope — a first catch (Erstfang) **or** a destroyed-ring sentinel ("Ring vernichtet") record — ignoring recaptures (Wiederfänge), and increments it while preserving leading-zero width (`0042` → `0043`, returned as a string). Project-scoped; returns `null` when no qualifying capture exists or the previous number is non-numeric. See `CONTEXT.md` (Ringserie) and `birds/views.py`.
 
 ## Frontend (`frontend/`)
 
-**Stack:** Angular 20, TypeScript 5.8, Angular Material, Bootstrap 5, RxJS 7
+**Stack:** Angular 21.2, TypeScript 5.9, Angular Material, RxJS 7
 
-Single-page app with one primary route (`/`) rendering `DataEntryFormComponent`.
+Single-page app behind an auth gate. Routes:
+
+| Route | Component | Guard |
+|-------|-----------|-------|
+| `/` | `HomeComponent` (project hub) | `authGuard` |
+| `/login` | `LoginComponent` | `guestGuard` |
+| `/data-entry` | `DataEntryFormComponent` (create) | `authGuard` |
+| `/data-entry/:id` | `DataEntryFormComponent` (edit) | `authGuard` |
+| `/data-entries` | `DataEntryListComponent` | `authGuard` |
 
 ### Component Structure
 
 ```
 AppComponent
-└── NavBarComponent
-└── DataEntryFormComponent       (main form — create / edit modes)
-    └── DataEntryDetailDialogComponent   (view-only record detail)
+├── NavBarComponent          (rendered only when authenticated)
+└── RouterOutlet
+    ├── HomeComponent             (project hub — create/edit/switch projects)
+    ├── LoginComponent
+    ├── DataEntryFormComponent    (main form — create / edit modes)
+    │   ├── DataEntryDetailDialogComponent   (view-only record detail)
+    │   └── BeringerCreateDialogComponent    ("Neuer Beringer")
+    └── DataEntryListComponent    (paginated capture list)
 ```
 
 ### Key Files
 
 | File | Role |
 |------|------|
+| `src/app/home/` | Project hub: list/create/edit/switch projects (`project-create-dialog/`, `project-edit-dialog/`) |
 | `src/app/data-entry-form/data-entry-form.ts` | Main form: autocomplete, ring lookup, submit |
+| `src/app/data-entry-list/` | Paginated capture list view |
+| `src/app/auth/login/` | Login screen |
 | `src/app/service/api.service.ts` | All HTTP calls to the Django backend |
+| `src/app/service/auth.service.ts` | Session bootstrap, login/logout, current-user signal |
+| `src/app/service/project.service.ts` | Active-project state and CRUD |
+| `src/app/service/workbench-storage.service.ts` | localStorage persistence of the active project / workbench |
+| `src/app/core/guards/` | `auth.guard.ts` (require login) / `guest.guard.ts` (block when logged in) |
+| `src/app/core/interceptors/auth.interceptor.ts` | Attaches the CSRF token; handles auth errors |
 | `src/app/models/` | TypeScript interfaces mirroring backend models |
 | `src/app/core/directives/select-on-tab.ts` | Confirms autocomplete option on Tab |
 | `src/app/shared/directives/focus-next.ts` | Advances focus to next field on Enter/selection |
@@ -127,16 +149,11 @@ AppComponent
 2. Selecting a species pre-fills `ring_size` from `species.ring_size`.
 3. When `ring_size` + `BirdStatus.FirstCatch` are both set, the next ring number is fetched automatically via an Angular `effect()`.
 4. On submit, `transformFromForm()` flattens nested objects to flat IDs before POSTing or PUTting.
-5. After a successful save, `clearForm()` resets all fields except `ringing_station`, `staff`, and `organization`.
+5. After a successful save, `cleanReset()` resets all fields except `ringing_station` and `staff`. (The Projekt is not a form field — it lives on the project signal and survives automatically; the organization derives from `currentProject().organization`.)
 
 ### Angular Conventions
 
-- Standalone components (default in Angular 20 — do not set `standalone: true` explicitly)
-- Signals and `computed()` for state; `input()` / `output()` functions not decorators
-- `ChangeDetectionStrategy.OnPush` on every component
-- Native control flow: `@if`, `@for`, `@switch`
-- `inject()` for DI; `providedIn: 'root'` for singleton services
-- Reactive forms only
+Canonical guidance lives in [`frontend/LLM.md`](frontend/LLM.md) (standalone components, signals, `input()`/`output()`, `OnPush`, native control flow, `inject()`, reactive forms).
 
 ### Locale
 
@@ -145,3 +162,11 @@ AppComponent
 ### Keyboard UX
 
 `SelectOnTabDirective` confirms the highlighted autocomplete option on Tab and advances focus. Single-character shortcuts (the `key` property of `SelectOption`) are mapped to enum values for `MatSelect` fields, then `focusNext()` advances through `focusOrder`.
+
+## Subsystems
+
+**Auth** — Session-based (Django `SessionAuthentication`) with CSRF. The app bootstraps the session via `GET /api/auth/me/` before routing; `authGuard` redirects unauthenticated users to `/login`, `guestGuard` keeps logged-in users off it. `auth.interceptor.ts` attaches the CSRF token to mutating requests. Login/logout hit `/api/auth/login/` and `/api/auth/logout/`.
+
+**Project management** — Captures are scoped to a Projekt. `HomeComponent` is the hub for creating, editing, and switching projects (`ProjectService`); the active project is persisted to `localStorage` by `WorkbenchStorageService` so it survives reloads, and it scopes ring-number suggestions, species ordering, and the IWM export.
+
+**Exports** — Two paths: the per-project IWM `.xlsx` workbook via `GET /api/birds/projects/{id}/export-iwm/` (`iwm_export.py`, format reproduced from the reference sheet cited in ADR 0002), and a Django-admin "Als CSV exportieren" bulk action on `DataEntry`.

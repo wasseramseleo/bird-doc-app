@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Django REST API backend for a bird ringing (ornithology) documentation system. It pairs with an Angular 20 frontend (separate repo) running on `localhost:4200`.
+Django REST API backend for a bird ringing (ornithology) documentation system. It pairs with the Angular 21 frontend in `../frontend/` (same monorepo) running on `localhost:4200`.
 
 ## Commands
 
@@ -48,7 +48,7 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 | `/species/` | `Species` | Read-only + search |
 | `/rings/` | `Ring` | Read-only + `next-number` action |
 | `/ringing-stations/` | `RingingStation` | Read-only + search |
-| `/scientists/` | `Scientist` | Read-only + search |
+| `/scientists/` | `Scientist` | Read + search + authenticated create (ADR 0001); no edit/delete |
 | `/species-lists/` | `SpeciesList` | Full CRUD (per-user) |
 | `/organizations/` | `Organization` | Read-only + search |
 | `/projects/` | `Project` | Full CRUD (scoped to the user's Beringer) |
@@ -59,9 +59,17 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 
 **Smart ring numbering** — `GET /api/birds/rings/next-number?size=V&project=<uuid>` returns `{"next_number": <string> | null}`: the *last consumed* number on the rope **+ 1**, never `max + 1`. It takes the most recently created (`created`) `DataEntry` of that size in the given `project` that drew a fresh number from the rope — a first catch (`bird_status='e'`) **or** a destroyed-ring sentinel record (`species.is_sentinel`); recaptures (Wiederfang) consume nothing and are excluded, and the recording Beringer is irrelevant. The numeric value is incremented while leading-zero width is preserved (`0042` → `0043`, returned as a string). It returns `null` when the project has no qualifying capture of that size or the previous number is non-numeric — there is no global/other-project fallback (issues #22, #42).
 
-**Species filtering by user list** — `SpeciesViewSet.get_queryset()` checks if the authenticated user has an active `SpeciesList`; if so, it returns only those species. An authenticated user without an active list gets all species (the endpoint itself still requires authentication). Only one `SpeciesList` per user can be `active=True` (enforced in `SpeciesList.save()`).
+**Species filtering by user list** — `SpeciesViewSet.get_queryset()` checks if the authenticated user has an active `SpeciesList`; if so, it returns only those species **plus the always-selectable sentinel species**. An authenticated user without an active list gets all species (the endpoint itself still requires authentication). Only one `SpeciesList` per user can be `is_active=True` (enforced in `SpeciesList.save()`).
 
-**CSV export** — `DataEntryAdmin` includes a bulk export action that serializes biometric fields and appends boolean flags (mites, hunger stripes, brood patch, CPL+) as text into the comment column.
+**Species ordering by usage frequency** — On top of filtering, `_order_by_usage()` (`views.py:97-110`) re-orders the candidate species by how often they are actually used — most-used first, alphabetically within ties. Usage is scoped to `?project` when that project has any entries, otherwise it falls back to a global count (mirrors the ring-number suggestion's project/global behavior, issue #27).
+
+**Sentinel species null bird-data** — `DataEntrySerializer._null_bird_data_for_sentinel()` (`serializers.py:228-235`) forces **every** bird-data field to `null` when the chosen species `is_sentinel` (e.g. "Ring Vernichtet"), regardless of what the client sent. Ring, Beringer, Station and Datum stay required — a sentinel record still consumes a rope number (see Smart ring numbering).
+
+**Projects scoped to the user's Beringer** — `ProjectViewSet.get_queryset()` (`views.py:224-233`) returns `Project.objects.none()` — an **empty list, not a 403** — when the requesting user has no linked `Scientist` (Beringer). Authenticated users without a Beringer simply see no projects.
+
+**Write vs. read payload shape** — POST/PUT/PATCH to `/data-entries/` accept flat IDs (`species_id`, `staff_id`, `ringing_station_id`, `ring_number`, `ring_size`); GET returns nested objects. The two shapes are intentionally different — never feed a GET response body back as a write payload, and never POST to `/rings/` directly.
+
+**CSV export** — `DataEntryAdmin` includes an "Als CSV exportieren" bulk action that serializes biometric fields and appends boolean flags (mites, hunger stripes, brood patch, CPL+) as text into the comment column. (Per-project IWM `.xlsx` export is a separate path — `GET /projects/{id}/export-iwm/`, `iwm_export.py`.)
 
 ### Data Model Summary
 

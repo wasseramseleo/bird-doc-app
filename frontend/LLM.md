@@ -34,13 +34,57 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 - Use the `providedIn: 'root'` option for singleton services
 - Use the `inject()` function instead of constructor injection
 
+## Example: a signal-based component
 
+Keep logic in the `.ts`, styles in the `.css`, and the template in the `.html` file.
 
-# Form Component
-I finished the backend, providing CRUD endpoints for the relevant models. The next step is to create the main frontend components. I already setup angular with routing and standalone (standard) components. Please create a component with a reactive form where the scientist can create new entries or edit old ones.
-In the create/edit component form, use angular material components as you deem best fitting. For fields with choices use selectors which can be set using keyboard inputs.
-For usability, as soon as an input of a choice select is ubiquitous, the choice is selected and the next textbox is focussed.
-This is the order of inputs:
-ringing_station, staff, date_time (automatically selects the last full hour of today), species (fulltext search on the german name), bird_status, ring_number, net_location, net_height, net_direction, fat_deposit, muscle_class, age_class, sex, small_feather_int, small_feather_app, hand_wing, tarsus, feather_span, wing_span, weight_gram, notch_f2, inner_foot, comment.
-Create interfaces and enums mimicing the models in the backends as you deem fitting. Use Austria German formatting for date and float values.
-Use reactive forms. Create a dedicated service for API calls. Use signals for state management in the frontend.
+```ts
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+
+@Component({
+  selector: '{{tag-name}}-root',
+  templateUrl: '{{tag-name}}.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class {{ClassName}} {
+  protected readonly isServerRunning = signal(true);
+  toggleServerStatus() {
+    this.isServerRunning.update(isServerRunning => !isServerRunning);
+  }
+}
+```
+
+```css
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+
+    button {
+        margin-top: 10px;
+    }
+}
+```
+
+```html
+<section class="container">
+    @if (isServerRunning()) {
+        <span>Yes, the server is running</span>
+    } @else {
+        <span>No, the server is not running</span>
+    }
+    <button (click)="toggleServerStatus()">Toggle Server Status</button>
+</section>
+```
+
+## Resources
+
+Core Angular concepts:
+- https://angular.dev/essentials/components
+- https://angular.dev/essentials/signals
+- https://angular.dev/essentials/templates
+- https://angular.dev/essentials/dependency-injection
+
+Style guide: https://angular.dev/style-guide
