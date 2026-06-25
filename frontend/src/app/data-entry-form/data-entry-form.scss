@@ -191,12 +191,25 @@
 
 // Issue #19: the "Ring vernichtet" quick-button. Deliberately understated so it
 // never competes with the common case (a real bird) — a small, muted text link.
+// Issue #47: it now lives in the form action row, pushed hard left (margin-right:
+// auto) so it sits opposite — and well clear of — "Zurücksetzen"/"Erstellen" and
+// is not hit by accident when reaching for the primary action.
 .destroyed-ring-link {
   align-self: center;
+  margin-right: auto;
   font-size: 0.8rem;
   font-weight: 400;
   color: var(--bd-ink-soft);
   letter-spacing: 0.01em;
+}
+
+// #45: the Ringgröße select only ever holds a short ring-size value, so the
+// field is constrained to roughly its label width instead of stretching to fill
+// a full grid cell. It stays left-aligned in its cell; the floating label and
+// outline appearance are untouched.
+.ring-size-field {
+  max-width: 150px;
+  justify-self: start;
 }
 
 // #25: the selected Ringgröße reads as a prefix directly before the Ringnummer

@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from birds.models import DataEntry, Ring, SpeciesList
+from birds.models import DataEntry, Ring, Species, SpeciesList
 
 LIST_URL = "/api/birds/species/"
 
@@ -93,6 +93,30 @@ def test_search_matches_common_name_de_prefix(auth_client, species, species_othe
     response = auth_client.get(LIST_URL, {"search": "Zzztest"})
     ids = {row["id"] for row in response.json()["results"]}
     assert ids == {str(species.id)}
+
+
+@pytest.mark.django_db
+def test_search_matches_common_name_de_midstring_fragment(auth_client):
+    """Typing a fragment that appears mid-name surfaces the species (icontains)."""
+    wasseramsel = Species.objects.create(
+        common_name_de="Zzztestwasseramsel",
+        common_name_en="Zzztest Dipper",
+        scientific_name="Zzztestus cinclus",
+        family_name="Zzztestidae",
+        order_name="Zzztestiformes",
+        ring_size=Ring.RingSizes.V,
+    )
+    response = auth_client.get(LIST_URL, {"search": "amsel"})
+    ids = {row["id"] for row in response.json()["results"]}
+    assert str(wasseramsel.id) in ids
+
+
+@pytest.mark.django_db
+def test_search_midstring_fragment_finds_sentinel(auth_client, sentinel_species):
+    """A fragment inside 'Ring Vernichtet' still surfaces the sentinel."""
+    response = auth_client.get(LIST_URL, {"search": "vernichtet"})
+    ids = {row["id"] for row in response.json()["results"]}
+    assert str(sentinel_species.id) in ids
 
 
 @pytest.mark.django_db

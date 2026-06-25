@@ -1,5 +1,7 @@
 import {ChangeDetectionStrategy, Component, computed, effect, inject} from '@angular/core';
-import {Router, RouterLink, RouterLinkActive} from '@angular/router';
+import {toSignal} from '@angular/core/rxjs-interop';
+import {NavigationEnd, Router, RouterLink, RouterLinkActive} from '@angular/router';
+import {filter, map} from 'rxjs';
 import {MatToolbarModule} from '@angular/material/toolbar';
 import {MatIconModule} from '@angular/material/icon';
 import {MatButtonModule} from '@angular/material/button';
@@ -55,6 +57,26 @@ export class NavBar {
   });
 
   readonly isStaff = computed(() => this.auth.currentUser()?.isStaff ?? false);
+
+  // The active route path (without query/fragment), kept fresh on navigation.
+  private readonly currentPath = toSignal(
+    this.router.events.pipe(
+      filter((e) => e instanceof NavigationEnd),
+      map(() => this.pathOf(this.router.url)),
+    ),
+    {initialValue: this.pathOf(this.router.url)},
+  );
+
+  // "+ Neuer Fang" routes to the create form, so it is pointless there. Hide it
+  // on exactly /data-entry; it stays on edit routes (/data-entry/:id) and
+  // elsewhere, still gated by an active Projekt.
+  readonly showNewFang = computed(
+    () => !!this.currentProject() && this.currentPath() !== '/data-entry',
+  );
+
+  private pathOf(url: string): string {
+    return url.split('#')[0].split('?')[0];
+  }
 
   switchProject(project: Project): void {
     this.projectService.setCurrent(project);

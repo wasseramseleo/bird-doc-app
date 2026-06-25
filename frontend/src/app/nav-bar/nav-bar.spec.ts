@@ -176,6 +176,66 @@ describe('NavBar', () => {
     expect(action.textContent).toContain('Neuer Fang');
   });
 
+  it('hides the "Neuer Fang" action while on the create form (exactly /data-entry)', async () => {
+    TestBed.configureTestingModule({
+      imports: [NavBar],
+      providers: [
+        provideRouter([
+          { path: 'data-entry', children: [] },
+          { path: 'data-entry/:id', children: [] },
+        ]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+      ],
+    });
+    const fixture = TestBed.createComponent(NavBar);
+    const projectService = TestBed.inject(ProjectService);
+    const httpMock = TestBed.inject(HttpTestingController);
+    const router = TestBed.inject(Router);
+
+    projectService.setCurrent(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/')).flush(page0([makeProject()]));
+
+    await router.navigateByUrl('/data-entry');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.new-fang'))
+      .withContext('Neuer Fang hidden on the create form')
+      .toBeNull();
+  });
+
+  it('keeps the "Neuer Fang" action on an edit route (/data-entry/:id)', async () => {
+    TestBed.configureTestingModule({
+      imports: [NavBar],
+      providers: [
+        provideRouter([
+          { path: 'data-entry', children: [] },
+          { path: 'data-entry/:id', children: [] },
+        ]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+      ],
+    });
+    const fixture = TestBed.createComponent(NavBar);
+    const projectService = TestBed.inject(ProjectService);
+    const httpMock = TestBed.inject(HttpTestingController);
+    const router = TestBed.inject(Router);
+
+    projectService.setCurrent(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/')).flush(page0([makeProject()]));
+
+    await router.navigateByUrl('/data-entry/42');
+    fixture.detectChanges();
+
+    const action = fixture.nativeElement.querySelector('.new-fang') as HTMLAnchorElement;
+    expect(action).withContext('Neuer Fang visible on the edit route').not.toBeNull();
+    expect(action.getAttribute('href')).toBe('/data-entry');
+  });
+
   it('does not render the "Neuer Fang" action in the picker state', () => {
     const { fixture, projectService } = setup();
     expect(projectService.currentProject()).toBeNull();

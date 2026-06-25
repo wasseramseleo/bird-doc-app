@@ -59,10 +59,7 @@ function page0<T>(results: T[]) {
   return { count: results.length, next: null, previous: null, results };
 }
 
-let createdPayload: Record<string, unknown> | null = null;
-
 async function stubApi(page: Page): Promise<void> {
-  createdPayload = null;
   await page.route('**/api/auth/me/', (route) =>
     route.fulfill({ json: { username: 'fre', handle: 'FRE', is_staff: false } }),
   );
@@ -75,7 +72,6 @@ async function stubApi(page: Page): Promise<void> {
   await page.route('**/api/birds/data-entries/**', (route) => {
     const request = route.request();
     if (request.method() === 'POST') {
-      createdPayload = request.postDataJSON();
       return route.fulfill({ json: { id: 'new1' } });
     }
     const url = new URL(request.url());
@@ -138,7 +134,11 @@ test.describe('Keyboard workflow happy-path (#23)', () => {
       (r) => r.method() === 'POST' && r.url().includes('/api/birds/data-entries/'),
     );
     await page.keyboard.press('Control+s');
-    await savePost;
+    // Read the payload from the request itself — waitForRequest resolves when the
+    // request is sent, which can race ahead of the route handler, so capturing it
+    // via a shared variable in the handler is unreliable.
+    const saveRequest = await savePost;
+    const createdPayload = saveRequest.postDataJSON();
 
     // The record was created with the typed ring number and the prefilled
     // Geschlecht (Weiblich = 2) — proving Strg+S saved the recapture.

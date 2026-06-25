@@ -32,6 +32,23 @@ function page0<T>(results: T[]) {
   return {count: results.length, next: null, previous: null, results};
 }
 
+// A minimal list row whose species name we can assert against per project.
+function entry(id: string, speciesName: string) {
+  return {
+    id,
+    created: '2026-06-01T08:00:00Z',
+    date_time: '2026-06-01T08:00:00Z',
+    ring: {id: 'r1', number: '901234', size: 'M'},
+    species: {id: 's1', common_name_de: speciesName, is_sentinel: false},
+    bird_status: 'e',
+    staff: {id: 'p1', handle: 'FRE', full_name: 'Filip Reiter'},
+    tarsus: 19,
+    feather_span: 54,
+    wing_span: 73,
+    weight_gram: 18,
+  };
+}
+
 async function stubApi(page: Page): Promise<void> {
   await page.route('**/api/auth/me/', (route) =>
     route.fulfill({json: {username: 'fre', handle: 'FRE', is_staff: false}}),
@@ -93,6 +110,31 @@ test.describe('Data-entry list as navigation hub', () => {
     await page.getByRole('menuitem', {name: 'Donau-Auen'}).click();
     await expect(page).toHaveURL(/\/data-entries$/);
     await expect(page.locator('.project-switcher')).toContainText('Donau-Auen');
+  });
+
+  test('switching project reloads "Letzte Fänge" with the new project\'s entries (#44)', async ({page}) => {
+    // Serve a different species per project so a reload is visible in the rows.
+    await page.route('**/api/birds/data-entries/**', (route) => {
+      const project = new URL(route.request().url()).searchParams.get('project');
+      const species = project === 'p2' ? 'Blaumeise' : 'Kohlmeise';
+      route.fulfill({json: page0([entry(`${project}-row`, species)])});
+    });
+
+    await page.goto('/');
+    await page.locator('.project-card__main', {hasText: 'Schilfgürtel Linz'}).click();
+    await expect(page).toHaveURL(/\/data-entries$/);
+
+    // First project's data is shown.
+    await expect(page.locator('tr.entry-row')).toContainText('Kohlmeise');
+
+    // Switch projects via the navbar switcher — same route/component instance.
+    await page.locator('.project-switcher').click();
+    await page.getByRole('menuitem', {name: 'Donau-Auen'}).click();
+
+    // The list reloads for the new project; no stale data from the first.
+    await expect(page.locator('.project-switcher')).toContainText('Donau-Auen');
+    await expect(page.locator('tr.entry-row')).toContainText('Blaumeise');
+    await expect(page.locator('tr.entry-row')).not.toContainText('Kohlmeise');
   });
 
   test('the "Neuer Fang" action routes to the data-entry form', async ({page}) => {

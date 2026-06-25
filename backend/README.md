@@ -1,10 +1,10 @@
 # BirdDoc — Backend
 
-Django REST API for a bird ringing (ornithology) data capture system. Part of the `bird-doc-app` monorepo — pairs with the Angular 20 frontend in `../frontend/` at `localhost:4200`.
+Django REST API for a bird ringing (ornithology) data capture system. Part of the `bird-doc-app` monorepo — pairs with the Angular 21 frontend in `../frontend/` at `localhost:4200`.
 
 ## Stack
 
-- Python 3.13 / Django 5.2 / Django REST Framework 3.16
+- Python 3.13 / Django 5.2 (`>=5.2,<5.3`) / Django REST Framework 3.16 (`>=3.16,<4`)
 - [uv](https://docs.astral.sh/uv/) for packaging + virtualenv management
 - SQLite for native dev (default), Postgres in compose / production
 - CORS / CSRF origins controlled via env
@@ -29,11 +29,15 @@ uv run ruff format                  # auto-format
 uv run pytest                       # tests (no specs yet — exits 5)
 ```
 
-### Load species data
+### Management commands
 
 ```bash
 uv run python manage.py import_species res/artenliste_2024.csv
+# Load species reference data (required for autocomplete).
 # Options: --clear (wipe first), --no-other (skip "Andere Art" catch-all)
+
+uv run python manage.py create_test_data   # dev fixtures: users, projects, sample captures
+uv run python manage.py seed_audit_data    # acceptance-test fixtures (see ADR 0001)
 ```
 
 ### Configuration
@@ -58,22 +62,25 @@ All routes under `/api/birds/`. Pagination: 10 per page. **Every endpoint requir
 | `/data-entries/` | GET/POST/PUT/DELETE | Core bird capture records |
 | `/species/` | GET | ~1M rows — always search, never load all |
 | `/rings/` | GET | All registered rings |
-| `/rings/next-number?size=<V\|T\|S\|X\|P>` | GET | Returns `max(number) + 1` for that size |
+| `/rings/next-number?size=<V\|T\|S\|X\|P>&project=<id>` | GET | "Last consumed + 1" for that size in the project (see Key Behaviors) |
 | `/ringing-stations/` | GET | Searchable by name/handle; filterable by `organization` |
 | `/scientists/` | GET | Searchable by handle/name |
 | `/organizations/` | GET | Searchable by name/handle |
 | `/projects/` | GET/POST/PUT/DELETE | Scoped to the requesting user's Beringer |
+| `/projects/{id}/export-iwm/` | GET | Streams the project's captures as an IWM `.xlsx` workbook |
 | `/species-lists/` | GET/POST/PUT/DELETE | Per-user species filter lists |
 
 ## Key Behaviors
 
 **Ring lifecycle** — Clients never POST to `/rings/`. Write a `DataEntry` with `ring_number` + `ring_size`; the serializer calls `_get_or_create_ring()`. When a DataEntry's ring changes, the orphaned Ring is deleted transactionally.
 
-**Smart ring numbering** — `next-number` casts all existing numbers to `int` and returns `max + 1`, tolerating gaps and non-numeric values.
+**Smart ring numbering** — `next-number` returns "last consumed + 1", **not** `max + 1`. It follows the project's most recent capture of that size that drew a fresh number from the rope — a first catch (Erstfang) **or** a destroyed-ring sentinel ("Ring vernichtet") record — ignoring recaptures (Wiederfänge), and increments it while preserving leading-zero width (`0042` → `0043`, returned as a string). Project-scoped; returns `null` when no qualifying capture exists or the previous number is non-numeric. See `CONTEXT.md` (Ringserie).
 
 **Species filtering** — If the authenticated user has an active `SpeciesList`, `GET /species/` returns only those species; otherwise it returns all species. The endpoint requires authentication either way. Only one list per user can be `is_active=True` (enforced in `SpeciesList.save()`).
 
 **DataEntry write vs. read shape** — Write uses flat fields (`species_id`, `staff_id`, `ringing_station_id`, `ring_number`, `ring_size`); read returns nested objects.
+
+**Exports** — A project's captures export as an IWM `.xlsx` workbook via `GET /projects/{id}/export-iwm/` (`iwm_export.py`; format reproduced from the reference sheet cited in ADR 0002). Separately, the Django-admin `DataEntry` list has an **"Als CSV exportieren"** bulk action (see Admin below).
 
 ## Data Models
 
@@ -92,4 +99,4 @@ All routes under `/api/birds/`. Pagination: 10 per page. **Every endpoint requir
 
 Django admin at `/admin/` has full CRUD for all models.
 
-`DataEntry` admin includes a **CSV export action** (`Beringungsdaten-<date>.csv`) with German headers and biometric + condition flag columns.
+`DataEntry` admin includes an **"Als CSV exportieren"** bulk action (`Beringungsdaten-<date>.csv`) with German headers and biometric + condition flag columns.

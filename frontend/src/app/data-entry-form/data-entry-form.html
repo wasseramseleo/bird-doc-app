@@ -177,7 +177,7 @@
         </mat-form-field>
       }
 
-      <mat-form-field appearance="outline" floatLabel="always">
+      <mat-form-field appearance="outline" floatLabel="always" class="ring-size-field">
         <mat-label>Ringgröße</mat-label>
         <mat-select
           formControlName="ring_size"
@@ -199,14 +199,6 @@
           <mat-error>Nur Ziffern erlaubt.</mat-error>
         }
       </mat-form-field>
-
-      @if (!isSentinel()) {
-        <button mat-button type="button" class="destroyed-ring-link"
-                data-testid="destroyed-ring-button"
-                (click)="onDestroyedRing()">
-          Ring vernichtet
-        </button>
-      }
 
       @if (isRecatch()) {
         <button mat-icon-button type="button" (click)="fetchRingHistory()"
@@ -365,6 +357,13 @@
     }
 
     <div class="action-buttons">
+      @if (!isSentinel()) {
+        <button mat-button type="button" class="destroyed-ring-link"
+                data-testid="destroyed-ring-button"
+                (click)="onDestroyedRing()">
+          Ring vernichtet
+        </button>
+      }
       @if (isEditMode()) {
         <button mat-button type="button" (click)="onBackToList()">Zur Liste</button>
       }

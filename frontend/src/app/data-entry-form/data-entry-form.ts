@@ -86,6 +86,8 @@ import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialo
   host: {
     '(keydown)': 'onKeydown($event)',
     '(keyup)': 'onKeyup($event)',
+    '(mousedown)': 'onPointerOrFocus($event)',
+    '(focusin)': 'onPointerOrFocus($event)',
   },
 })
 export class DataEntryFormComponent implements OnInit {
@@ -336,7 +338,9 @@ export class DataEntryFormComponent implements OnInit {
         // this campaign's Erstfang rings rather than the global maximum (#22).
         const projectId = this.currentProject()?.id;
         this.apiService.getNextRingNumber(size, projectId).subscribe(res => {
-          this.entryForm.get('ring_number')?.setValue(res.next_number.toString());
+          // Populate the field with the suggestion verbatim so leading zeros
+          // (e.g. "0043") survive; leave it empty when there is none (#42).
+          this.entryForm.get('ring_number')?.setValue(res.next_number ?? '');
         });
       }
     });
@@ -755,7 +759,7 @@ export class DataEntryFormComponent implements OnInit {
   // #23: a single form-level keyboard dispatch. Every keydown refreshes the
   // CapsLock indicator and routes save / Enter handling.
   onKeydown(event: KeyboardEvent): void {
-    this.capsLockOn.set(event.getModifierState('CapsLock'));
+    this.syncCapsLockState(event);
 
     // Strg+S / Cmd+S saves and suppresses the browser "save page" dialog. Works
     // in both create and edit mode; onSubmit() shows errors on an invalid form.
@@ -803,7 +807,33 @@ export class DataEntryFormComponent implements OnInit {
   }
 
   onKeyup(event: KeyboardEvent): void {
-    this.capsLockOn.set(event.getModifierState('CapsLock'));
+    this.syncCapsLockState(event);
+  }
+
+  // #43: catch an already-active CapsLock on the first pointer/focus interaction,
+  // before any keystroke. A MouseEvent carries getModifierState; a FocusEvent does
+  // not, so the shared sync simply no-ops on events without it.
+  onPointerOrFocus(event: Event): void {
+    this.syncCapsLockState(event);
+  }
+
+  // #43: the single source of truth for the CapsLock indicator. The CapsLock key's
+  // OWN keydown/keyup report an unreliable getModifierState mid-toggle across
+  // browsers (the "activates regardless of state" / "never clears" bug), so its
+  // state is tracked by toggling on keydown and ignoring its keyup. Every other
+  // event — ordinary keystrokes, pointer, focus — reports a reliable reading and
+  // is trusted directly, which both sets and clears the warning correctly.
+  private syncCapsLockState(event: Event): void {
+    if (event instanceof KeyboardEvent && event.key === 'CapsLock') {
+      if (event.type === 'keydown') {
+        this.capsLockOn.update(on => !on);
+      }
+      return;
+    }
+    const probe = event as Partial<KeyboardEvent & MouseEvent>;
+    if (typeof probe.getModifierState === 'function') {
+      this.capsLockOn.set(probe.getModifierState('CapsLock'));
+    }
   }
 
   onSelectKeydown(event: KeyboardEvent, controlName: string, options: SelectOption<any>[], selectComponent: MatSelect): void {

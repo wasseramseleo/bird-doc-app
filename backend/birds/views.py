@@ -1,7 +1,6 @@
 import datetime
 
-from django.db.models import Count, IntegerField, Q
-from django.db.models.functions import Cast
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
@@ -74,7 +73,7 @@ class DataEntryViewSet(viewsets.ModelViewSet):
 class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SpeciesSerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ["^common_name_de", "scientific_name"]
+    search_fields = ["common_name_de", "scientific_name"]
 
     def get_queryset(self):
         """
@@ -144,12 +143,18 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Suggests the next ring number for a given ring size.
 
-        The suggestion is ``max(number) + 1`` over the *first-catch* (Erstfang)
-        rings of that size — rings whose number was newly applied to a bird,
-        excluding recaptures (Wiederfang) of foreign marks. It is scoped to the
-        current project when one is given, falling back to the global first-catch
-        maximum when the project has no such ring, and to ``1`` when none exists
-        anywhere. See issue #22.
+        The suggestion is the *last consumed* number on the rope, incremented by
+        one — i.e. it follows the most recently created (``created``) capture in
+        the project that drew a fresh number from the rope, never ``max + 1``.
+        A capture consumes a number when it is a first catch (Erstfang) **or** a
+        destroyed-ring sentinel record (``species.is_sentinel``); recaptures
+        (Wiederfang) consume nothing and are excluded. The recording Beringer is
+        irrelevant.
+
+        The numeric value is incremented while the original width is preserved,
+        so ``0042`` → ``0043``. The response is ``{"next_number": <string>}``,
+        or ``{"next_number": null}`` when the project has no qualifying capture
+        of that size or the previous number is non-numeric. See issues #22, #42.
         """
         ring_size = request.query_params.get("size")
         if not ring_size:
@@ -157,30 +162,24 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
 
         project = request.query_params.get("project")
 
-        first_catches = Ring.objects.filter(
-            size=ring_size,
-            number__regex=r"^\d+$",
-            dataentry__bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+        consumptions = DataEntry.objects.filter(ring__size=ring_size).filter(
+            Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH) | Q(species__is_sentinel=True)
         )
-
-        latest = None
         if project:
-            latest = self._max_number(first_catches.filter(dataentry__project=project))
-        if latest is None:
-            latest = self._max_number(first_catches)
+            consumptions = consumptions.filter(project=project)
 
-        next_number = latest + 1 if latest is not None else 1
-        return Response({"next_number": next_number})
+        latest = consumptions.select_related("ring").order_by("-created").first()
+        return Response({"next_number": self._increment(latest.ring.number) if latest else None})
 
     @staticmethod
-    def _max_number(queryset):
-        """Largest integer ring number in the queryset, or None if it is empty."""
-        latest = (
-            queryset.annotate(number_int=Cast("number", IntegerField()))
-            .order_by("-number_int")
-            .first()
-        )
-        return latest.number_int if latest else None
+    def _increment(number):
+        """Increment a ring number while preserving its leading-zero width.
+
+        Returns ``None`` for a non-numeric number (nothing sensible to suggest).
+        """
+        if not number.isdigit():
+            return None
+        return f"{int(number) + 1:0{len(number)}d}"
 
 
 class RingingStationViewSet(viewsets.ReadOnlyModelViewSet):

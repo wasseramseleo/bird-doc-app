@@ -28,3 +28,13 @@ backend/db.sqlite3-journal
 !.env.example
 
 .playwright-mcp
+
+# LibreOffice / Office lock files
+.~lock.*
+
+# Stray run logs
+frontend/res/local-error.log
+
+# Vendored agent tooling (kept locally, not tracked)
+.agents/
+skills-lock.json

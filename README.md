@@ -7,7 +7,7 @@ Field data entry system for bird ringing (ornithology). Captures per-bird biomet
 ```
 bird-doc-app/
 ├── backend/    # Django 5 REST API  →  http://localhost:8000
-└── frontend/   # Angular 20 SPA     →  http://localhost:4200
+└── frontend/   # Angular 21 SPA     →  http://localhost:4200
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for a full system overview.

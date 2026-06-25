@@ -1,7 +1,7 @@
 """
 Seed Species.ring_size for Austrian species from the AOC ring-size scheme.
 
-Source: AUW_RING_SIZES.pdf (AOC / Österreichische Vogelwarte, November 2016).
+Source: docs/2020_Ringgrößen_Artenliste_AUW.pdf (AOC / Österreichische Vogelwarte, November 2016).
 Match key is scientific_name. Species not listed in the PDF, or listed with
 sex-dimorphic / alternate / specialty rings, are intentionally left NULL.
 """

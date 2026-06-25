@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal} from '@angular/core';
+import {ChangeDetectionStrategy, Component, DestroyRef, OnInit, effect, inject, signal, untracked} from '@angular/core';
 import {CommonModule} from '@angular/common';
 import {Router} from '@angular/router';
 import {FormControl, ReactiveFormsModule} from '@angular/forms';
@@ -59,6 +59,26 @@ export class DataEntryListComponent implements OnInit {
     'tarsus', 'feather_span', 'wing_span', 'weight_gram',
   ];
 
+  constructor() {
+    // Reactive load: tracks only the active Projekt. It runs once on first
+    // render (the initial load) and again on every switch — including switches
+    // that reuse this same route/component instance, where ngOnInit won't fire.
+    // On switch we reset paging and clear the search so the new Projekt starts
+    // from a clean first page. The body is untracked so the paging/search reads
+    // inside loadEntries() don't re-trigger this effect.
+    effect(() => {
+      const project = this.currentProject();
+      untracked(() => {
+        if (!project) {
+          return;
+        }
+        this.pageIndex.set(0);
+        this.searchControl.setValue('', {emitEvent: false});
+        this.loadEntries();
+      });
+    });
+  }
+
   ngOnInit(): void {
     if (!this.currentProject()) {
       this.router.navigateByUrl('/');
@@ -72,8 +92,6 @@ export class DataEntryListComponent implements OnInit {
         this.pageIndex.set(0);
         this.loadEntries();
       });
-
-    this.loadEntries();
   }
 
   onPageChange(event: PageEvent): void {

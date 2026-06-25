@@ -1,15 +1,18 @@
-import { Directive, ElementRef, HostListener, Input, inject } from '@angular/core';
+import { Directive, ElementRef, inject, input } from '@angular/core';
 
 @Directive({
   selector: '[appFocusNext]',
-  standalone: true
+  standalone: true,
+  host: {
+    '(keydown)': 'handleKeyDown($event)',
+    '(selectionChange)': 'onSelectionChange($event)',
+  },
 })
 export class FocusNextDirective {
-  @Input('appFocusNext') nextControlName: string = '';
+  readonly nextControlName = input('', { alias: 'appFocusNext' });
 
   private el = inject(ElementRef);
 
-  @HostListener('keydown', ['$event'])
   handleKeyDown(event: KeyboardEvent): void {
     // Check if the pressed key is 'Enter'
     if (event.key === 'Enter') {
@@ -19,19 +22,19 @@ export class FocusNextDirective {
   }
 
   // This works for mat-select and other components that emit on selection
-  @HostListener('selectionChange', ['$event'])
   onSelectionChange(event: any): void {
     // A small delay is needed to allow the select panel to close
     setTimeout(() => this.focusNextElement(), 100);
   }
 
   private focusNextElement(): void {
-    if (!this.nextControlName) return;
+    const nextControlName = this.nextControlName();
+    if (!nextControlName) return;
 
     const form = this.el.nativeElement.form;
     if (!form) return;
 
-    const nextControl = form.querySelector(`[formControlName="${this.nextControlName}"]`);
+    const nextControl = form.querySelector(`[formControlName="${nextControlName}"]`);
     if (nextControl) {
       (nextControl as HTMLElement).focus();
     }

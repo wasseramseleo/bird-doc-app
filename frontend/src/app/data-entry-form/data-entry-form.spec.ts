@@ -454,15 +454,29 @@ describe('DataEntryFormComponent', () => {
       expect(component.entryForm.get('species')!.value).not.toEqual(sentinel);
     });
 
-    it('renders a discreet quick-button near the Ringnummer field that triggers the flow', () => {
+    it('renders a discreet quick-button inside the action row that triggers the flow', () => {
       const button: HTMLButtonElement | null = fixture.nativeElement.querySelector(
-        'button[data-testid="destroyed-ring-button"]',
+        '.action-buttons button[data-testid="destroyed-ring-button"]',
       );
       expect(button).not.toBeNull();
 
       const spy = spyOn(component, 'onDestroyedRing');
       button!.click();
       expect(spy).toHaveBeenCalled();
+    });
+
+    it('positions "Ring vernichtet" opposite (left of) Zurücksetzen and Erstellen', () => {
+      const labels = Array.from(
+        fixture.nativeElement.querySelectorAll('.action-buttons button'),
+      ).map((b) => (b as HTMLElement).textContent!.trim());
+
+      const destroyedIdx = labels.findIndex((l) => l === 'Ring vernichtet');
+      const resetIdx = labels.indexOf('Zurücksetzen');
+      const createIdx = labels.indexOf('Erstellen');
+
+      expect(destroyedIdx).toBeGreaterThanOrEqual(0);
+      expect(destroyedIdx).toBeLessThan(resetIdx);
+      expect(destroyedIdx).toBeLessThan(createIdx);
     });
   });
 
@@ -631,13 +645,56 @@ describe('DataEntryFormComponent', () => {
         .flush(savedEntry());
       f.detectChanges();
 
-      const backButton: HTMLButtonElement | null = f.nativeElement.querySelector('.action-buttons button');
-      expect(backButton?.textContent?.trim()).toBe('Zur Liste');
+      const backButton = Array.from(
+        f.nativeElement.querySelectorAll('.action-buttons button'),
+      ).find((b) => (b as HTMLElement).textContent!.trim() === 'Zur Liste') as
+        | HTMLButtonElement
+        | undefined;
+      expect(backButton).toBeTruthy();
 
       const router = TestBed.inject(Router);
       const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
       f.componentInstance.onBackToList();
       expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+    });
+  });
+
+  describe('auto-filling the next ring number (#42)', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function selectFirstCatchSize(): void {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.FirstCatch,
+        ring_size: RingSize.V,
+      });
+      fixture.detectChanges();
+    }
+
+    it('populates the Ringnummer with the suggestion verbatim, preserving leading zeros', () => {
+      selectFirstCatchSize();
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
+      );
+      expect(req.request.params.get('size')).toBe('V');
+      req.flush({ next_number: '0043' });
+
+      expect(component.entryForm.get('ring_number')!.value).toBe('0043');
+    });
+
+    it('leaves the Ringnummer empty when there is no suggestion (null)', () => {
+      selectFirstCatchSize();
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
+      );
+      req.flush({ next_number: null });
+
+      expect(component.entryForm.get('ring_number')!.value).toBe('');
     });
   });
 
@@ -1085,7 +1142,11 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
-  describe('CapsLock indicator (#23)', () => {
+  // #43: these specs drive the signal logic with synthetic events. The real
+  // OS-level Caps-Lock on/off-and-clear behavior is NOT asserted here — Karma
+  // mocks getModifierState and cannot toggle the physical key — and is verified
+  // manually in a real browser instead (see PR notes), not via a stand-in test.
+  describe('CapsLock indicator (#23, #43)', () => {
     function keyEvent(capsLockOn: boolean): KeyboardEvent {
       return {
         key: 'a',
@@ -1105,6 +1166,46 @@ describe('DataEntryFormComponent', () => {
       expect(hint()).not.toBeNull();
 
       component.onKeyup(keyEvent(false));
+      fixture.detectChanges();
+      expect(hint()).toBeNull();
+    });
+
+    it('toggles the warning across on→off→on as the CapsLock key itself is pressed (#43)', () => {
+      // The CapsLock key's own keydown reports an unreliable getModifierState
+      // mid-toggle, so the indicator must track the toggle, not the reading.
+      const capsKey = () => new KeyboardEvent('keydown', { key: 'CapsLock' });
+
+      expect(hint()).toBeNull();
+
+      component.onKeydown(capsKey());
+      fixture.detectChanges();
+      expect(hint()).not.toBeNull(); // on
+
+      component.onKeydown(capsKey());
+      fixture.detectChanges();
+      expect(hint()).toBeNull(); // off
+
+      component.onKeydown(capsKey());
+      fixture.detectChanges();
+      expect(hint()).not.toBeNull(); // on again
+    });
+
+    it('reveals the warning on the first pointer interaction when CapsLock is already on (#43)', () => {
+      // A real click delivers a MouseEvent, which carries getModifierState.
+      const pointerEvent = {
+        getModifierState: (modifier: string) => modifier === 'CapsLock',
+      } as unknown as Event;
+
+      expect(hint()).toBeNull();
+
+      component.onPointerOrFocus(pointerEvent);
+      fixture.detectChanges();
+      expect(hint()).not.toBeNull();
+    });
+
+    it('ignores a focus interaction that carries no modifier-state reading (#43)', () => {
+      // A FocusEvent has no getModifierState; the path must no-op, not throw.
+      expect(() => component.onPointerOrFocus({ type: 'focusin' } as Event)).not.toThrow();
       fixture.detectChanges();
       expect(hint()).toBeNull();
     });
