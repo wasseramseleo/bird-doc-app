@@ -43,8 +43,8 @@ describe('ApiService', () => {
     expect(result).toEqual(created);
   });
 
-  it('getNextRingNumber scopes the suggestion to the given project', () => {
-    let result: number | undefined;
+  it('getNextRingNumber scopes the suggestion to the given project and preserves the string verbatim', () => {
+    let result: string | null | undefined;
 
     service.getNextRingNumber(RingSize.V, 'proj-1').subscribe((r) => (result = r.next_number));
 
@@ -53,20 +53,24 @@ describe('ApiService', () => {
     );
     expect(req.request.params.get('size')).toBe('V');
     expect(req.request.params.get('project')).toBe('proj-1');
-    req.flush({ next_number: 42 });
+    req.flush({ next_number: '0043' });
 
-    expect(result).toBe(42);
+    expect(result).toBe('0043');
   });
 
-  it('getNextRingNumber omits the project param when none is given', () => {
-    service.getNextRingNumber(RingSize.V).subscribe();
+  it('getNextRingNumber surfaces a null suggestion when there is none', () => {
+    let result: string | null | undefined;
+
+    service.getNextRingNumber(RingSize.V).subscribe((r) => (result = r.next_number));
 
     const req = httpMock.expectOne(
       (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
     );
     expect(req.request.params.get('size')).toBe('V');
     expect(req.request.params.has('project')).toBe(false);
-    req.flush({ next_number: 1 });
+    req.flush({ next_number: null });
+
+    expect(result).toBeNull();
   });
 
   it('getSpecies scopes the species query to the given project', () => {

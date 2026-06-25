@@ -641,6 +641,45 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  describe('auto-filling the next ring number (#42)', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function selectFirstCatchSize(): void {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.FirstCatch,
+        ring_size: RingSize.V,
+      });
+      fixture.detectChanges();
+    }
+
+    it('populates the Ringnummer with the suggestion verbatim, preserving leading zeros', () => {
+      selectFirstCatchSize();
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
+      );
+      expect(req.request.params.get('size')).toBe('V');
+      req.flush({ next_number: '0043' });
+
+      expect(component.entryForm.get('ring_number')!.value).toBe('0043');
+    });
+
+    it('leaves the Ringnummer empty when there is no suggestion (null)', () => {
+      selectFirstCatchSize();
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
+      );
+      req.flush({ next_number: null });
+
+      expect(component.entryForm.get('ring_number')!.value).toBe('');
+    });
+  });
+
   describe('keyboard save shortcut (Strg+S / Cmd+S) (#23)', () => {
     let httpMock: HttpTestingController;
 
