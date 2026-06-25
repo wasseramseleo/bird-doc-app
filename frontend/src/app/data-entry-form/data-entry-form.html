@@ -200,14 +200,6 @@
         }
       </mat-form-field>
 
-      @if (!isSentinel()) {
-        <button mat-button type="button" class="destroyed-ring-link"
-                data-testid="destroyed-ring-button"
-                (click)="onDestroyedRing()">
-          Ring vernichtet
-        </button>
-      }
-
       @if (isRecatch()) {
         <button mat-icon-button type="button" (click)="fetchRingHistory()"
                 [disabled]="!entryForm.get('ring_size')?.value || !entryForm.get('ring_number')?.value"
@@ -365,6 +357,13 @@
     }
 
     <div class="action-buttons">
+      @if (!isSentinel()) {
+        <button mat-button type="button" class="destroyed-ring-link"
+                data-testid="destroyed-ring-button"
+                (click)="onDestroyedRing()">
+          Ring vernichtet
+        </button>
+      }
       @if (isEditMode()) {
         <button mat-button type="button" (click)="onBackToList()">Zur Liste</button>
       }

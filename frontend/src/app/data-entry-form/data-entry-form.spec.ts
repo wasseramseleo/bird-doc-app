@@ -454,15 +454,29 @@ describe('DataEntryFormComponent', () => {
       expect(component.entryForm.get('species')!.value).not.toEqual(sentinel);
     });
 
-    it('renders a discreet quick-button near the Ringnummer field that triggers the flow', () => {
+    it('renders a discreet quick-button inside the action row that triggers the flow', () => {
       const button: HTMLButtonElement | null = fixture.nativeElement.querySelector(
-        'button[data-testid="destroyed-ring-button"]',
+        '.action-buttons button[data-testid="destroyed-ring-button"]',
       );
       expect(button).not.toBeNull();
 
       const spy = spyOn(component, 'onDestroyedRing');
       button!.click();
       expect(spy).toHaveBeenCalled();
+    });
+
+    it('positions "Ring vernichtet" opposite (left of) Zurücksetzen and Erstellen', () => {
+      const labels = Array.from(
+        fixture.nativeElement.querySelectorAll('.action-buttons button'),
+      ).map((b) => (b as HTMLElement).textContent!.trim());
+
+      const destroyedIdx = labels.findIndex((l) => l === 'Ring vernichtet');
+      const resetIdx = labels.indexOf('Zurücksetzen');
+      const createIdx = labels.indexOf('Erstellen');
+
+      expect(destroyedIdx).toBeGreaterThanOrEqual(0);
+      expect(destroyedIdx).toBeLessThan(resetIdx);
+      expect(destroyedIdx).toBeLessThan(createIdx);
     });
   });
 
@@ -631,8 +645,12 @@ describe('DataEntryFormComponent', () => {
         .flush(savedEntry());
       f.detectChanges();
 
-      const backButton: HTMLButtonElement | null = f.nativeElement.querySelector('.action-buttons button');
-      expect(backButton?.textContent?.trim()).toBe('Zur Liste');
+      const backButton = Array.from(
+        f.nativeElement.querySelectorAll('.action-buttons button'),
+      ).find((b) => (b as HTMLElement).textContent!.trim() === 'Zur Liste') as
+        | HTMLButtonElement
+        | undefined;
+      expect(backButton).toBeTruthy();
 
       const router = TestBed.inject(Router);
       const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);

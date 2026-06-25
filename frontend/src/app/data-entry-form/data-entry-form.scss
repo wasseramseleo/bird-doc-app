@@ -191,8 +191,12 @@
 
 // Issue #19: the "Ring vernichtet" quick-button. Deliberately understated so it
 // never competes with the common case (a real bird) — a small, muted text link.
+// Issue #47: it now lives in the form action row, pushed hard left (margin-right:
+// auto) so it sits opposite — and well clear of — "Zurücksetzen"/"Erstellen" and
+// is not hit by accident when reaching for the primary action.
 .destroyed-ring-link {
   align-self: center;
+  margin-right: auto;
   font-size: 0.8rem;
   font-weight: 400;
   color: var(--bd-ink-soft);
