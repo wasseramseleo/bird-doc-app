@@ -183,3 +183,9 @@ EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=587)
 EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=True)
+
+# Where the public Landing app points a newly-registered founder to sign in:
+# the Angular SPA login. The Landing app (apex, birddoc.at) and the SPA
+# (app.birddoc.at) are separate hosts, so this is an absolute URL. Dev defaults
+# to the local SPA; prod sets DJANGO_APP_LOGIN_URL to https://app.birddoc.at/login.
+APP_LOGIN_URL = env("DJANGO_APP_LOGIN_URL", default="http://localhost:4200/login")

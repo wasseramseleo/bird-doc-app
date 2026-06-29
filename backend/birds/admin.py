@@ -4,6 +4,7 @@ import datetime
 from django.contrib import admin
 from django.http import HttpResponse
 from django.utils.timezone import localtime
+from django.utils.translation import gettext_lazy as _
 
 from .models import (
     DataEntry,
@@ -15,6 +16,7 @@ from .models import (
     Scientist,
     Species,
     SpeciesList,
+    Zugangscode,
 )
 
 
@@ -131,6 +133,21 @@ class ProjectAdmin(admin.ModelAdmin):
     search_fields = ("title",)
     ordering = ("-updated",)
     filter_horizontal = ("scientists",)
+
+
+@admin.register(Zugangscode)
+class ZugangscodeAdmin(admin.ModelAdmin):
+    """Where the operator issues single-use codes that gate org founding (#79)."""
+
+    list_display = ("code", "note", "is_used", "used_at", "founded_organization", "created")
+    list_filter = ("used_at",)
+    search_fields = ("code", "note")
+    ordering = ("-created",)
+    readonly_fields = ("created", "used_at", "founded_organization")
+
+    @admin.display(boolean=True, description=_("Eingelöst"))
+    def is_used(self, obj):
+        return obj.is_used
 
 
 @admin.register(Mitgliedschaft)

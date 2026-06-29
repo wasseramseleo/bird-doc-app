@@ -6,6 +6,15 @@ app_name = "landing"
 
 urlpatterns = [
     path("", views.HomeView.as_view(), name="home"),
+    # Zugangscode-gated public registration: found an Organisation + email
+    # verification, reachable unauthenticated at the apex (issue #79).
+    path("registrierung/", views.RegisterView.as_view(), name="register"),
+    path("registrierung/gesendet/", views.RegisterDoneView.as_view(), name="register_done"),
+    path(
+        "registrierung/bestaetigen/<uidb64>/<token>/",
+        views.RegisterVerifyView.as_view(),
+        name="register_verify",
+    ),
     # Built-in password reset, server-rendered as Landing-app templates and
     # reachable unauthenticated at the apex (issue #77). Names live under the
     # `landing:` namespace, so the views and the email template reverse the
