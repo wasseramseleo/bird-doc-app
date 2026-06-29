@@ -34,7 +34,7 @@ First capture of a bird (new ring applied) vs. a later recapture of an already-r
 _Avoid_: First catch / recatch (English), recapture
 
 **Diesjährig**:
-A bird hatched in the current calendar year (age class 3). Only diesjährige birds undergo post-juvenile Kleingefieder (small-feather) moult, so those moult fields are recorded for them alone.
+A bird hatched in the current calendar year (age class 3). Diesjährig gates a single field — the Kleingefieder *Fortschritt* (post-juvenile small-feather moult progress, J/U/M/N), recorded for diesjährige birds alone because only a this-year bird undergoes its first post-juvenile moult. The Kleingefieder *Intensität* and the Handschwingenmauser are recorded for **all** age classes.
 _Avoid_: Juvenile, first-year
 
 **Empfohlene Ringgröße**:
