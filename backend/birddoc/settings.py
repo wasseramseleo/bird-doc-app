@@ -91,6 +91,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# ModelBackend first preserves exact legacy username login; the email/username
+# backend adds case-insensitive email resolution (ADR 0008).
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "birds.auth_backends.EmailOrUsernameModelBackend",
+]
+
 REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
