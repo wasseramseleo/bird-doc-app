@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('birds', '0034_seed_iwm_station_and_project_context'),
+        ('birds', '0036_create_fallback_beringer'),
     ]
 
     operations = [

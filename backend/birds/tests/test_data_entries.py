@@ -1,10 +1,12 @@
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from birds.models import DataEntry, Project, Ring
 
 LIST_URL = "/api/birds/data-entries/"
+VIENNA = ZoneInfo("Europe/Vienna")
 
 
 def _detail_url(pk):
@@ -59,6 +61,56 @@ def test_list_orders_by_date_time_desc(auth_client, species, ring, scientist, ri
     response = auth_client.get(LIST_URL)
     ids = [row["id"] for row in response.json()["results"]]
     assert ids == [str(newer.id), str(older.id)]
+
+
+@pytest.mark.django_db
+def test_naive_post_is_interpreted_as_vienna_wall_clock(
+    auth_client, species, scientist, ringing_station
+):
+    # A naive wall-clock time (no offset) is what the Beringer reads off the
+    # field clock; it must be anchored to Europe/Vienna. July => CEST (UTC+2).
+    payload = _payload(species, scientist, ringing_station, ring_number="600")
+    payload["date_time"] = "2026-07-01T08:00:00"
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+    assert response.status_code == 201, response.json()
+
+    returned = datetime.fromisoformat(response.json()["date_time"])
+    assert returned == datetime(2026, 7, 1, 8, 0, tzinfo=VIENNA)
+
+
+@pytest.mark.django_db
+def test_editing_time_saves_vienna_without_drift(auth_client, species, scientist, ringing_station):
+    # Create with a naive wall-clock time, then edit the entry the way the UI
+    # does: read it back and re-save. The Vienna wall-clock must not drift.
+    create = auth_client.post(
+        LIST_URL,
+        {
+            **_payload(species, scientist, ringing_station, ring_number="610"),
+            "date_time": "2026-07-01T08:00:00",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.json()
+    entry_id = create.json()["id"]
+
+    # The detail view renders the stored instant as Vienna localtime.
+    fetched = auth_client.get(_detail_url(entry_id)).json()
+    assert datetime.fromisoformat(fetched["date_time"]) == datetime(2026, 7, 1, 8, 0, tzinfo=VIENNA)
+
+    # Re-saving the value the client just read back must not shift the instant.
+    resave = auth_client.put(
+        _detail_url(entry_id),
+        {
+            **_payload(species, scientist, ringing_station, ring_number="610"),
+            "date_time": fetched["date_time"],
+        },
+        format="json",
+    )
+    assert resave.status_code == 200, resave.json()
+    assert datetime.fromisoformat(resave.json()["date_time"]) == datetime(
+        2026, 7, 1, 8, 0, tzinfo=VIENNA
+    )
 
 
 @pytest.mark.django_db

@@ -13,6 +13,10 @@ _Code note_: the model and the `/scientists/` endpoint are historically named `S
 The short handle identifying a Beringer in records and exports. Austrian standard: first letter of the first name + first two letters of the surname (Filip Reiter → FRE).
 _Avoid_: Handle, abbreviation, initials
 
+**Gelöschter Nutzer**:
+The reserved fallback Beringer (Kürzel `GELÖSCHT`) that adopts a deleted Beringer's captures so no capture data is ever lost — deleting a Beringer reassigns rather than blocks or cascades. It is hidden from the Beringer autocomplete, so it only ever receives reassigned captures and is never newly selected, and it is itself protected from deletion (deleting the sink would orphan the captures it adopted). Deletion of a Beringer is admin-only; the app offers no delete affordance. See ADR 0003.
+_Avoid_: Deleted user (English), anonymous Beringer, null Beringer
+
 **Station**:
 The ringing site where a capture happens (e.g. "Linz, Botanischer Garten"). Belongs to one Organisation.
 _Avoid_: Location, site

@@ -57,6 +57,7 @@ import {
   BeringerCreateDialogResult,
 } from './beringer-create-dialog/beringer-create-dialog';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
+import {selectedOptionValidator} from '../shared/validators/selected-option.validator';
 
 @Component({
   selector: 'app-data-entry-form',
@@ -132,10 +133,13 @@ export class DataEntryFormComponent implements OnInit {
 
   // Form Definition
   entryForm = this.fb.group({
-    ringing_station: [null as RingingStation | null, Validators.required],
-    staff: [null as Scientist | null, Validators.required],
+    // #58: each autocomplete must hold a real selected record, not free text the
+    // user typed but never picked — selectedOptionValidator fails the latter inline
+    // so it never POSTs a missing id and surfaces as an opaque 400.
+    ringing_station: [null as RingingStation | null, [Validators.required, selectedOptionValidator]],
+    staff: [null as Scientist | null, [Validators.required, selectedOptionValidator]],
     date_time: [this.getInitialDateTime(), Validators.required],
-    species: [null as Species | null, Validators.required],
+    species: [null as Species | null, [Validators.required, selectedOptionValidator]],
     bird_status: [null as BirdStatus | null, Validators.required],
     ring_size: [null as RingSize | null, Validators.required],
     ring_number: ['', [Validators.required, Validators.pattern('^[0-9]*$')]],
@@ -795,14 +799,16 @@ export class DataEntryFormComponent implements OnInit {
     }
   }
 
-  // #23: a single context-dependent Enter dispatch. Enter never submits the
-  // record except when the save button itself is focused; everywhere else it
-  // advances the field workflow instead of firing the implicit form submit.
+  // #23/#59: a single context-dependent Enter dispatch. Enter never fires the
+  // implicit form submit from a field; it advances the field workflow instead.
+  // The only exceptions are focused controls that own Enter natively.
   private onEnter(event: KeyboardEvent): void {
     const target = event.target as HTMLElement;
 
-    // The save button: let Enter activate it (native button → submit).
-    if (target instanceof HTMLButtonElement && target.type === 'submit') {
+    // #59: any focused action button — let Enter activate it natively. The save
+    // button (type="submit") submits; every other action button is type="button",
+    // so native activation runs its click handler without an implicit submit.
+    if (target instanceof HTMLButtonElement) {
       return;
     }
     // A textarea (Bemerkungen): Enter inserts a newline.

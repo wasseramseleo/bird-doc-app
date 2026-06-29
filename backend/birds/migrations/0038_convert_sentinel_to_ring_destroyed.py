@@ -19,7 +19,7 @@ def clear_ring_destroyed(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("birds", "0035_species_special_kind"),
+        ("birds", "0037_species_special_kind"),
     ]
 
     operations = [

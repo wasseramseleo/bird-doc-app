@@ -3,6 +3,7 @@ import datetime
 
 from django.contrib import admin
 from django.http import HttpResponse
+from django.utils.timezone import localtime
 
 from .models import (
     DataEntry,
@@ -63,7 +64,7 @@ def export_as_csv(modeladmin, request, queryset):
                 obj.ring.size + obj.ring.number,
                 obj.staff.handle,
                 obj.ringing_station.name if obj.ringing_station else "",
-                obj.date_time.strftime("%Y-%m-%d %H:%M:%S"),
+                localtime(obj.date_time).strftime("%Y-%m-%d %H:%M:%S"),
                 obj.get_bird_status_display(),
                 obj.get_age_class_display(),
                 obj.get_sex_display(),

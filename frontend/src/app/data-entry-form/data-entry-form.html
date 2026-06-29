@@ -115,7 +115,11 @@
             <mat-option [value]="option">{{ option.name }}</mat-option>
           }
         </mat-autocomplete>
-        <mat-error>Station ist erforderlich.</mat-error>
+        @if (entryForm.controls.ringing_station.hasError('required')) {
+          <mat-error>Station ist erforderlich.</mat-error>
+        } @else if (entryForm.controls.ringing_station.hasError('unmatchedOption')) {
+          <mat-error>Unbekannte Station – bitte aus der Liste wählen</mat-error>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline" floatLabel="always">
@@ -135,7 +139,11 @@
             </mat-option>
           }
         </mat-autocomplete>
-        <mat-error>Beringer ist erforderlich.</mat-error>
+        @if (entryForm.controls.staff.hasError('required')) {
+          <mat-error>Beringer ist erforderlich.</mat-error>
+        } @else if (entryForm.controls.staff.hasError('unmatchedOption')) {
+          <mat-error>Unbekannter Beringer – bitte aus der Liste wählen</mat-error>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline" floatLabel="always">
@@ -162,7 +170,11 @@
             <mat-option [value]="option">{{ option.common_name_de }} ({{ option.scientific_name }})</mat-option>
           }
         </mat-autocomplete>
-        <mat-error>Art ist erforderlich.</mat-error>
+        @if (entryForm.controls.species.hasError('required')) {
+          <mat-error>Art ist erforderlich.</mat-error>
+        } @else if (entryForm.controls.species.hasError('unmatchedOption')) {
+          <mat-error>Unbekannte Art – bitte aus der Liste wählen</mat-error>
+        }
       </mat-form-field>
       @if (!isRingDestroyed()) {
         <mat-form-field appearance="outline" floatLabel="always">

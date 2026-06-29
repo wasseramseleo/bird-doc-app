@@ -114,6 +114,26 @@ def test_create_respects_supplied_kuerzel(auth_client):
 
 
 @pytest.mark.django_db
+def test_listing_excludes_reserved_fallback_beringer(auth_client):
+    # The fallback Beringer (Kürzel GELÖSCHT) exists via data migration; it must
+    # stay hidden from the autocomplete so no fresh capture is filed against it.
+    Scientist.objects.create(handle="FRE", first_name="Filip", last_name="Reiter")
+
+    response = auth_client.get("/api/birds/scientists/")
+
+    handles = [row["handle"] for row in response.json()["results"]]
+    assert "GELÖSCHT" not in handles
+    assert handles == ["FRE"]
+
+
+@pytest.mark.django_db
+def test_search_never_matches_reserved_fallback_beringer(auth_client):
+    response = auth_client.get("/api/birds/scientists/", {"search": "Nutzer"})
+
+    assert response.json()["results"] == []
+
+
+@pytest.mark.django_db
 def test_beringer_cannot_be_edited_or_deleted_via_api(auth_client):
     beringer = Scientist.objects.create(handle="FRE", first_name="Filip", last_name="Reiter")
     detail = f"/api/birds/scientists/{beringer.id}/"

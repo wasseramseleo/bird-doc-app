@@ -36,7 +36,7 @@ def remove_aves_ignota(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("birds", "0036_convert_sentinel_to_ring_destroyed"),
+        ("birds", "0038_convert_sentinel_to_ring_destroyed"),
     ]
 
     operations = [

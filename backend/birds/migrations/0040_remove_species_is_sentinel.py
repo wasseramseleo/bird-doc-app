@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('birds', '0037_create_aves_ignota'),
+        ('birds', '0039_create_aves_ignota'),
     ]
 
     operations = [
