@@ -6,7 +6,7 @@ Project instructions for agents working in this repo.
 
 ### Issue tracker
 
-Issues and PRDs live in this repo's GitHub Issues (`leothetryhard/bird-doc-app`), managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live in this repo's GitHub Issues (`wasseramseleo/bird-doc-app`), managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
