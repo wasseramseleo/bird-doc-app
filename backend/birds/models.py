@@ -2,6 +2,9 @@ import uuid
 
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models import ProtectedError
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 
 from .kuerzel import derive_handle
@@ -55,6 +58,15 @@ class Ring(models.Model):
 
 
 class Species(models.Model):
+    class SpecialKind(models.TextChoices):
+        # A Sonderart discriminator: a non-empty value marks a non-taxon Species
+        # row that is always selectable (it bypasses the active Artenliste). Each
+        # kind derives its own behaviour — see the Sonderart entry in CONTEXT.md
+        # and ADR 0004.
+        NORMAL = "", _("Normale Art")
+        RING_DESTROYED = "ring_destroyed", _("Ring vernichtet")
+        UNKNOWN_SPECIES = "unknown_species", _("Unbekannte Art (Aves ignota)")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     common_name_de = models.CharField(max_length=127, unique=True)
     common_name_en = models.CharField(max_length=127, unique=True)
@@ -68,9 +80,16 @@ class Species(models.Model):
         blank=True,
         verbose_name=_("Empfohlene Ringgröße"),
     )
-    is_sentinel = models.BooleanField(
-        default=False,
-        verbose_name=_("Spezial-Art (kein Vogel)"),
+    # The Sonderart discriminator (replaces the former is_sentinel boolean). It
+    # drives three independent behaviours keyed off the value: visibility
+    # (always-selectable when non-empty), form-collapse + server-side bird-data
+    # null-out (ring_destroyed), and mandatory Bemerkung (unknown_species).
+    special_kind = models.CharField(
+        max_length=32,
+        choices=SpecialKind.choices,
+        default=SpecialKind.NORMAL,
+        blank=True,
+        verbose_name=_("Sonderart"),
     )
 
     def __str__(self):
@@ -102,6 +121,52 @@ class Scientist(models.Model):
 
     def __str__(self):
         return f"{self.handle}"
+
+
+# Reserved fallback Beringer that adopts the captures of a deleted Beringer.
+# Deleting a Beringer must never destroy capture data, so DataEntry.staff is
+# on_delete=SET(get_fallback_beringer) instead of PROTECT. The row is created by
+# a data migration and hidden from the Beringer autocomplete (ScientistViewSet).
+FALLBACK_BERINGER_HANDLE = "GELÖSCHT"
+FALLBACK_BERINGER_FIRST_NAME = "Gelöschter"
+FALLBACK_BERINGER_LAST_NAME = "Nutzer"
+
+
+def get_fallback_beringer():
+    """Return the reserved fallback Beringer, creating it defensively if absent.
+
+    Serves as the ``on_delete=SET(...)`` resolver for ``DataEntry.staff`` so a
+    deleted Beringer's captures are reassigned here across every deletion path
+    (admin single, admin bulk, ORM/shell). The row normally exists via data
+    migration; ``get_or_create`` keeps the contract safe even if it does not.
+    """
+    beringer, _ = Scientist.objects.get_or_create(
+        handle=FALLBACK_BERINGER_HANDLE,
+        defaults={
+            "first_name": FALLBACK_BERINGER_FIRST_NAME,
+            "last_name": FALLBACK_BERINGER_LAST_NAME,
+        },
+    )
+    return beringer
+
+
+@receiver(pre_delete, sender=Scientist)
+def protect_fallback_beringer(sender, instance, **kwargs):
+    """Block deletion of the reserved fallback Beringer on every ORM path.
+
+    The fallback is the sink that adopts deleted Beringers' captures; deleting
+    it would orphan exactly those captures. ``pre_delete`` fires for both single
+    (``instance.delete()``) and bulk (``QuerySet.delete()``) paths, so this one
+    guard covers admin, shell and ORM alike — the same totality argument that
+    puts the reassignment on ``on_delete=SET``. The receiver is bound to the
+    real ``Scientist`` class, so migrations (which use a historical model) can
+    still tear the row down on reverse.
+    """
+    if instance.handle == FALLBACK_BERINGER_HANDLE:
+        raise ProtectedError(
+            f"The reserved fallback Beringer ({FALLBACK_BERINGER_HANDLE}) cannot be deleted.",
+            {instance},
+        )
 
 
 class Organization(models.Model):
@@ -267,7 +332,9 @@ class DataEntry(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     species = models.ForeignKey(Species, on_delete=models.PROTECT, verbose_name=_("Art"))
     ring = models.ForeignKey(Ring, on_delete=models.PROTECT, verbose_name=_("Ringnummer"))
-    staff = models.ForeignKey(Scientist, on_delete=models.PROTECT, verbose_name=_("Beringer"))
+    staff = models.ForeignKey(
+        Scientist, on_delete=models.SET(get_fallback_beringer), verbose_name=_("Beringer")
+    )
     ringing_station = models.ForeignKey(
         RingingStation, on_delete=models.PROTECT, verbose_name=_("Station")
     )

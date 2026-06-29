@@ -1,10 +1,12 @@
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from birds.models import DataEntry, Project, Ring
 
 LIST_URL = "/api/birds/data-entries/"
+VIENNA = ZoneInfo("Europe/Vienna")
 
 
 def _detail_url(pk):
@@ -62,6 +64,56 @@ def test_list_orders_by_date_time_desc(auth_client, species, ring, scientist, ri
 
 
 @pytest.mark.django_db
+def test_naive_post_is_interpreted_as_vienna_wall_clock(
+    auth_client, species, scientist, ringing_station
+):
+    # A naive wall-clock time (no offset) is what the Beringer reads off the
+    # field clock; it must be anchored to Europe/Vienna. July => CEST (UTC+2).
+    payload = _payload(species, scientist, ringing_station, ring_number="600")
+    payload["date_time"] = "2026-07-01T08:00:00"
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+    assert response.status_code == 201, response.json()
+
+    returned = datetime.fromisoformat(response.json()["date_time"])
+    assert returned == datetime(2026, 7, 1, 8, 0, tzinfo=VIENNA)
+
+
+@pytest.mark.django_db
+def test_editing_time_saves_vienna_without_drift(auth_client, species, scientist, ringing_station):
+    # Create with a naive wall-clock time, then edit the entry the way the UI
+    # does: read it back and re-save. The Vienna wall-clock must not drift.
+    create = auth_client.post(
+        LIST_URL,
+        {
+            **_payload(species, scientist, ringing_station, ring_number="610"),
+            "date_time": "2026-07-01T08:00:00",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.json()
+    entry_id = create.json()["id"]
+
+    # The detail view renders the stored instant as Vienna localtime.
+    fetched = auth_client.get(_detail_url(entry_id)).json()
+    assert datetime.fromisoformat(fetched["date_time"]) == datetime(2026, 7, 1, 8, 0, tzinfo=VIENNA)
+
+    # Re-saving the value the client just read back must not shift the instant.
+    resave = auth_client.put(
+        _detail_url(entry_id),
+        {
+            **_payload(species, scientist, ringing_station, ring_number="610"),
+            "date_time": fetched["date_time"],
+        },
+        format="json",
+    )
+    assert resave.status_code == 200, resave.json()
+    assert datetime.fromisoformat(resave.json()["date_time"]) == datetime(
+        2026, 7, 1, 8, 0, tzinfo=VIENNA
+    )
+
+
+@pytest.mark.django_db
 def test_create_creates_ring_when_missing(auth_client, species, scientist, ringing_station):
     response = auth_client.post(
         LIST_URL,
@@ -83,6 +135,64 @@ def test_create_reuses_existing_ring(auth_client, species, scientist, ringing_st
     )
     assert response.status_code == 201, response.json()
     assert Ring.objects.filter(number="400", size=Ring.RingSizes.V).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_aves_ignota_without_comment_returns_400(
+    auth_client, aves_ignota_species, scientist, ringing_station
+):
+    """POST for Aves ignota with a blank Bemerkung is rejected (serializer layer)."""
+    response = auth_client.post(
+        LIST_URL,
+        _payload(aves_ignota_species, scientist, ringing_station, ring_number="660"),
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "comment" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_aves_ignota_with_comment_succeeds(
+    auth_client, aves_ignota_species, scientist, ringing_station
+):
+    payload = _payload(aves_ignota_species, scientist, ringing_station, ring_number="661")
+    payload["comment"] = "Irrgast, nicht auf der Artenliste."
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert DataEntry.objects.count() == 1
+    assert DataEntry.objects.get().comment == "Irrgast, nicht auf der Artenliste."
+
+
+@pytest.mark.django_db
+def test_create_ring_destroyed_nulls_bird_data_server_side(
+    auth_client, sentinel_species, scientist, ringing_station
+):
+    """A 'Ring Vernichtet' capture files no bird data — every bird-data field is
+    nulled server-side regardless of what the client sent (no regression)."""
+    payload = _payload(sentinel_species, scientist, ringing_station, ring_number="662")
+    payload.update(
+        {
+            "age_class": DataEntry.AgeClass.THIS_YEAR,
+            "sex": DataEntry.Sex.MALE,
+            "bird_status": DataEntry.BirdStatus.FIRST_CATCH,
+            "wing_span": "73.0",
+            "weight_gram": "18.0",
+        }
+    )
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get()
+    assert entry.age_class is None
+    assert entry.sex is None
+    assert entry.bird_status is None
+    assert entry.wing_span is None
+    assert entry.weight_gram is None
+    assert entry.ring.number == "662"
 
 
 @pytest.mark.django_db

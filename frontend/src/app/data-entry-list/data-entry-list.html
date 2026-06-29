@@ -59,7 +59,7 @@
         <th mat-header-cell *matHeaderCellDef>Art</th>
         <td mat-cell *matCellDef="let element">
           {{ element.species.common_name_de }}
-          @if (element.species.is_sentinel) {
+          @if (element.species.special_kind === 'ring_destroyed') {
             <span class="sentinel-badge">vernichtet</span>
           }
         </td>
@@ -103,7 +103,7 @@
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
       <tr mat-row *matRowDef="let row; columns: displayedColumns;"
-          class="entry-row" [class.entry-row--sentinel]="row.species.is_sentinel"
+          class="entry-row" [class.entry-row--sentinel]="row.species.special_kind === 'ring_destroyed'"
           (click)="openEntry(row)"></tr>
     </table>
   }

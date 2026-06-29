@@ -3,6 +3,7 @@ import datetime
 
 from django.contrib import admin
 from django.http import HttpResponse
+from django.utils.timezone import localtime
 
 from .models import (
     DataEntry,
@@ -63,7 +64,7 @@ def export_as_csv(modeladmin, request, queryset):
                 obj.ring.size + obj.ring.number,
                 obj.staff.handle,
                 obj.ringing_station.name if obj.ringing_station else "",
-                obj.date_time.strftime("%Y-%m-%d %H:%M:%S"),
+                localtime(obj.date_time).strftime("%Y-%m-%d %H:%M:%S"),
                 obj.get_bird_status_display(),
                 obj.get_age_class_display(),
                 obj.get_sex_display(),
@@ -138,10 +139,17 @@ class ScientistAdmin(admin.ModelAdmin):
 
 @admin.register(Species)
 class SpeciesAdmin(admin.ModelAdmin):
-    list_display = ("scientific_name", "common_name_de", "ring_size", "family_name", "order_name")
+    list_display = (
+        "scientific_name",
+        "common_name_de",
+        "ring_size",
+        "special_kind",
+        "family_name",
+        "order_name",
+    )
     search_fields = ("common_name_de", "common_name_en", "scientific_name")
     ordering = ("scientific_name",)
-    list_filter = ("ring_size",)
+    list_filter = ("ring_size", "special_kind")
 
 
 @admin.register(Ring)

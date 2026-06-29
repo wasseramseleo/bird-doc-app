@@ -38,7 +38,7 @@ const SPECIES = {
   family_name: '',
   order_name: '',
   ring_size: null,
-  is_sentinel: false,
+  special_kind: '',
 };
 
 function page0<T>(results: T[]) {
@@ -142,5 +142,34 @@ test.describe('Clean-reset / Zurücksetzen (#24)', () => {
     // Confirm clears the bird fields.
     await dialog.locator('button', { hasText: 'Zurücksetzen' }).click();
     await expect(page.locator('input[formControlName="ring_number"]')).toHaveValue('');
+  });
+
+  test('Enter on a focused Zurücksetzen button shows the confirmation modal on a dirty form (#59)', async ({
+    page,
+  }) => {
+    await gotoCreateForm(page);
+    await fillMinimalErstfang(page);
+
+    // A focused non-submit action button must not fire an implicit form submit.
+    let posted = false;
+    page.on('request', (req) => {
+      if (req.method() === 'POST' && req.url().includes('/api/birds/data-entries/')) {
+        posted = true;
+      }
+    });
+
+    const reset = page.locator('.action-buttons button', { hasText: 'Zurücksetzen' });
+    await reset.focus();
+    await expect(reset).toBeFocused();
+
+    // Keyboard-only: Enter on the focused button activates it — no mouse.
+    await page.keyboard.press('Enter');
+
+    const dialog = page.locator('app-confirm-dialog');
+    await expect(dialog).toContainText('zurücksetzen');
+    await page.screenshot({ path: 'test-results/reset-enter-confirm.png', fullPage: true });
+
+    // No work was lost to an accidental submit: Enter triggered the modal, not a save.
+    expect(posted).toBe(false);
   });
 });

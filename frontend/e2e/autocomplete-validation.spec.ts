@@ -1,9 +1,10 @@
 import { expect, Page, test } from '@playwright/test';
 
 /**
- * E2E happy-path for the keyboard-driven field workflow (#23):
- * record a Wiederfang, run the ring-history search on Enter (which prefills
- * Art + Geschlecht), then save with Strg+S — no mouse on the save button.
+ * E2E for the inline autocomplete validation (#58): typing a value into the Art
+ * control that is never picked from the list must fail inline — an inline message,
+ * the typed text kept on screen, and no network POST — instead of being accepted
+ * by the form and rejected by the server as an opaque 400.
  *
  * Every backend call is stubbed, so this runs without a Django backend.
  */
@@ -36,24 +37,10 @@ const SPECIES = {
   family_name: '',
   order_name: '',
   ring_size: null,
-  special_kind: '',
+  is_sentinel: false,
 };
 
-// The most recent prior catch the ring-history search returns. Art + Geschlecht
-// (Weiblich = 2) must carry over to the form; measurements must not.
-const PRIOR_CATCH = {
-  id: 'prev1',
-  species: SPECIES,
-  bird_status: 'w',
-  staff: BERINGER,
-  sex: 2,
-  age_class: 4,
-  tarsus: 19,
-  feather_span: 54,
-  wing_span: 73,
-  weight_gram: 18,
-  date_time: '2024-05-01T08:30:00Z',
-};
+const ART_ERROR = 'Unbekannte Art – bitte aus der Liste wählen';
 
 function page0<T>(results: T[]) {
   return { count: results.length, next: null, previous: null, results };
@@ -70,25 +57,32 @@ async function stubApi(page: Page): Promise<void> {
   );
   await page.route('**/api/birds/species/**', (route) => route.fulfill({ json: page0([SPECIES]) }));
   await page.route('**/api/birds/data-entries/**', (route) => {
-    const request = route.request();
-    if (request.method() === 'POST') {
+    if (route.request().method() === 'POST') {
       return route.fulfill({ json: { id: 'new1' } });
-    }
-    const url = new URL(request.url());
-    // The ring-history search carries a ring_number param; the list view does not.
-    if (url.searchParams.get('ring_number')) {
-      return route.fulfill({ json: page0([PRIOR_CATCH]) });
     }
     return route.fulfill({ json: page0([]) });
   });
 }
 
-test.describe('Keyboard workflow happy-path (#23)', () => {
+test.describe('Inline autocomplete validation (#58)', () => {
   test.beforeEach(async ({ page }) => {
     await stubApi(page);
   });
 
-  test('records a Wiederfang via Enter-search and saves with Strg+S', async ({ page }) => {
+  test('typed non-match on Art shows an inline message, keeps the text, and POSTs nothing', async ({
+    page,
+  }) => {
+    // Fail the test on any create POST — the whole point is that none fires.
+    let createPosted = false;
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        request.url().includes('/api/birds/data-entries/')
+      ) {
+        createPosted = true;
+      }
+    });
+
     // Selecting the project persists it, so the form route does not redirect home.
     await page.goto('/');
     await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
@@ -96,13 +90,12 @@ test.describe('Keyboard workflow happy-path (#23)', () => {
 
     await page.goto('/data-entry');
 
-    // Station is pre-filled from the project default.
+    // Make the rest of the form valid so the Art is the only thing left blocking
+    // the save — proving an unmatched Art alone keeps the form invalid.
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,
     );
 
-    // Beringer: type the Kürzel and accept the open autocomplete option with
-    // Enter — which also advances focus to the next field (Datum und Uhrzeit).
     const staff = page.locator('input[formControlName="staff"]');
     await staff.click();
     await staff.fill('FRE');
@@ -110,42 +103,32 @@ test.describe('Keyboard workflow happy-path (#23)', () => {
     await staff.press('ArrowDown');
     await staff.press('Enter');
     await expect(staff).toHaveValue('Filip Reiter (FRE)');
-    await expect(page.locator('input[formControlName="date_time"]')).toBeFocused();
 
-    // Status: Wiederfang (enables the recapture Enter behaviour).
     await page.locator('mat-select[formControlName="bird_status"]').click();
     await page.locator('mat-option', { hasText: 'Wiederfang' }).click();
 
-    // Ringgröße: pick a size so the ring search has both parts. The field now
-    // shows only the bare code (#25), so match the option exactly — 'S' must not
-    // also match SA/AS/BS/DS.
     await page.locator('mat-select[formControlName="ring_size"]').click();
     await page.getByRole('option', { name: 'S', exact: true }).click();
 
-    // Ringnummer + Enter → ring-history search → Art/Geschlecht prefill.
     await page.locator('input[formControlName="ring_number"]').fill('901234');
-    await page.locator('input[formControlName="ring_number"]').press('Enter');
 
-    await expect(page.locator('.recapture-section')).toContainText('Bisherige Fänge');
-    await expect(page.locator('input[formControlName="species"]')).toHaveValue('Kohlmeise');
+    // Art: type a value that matches no record and leave the field without picking
+    // an option from the list. The control value stays the typed free text.
+    const species = page.locator('input[formControlName="species"]');
+    await species.click();
+    await species.fill('Zaunkönigxyz');
+    await species.blur();
 
-    // Save with Strg+S — never touching the save button.
-    const savePost = page.waitForRequest(
-      (r) => r.method() === 'POST' && r.url().includes('/api/birds/data-entries/'),
-    );
+    // The error surfaces on blur, and the typed text remains for correction.
+    await expect(page.locator('mat-error', { hasText: ART_ERROR })).toBeVisible();
+    await expect(species).toHaveValue('Zaunkönigxyz');
+
+    // The save button stays disabled while the Art is unmatched...
+    await expect(page.getByRole('button', { name: 'Erstellen' })).toBeDisabled();
+
+    // ...and the keyboard save shortcut fires no POST either.
     await page.keyboard.press('Control+s');
-    // Read the payload from the request itself — waitForRequest resolves when the
-    // request is sent, which can race ahead of the route handler, so capturing it
-    // via a shared variable in the handler is unreliable.
-    const saveRequest = await savePost;
-    const createdPayload = saveRequest.postDataJSON();
-
-    // The record was created with the typed ring number and the prefilled
-    // Geschlecht (Weiblich = 2) — proving Strg+S saved the recapture.
-    expect(createdPayload?.['ring_number']).toBe('901234');
-    expect(createdPayload?.['sex']).toBe(2);
-
-    // Create mode clears the form after a successful save.
-    await expect(page.locator('input[formControlName="ring_number"]')).toHaveValue('');
+    await expect(page.locator('mat-error', { hasText: ART_ERROR })).toBeVisible();
+    expect(createPosted).toBe(false);
   });
 });

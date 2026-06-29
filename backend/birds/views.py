@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from .iwm_export import build_iwm_workbook
 from .models import (
+    FALLBACK_BERINGER_HANDLE,
     DataEntry,
     Organization,
     Project,
@@ -78,15 +79,16 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """
         Candidate species are filtered exactly as before: an active species
-        list narrows the set to its members plus the always-selectable sentinel
-        species; otherwise all species are candidates. Frequency only reorders
-        the candidates — see ``_order_by_usage``.
+        list narrows the set to its members plus the always-selectable Sonderart
+        rows (every Species whose ``special_kind`` is set — "Ring Vernichtet" and
+        "Aves ignota"); otherwise all species are candidates. Frequency only
+        reorders the candidates — see ``_order_by_usage``.
         """
         user = self.request.user
         active_list = SpeciesList.objects.filter(user=user, is_active=True).first()
         if active_list:
             candidate_ids = Species.objects.filter(
-                Q(lists=active_list) | Q(is_sentinel=True)
+                Q(lists=active_list) | ~Q(special_kind="")
             ).values_list("id", flat=True)
             candidates = Species.objects.filter(id__in=candidate_ids)
         else:
@@ -147,9 +149,9 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         one — i.e. it follows the most recently created (``created``) capture in
         the project that drew a fresh number from the rope, never ``max + 1``.
         A capture consumes a number when it is a first catch (Erstfang) **or** a
-        destroyed-ring sentinel record (``species.is_sentinel``); recaptures
-        (Wiederfang) consume nothing and are excluded. The recording Beringer is
-        irrelevant.
+        destroyed-ring record (``species.special_kind == "ring_destroyed"``);
+        recaptures (Wiederfang) consume nothing and are excluded. The recording
+        Beringer is irrelevant.
 
         The numeric value is incremented while the original width is preserved,
         so ``0042`` → ``0043``. The response is ``{"next_number": <string>}``,
@@ -163,7 +165,8 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         project = request.query_params.get("project")
 
         consumptions = DataEntry.objects.filter(ring__size=ring_size).filter(
-            Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH) | Q(species__is_sentinel=True)
+            Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH)
+            | Q(species__special_kind=Species.SpecialKind.RING_DESTROYED)
         )
         if project:
             consumptions = consumptions.filter(project=project)
@@ -200,10 +203,16 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
 
     A Beringer can be created mid-session with no linked account (an unknown
     Kürzel prompts a "Neuer Beringer" dialog); editing and deletion stay closed.
-    See ADR 0001-account-independent-beringer.
+    The reserved fallback Beringer (Kürzel ``GELÖSCHT``, which adopts a deleted
+    Beringer's captures) is excluded so no fresh capture is filed against it.
+    See ADR 0001-account-independent-beringer and ADR 0003.
     """
 
-    queryset = Scientist.objects.select_related("user").all().order_by("last_name", "first_name")
+    queryset = (
+        Scientist.objects.select_related("user")
+        .exclude(handle=FALLBACK_BERINGER_HANDLE)
+        .order_by("last_name", "first_name")
+    )
     serializer_class = ScientistSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["handle", "first_name", "last_name"]

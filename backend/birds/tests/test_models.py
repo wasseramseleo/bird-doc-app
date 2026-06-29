@@ -4,6 +4,8 @@ from decimal import Decimal
 import pytest
 from django.apps import apps as global_apps
 from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import ProtectedError
 
 from birds.models import Organization, Project, RingingStation, Scientist, Species, SpeciesList
 
@@ -13,11 +15,79 @@ seed_migration = importlib.import_module(
 
 
 @pytest.mark.django_db
-def test_data_migration_creates_single_ring_vernichtet_sentinel():
-    sentinels = Species.objects.filter(is_sentinel=True)
+def test_data_migration_converts_sentinel_to_ring_destroyed():
+    rows = Species.objects.filter(special_kind=Species.SpecialKind.RING_DESTROYED)
 
-    assert sentinels.count() == 1
-    assert sentinels.first().common_name_de == "Ring Vernichtet"
+    assert rows.count() == 1
+    assert rows.first().common_name_de == "Ring Vernichtet"
+
+
+@pytest.mark.django_db
+def test_data_migration_creates_single_aves_ignota_unknown_species():
+    rows = Species.objects.filter(special_kind=Species.SpecialKind.UNKNOWN_SPECIES)
+
+    assert rows.count() == 1
+    row = rows.first()
+    assert row.common_name_de == "Art nicht in der Liste (Aves ignota)"
+    assert row.scientific_name == "Aves ignota"
+    assert row.common_name_en == "Species not listed"
+    assert row.ring_size is None
+
+
+@pytest.mark.django_db
+def test_data_migration_creates_single_fallback_beringer():
+    fallback = Scientist.objects.filter(handle="GELÖSCHT")
+
+    assert fallback.count() == 1
+    assert fallback.first().full_name == "Gelöschter Nutzer"
+
+
+@pytest.mark.django_db
+def test_deleting_beringer_with_captures_reassigns_them_to_fallback(data_entry):
+    beringer = data_entry.staff
+
+    beringer.delete()
+
+    data_entry.refresh_from_db()
+    fallback = Scientist.objects.get(handle="GELÖSCHT")
+    assert data_entry.staff == fallback
+    assert not Scientist.objects.filter(pk=beringer.pk).exists()
+
+
+@pytest.mark.django_db
+def test_fallback_beringer_cannot_be_deleted():
+    # The reserved sink itself must survive — deleting it would orphan every
+    # capture that was reassigned to it. (atomic() contains the rollback so the
+    # surrounding test transaction stays usable after the blocked delete.)
+    fallback = Scientist.objects.get(handle="GELÖSCHT")
+
+    with pytest.raises(ProtectedError), transaction.atomic():
+        fallback.delete()
+
+    assert Scientist.objects.filter(handle="GELÖSCHT").exists()
+
+
+@pytest.mark.django_db
+def test_fallback_beringer_cannot_be_bulk_deleted():
+    # The guard fires on the queryset (bulk) delete path too, not just on a
+    # single instance — the admin bulk action must not wipe the sink either.
+    with pytest.raises(ProtectedError), transaction.atomic():
+        Scientist.objects.filter(handle="GELÖSCHT").delete()
+
+    assert Scientist.objects.filter(handle="GELÖSCHT").exists()
+
+
+@pytest.mark.django_db
+def test_bulk_deleting_beringers_reassigns_captures_to_fallback(data_entry):
+    # The admin bulk-delete action runs a queryset .delete() — a distinct Django
+    # deletion path from a single instance. on_delete=SET reassigns either way.
+    beringer = data_entry.staff
+
+    Scientist.objects.filter(pk=beringer.pk).delete()
+
+    data_entry.refresh_from_db()
+    assert data_entry.staff.handle == "GELÖSCHT"
+    assert Scientist.objects.filter(handle="GELÖSCHT").count() == 1
 
 
 @pytest.mark.django_db

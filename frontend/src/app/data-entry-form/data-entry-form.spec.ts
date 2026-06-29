@@ -149,6 +149,26 @@ describe('DataEntryFormComponent', () => {
 
       expect(component.entryForm.get('staff')!.value).toEqual(created);
     });
+
+    it('satisfies the selection validator once the new Beringer is created (#58)', () => {
+      const created = { id: '7', handle: 'FRE', full_name: 'Filip Reiter' };
+      dialogMock.open.and.returnValue({
+        afterClosed: () => of({ first_name: 'Filip', last_name: 'Reiter', handle: 'FRE' }),
+      });
+
+      // The unknown Kürzel typed as free text would otherwise be an unmatched option.
+      component.entryForm.get('staff')!.setValue('FRE' as never);
+      expect(component.entryForm.get('staff')!.hasError('unmatchedOption')).toBe(true);
+
+      component.onCreateBeringer('FRE');
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'))
+        .flush(created);
+
+      // Creation ends by setting the control to the created Beringer object.
+      expect(component.entryForm.get('staff')!.hasError('unmatchedOption')).toBe(false);
+      expect(component.entryForm.get('staff')!.valid).toBe(true);
+    });
   });
 
   describe('pre-filling the Station from the Projekt default', () => {
@@ -321,7 +341,7 @@ describe('DataEntryFormComponent', () => {
       family_name: '',
       order_name: '',
       ring_size: null,
-      is_sentinel: true,
+      special_kind: 'ring_destroyed',
     };
 
     function selectSpecies(species: Species) {
@@ -337,7 +357,7 @@ describe('DataEntryFormComponent', () => {
 
       selectSpecies(sentinel);
 
-      expect(component.isSentinel()).toBe(true);
+      expect(component.isRingDestroyed()).toBe(true);
       expect(has('[formControlName="age_class"]')).toBe(false);
       expect(has('[formControlName="sex"]')).toBe(false);
       expect(has('[formControlName="bird_status"]')).toBe(false);
@@ -368,13 +388,79 @@ describe('DataEntryFormComponent', () => {
     });
 
     it('keeps the bird fields visible when a normal Art is selected', () => {
-      const normal: Species = { ...sentinel, id: 's1', common_name_de: 'Kohlmeise', is_sentinel: false };
+      const normal: Species = { ...sentinel, id: 's1', common_name_de: 'Kohlmeise', special_kind: '' };
 
       selectSpecies(normal);
 
-      expect(component.isSentinel()).toBe(false);
+      expect(component.isRingDestroyed()).toBe(false);
       expect(has('[formControlName="age_class"]')).toBe(true);
       expect(has('[formControlName="bird_status"]')).toBe(true);
+    });
+  });
+
+  describe('Aves ignota unknown_species (full form, mandatory Bemerkung) (#57)', () => {
+    const avesIgnota: Species = {
+      id: 'aves',
+      common_name_de: 'Art nicht in der Liste (Aves ignota)',
+      common_name_en: 'Species not listed',
+      scientific_name: 'Aves ignota',
+      family_name: '—',
+      order_name: '—',
+      ring_size: null,
+      special_kind: 'unknown_species',
+    };
+
+    function selectSpecies(species: Species) {
+      component.onSpeciesSelected({ option: { value: species } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+    }
+
+    const has = (selector: string) => fixture.nativeElement.querySelector(selector) !== null;
+
+    it('keeps the full measurement form (does not collapse) when Aves ignota is selected', () => {
+      selectSpecies(avesIgnota);
+
+      expect(component.isUnknownSpecies()).toBe(true);
+      expect(component.isRingDestroyed()).toBe(false);
+      // Unlike a destroyed ring, every bird field stays in the form.
+      expect(has('[formControlName="age_class"]')).toBe(true);
+      expect(has('[formControlName="sex"]')).toBe(true);
+      expect(has('[formControlName="bird_status"]')).toBe(true);
+      expect(has('[formControlName="tarsus"]')).toBe(true);
+    });
+
+    it('makes the Bemerkung required while Aves ignota is selected', () => {
+      const comment = component.entryForm.get('comment')!;
+      // A normal taxon leaves the comment optional.
+      expect(comment.hasError('required')).toBe(false);
+
+      selectSpecies(avesIgnota);
+
+      expect(comment.hasError('required')).toBe(true);
+
+      comment.setValue('Seltener Irrgast.');
+      expect(comment.hasError('required')).toBe(false);
+    });
+
+    it('releases the required Bemerkung again when a normal Art is selected next', () => {
+      selectSpecies(avesIgnota);
+      const normal: Species = { ...avesIgnota, id: 's1', common_name_de: 'Kohlmeise', special_kind: '' };
+
+      selectSpecies(normal);
+
+      expect(component.isUnknownSpecies()).toBe(false);
+      expect(component.entryForm.get('comment')!.hasError('required')).toBe(false);
+    });
+
+    it('shows an inline field error for the empty mandatory Bemerkung', () => {
+      selectSpecies(avesIgnota);
+      const comment = component.entryForm.get('comment')!;
+      comment.markAsTouched();
+      fixture.detectChanges();
+
+      const error = fixture.nativeElement.querySelector('mat-error');
+      expect(error).not.toBeNull();
+      expect(error.textContent).toContain('Aves ignota');
     });
   });
 
@@ -387,7 +473,7 @@ describe('DataEntryFormComponent', () => {
       family_name: '',
       order_name: '',
       ring_size: null,
-      is_sentinel: true,
+      special_kind: 'ring_destroyed',
     };
     const project = {
       id: 'p1',
@@ -441,7 +527,7 @@ describe('DataEntryFormComponent', () => {
 
       expect(dialogMock.open).toHaveBeenCalled();
       expect(component.entryForm.get('species')!.value).toEqual(sentinel);
-      expect(component.isSentinel()).toBe(true);
+      expect(component.isRingDestroyed()).toBe(true);
     });
 
     it('leaves the form untouched when the confirmation is cancelled', () => {
@@ -450,7 +536,7 @@ describe('DataEntryFormComponent', () => {
       component.onDestroyedRing();
 
       expect(dialogMock.open).toHaveBeenCalled();
-      expect(component.isSentinel()).toBe(false);
+      expect(component.isRingDestroyed()).toBe(false);
       expect(component.entryForm.get('species')!.value).not.toEqual(sentinel);
     });
 
@@ -589,6 +675,24 @@ describe('DataEntryFormComponent', () => {
       expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
     });
 
+    it('lets Enter on the focused "Zur Liste" button activate it (#59, not suppressed)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      const backToList = Array.from(
+        f.nativeElement.querySelectorAll('.action-buttons button'),
+      ).find((b) => (b as HTMLElement).textContent!.trim() === 'Zur Liste') as HTMLButtonElement;
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      backToList.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
     it('collapses the form when the loaded entry is a sentinel "Ring Vernichtet"', async () => {
       const { f, httpMock } = await setupEditMode('43');
       f.detectChanges();
@@ -596,7 +700,7 @@ describe('DataEntryFormComponent', () => {
       const sentinelEntry = {
         ...savedEntry(),
         id: '43',
-        species: { id: 'sent', common_name_de: 'Ring Vernichtet', scientific_name: '', is_sentinel: true },
+        species: { id: 'sent', common_name_de: 'Ring Vernichtet', scientific_name: '', special_kind: 'ring_destroyed' },
         bird_status: null,
         age_class: null,
         sex: null,
@@ -606,7 +710,7 @@ describe('DataEntryFormComponent', () => {
         .flush(sentinelEntry);
       f.detectChanges();
 
-      expect(f.componentInstance.isSentinel()).toBe(true);
+      expect(f.componentInstance.isRingDestroyed()).toBe(true);
       expect(f.nativeElement.querySelector('[formControlName="age_class"]')).toBeNull();
     });
 
@@ -779,7 +883,7 @@ describe('DataEntryFormComponent', () => {
       expect(document.activeElement).toBe(netHeight);
     }));
 
-    it('lets Enter on the focused save button submit the form (the one allowed case)', () => {
+    it('lets Enter on the focused save button submit the form (native button activation)', () => {
       const saveButton = fixture.nativeElement.querySelector(
         'button[type="submit"]',
       ) as HTMLButtonElement;
@@ -843,6 +947,71 @@ describe('DataEntryFormComponent', () => {
       // Focus stays put so the create-Beringer dialog flow is not disrupted.
       expect(document.activeElement).toBe(staffField);
     }));
+  });
+
+  describe('Enter activates focused action buttons (#59)', () => {
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    const actionButton = (label: string) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('.action-buttons button')).find(
+        (b) => (b as HTMLElement).textContent!.trim() === label,
+      ) as HTMLButtonElement) ?? null;
+
+    it('lets Enter on the focused Zurücksetzen button activate it (not suppressed)', () => {
+      const reset = actionButton('Zurücksetzen');
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      reset.dispatchEvent(event);
+
+      // Not suppressed: native Enter activation of the button is allowed to run.
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('lets Enter on the focused Ring vernichtet button activate it (not suppressed)', () => {
+      const destroyed = actionButton('Ring vernichtet');
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      destroyed.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('lets Enter on the focused Ringhistorie search button activate it (not suppressed)', () => {
+      // The Ringhistorie lookup button only appears during a Wiederfang and needs
+      // both ring parts to be enabled.
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      fixture.detectChanges();
+
+      const search = fixture.nativeElement.querySelector(
+        'button[aria-label="Ringhistorie suchen"]',
+      ) as HTMLButtonElement;
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      search.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('still does not submit from a focused form field (Enter advances instead)', () => {
+      const field = fixture.nativeElement.querySelector(
+        '[formControlName="net_location"]',
+      ) as HTMLElement;
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      field.dispatchEvent(event);
+
+      // Broadening the button rule must not weaken the field rule: a field still
+      // suppresses the implicit submit.
+      expect(event.defaultPrevented).toBe(true);
+    });
   });
 
   describe('recapture prefill from ring history (#23)', () => {
@@ -1047,7 +1216,7 @@ describe('DataEntryFormComponent', () => {
       family_name: '',
       order_name: '',
       ring_size,
-      is_sentinel: false,
+      special_kind: '',
     });
     const project = {
       id: 'p1',
@@ -1345,6 +1514,87 @@ describe('DataEntryFormComponent', () => {
       const spy = spyOn(component, 'onReset');
       resetButton.click();
       expect(spy).toHaveBeenCalled();
+    });
+  });
+
+  describe('inline autocomplete validation for Art/Station/Beringer (#58)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    const field = (name: string): HTMLElement =>
+      (fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement).closest(
+        'mat-form-field',
+      ) as HTMLElement;
+
+    const errorsIn = (name: string): string[] =>
+      Array.from(field(name).querySelectorAll('mat-error')).map((e) =>
+        (e as HTMLElement).textContent!.trim(),
+      );
+
+    it('marks the Art control invalid with an unmatchedOption error for typed free text', () => {
+      component.entryForm.get('species')!.setValue('Kohlmeisx' as never);
+
+      expect(component.entryForm.get('species')!.hasError('unmatchedOption')).toBe(true);
+      expect(component.entryForm.invalid).toBe(true);
+    });
+
+    it('accepts a real selected record (no error) once an option is chosen', () => {
+      component.entryForm
+        .get('species')!
+        .setValue({ id: 's1', common_name_de: 'Kohlmeise' } as never);
+
+      expect(component.entryForm.get('species')!.hasError('unmatchedOption')).toBe(false);
+      expect(component.entryForm.get('species')!.valid).toBe(true);
+    });
+
+    it('surfaces the Art message on blur/submit, never while still typing', () => {
+      const species = component.entryForm.get('species')!;
+      species.setValue('Kohlmeisx' as never);
+      fixture.detectChanges();
+      // While typing (untouched, not submitted) the field shows no error.
+      expect(errorsIn('species')).toEqual([]);
+
+      species.markAsTouched();
+      fixture.detectChanges();
+      expect(errorsIn('species')).toContain('Unbekannte Art – bitte aus der Liste wählen');
+    });
+
+    it('applies the same rule with its own message to Station and Beringer', () => {
+      component.entryForm.get('ringing_station')!.setValue('Linzz' as never);
+      component.entryForm.get('staff')!.setValue('FREX' as never);
+      component.entryForm.get('ringing_station')!.markAsTouched();
+      component.entryForm.get('staff')!.markAsTouched();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('ringing_station')!.hasError('unmatchedOption')).toBe(true);
+      expect(component.entryForm.get('staff')!.hasError('unmatchedOption')).toBe(true);
+      expect(errorsIn('ringing_station')).toContain(
+        'Unbekannte Station – bitte aus der Liste wählen',
+      );
+      expect(errorsIn('staff')).toContain('Unbekannter Beringer – bitte aus der Liste wählen');
+    });
+
+    it('fires no POST while a control holds unmatched free text, keeping the typed text', () => {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      // Art typed but never picked from the list.
+      component.entryForm.get('species')!.setValue('Kohlmeisx' as never);
+
+      component.onSubmit();
+
+      httpMock.expectNone((r) => r.method === 'POST');
+      // The typed text stays so the Beringer fixes the spelling instead of retyping.
+      expect(component.entryForm.get('species')!.value as unknown).toBe('Kohlmeisx');
     });
   });
 });

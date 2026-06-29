@@ -73,8 +73,16 @@ def species(db):
 
 @pytest.fixture
 def sentinel_species(db):
-    """The 'Ring Vernichtet' sentinel created by data migration 0032."""
-    return Species.objects.get(is_sentinel=True)
+    """The 'Ring Vernichtet' Sonderart row (special_kind='ring_destroyed'),
+    seeded by migration 0032 and re-keyed by 0036."""
+    return Species.objects.get(special_kind=Species.SpecialKind.RING_DESTROYED)
+
+
+@pytest.fixture
+def aves_ignota_species(db):
+    """The 'Aves ignota' Sonderart row (special_kind='unknown_species'),
+    created by data migration 0037."""
+    return Species.objects.get(special_kind=Species.SpecialKind.UNKNOWN_SPECIES)
 
 
 @pytest.fixture

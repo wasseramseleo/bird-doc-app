@@ -2,6 +2,7 @@ from io import BytesIO
 from pathlib import Path
 
 import openpyxl
+from django.utils.timezone import localtime
 
 TEMPLATE_PATH = (
     Path(__file__).resolve().parent / "templates" / "iwm" / "Datenmeldung_Vorlage_IWM.xlsx"
@@ -41,8 +42,8 @@ COLUMN_MAP = {
     "Art": lambda e: e.species.common_name_de,
     "Geschlecht": lambda e: e.sex,
     "Alter": lambda e: e.age_class,
-    "Datum": lambda e: e.date_time.date(),
-    "Uhrzeit": lambda e: e.date_time.time(),
+    "Datum": lambda e: localtime(e.date_time).date(),
+    "Uhrzeit": lambda e: localtime(e.date_time).time(),
     "Flügellänge": lambda e: e.wing_span,
     "Teilfederlänge": lambda e: e.feather_span,
     "Gewicht": lambda e: e.weight_gram,

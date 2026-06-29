@@ -115,7 +115,11 @@
             <mat-option [value]="option">{{ option.name }}</mat-option>
           }
         </mat-autocomplete>
-        <mat-error>Station ist erforderlich.</mat-error>
+        @if (entryForm.controls.ringing_station.hasError('required')) {
+          <mat-error>Station ist erforderlich.</mat-error>
+        } @else if (entryForm.controls.ringing_station.hasError('unmatchedOption')) {
+          <mat-error>Unbekannte Station – bitte aus der Liste wählen</mat-error>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline" floatLabel="always">
@@ -135,7 +139,11 @@
             </mat-option>
           }
         </mat-autocomplete>
-        <mat-error>Beringer ist erforderlich.</mat-error>
+        @if (entryForm.controls.staff.hasError('required')) {
+          <mat-error>Beringer ist erforderlich.</mat-error>
+        } @else if (entryForm.controls.staff.hasError('unmatchedOption')) {
+          <mat-error>Unbekannter Beringer – bitte aus der Liste wählen</mat-error>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline" floatLabel="always">
@@ -162,9 +170,13 @@
             <mat-option [value]="option">{{ option.common_name_de }} ({{ option.scientific_name }})</mat-option>
           }
         </mat-autocomplete>
-        <mat-error>Art ist erforderlich.</mat-error>
+        @if (entryForm.controls.species.hasError('required')) {
+          <mat-error>Art ist erforderlich.</mat-error>
+        } @else if (entryForm.controls.species.hasError('unmatchedOption')) {
+          <mat-error>Unbekannte Art – bitte aus der Liste wählen</mat-error>
+        }
       </mat-form-field>
-      @if (!isSentinel()) {
+      @if (!isRingDestroyed()) {
         <mat-form-field appearance="outline" floatLabel="always">
           <mat-label>Status</mat-label>
           <mat-select formControlName="bird_status" #statusSelect
@@ -213,7 +225,7 @@
       }
     </div>
 
-    @if (!isSentinel()) {
+    @if (!isRingDestroyed()) {
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Netznummer</mat-label>
@@ -330,9 +342,15 @@
       <mat-form-field appearance="outline" floatLabel="always" class="full-width">
         <mat-label>Bemerkungen</mat-label>
         <textarea matInput formControlName="comment" rows="3"></textarea>
+        @if (isUnknownSpecies()) {
+          <mat-hint>Pflichtfeld für „Aves ignota“ — bitte den Fang beschreiben.</mat-hint>
+        }
+        @if (entryForm.controls.comment.hasError('required')) {
+          <mat-error>Für „Aves ignota“ ist eine Bemerkung erforderlich.</mat-error>
+        }
       </mat-form-field>
     </div>
-    @if (showOptionalFields() && !isSentinel()) {
+    @if (showOptionalFields() && !isRingDestroyed()) {
       <div class="form-section-checkboxes">
         <mat-checkbox formControlName="has_mites">Milben</mat-checkbox>
         <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
@@ -357,7 +375,7 @@
     }
 
     <div class="action-buttons">
-      @if (!isSentinel()) {
+      @if (!isRingDestroyed()) {
         <button mat-button type="button" class="destroyed-ring-link"
                 data-testid="destroyed-ring-button"
                 (click)="onDestroyedRing()">
