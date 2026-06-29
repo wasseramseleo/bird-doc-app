@@ -6,8 +6,23 @@
     <p class="lead">Feld-Dokumentation für die Beringung — ein Datensatz pro
         gefangenem und beringtem Vogel.</p>
     <p><a class="button" href="{% url 'landing:register' %}">Organisation gründen</a></p>
-    <p>Noch keinen Zugangscode?
-        <a href="{% url 'landing:warteliste' %}">Zugang anfragen</a>.</p>
+
+    <div class="tracks" aria-label="Für wen ist BirdDoc?">
+        <section class="track">
+            <h2 class="track__title">Für Beringer</h2>
+            <p>Du beringst selbst und willst Papier und Excel hinter dir lassen?
+                Trag dich in die Warteliste ein — wir melden uns, sobald ein
+                Zugangscode frei wird.</p>
+            <p><a href="{% url 'landing:warteliste' %}">Zugang anfragen</a></p>
+        </section>
+        <section class="track">
+            <h2 class="track__title">Für Organisationen &amp; Vogelwarten</h2>
+            <p>Du entscheidest für eine ganze Beringungs-Landschaft? Lass uns über
+                eine schemaweite Einführung sprechen — DSGVO-konform, in Österreich
+                gehostet, ohne Lock-in.</p>
+            <p><a href="{% url 'landing:gespraech' %}">Gespräch vereinbaren</a></p>
+        </section>
+    </div>
 
     <section class="hosting" aria-label="Hosting">
         <span class="hosting__flag" aria-hidden="true">🇦🇹</span>

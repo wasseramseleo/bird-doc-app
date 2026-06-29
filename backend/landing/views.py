@@ -20,7 +20,37 @@ from birds.invitations import accept_invitation, account_for_email
 from birds.models import OrgEinladung
 from birds.registration import InvalidZugangscodeError, register_organisation
 
-from .forms import RegistrationForm, WartelisteForm
+from .forms import GespraechForm, RegistrationForm, WartelisteForm
+from .models import Warteliste
+
+
+def _notify_operator_of_lead(request, lead):
+    """Email the operator about a new landing lead, of either type (issue #103).
+
+    Every lead — the individual Beringer's Warteliste entry and the central
+    body's Gespräch request alike — reaches the operator without polling, with
+    enough context to act on it (the organisation lead's extra context included)
+    and a link to the lead in the admin. The subject names the funnel so the
+    operator can triage from the inbox."""
+    body = render_to_string(
+        "landing/warteliste_operator_email.txt",
+        {
+            "lead": lead,
+            "protocol": "https" if request.is_secure() else "http",
+            "domain": request.get_host(),
+            "admin_url": reverse("admin:landing_warteliste_change", args=[lead.pk]),
+        },
+    )
+    subjects = {
+        Warteliste.LeadType.BERINGER: "BirdDoc — neue Zugang-Anfrage (Warteliste)",
+        Warteliste.LeadType.ORGANISATION: "BirdDoc — neue Gesprächs-Anfrage (Organisation)",
+    }
+    send_mail(
+        subject=subjects[lead.lead_type],
+        message=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[settings.OPERATOR_EMAIL],
+    )
 
 
 class HomeView(TemplateView):
@@ -33,10 +63,10 @@ class HomeView(TemplateView):
 class WartelisteView(FormView):
     """The public Warteliste — "Zugang anfragen" on the landing page (issue #80).
 
-    A server-rendered, unauthenticated form that stores a lead and emails the
-    operator so they learn of demand without polling, then sends the visitor to
-    a confirmation page. It grants nothing by itself — the operator reviews the
-    lead in the Django admin and issues a Zugangscode there."""
+    A server-rendered, unauthenticated form that stores a `beringer` lead and
+    emails the operator so they learn of demand without polling, then sends the
+    visitor to a confirmation page. It grants nothing by itself — the operator
+    reviews the lead in the Django admin and issues a Zugangscode there."""
 
     template_name = "landing/warteliste_form.html"
     form_class = WartelisteForm
@@ -44,33 +74,39 @@ class WartelisteView(FormView):
 
     def form_valid(self, form):
         lead = form.save()
-        self._notify_operator(lead)
+        _notify_operator_of_lead(self.request, lead)
         return super().form_valid(form)
-
-    def _notify_operator(self, lead):
-        """Email the operator that a Zugang was requested, with enough context
-        to act on it (and a link to the lead in the admin)."""
-        body = render_to_string(
-            "landing/warteliste_operator_email.txt",
-            {
-                "lead": lead,
-                "protocol": "https" if self.request.is_secure() else "http",
-                "domain": self.request.get_host(),
-                "admin_url": reverse("admin:landing_warteliste_change", args=[lead.pk]),
-            },
-        )
-        send_mail(
-            subject="BirdDoc — neue Zugang-Anfrage (Warteliste)",
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[settings.OPERATOR_EMAIL],
-        )
 
 
 class WartelisteDoneView(TemplateView):
     """Confirms the access request was received (issue #80)."""
 
     template_name = "landing/warteliste_done.html"
+
+
+class GespraechView(FormView):
+    """The public "Gespräch vereinbaren" funnel — a central body's lead (issue #103).
+
+    The organisation counterpart to the Warteliste: a central authority (e.g. the
+    Österreichische Vogelwarte) requests a conversation rather than self-serving a
+    Zugangscode. It writes an `organisation` lead to the *same* model, carrying the
+    extra context, and emails the operator that context. It introduces no new
+    tenancy tier (ADR 0005) — the lead is an out-of-model sales signal."""
+
+    template_name = "landing/gespraech_form.html"
+    form_class = GespraechForm
+    success_url = reverse_lazy("landing:gespraech_done")
+
+    def form_valid(self, form):
+        lead = form.save()
+        _notify_operator_of_lead(self.request, lead)
+        return super().form_valid(form)
+
+
+class GespraechDoneView(TemplateView):
+    """Confirms the Gespräch request was received (issue #103)."""
+
+    template_name = "landing/gespraech_done.html"
 
 
 class ImpressumView(TemplateView):

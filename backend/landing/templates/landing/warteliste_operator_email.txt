@@ -1,13 +1,16 @@
-{% autoescape off %}Neue Zugang-Anfrage über die Warteliste.
+{% autoescape off %}{% if lead.lead_type == "organisation" %}Neue Gesprächs-Anfrage einer Organisation.{% else %}Neue Zugang-Anfrage über die Warteliste.{% endif %}
 
+Typ:          {{ lead.get_lead_type_display }}
 E-Mail:       {{ lead.email }}
 Organisation: {{ lead.organisation_name|default:"—" }}
-Angefragt am: {{ lead.created }}
+{% if lead.lead_type == "organisation" %}Funktion:     {{ lead.contact_role|default:"—" }}
+Anzahl Beringer (ca.): {{ lead.approx_beringer_count|default:"—" }}
+{% endif %}Angefragt am: {{ lead.created }}
 
 Nachricht:
 {{ lead.message|default:"—" }}
 
-Im Django-Admin prüfen und ggf. einen Zugangscode ausstellen:
+Im Django-Admin prüfen{% if lead.lead_type == "beringer" %} und ggf. einen Zugangscode ausstellen{% endif %}:
 {{ protocol }}://{{ domain }}{{ admin_url }}
 
 — BirdDoc

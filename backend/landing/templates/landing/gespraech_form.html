@@ -1,0 +1,17 @@
+{% extends "landing/base.html" %}
+
+{% block title %}Gespräch vereinbaren — BirdDoc{% endblock %}
+
+{% block content %}
+    <p class="eyebrow">Für Organisationen &amp; Vogelwarten</p>
+    <h1>Gespräch vereinbaren</h1>
+    <p>BirdDoc kann eine ganze Beringungs-Landschaft tragen — DSGVO-konform,
+        in Österreich gehostet, ohne Lock-in. Erzähl uns kurz von eurer Stelle,
+        und wir melden uns für ein Gespräch. Es entstehen keine Kosten und du
+        gehst keine Verpflichtung ein.</p>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="button">Gespräch vereinbaren</button>
+    </form>
+{% endblock %}

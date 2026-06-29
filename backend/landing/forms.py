@@ -15,13 +15,42 @@ from .models import Warteliste
 
 
 class WartelisteForm(forms.ModelForm):
-    """The public "Zugang anfragen" form. Only the email is required — the
-    Organisation name and the note give the operator context but stay optional,
-    so leaving a lead costs the visitor a single field."""
+    """The public "Zugang anfragen" form — an individual Beringer's lead. Only the
+    email is required; the Organisation name and the note give the operator
+    context but stay optional, so leaving a lead costs the visitor a single field.
+    The lead type defaults to ``beringer`` on the model, so this funnel is
+    unchanged by the typed extension (issue #103)."""
 
     class Meta:
         model = Warteliste
         fields = ["email", "organisation_name", "message"]
+
+
+class GespraechForm(forms.ModelForm):
+    """The public "Gespräch vereinbaren" form — a central body's lead (issue #103).
+
+    Writes to the same model as the Warteliste but stamps an ``organisation`` lead
+    and collects the extra context the operator needs to follow up: who is asking
+    (Funktion/Rolle) and roughly how many Beringer they speak for. Only the email
+    is required; everything else is optional, mirroring the low-friction Warteliste."""
+
+    class Meta:
+        model = Warteliste
+        fields = ["email", "organisation_name", "contact_role", "approx_beringer_count", "message"]
+        labels = {"organisation_name": _("Organisation / Stelle")}
+        help_texts = {
+            "email": _("An diese Adresse melden wir uns, um ein Gespräch zu vereinbaren."),
+            "organisation_name": _(
+                "Die zentrale Stelle, für die du anfragst (z. B. eine Vogelwarte)."
+            ),
+        }
+
+    def save(self, commit=True):
+        lead = super().save(commit=False)
+        lead.lead_type = Warteliste.LeadType.ORGANISATION
+        if commit:
+            lead.save()
+        return lead
 
 
 class RegistrationForm(forms.Form):

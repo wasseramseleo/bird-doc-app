@@ -326,6 +326,45 @@ body {
     text-align: center;
 }
 
+/* Two tracks — the Beringer and the Organisation funnels, side by side */
+.tracks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1.75rem 0;
+}
+
+@media (max-width: 32rem) {
+    .tracks {
+        grid-template-columns: 1fr;
+    }
+}
+
+.track {
+    padding: 1rem 1.1rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: 8px;
+}
+
+.track__title {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.track p {
+    margin: 0 0 0.7rem;
+    font-size: 0.92rem;
+    color: var(--muted);
+}
+
+.track p:last-child {
+    margin-bottom: 0;
+}
+
 /* ── Legal pages ──────────────────────────────────────────────────────── */
 
 /* The draft banner — a clearly-marked "not yet reviewed" note */

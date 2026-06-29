@@ -15,6 +15,15 @@ urlpatterns = [
         views.WartelisteDoneView.as_view(),
         name="warteliste_done",
     ),
+    # Public Gespräch funnel — a central body requests a conversation instead of
+    # self-serving the Warteliste; it writes an `organisation` lead to the same
+    # model (issue #103).
+    path("gespraech/", views.GespraechView.as_view(), name="gespraech"),
+    path(
+        "gespraech/gesendet/",
+        views.GespraechDoneView.as_view(),
+        name="gespraech_done",
+    ),
     # Zugangscode-gated public registration: found an Organisation + email
     # verification, reachable unauthenticated at the apex (issue #79).
     path("registrierung/", views.RegisterView.as_view(), name="register"),
