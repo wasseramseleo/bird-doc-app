@@ -1,4 +1,4 @@
-{% extends "landing/base.html" %}
+{% extends "landing/base_destination.html" %}
 
 {% block title %}Einladung annehmen — BirdDoc{% endblock %}
 
@@ -6,10 +6,10 @@
     <h1>Einladung annehmen</h1>
     <p>Du wurdest eingeladen, der Organisation <strong>{{ organization.name }}</strong>
         bei BirdDoc beizutreten.</p>
-    <p class="muted">Einladung für <strong>{{ email }}</strong></p>
+    <p>Einladung für <strong>{{ email }}</strong></p>
 
     {% if errors %}
-        <ul class="form-errors">
+        <ul class="errorlist">
             {% for error in errors %}<li>{{ error }}</li>{% endfor %}
         </ul>
     {% endif %}
@@ -18,8 +18,10 @@
         {% csrf_token %}
         {% if needs_password %}
             <p>Lege ein Passwort fest, um dein BirdDoc-Konto zu erstellen.</p>
-            {# Hidden username so password managers bind the new password to the
-               account (the email); the field is fixed, not user-editable. #}
+            {% comment %}
+            Hidden username so password managers bind the new password to the
+            account (the email); the field is fixed, not user-editable.
+            {% endcomment %}
             <input type="email" name="username" value="{{ email }}"
                    autocomplete="username" hidden readonly>
             <p>
@@ -33,9 +35,9 @@
                        autocomplete="new-password" required>
             </p>
             {% if password_help %}
-                <ul class="help">
-                    {% for help in password_help %}<li>{{ help }}</li>{% endfor %}
-                </ul>
+                <span class="helptext">
+                    <ul>{% for help in password_help %}<li>{{ help }}</li>{% endfor %}</ul>
+                </span>
             {% endif %}
             <button type="submit" class="button">Konto erstellen &amp; beitreten</button>
         {% else %}

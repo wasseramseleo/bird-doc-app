@@ -21,6 +21,12 @@
                      src="{% static 'landing/birddoc-logo.png' %}"
                      width="28" height="28" alt="" aria-hidden="true">BirdDoc
             </a>
+            {% comment %}
+            Destination pages (auth + legal) fill this with a back affordance —
+            the reduced header (ADR 0009, issue #102). The marketing home leaves
+            it empty and gets its full nav in a later slice.
+            {% endcomment %}
+            {% block header_back %}{% endblock %}
         </div>
     </header>
     <main class="site-main">

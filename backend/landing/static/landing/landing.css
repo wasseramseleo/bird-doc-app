@@ -58,6 +58,10 @@ body {
 .site-header__inner {
     padding-top: 1rem;
     padding-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
 }
 
 .wordmark {
@@ -80,6 +84,28 @@ body {
 
 .wordmark:hover {
     color: var(--accent-strong);
+}
+
+/* Reduced header — the auth + legal destinations carry only the wordmark and a
+   quiet "back" link to the marketing home, in place of the full marketing nav
+   (issue #102). The marketing home leaves the slot empty. */
+.site-header__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    text-decoration: none;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.site-header__back:hover {
+    color: var(--accent-strong);
+}
+
+.site-header__back-arrow {
+    font-size: 1.05em;
+    line-height: 1;
 }
 
 /* Centred content column */

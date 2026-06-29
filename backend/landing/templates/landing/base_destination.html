@@ -1,0 +1,15 @@
+{% extends "landing/base.html" %}
+
+{% comment %}
+The shared base for the auth + legal *destination* pages (issue #102). They are
+not the marketing surface, so they wear a reduced header: the wordmark plus a
+single "back" affordance to the marketing home, instead of the full marketing
+nav. The form/legal body styling is the landing's unified style, inherited from
+base.html's brand layer (ADR 0009).
+{% endcomment %}
+
+{% block header_back %}
+    <a class="site-header__back" href="{% url 'landing:home' %}">
+        <span class="site-header__back-arrow" aria-hidden="true">←</span> Zurück
+    </a>
+{% endblock %}
