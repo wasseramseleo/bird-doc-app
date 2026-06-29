@@ -1,19 +1,26 @@
 import datetime
 
+from django.conf import settings
+from django.core.mail import EmailMessage
 from django.db.models import Count, Q
 from django.http import HttpResponse
-from rest_framework import filters, mixins, viewsets
+from django.urls import reverse
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from .accounts import normalize_email
+from .invitations import account_for_email, seats_available
 from .iwm_export import build_iwm_workbook
 from .models import (
     FALLBACK_BERINGER_HANDLE,
     DataEntry,
+    Mitgliedschaft,
     Organization,
+    OrgEinladung,
     Project,
     Ring,
     RingingStation,
@@ -28,7 +35,9 @@ from .permissions import (
 )
 from .serializers import (
     DataEntrySerializer,
+    MitgliedschaftSerializer,
     OrganizationSerializer,
+    OrgEinladungSerializer,
     ProjectSerializer,
     RingingStationSerializer,
     RingSerializer,
@@ -37,6 +46,27 @@ from .serializers import (
     SpeciesSerializer,
 )
 from .tenancy import active_organization
+
+# Shown when an invite would push the Organisation past its Seat-Limit. The
+# Org-Einladung is ungated by the operator but capped by the Seat-Limit (ADR
+# 0005); each Mitgliedschaft and each pending Einladung consumes one seat.
+SEAT_LIMIT_MESSAGE = (
+    "Das Seat-Limit deiner Organisation ist erreicht. Entferne ein Mitglied oder "
+    "eine offene Einladung, um eine Person einzuladen."
+)
+
+# Shown when removing or demoting a Mitgliedschaft would leave the Organisation
+# with no Admin at all — every Organisation must keep at least one.
+LAST_ADMIN_MESSAGE = (
+    "Die Organisation braucht mindestens eine:n Administrator:in. "
+    "Ernenne zuerst eine andere Person zur Administratorin oder zum Administrator."
+)
+
+
+class SeatLimitReached(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = SEAT_LIMIT_MESSAGE
+    default_code = "seat_limit_reached"
 
 
 def _require_active_organization(user):
@@ -414,3 +444,138 @@ class ProjectViewSet(viewsets.ModelViewSet):
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+
+class OrgEinladungViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Admin-only Org-Einladungen for the active Organisation (issue #83).
+
+    An Admin invites a colleague by email (ungated by the operator, capped by the
+    Seat-Limit — ADR 0005); the invitee gets a mail with a public accept link.
+    List shows the Organisation's invitations; destroy revokes a pending one,
+    freeing the Mitgliedsplatz it reserved. Member management is Admin-only
+    (issue #76), so ``IsOrgAdmin`` gates every method.
+    """
+
+    serializer_class = OrgEinladungSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdmin]
+
+    def get_queryset(self):
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return OrgEinladung.objects.none()
+        return OrgEinladung.objects.filter(organization=organization)
+
+    def perform_create(self, serializer):
+        organization = _require_active_organization(self.request.user)
+        email = normalize_email(serializer.validated_data["email"])
+
+        if Mitgliedschaft.objects.filter(
+            organization=organization, user=account_for_email(email)
+        ).exists():
+            raise ValidationError(
+                {"email": "Diese Person ist bereits Mitglied dieser Organisation."}
+            )
+        if OrgEinladung.objects.filter(
+            organization=organization, email=email, accepted_at__isnull=True
+        ).exists():
+            raise ValidationError(
+                {"email": "Für diese E-Mail gibt es bereits eine offene Einladung."}
+            )
+        if seats_available(organization) <= 0:
+            raise SeatLimitReached()
+
+        invitation = serializer.save(
+            organization=organization, email=email, invited_by=self.request.user
+        )
+        self._send_invitation_mail(invitation)
+
+    def _send_invitation_mail(self, invitation):
+        """Mail the invitee the public accept link.
+
+        Sent over the same transactional channel as the rest of the app (issue
+        #77): from the no-reply sender, with a reply-to of the inviting Admin so
+        the invitee can ask them directly. The accept link is built against the
+        requesting host, so it resolves on whichever domain served the API."""
+        accept_url = self.request.build_absolute_uri(
+            reverse("landing:invitation_accept", args=[invitation.token])
+        )
+        organization = invitation.organization
+        reply_to = [self.request.user.email] if self.request.user.email else None
+        body = (
+            "Hallo,\n\n"
+            f"du wurdest eingeladen, der Organisation {organization.name} "
+            "bei BirdDoc beizutreten.\n\n"
+            f"Tritt bei, indem du diesen Link öffnest:\n{accept_url}\n\n"
+            "Wenn du diese Einladung nicht erwartet hast, kannst du diese "
+            "E-Mail ignorieren.\n"
+        )
+        EmailMessage(
+            subject=f"Einladung zu BirdDoc – {organization.name}",
+            body=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[invitation.email],
+            reply_to=reply_to,
+        ).send()
+
+
+class MitgliedschaftViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Admin-only member management for the active Organisation (issue #83).
+
+    The Admin lists the Organisation's Mitglieder, changes a Mitgliedschaft's
+    Rolle (Admin ↔ Mitglied) and removes a Mitglied. Removing a Mitgliedschaft
+    frees its Mitgliedsplatz. Management is Admin-only (issue #76) and scoped to
+    the active Organisation, so a cross-tenant membership is simply absent from
+    the queryset (a 404, not a 403). The Organisation can never be left without an
+    Admin — the last Admin cannot be removed or demoted.
+    """
+
+    serializer_class = MitgliedschaftSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdmin]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return Mitgliedschaft.objects.none()
+        return (
+            Mitgliedschaft.objects.filter(organization=organization)
+            .select_related("user")
+            .order_by("user__username")
+        )
+
+    def perform_update(self, serializer):
+        membership = serializer.instance
+        new_rolle = serializer.validated_data.get("rolle", membership.rolle)
+        if (
+            membership.rolle == Mitgliedschaft.Rolle.ADMIN
+            and new_rolle != Mitgliedschaft.Rolle.ADMIN
+            and self._is_last_admin(membership)
+        ):
+            raise ValidationError({"rolle": LAST_ADMIN_MESSAGE})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.rolle == Mitgliedschaft.Rolle.ADMIN and self._is_last_admin(instance):
+            raise ValidationError(LAST_ADMIN_MESSAGE)
+        instance.delete()
+
+    @staticmethod
+    def _is_last_admin(membership):
+        return (
+            not Mitgliedschaft.objects.filter(
+                organization=membership.organization, rolle=Mitgliedschaft.Rolle.ADMIN
+            )
+            .exclude(pk=membership.pk)
+            .exists()
+        )

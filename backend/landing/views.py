@@ -1,17 +1,23 @@
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, password_validation
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.sites.shortcuts import get_current_site
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import translation
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils.translation import gettext as _
+from django.views import View
 from django.views.generic import FormView, TemplateView
 
 from birds.accounts import EmailAlreadyExistsError
+from birds.invitations import accept_invitation, account_for_email
+from birds.models import OrgEinladung
 from birds.registration import InvalidZugangscodeError, register_organisation
 
 from .forms import RegistrationForm, WartelisteForm
@@ -90,6 +96,91 @@ class AGBView(TemplateView):
     on human/lawyer review before go-live."""
 
     template_name = "landing/agb.html"
+
+
+class OrgEinladungAcceptView(View):
+    """Accept an Org-Einladung on the public Landing (issue #83).
+
+    The accept link's token (mailed only to the invitee) is the proof that lets
+    them join: ``GET`` shows the accept page — a set-a-password form when no
+    account yet exists for the invited email, or a one-click join when one does
+    (they keep their own credentials, ADR 0008). ``POST`` creates the account (if
+    new) and the Mitgliedschaft via ``birds.invitations.accept_invitation``, after
+    which they can record captures as a Mitglied. Server-rendered on the shared
+    Landing base, German-only — never the Angular SPA shell.
+    """
+
+    form_template = "landing/invitation_accept.html"
+    invalid_template = "landing/invitation_invalid.html"
+    done_template = "landing/invitation_done.html"
+
+    def _pending(self, token):
+        return (
+            OrgEinladung.objects.filter(token=token, accepted_at__isnull=True)
+            .select_related("organization")
+            .first()
+        )
+
+    def get(self, request, token):
+        invitation = self._pending(token)
+        if invitation is None:
+            return self._render_invalid(request)
+        return self._render_form(request, invitation)
+
+    def post(self, request, token):
+        invitation = self._pending(token)
+        if invitation is None:
+            return self._render_invalid(request)
+
+        needs_password = account_for_email(invitation.email) is None
+        password = None
+        if needs_password:
+            password = request.POST.get("new_password1") or ""
+            errors = self._password_errors(password, request.POST.get("new_password2") or "")
+            if errors:
+                return self._render_form(request, invitation, errors=errors)
+
+        accept_invitation(invitation, password=password)
+        with translation.override("de"):
+            return render(
+                request,
+                self.done_template,
+                {"organization": invitation.organization},
+            )
+
+    @staticmethod
+    def _password_errors(password, confirm):
+        """German validation errors for a new account's password, or an empty list.
+
+        The two entries must match and the password must clear Django's configured
+        validators; messages are rendered under the ``de`` catalog so the
+        German-only Landing never leaks English (mirrors ``GermanAuthFormMixin``)."""
+        with translation.override("de"):
+            if password != confirm:
+                return [_("Die beiden Passwörter stimmen nicht überein.")]
+            try:
+                password_validation.validate_password(password)
+            except ValidationError as exc:
+                return list(exc.messages)
+        return []
+
+    def _render_form(self, request, invitation, errors=None):
+        with translation.override("de"):
+            return render(
+                request,
+                self.form_template,
+                {
+                    "organization": invitation.organization,
+                    "email": invitation.email,
+                    "needs_password": account_for_email(invitation.email) is None,
+                    "errors": errors or [],
+                    "password_help": password_validation.password_validators_help_texts(),
+                },
+            )
+
+    def _render_invalid(self, request):
+        with translation.override("de"):
+            return render(request, self.invalid_template, status=404)
 
 
 class GermanAuthFormMixin:
