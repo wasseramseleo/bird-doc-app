@@ -115,6 +115,12 @@ export class ApiService {
     return this.http.patch<Project>(`${this.apiUrl}/projects/${id}/`, payload);
   }
 
+  // Feedback ("Feedback / Fehler melden", issue #81) is not a /birds resource —
+  // it posts straight to /api/feedback/, which emails the operator.
+  sendFeedback(message: string): Observable<void> {
+    return this.http.post<void>(`${environment.apiUrl}/feedback/`, {message});
+  }
+
   exportIwm(projectId: string): Observable<HttpResponse<Blob>> {
     return this.http.get(`${this.apiUrl}/projects/${projectId}/export-iwm/`, {
       responseType: 'blob',

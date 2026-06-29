@@ -7,9 +7,11 @@ import {MatIconModule} from '@angular/material/icon';
 import {MatButtonModule} from '@angular/material/button';
 import {MatMenuModule} from '@angular/material/menu';
 import {MatDividerModule} from '@angular/material/divider';
+import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {AuthService} from '../service/auth.service';
 import {ProjectService} from '../service/project.service';
 import {Project} from '../models/project.model';
+import {FeedbackDialogComponent} from '../feedback/feedback-dialog/feedback-dialog';
 import {environment} from '../../environments/environment';
 
 @Component({
@@ -22,6 +24,7 @@ import {environment} from '../../environments/environment';
     MatButtonModule,
     MatMenuModule,
     MatDividerModule,
+    MatDialogModule,
   ],
   templateUrl: './nav-bar.html',
   styleUrl: './nav-bar.scss',
@@ -31,6 +34,7 @@ export class NavBar {
   private readonly auth = inject(AuthService);
   private readonly projectService = inject(ProjectService);
   private readonly router = inject(Router);
+  private readonly dialog = inject(MatDialog);
 
   readonly adminUrl = environment.adminUrl;
   readonly currentProject = this.projectService.currentProject;
@@ -85,6 +89,12 @@ export class NavBar {
 
   goToPicker(): void {
     this.router.navigateByUrl('/');
+  }
+
+  // Beta users report problems straight from the app (issue #81); the dialog
+  // posts to the backend, which emails the operator.
+  openFeedback(): void {
+    this.dialog.open(FeedbackDialogComponent, {width: '32rem', autoFocus: 'dialog'});
   }
 
   onLogout(): void {
