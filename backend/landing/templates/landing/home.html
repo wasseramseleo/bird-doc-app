@@ -46,10 +46,60 @@ the DE/EN toggle the i18n slice wires up.
                 <a class="button button--ghost" href="#organisationen">Für Organisationen</a>
             </p>
         </div>
-        <div class="hero__artifact" aria-hidden="true">
-            {# Placeholder for the Fang-Karte artifact + Ringserie sequence. #}
+        <div class="hero__artifact">
+            {% comment %}
+            The signature: a static, ornithologically credible Fang-Karte — one
+            record per captured bird (issue #106). It carries no JS. The species
+            is a real Artenliste row, the ring rides the size the app recommends
+            for THAT species (its Empfohlene Ringgröße), the biometrics are
+            plausible, and the Kürzel follows the Austrian standard. Ring numbers
+            and biometrics are set in tabular-nums — the brand's "data voice".
+            {% endcomment %}
+            <article class="fang-karte" aria-label="Beispiel-Fang-Karte">
+                <header class="fang-karte__head">
+                    <p class="eyebrow">Fang-Karte</p>
+                    <span class="fang-karte__ring data">{{ fang_karte.ring_size }}&nbsp;·&nbsp;{{ fang_karte.ring_number }}</span>
+                </header>
+                <p class="fang-karte__species">{{ fang_karte.common_name_de }}</p>
+                <p class="fang-karte__sci">{{ fang_karte.scientific_name }}</p>
+                <dl class="fang-karte__grid">
+                    <div class="fang-karte__cell">
+                        <dt>Flügel</dt><dd class="data">{{ fang_karte.wing_mm }}&nbsp;mm</dd>
+                    </div>
+                    <div class="fang-karte__cell">
+                        <dt>Gewicht</dt><dd class="data">{{ fang_karte.weight_g }}&nbsp;g</dd>
+                    </div>
+                    <div class="fang-karte__cell">
+                        <dt>Fett</dt><dd class="data">{{ fang_karte.fat }}</dd>
+                    </div>
+                    <div class="fang-karte__cell">
+                        <dt>Alter</dt><dd>{{ fang_karte.age }}</dd>
+                    </div>
+                    <div class="fang-karte__cell">
+                        <dt>Geschlecht</dt><dd>{{ fang_karte.sex }}</dd>
+                    </div>
+                    <div class="fang-karte__cell">
+                        <dt>Datum</dt><dd class="data">{{ fang_karte.datum }}</dd>
+                    </div>
+                </dl>
+                <footer class="fang-karte__foot">
+                    <span class="fang-karte__station">{{ fang_karte.station }}</span>
+                    <span class="fang-karte__beringer" title="{{ fang_karte.beringer_first }} {{ fang_karte.beringer_last }}">{{ fang_karte.kuerzel }}</span>
+                </footer>
+            </article>
         </div>
     </section>
+
+    {% comment %}
+    The Ringserie number thread (issue #106): a run of CONSUMED ring numbers
+    (last-consumed + 1) threading the page as an honest structural marker — not a
+    decorative 01/02/03. Set in tabular-nums (the data voice). It carries the
+    page's single motion: a gentle load reveal, fully suppressed under
+    prefers-reduced-motion (handled in CSS — no JS).
+    {% endcomment %}
+    <p class="ringserie ringserie--reveal data" aria-label="Ringserie — fortlaufende Ringnummern">
+        {% for number in fang_karte.ringserie %}<span class="ringserie__num">{{ number }}</span>{% if not forloop.last %}<span class="ringserie__sep" aria-hidden="true">·</span>{% endif %}{% endfor %}<span class="ringserie__sep" aria-hidden="true">·</span><span class="ringserie__next" title="Nächste Nummer: letzte verbrauchte + 1">{{ fang_karte.next_number }}</span>
+    </p>
 
     {% comment %}
     The fork band — both audience columns rendered server-side at once (SEO;
