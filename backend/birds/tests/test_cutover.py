@@ -1,7 +1,7 @@
 """Cutover transform: migrate the existing single-tenant data into the tenancy
 model (issue #82, ADR 0005/0006).
 
-The transform is a one-shot data migration (``0048``) run during a scheduled
+The transform is a one-shot data migration (``0049``) run during a scheduled
 maintenance window. It is exercised here the way the repo tests its other data
 migrations (see ``test_models.py``): import the migration module and call its
 function with the *real* app registry (``global_apps``) against a representative
@@ -63,9 +63,7 @@ def pre_cutover_world(db):
 
     # Beringer rows are org-less pre-cutover. filip is a Mitglied-to-be; Hilde is
     # a no-account helper (a selectable name, ADR 0001).
-    filip_beringer = Scientist.objects.create(
-        user=filip, first_name="Filip", last_name="Reiter"
-    )
+    filip_beringer = Scientist.objects.create(user=filip, first_name="Filip", last_name="Reiter")
     helper = Scientist.objects.create(first_name="Hilde", last_name="Helfer")
 
     species = Species.objects.create(
