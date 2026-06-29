@@ -1,0 +1,11 @@
+{% extends "landing/base.html" %}
+
+{% block title %}Zugang anfragen — BirdDoc{% endblock %}
+
+{% block content %}
+    <h1>Anfrage erhalten</h1>
+    <p>Danke! Wir haben deine Anfrage notiert und dich auf die Warteliste
+        gesetzt. Sobald ein Zugangscode für dich frei wird, melden wir uns per
+        E-Mail.</p>
+    <p><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
+{% endblock %}

@@ -6,6 +6,15 @@ app_name = "landing"
 
 urlpatterns = [
     path("", views.HomeView.as_view(), name="home"),
+    # Public Warteliste — "Zugang anfragen" collects demand for Zugangscodes
+    # but grants nothing by itself; the operator reviews leads in the admin
+    # (issue #80).
+    path("zugang-anfragen/", views.WartelisteView.as_view(), name="warteliste"),
+    path(
+        "zugang-anfragen/gesendet/",
+        views.WartelisteDoneView.as_view(),
+        name="warteliste_done",
+    ),
     # Built-in password reset, server-rendered as Landing-app templates and
     # reachable unauthenticated at the apex (issue #77). Names live under the
     # `landing:` namespace, so the views and the email template reverse the

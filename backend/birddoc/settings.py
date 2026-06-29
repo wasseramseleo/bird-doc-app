@@ -175,6 +175,11 @@ EMAIL_BACKEND = env(
 DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@birddoc.at")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
+# The operator's inbox — where the public Warteliste ("Zugang anfragen") sends
+# access-request notifications, so the operator learns of demand for Zugangscodes
+# without polling the admin (issue #80).
+OPERATOR_EMAIL = env("DJANGO_OPERATOR_EMAIL", default="operator@birddoc.at")
+
 # SMTP transport (Brevo EU relay). Only consulted when DJANGO_EMAIL_BACKEND points
 # at the SMTP backend; the dev console backend ignores these. Credentials come
 # from the environment — never commit the Brevo SMTP key.
