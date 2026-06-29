@@ -219,10 +219,18 @@ class DataEntrySerializer(serializers.ModelSerializer):
         "hand_wing",
     )
 
-    def _get_or_create_ring(self, validated_data):
+    def _get_or_create_ring(self, validated_data, organization):
+        """Find or create the Ring *within the recording Organisation*.
+
+        Ring uniqueness is scoped to the Organisation (ADR 0006), so the lookup
+        is org-scoped too: recording a number another Organisation owns creates a
+        new Ring in the recording Organisation rather than reusing the other's.
+        """
         ring_number = validated_data.pop("ring_number")
         ring_size = validated_data.pop("ring_size")
-        ring, _ = Ring.objects.get_or_create(number=ring_number, size=ring_size)
+        ring, _ = Ring.objects.get_or_create(
+            number=ring_number, size=ring_size, organization=organization
+        )
         validated_data["ring"] = ring
         return ring
 
@@ -262,14 +270,18 @@ class DataEntrySerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        self._get_or_create_ring(validated_data)
+        # ``perform_create`` injects the active Organisation; the Ring is scoped
+        # to it (ADR 0006).
+        self._get_or_create_ring(validated_data, validated_data.get("organization"))
         self._null_bird_data_for_destroyed_ring(validated_data)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         with transaction.atomic():
             old_ring = instance.ring
-            new_ring = self._get_or_create_ring(validated_data)
+            new_ring = self._get_or_create_ring(
+                validated_data, validated_data.get("organization", instance.organization)
+            )
             self._null_bird_data_for_destroyed_ring(validated_data)
             updated_instance = super().update(instance, validated_data)
             if old_ring and old_ring != new_ring:
