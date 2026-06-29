@@ -1,0 +1,14 @@
+{% autoescape off %}Hallo,
+
+danke für deine Registrierung bei BirdDoc und das Gründen deiner Organisation.
+
+Öffne den folgenden Link, um deine E-Mail-Adresse zu bestätigen und dein Konto zu aktivieren:
+
+{{ protocol }}://{{ domain }}{% url 'landing:register_verify' uidb64=uid token=token %}
+
+Danach kannst du dich mit deiner E-Mail-Adresse und deinem Passwort anmelden.
+
+Wenn du das nicht warst, kannst du diese E-Mail ignorieren.
+
+— BirdDoc
+{% endautoescape %}

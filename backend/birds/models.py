@@ -273,6 +273,49 @@ class Mitgliedschaft(models.Model):
         return f"{self.user.username} @ {self.organization_id} ({self.rolle})"
 
 
+class Zugangscode(models.Model):
+    """A single-use invite code that gates the founding of an Organisation.
+
+    The only door through which a newcomer founds a new Organisation during the
+    beta (ADR 0005): the operator issues a code in the Django admin, the public
+    registration consumes it, and a consumed code can never found a second
+    Organisation. ``used_at`` is the single-use ledger — ``None`` while the code
+    is unused; stamped (together with ``founded_organization``) the moment it is
+    spent. See :func:`birds.registration.register_organisation`.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=64, unique=True, verbose_name=_("Zugangscode"))
+    note = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name=_("Notiz"),
+        help_text=_("Optionaler Vermerk des Betreibers (für wen / warum ausgestellt)."),
+    )
+    created = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True, verbose_name=_("Eingelöst am"))
+    founded_organization = models.ForeignKey(
+        Organization,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="founding_codes",
+        verbose_name=_("Gegründete Organisation"),
+    )
+
+    class Meta:
+        verbose_name = _("Zugangscode")
+        verbose_name_plural = _("Zugangscodes")
+
+    @property
+    def is_used(self):
+        """A code is spent once it has been stamped with a redemption time."""
+        return self.used_at is not None
+
+    def __str__(self):
+        return self.code
+
+
 class RingingStation(models.Model):
     id = models.UUIDField(default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)

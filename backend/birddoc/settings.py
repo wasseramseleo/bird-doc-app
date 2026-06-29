@@ -175,9 +175,10 @@ EMAIL_BACKEND = env(
 DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@birddoc.at")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
-# The operator's inbox — where the public Warteliste ("Zugang anfragen") sends
-# access-request notifications, so the operator learns of demand for Zugangscodes
-# without polling the admin (issue #80).
+# The operator's inbox — distinct from DEFAULT_FROM_EMAIL (the no-reply sender).
+# Receives in-app feedback ("Feedback / Fehler melden", issue #81) and public
+# Warteliste access-request notifications ("Zugang anfragen", issue #80), so the
+# operator learns of demand for Zugangscodes without polling the admin.
 OPERATOR_EMAIL = env("DJANGO_OPERATOR_EMAIL", default="operator@birddoc.at")
 
 # SMTP transport (Brevo EU relay). Only consulted when DJANGO_EMAIL_BACKEND points
@@ -188,3 +189,9 @@ EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=587)
 EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=True)
+
+# Where the public Landing app points a newly-registered founder to sign in:
+# the Angular SPA login. The Landing app (apex, birddoc.at) and the SPA
+# (app.birddoc.at) are separate hosts, so this is an absolute URL. Dev defaults
+# to the local SPA; prod sets DJANGO_APP_LOGIN_URL to https://app.birddoc.at/login.
+APP_LOGIN_URL = env("DJANGO_APP_LOGIN_URL", default="http://localhost:4200/login")
