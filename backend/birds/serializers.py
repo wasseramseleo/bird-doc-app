@@ -240,7 +240,7 @@ class DataEntrySerializer(serializers.ModelSerializer):
         """Enforce the mandatory Bemerkung for an 'unknown_species' (Aves
         ignota) capture. The unusual catch must always be described, so a blank
         comment is rejected here at the serializer layer (the model/admin stay
-        unconstrained for data repair). See ADR 0003."""
+        unconstrained for data repair). See ADR 0004."""
         species = attrs.get("species")
         if species is None and self.instance is not None:
             species = self.instance.species

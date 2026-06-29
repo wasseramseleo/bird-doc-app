@@ -62,7 +62,7 @@ class Species(models.Model):
         # A Sonderart discriminator: a non-empty value marks a non-taxon Species
         # row that is always selectable (it bypasses the active Artenliste). Each
         # kind derives its own behaviour — see the Sonderart entry in CONTEXT.md
-        # and ADR 0003.
+        # and ADR 0004.
         NORMAL = "", _("Normale Art")
         RING_DESTROYED = "ring_destroyed", _("Ring vernichtet")
         UNKNOWN_SPECIES = "unknown_species", _("Unbekannte Art (Aves ignota)")

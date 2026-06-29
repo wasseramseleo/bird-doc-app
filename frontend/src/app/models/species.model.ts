@@ -3,7 +3,7 @@ import { RingSize } from './ring.model';
 // Issue #57: the Sonderart discriminator (replaces the former is_sentinel
 // boolean). A non-empty value marks a non-taxon Species row that is always
 // selectable (it bypasses the active Artenliste). Each kind derives its own
-// behaviour — see CONTEXT.md (Sonderart) and ADR 0003.
+// behaviour — see CONTEXT.md (Sonderart) and ADR 0004.
 export type SpecialKind = '' | 'ring_destroyed' | 'unknown_species';
 
 export interface Species {

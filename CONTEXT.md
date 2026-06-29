@@ -46,7 +46,7 @@ A rope/string of sequentially-numbered rings of one Ringgröße, sliced up for u
 _Avoid_: Ring batch, ring series (English), rope
 
 **Sonderart**:
-The umbrella term for the non-taxon `Species` rows that stand in for something other than an identified bird. Each is marked by a non-empty `special_kind` discriminator and is **always selectable**, bypassing the active Artenliste, so a rarity or a ruined ring never blocks data entry. Two kinds exist — **Ring vernichtet** (`special_kind = "ring_destroyed"`) and **Unbekannte Art / Aves ignota** (`special_kind = "unknown_species"`). The discriminator drives three behaviours independently: visibility (any Sonderart), form-collapse + server-side bird-data null-out (Ring vernichtet only), and a mandatory Bemerkung (Aves ignota only). `special_kind` supersedes the former conflated `is_sentinel` boolean — see ADR 0003.
+The umbrella term for the non-taxon `Species` rows that stand in for something other than an identified bird. Each is marked by a non-empty `special_kind` discriminator and is **always selectable**, bypassing the active Artenliste, so a rarity or a ruined ring never blocks data entry. Two kinds exist — **Ring vernichtet** (`special_kind = "ring_destroyed"`) and **Unbekannte Art / Aves ignota** (`special_kind = "unknown_species"`). The discriminator drives three behaviours independently: visibility (any Sonderart), form-collapse + server-side bird-data null-out (Ring vernichtet only), and a mandatory Bemerkung (Aves ignota only). `special_kind` supersedes the former conflated `is_sentinel` boolean — see ADR 0004.
 _Avoid_: Special species, sentinel (English), pseudo-species
 
 **Ring vernichtet**:
