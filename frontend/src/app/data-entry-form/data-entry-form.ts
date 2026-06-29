@@ -778,14 +778,16 @@ export class DataEntryFormComponent implements OnInit {
     }
   }
 
-  // #23: a single context-dependent Enter dispatch. Enter never submits the
-  // record except when the save button itself is focused; everywhere else it
-  // advances the field workflow instead of firing the implicit form submit.
+  // #23/#59: a single context-dependent Enter dispatch. Enter never fires the
+  // implicit form submit from a field; it advances the field workflow instead.
+  // The only exceptions are focused controls that own Enter natively.
   private onEnter(event: KeyboardEvent): void {
     const target = event.target as HTMLElement;
 
-    // The save button: let Enter activate it (native button → submit).
-    if (target instanceof HTMLButtonElement && target.type === 'submit') {
+    // #59: any focused action button — let Enter activate it natively. The save
+    // button (type="submit") submits; every other action button is type="button",
+    // so native activation runs its click handler without an implicit submit.
+    if (target instanceof HTMLButtonElement) {
       return;
     }
     // A textarea (Bemerkungen): Enter inserts a newline.
