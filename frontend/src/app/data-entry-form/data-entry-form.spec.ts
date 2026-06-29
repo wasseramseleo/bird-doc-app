@@ -589,6 +589,24 @@ describe('DataEntryFormComponent', () => {
       expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
     });
 
+    it('lets Enter on the focused "Zur Liste" button activate it (#59, not suppressed)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      const backToList = Array.from(
+        f.nativeElement.querySelectorAll('.action-buttons button'),
+      ).find((b) => (b as HTMLElement).textContent!.trim() === 'Zur Liste') as HTMLButtonElement;
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      backToList.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
     it('collapses the form when the loaded entry is a sentinel "Ring Vernichtet"', async () => {
       const { f, httpMock } = await setupEditMode('43');
       f.detectChanges();
@@ -779,7 +797,7 @@ describe('DataEntryFormComponent', () => {
       expect(document.activeElement).toBe(netHeight);
     }));
 
-    it('lets Enter on the focused save button submit the form (the one allowed case)', () => {
+    it('lets Enter on the focused save button submit the form (native button activation)', () => {
       const saveButton = fixture.nativeElement.querySelector(
         'button[type="submit"]',
       ) as HTMLButtonElement;
@@ -843,6 +861,71 @@ describe('DataEntryFormComponent', () => {
       // Focus stays put so the create-Beringer dialog flow is not disrupted.
       expect(document.activeElement).toBe(staffField);
     }));
+  });
+
+  describe('Enter activates focused action buttons (#59)', () => {
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    const actionButton = (label: string) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('.action-buttons button')).find(
+        (b) => (b as HTMLElement).textContent!.trim() === label,
+      ) as HTMLButtonElement) ?? null;
+
+    it('lets Enter on the focused Zurücksetzen button activate it (not suppressed)', () => {
+      const reset = actionButton('Zurücksetzen');
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      reset.dispatchEvent(event);
+
+      // Not suppressed: native Enter activation of the button is allowed to run.
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('lets Enter on the focused Ring vernichtet button activate it (not suppressed)', () => {
+      const destroyed = actionButton('Ring vernichtet');
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      destroyed.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('lets Enter on the focused Ringhistorie search button activate it (not suppressed)', () => {
+      // The Ringhistorie lookup button only appears during a Wiederfang and needs
+      // both ring parts to be enabled.
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      fixture.detectChanges();
+
+      const search = fixture.nativeElement.querySelector(
+        'button[aria-label="Ringhistorie suchen"]',
+      ) as HTMLButtonElement;
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      search.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('still does not submit from a focused form field (Enter advances instead)', () => {
+      const field = fixture.nativeElement.querySelector(
+        '[formControlName="net_location"]',
+      ) as HTMLElement;
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+      field.dispatchEvent(event);
+
+      // Broadening the button rule must not weaken the field rule: a field still
+      // suppresses the implicit submit.
+      expect(event.defaultPrevented).toBe(true);
+    });
   });
 
   describe('recapture prefill from ring history (#23)', () => {
