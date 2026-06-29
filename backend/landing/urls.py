@@ -6,6 +6,12 @@ app_name = "landing"
 
 urlpatterns = [
     path("", views.HomeView.as_view(), name="home"),
+    # Public legal & trust surface, server-rendered on the shared landing base
+    # (issue #78). German slugs mirror `passwort-zuruecksetzen/`. The texts are
+    # review-ready drafts, gated on human/lawyer review before go-live.
+    path("impressum/", views.ImpressumView.as_view(), name="impressum"),
+    path("datenschutz/", views.DatenschutzView.as_view(), name="datenschutz"),
+    path("agb/", views.AGBView.as_view(), name="agb"),
     # Built-in password reset, server-rendered as Landing-app templates and
     # reachable unauthenticated at the apex (issue #77). Names live under the
     # `landing:` namespace, so the views and the email template reverse the

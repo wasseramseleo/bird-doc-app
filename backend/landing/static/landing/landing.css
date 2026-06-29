@@ -204,6 +204,149 @@ body {
     font-weight: 600;
 }
 
+/* ── Landing hero ─────────────────────────────────────────────────────── */
+
+/* Beta badge — a small brass pill riding alongside the wordmark heading */
+.badge {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 0.5rem;
+    padding: 0.12em 0.6em;
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 0.62em;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.badge--beta {
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent-strong);
+}
+
+.panel p.lead {
+    font-size: 1.08rem;
+    color: var(--ink);
+}
+
+/* Austria/EU hosting reassurance — a quiet bordered field-note */
+.hosting {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    margin: 1.5rem 0;
+    padding: 0.9rem 1rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+}
+
+.hosting__flag {
+    font-size: 1.25rem;
+    line-height: 1.4;
+}
+
+.hosting p {
+    margin: 0;
+    font-size: 0.92rem;
+}
+
+/* Price-teaser — three field-record rows, each tagged with a mono chip */
+.pricing {
+    margin-top: 1.75rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+}
+
+.pricing h2 {
+    margin: 0 0 0.9rem;
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
+}
+
+.price-teaser {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.7rem;
+}
+
+.price-teaser li {
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+.price-teaser strong {
+    color: var(--ink);
+}
+
+.price-teaser__tag {
+    display: inline-block;
+    min-width: 6.5rem;
+    margin-right: 0.6rem;
+    padding: 0.1em 0.55em;
+    border-radius: 6px;
+    background: var(--accent-tint);
+    color: var(--accent-strong);
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+/* ── Legal pages ──────────────────────────────────────────────────────── */
+
+/* The draft banner — a clearly-marked "not yet reviewed" note */
+.legal-draft {
+    margin: 0 0 1.5rem;
+    padding: 0.85rem 1rem;
+    background: #fbf3e6;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    color: var(--accent-strong);
+    font-size: 0.86rem;
+}
+
+.legal-draft strong {
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.panel h2 {
+    margin: 1.6rem 0 0.5rem;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.panel ul {
+    margin: 0 0 1.2rem;
+    padding-left: 1.2rem;
+    color: var(--muted);
+}
+
+.panel li {
+    margin-bottom: 0.4rem;
+}
+
+.legal-rule {
+    margin: 2rem 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+}
+
+.legal-back {
+    margin-top: 1.75rem;
+    font-size: 0.9rem;
+}
+
 /* Footer — a quiet field note */
 .site-footer {
     border-top: 1px solid var(--line);
@@ -214,6 +357,28 @@ body {
 .site-footer__inner {
     padding-top: 1.25rem;
     padding-bottom: 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.site-footer__legal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+}
+
+.site-footer__legal a {
+    color: var(--muted);
+    text-decoration: none;
+    text-underline-offset: 2px;
+}
+
+.site-footer__legal a:hover {
+    color: var(--accent-strong);
+    text-decoration: underline;
 }
 
 .site-footer .place {
