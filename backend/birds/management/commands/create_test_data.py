@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from birds.models import (
     DataEntry,
+    Mitgliedschaft,
     Organization,
     Ring,
     RingingStation,
@@ -366,9 +367,21 @@ class Command(BaseCommand):
 
         scientist, _ = Scientist.objects.get_or_create(
             user=user,
-            defaults={"handle": "TB"},
+            defaults={"handle": "TB", "organization": org},
         )
+        if scientist.organization_id is None:
+            scientist.organization = org
+            scientist.save(update_fields=["organization"])
         self.stdout.write(f"Ensured scientist '{scientist.handle}' (login: testuser / test1234).")
+
+        # The capture endpoint is scoped to the active Organisation (ADR 0005);
+        # without a Mitgliedschaft the seeded user would see no captures.
+        Mitgliedschaft.objects.get_or_create(
+            user=user,
+            organization=org,
+            defaults={"rolle": Mitgliedschaft.Rolle.ADMIN},
+        )
+        self.stdout.write("Ensured Admin-Mitgliedschaft for testuser.")
 
         species_objects = []
         for data in SPECIES_DATA:

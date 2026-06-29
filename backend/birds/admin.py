@@ -7,6 +7,7 @@ from django.utils.timezone import localtime
 
 from .models import (
     DataEntry,
+    Mitgliedschaft,
     Organization,
     Project,
     Ring,
@@ -92,7 +93,9 @@ export_as_csv.short_description = "Als CSV exportieren"
 
 @admin.register(Organization)
 class OrganizationAdmin(admin.ModelAdmin):
-    list_display = ("handle", "name", "country")
+    list_display = ("handle", "name", "country", "plan", "seat_limit", "beta_cohort")
+    list_editable = ("plan", "seat_limit", "beta_cohort")
+    list_filter = ("plan", "beta_cohort")
     search_fields = ("handle", "name")
     ordering = ("handle",)
 
@@ -130,9 +133,19 @@ class ProjectAdmin(admin.ModelAdmin):
     filter_horizontal = ("scientists",)
 
 
+@admin.register(Mitgliedschaft)
+class MitgliedschaftAdmin(admin.ModelAdmin):
+    list_display = ("user", "organization", "rolle", "updated")
+    list_filter = ("organization", "rolle")
+    search_fields = ("user__username", "organization__handle", "organization__name")
+    ordering = ("organization", "user__username")
+    autocomplete_fields = ("user",)
+
+
 @admin.register(Scientist)
 class ScientistAdmin(admin.ModelAdmin):
-    list_display = ("handle",)
+    list_display = ("handle", "first_name", "last_name", "organization")
+    list_filter = ("organization",)
     search_fields = ("handle",)
     ordering = ("handle",)
 
