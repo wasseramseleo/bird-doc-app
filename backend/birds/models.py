@@ -58,6 +58,15 @@ class Ring(models.Model):
 
 
 class Species(models.Model):
+    class SpecialKind(models.TextChoices):
+        # A Sonderart discriminator: a non-empty value marks a non-taxon Species
+        # row that is always selectable (it bypasses the active Artenliste). Each
+        # kind derives its own behaviour — see the Sonderart entry in CONTEXT.md
+        # and ADR 0003.
+        NORMAL = "", _("Normale Art")
+        RING_DESTROYED = "ring_destroyed", _("Ring vernichtet")
+        UNKNOWN_SPECIES = "unknown_species", _("Unbekannte Art (Aves ignota)")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     common_name_de = models.CharField(max_length=127, unique=True)
     common_name_en = models.CharField(max_length=127, unique=True)
@@ -71,9 +80,16 @@ class Species(models.Model):
         blank=True,
         verbose_name=_("Empfohlene Ringgröße"),
     )
-    is_sentinel = models.BooleanField(
-        default=False,
-        verbose_name=_("Spezial-Art (kein Vogel)"),
+    # The Sonderart discriminator (replaces the former is_sentinel boolean). It
+    # drives three independent behaviours keyed off the value: visibility
+    # (always-selectable when non-empty), form-collapse + server-side bird-data
+    # null-out (ring_destroyed), and mandatory Bemerkung (unknown_species).
+    special_kind = models.CharField(
+        max_length=32,
+        choices=SpecialKind.choices,
+        default=SpecialKind.NORMAL,
+        blank=True,
+        verbose_name=_("Sonderart"),
     )
 
     def __str__(self):

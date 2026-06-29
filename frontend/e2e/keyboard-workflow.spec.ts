@@ -36,7 +36,7 @@ const SPECIES = {
   family_name: '',
   order_name: '',
   ring_size: null,
-  is_sentinel: false,
+  special_kind: '',
 };
 
 // The most recent prior catch the ring-history search returns. Art + Geschlecht

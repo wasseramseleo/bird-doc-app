@@ -139,10 +139,17 @@ class ScientistAdmin(admin.ModelAdmin):
 
 @admin.register(Species)
 class SpeciesAdmin(admin.ModelAdmin):
-    list_display = ("scientific_name", "common_name_de", "ring_size", "family_name", "order_name")
+    list_display = (
+        "scientific_name",
+        "common_name_de",
+        "ring_size",
+        "special_kind",
+        "family_name",
+        "order_name",
+    )
     search_fields = ("common_name_de", "common_name_en", "scientific_name")
     ordering = ("scientific_name",)
-    list_filter = ("ring_size",)
+    list_filter = ("ring_size", "special_kind")
 
 
 @admin.register(Ring)

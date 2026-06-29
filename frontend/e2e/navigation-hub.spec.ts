@@ -39,7 +39,7 @@ function entry(id: string, speciesName: string) {
     created: '2026-06-01T08:00:00Z',
     date_time: '2026-06-01T08:00:00Z',
     ring: {id: 'r1', number: '901234', size: 'M'},
-    species: {id: 's1', common_name_de: speciesName, is_sentinel: false},
+    species: {id: 's1', common_name_de: speciesName, special_kind: ''},
     bird_status: 'e',
     staff: {id: 'p1', handle: 'FRE', full_name: 'Filip Reiter'},
     tarsus: 19,

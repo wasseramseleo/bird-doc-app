@@ -45,9 +45,17 @@ _Avoid_: Required size, fixed size, locked size
 A rope/string of sequentially-numbered rings of one Ringgröße, sliced up for use in the field. Slices are not necessarily used in number order, so a Projekt's ring numbers do **not** increase monotonically over time — a newer capture can carry a lower number than an older one. Consequently the suggested number for a new Erstfang is _last consumed + 1_: take the Projekt's most recent capture of that size that **drew a fresh number from the rope** — an Erstfang or a **Ring vernichtet** sentinel (see below) — regardless of Beringer, and add one. A Wiederfang consumes no rope number and is ignored, as is _max + 1_ (an old, higher-numbered slice must not pull the suggestion forward).
 _Avoid_: Ring batch, ring series (English), rope
 
+**Sonderart**:
+The umbrella term for the non-taxon `Species` rows that stand in for something other than an identified bird. Each is marked by a non-empty `special_kind` discriminator and is **always selectable**, bypassing the active Artenliste, so a rarity or a ruined ring never blocks data entry. Two kinds exist — **Ring vernichtet** (`special_kind = "ring_destroyed"`) and **Unbekannte Art / Aves ignota** (`special_kind = "unknown_species"`). The discriminator drives three behaviours independently: visibility (any Sonderart), form-collapse + server-side bird-data null-out (Ring vernichtet only), and a mandatory Bemerkung (Aves ignota only). `special_kind` supersedes the former conflated `is_sentinel` boolean — see ADR 0003.
+_Avoid_: Special species, sentinel (English), pseudo-species
+
 **Ring vernichtet**:
-A destroyed-ring sentinel: a placeholder "species" recorded when a ring is taken out of service (e.g. lost, damaged, or cut off) so its number is never reused. Like an Erstfang it **draws a fresh number from the Ringserie rope**, so it counts as a consumed number when suggesting the next one; unlike a real capture it carries no bird data — the backend blanks every biometric field, keeping only Ring, Beringer, Station and Datum. Modelled as a Species flagged `is_sentinel`.
+A destroyed-ring marker: a placeholder "species" recorded when a ring is taken out of service (e.g. lost, damaged, or cut off) so its number is never reused. Like an Erstfang it **draws a fresh number from the Ringserie rope**, so it counts as a consumed number when suggesting the next one; unlike a real capture it carries no bird data — the backend blanks every biometric field, keeping only Ring, Beringer, Station and Datum. The Sonderart with `special_kind = "ring_destroyed"`.
 _Avoid_: Destroyed ring (English), placeholder species, dummy entry
+
+**Unbekannte Art (Aves ignota)**:
+A Sonderart for a **real captured bird** whose species is not on the active Artenliste (typically a rarity), so the catch can be recorded even when the list cannot name it. Unlike _Ring vernichtet_ it carries full bird data — the whole measurement form stays — and to guarantee the unusual catch is always described, the **Bemerkung is mandatory** (enforced in the form and again in `DataEntrySerializer.validate()`). The Sonderart with `special_kind = "unknown_species"`; `common_name_de = "Art nicht in der Liste (Aves ignota)"`, `scientific_name = "Aves ignota"`.
+_Avoid_: Unknown bird, miscellaneous species, fremde Art
 
 **Fangmethode**:
 How a bird was caught, recorded as an IWM code (e.g. M = Japannetz). A property of the Projekt, constant across its captures.

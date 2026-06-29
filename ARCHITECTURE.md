@@ -95,7 +95,7 @@ Single Django app (`birds/`) with project config in `birddoc/`. All routes are u
 
 **Species filtering** — `SpeciesViewSet.get_queryset()` returns only species in the user's active `SpeciesList` when one exists; otherwise all species. The endpoint requires authentication either way. Only one `SpeciesList` per user can have `is_active=True` (enforced in `SpeciesList.save()`).
 
-**Smart ring numbering** — `next-number` returns "last consumed + 1", **not** `max + 1`. It takes the project's most recent capture of that size that drew a fresh number from the rope — a first catch (Erstfang) **or** a destroyed-ring sentinel ("Ring vernichtet") record — ignoring recaptures (Wiederfänge), and increments it while preserving leading-zero width (`0042` → `0043`, returned as a string). Project-scoped; returns `null` when no qualifying capture exists or the previous number is non-numeric. See `CONTEXT.md` (Ringserie) and `birds/views.py`.
+**Smart ring numbering** — `next-number` returns "last consumed + 1", **not** `max + 1`. It takes the project's most recent capture of that size that drew a fresh number from the rope — a first catch (Erstfang) **or** a destroyed-ring ("Ring vernichtet", `special_kind="ring_destroyed"`) record — ignoring recaptures (Wiederfänge), and increments it while preserving leading-zero width (`0042` → `0043`, returned as a string). Project-scoped; returns `null` when no qualifying capture exists or the previous number is non-numeric. See `CONTEXT.md` (Ringserie) and `birds/views.py`.
 
 ## Frontend (`frontend/`)
 

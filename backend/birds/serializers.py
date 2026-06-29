@@ -23,7 +23,7 @@ class SpeciesSerializer(serializers.ModelSerializer):
             "common_name_en",
             "scientific_name",
             "ring_size",
-            "is_sentinel",
+            "special_kind",
         ]
 
 
@@ -197,7 +197,8 @@ class DataEntrySerializer(serializers.ModelSerializer):
         read_only_fields = ["created", "updated"]
 
     # Fields that describe a bird. A destroyed ring carries none of them, so
-    # they are forced null for a sentinel species regardless of client input.
+    # they are forced null for a 'ring_destroyed' Sonderart regardless of client
+    # input.
     BIRD_DATA_FIELDS = (
         "age_class",
         "sex",
@@ -225,25 +226,51 @@ class DataEntrySerializer(serializers.ModelSerializer):
         validated_data["ring"] = ring
         return ring
 
-    def _null_bird_data_for_sentinel(self, validated_data):
-        """A sentinel species (e.g. 'Ring Vernichtet') has no bird, so the
-        backend authoritatively blanks every bird-data field, whatever the
-        client sent. Ring, Beringer, Station and Datum stay required."""
+    def _null_bird_data_for_destroyed_ring(self, validated_data):
+        """A 'ring_destroyed' Sonderart (the 'Ring Vernichtet' marker) has no
+        bird, so the backend authoritatively blanks every bird-data field,
+        whatever the client sent. Ring, Beringer, Station and Datum stay
+        required."""
         species = validated_data.get("species")
-        if species is not None and species.is_sentinel:
+        if species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED:
             for field in self.BIRD_DATA_FIELDS:
                 validated_data[field] = None
 
+    def validate(self, attrs):
+        """Enforce the mandatory Bemerkung for an 'unknown_species' (Aves
+        ignota) capture. The unusual catch must always be described, so a blank
+        comment is rejected here at the serializer layer (the model/admin stay
+        unconstrained for data repair). See ADR 0003."""
+        species = attrs.get("species")
+        if species is None and self.instance is not None:
+            species = self.instance.species
+        if species is not None and species.special_kind == Species.SpecialKind.UNKNOWN_SPECIES:
+            if "comment" in attrs:
+                comment = attrs["comment"]
+            elif self.instance is not None:
+                comment = self.instance.comment
+            else:
+                comment = None
+            if not (comment and comment.strip()):
+                raise serializers.ValidationError(
+                    {
+                        "comment": _(
+                            "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
+                        )
+                    }
+                )
+        return attrs
+
     def create(self, validated_data):
         self._get_or_create_ring(validated_data)
-        self._null_bird_data_for_sentinel(validated_data)
+        self._null_bird_data_for_destroyed_ring(validated_data)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         with transaction.atomic():
             old_ring = instance.ring
             new_ring = self._get_or_create_ring(validated_data)
-            self._null_bird_data_for_sentinel(validated_data)
+            self._null_bird_data_for_destroyed_ring(validated_data)
             updated_instance = super().update(instance, validated_data)
             if old_ring and old_ring != new_ring:
                 if not DataEntry.objects.filter(ring=old_ring).exists():

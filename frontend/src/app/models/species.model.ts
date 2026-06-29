@@ -1,5 +1,11 @@
 import { RingSize } from './ring.model';
 
+// Issue #57: the Sonderart discriminator (replaces the former is_sentinel
+// boolean). A non-empty value marks a non-taxon Species row that is always
+// selectable (it bypasses the active Artenliste). Each kind derives its own
+// behaviour — see CONTEXT.md (Sonderart) and ADR 0003.
+export type SpecialKind = '' | 'ring_destroyed' | 'unknown_species';
+
 export interface Species {
   id: string;
   common_name_de: string;
@@ -8,8 +14,9 @@ export interface Species {
   family_name: string;
   order_name: string;
   ring_size: RingSize | null;
-  // Issue #19: a sentinel Art (e.g. "Ring Vernichtet") stands for a record that
-  // carries no bird data. The backend always includes sentinels in the species
-  // autocomplete and nulls the bird fields server-side.
-  is_sentinel: boolean;
+  // '' — a normal taxon; 'ring_destroyed' — the "Ring Vernichtet" marker (no
+  // bird; collapses the form; bird data nulled server-side); 'unknown_species'
+  // — "Art nicht in der Liste (Aves ignota)" (a real bird; full form; Bemerkung
+  // mandatory).
+  special_kind: SpecialKind;
 }
