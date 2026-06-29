@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from .iwm_export import build_iwm_workbook
 from .models import (
+    FALLBACK_BERINGER_HANDLE,
     DataEntry,
     Organization,
     Project,
@@ -200,10 +201,16 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
 
     A Beringer can be created mid-session with no linked account (an unknown
     Kürzel prompts a "Neuer Beringer" dialog); editing and deletion stay closed.
-    See ADR 0001-account-independent-beringer.
+    The reserved fallback Beringer (Kürzel ``GELÖSCHT``, which adopts a deleted
+    Beringer's captures) is excluded so no fresh capture is filed against it.
+    See ADR 0001-account-independent-beringer and ADR 0003.
     """
 
-    queryset = Scientist.objects.select_related("user").all().order_by("last_name", "first_name")
+    queryset = (
+        Scientist.objects.select_related("user")
+        .exclude(handle=FALLBACK_BERINGER_HANDLE)
+        .order_by("last_name", "first_name")
+    )
     serializer_class = ScientistSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["handle", "first_name", "last_name"]
