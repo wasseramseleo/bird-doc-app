@@ -50,8 +50,8 @@ The ringing site where a capture happens (e.g. "Linz, Botanischer Garten"). Belo
 _Avoid_: Location, site
 
 **Organisation**:
-The ringing scheme / body a Station and Project belong to (e.g. IWM Linz). Also the **tenant** — the unit of data ownership and isolation: members of one Organisation see each other's captures; members of different Organisations never see each other's data. Every capture, Station and Projekt belongs to exactly one Organisation.
-_Avoid_: Org, institution, Mandant (German for tenant — say Organisation), Tenant (English)
+A **local** ringing body/group — the level that owns data (e.g. IWM Linz). Also the **tenant** — the unit of data ownership and isolation: members of one Organisation see each other's captures; members of different Organisations never see each other's data. Every capture, Station and Projekt belongs to exactly one Organisation. A **national ringing authority** (e.g. the Österreichische Vogelwarte) is **not** an Organisation: it sits *above* the tenant layer as an external scheme/endorser, and the model holds **no** parent-of-Organisations entity — addressing such a body is a positioning/sales concern, not a modelled tier.
+_Avoid_: Org, institution, Mandant (German for tenant — say Organisation), Tenant (English), Vogelwarte/Beringungszentrale (the national authority — not an Organisation)
 
 **Projekt**:
 A named campaign that groups captures, scoped to one Organisation and a set of Beringer.
