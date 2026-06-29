@@ -12,6 +12,7 @@ from .models import (
     Species,
     SpeciesList,
 )
+from .tenancy import active_organization
 
 
 class SpeciesSerializer(serializers.ModelSerializer):
@@ -63,7 +64,10 @@ class ProjectSerializer(serializers.ModelSerializer):
     scientists = ScientistSerializer(many=True, read_only=True)
     default_station = RingingStationSerializer(read_only=True)
     organization_id = serializers.PrimaryKeyRelatedField(
-        queryset=Organization.objects.all(), source="organization", write_only=True
+        queryset=Organization.objects.all(),
+        source="organization",
+        write_only=True,
+        required=False,
     )
     scientist_ids = serializers.PrimaryKeyRelatedField(
         queryset=Scientist.objects.all(),
@@ -98,12 +102,27 @@ class ProjectSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created", "updated"]
 
+    def _effective_organization(self, attrs):
+        """The Projekt's owning Organisation, resolved server-authoritatively
+        (issue #74). On create it is the requester's active Organisation — never a
+        client-supplied ``organization_id``, which ``ProjectViewSet.perform_create``
+        overrides — so the default-Station org-match is checked against the org the
+        Projekt will actually belong to. On update it is the instance's existing
+        Organisation."""
+        if self.instance is not None:
+            return self.instance.organization
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is not None:
+            active = active_organization(user)
+            if active is not None:
+                return active
+        return attrs.get("organization")
+
     def validate(self, attrs):
         station = attrs.get("default_station")
         if station is not None:
-            organization = attrs.get("organization")
-            if organization is None and self.instance is not None:
-                organization = self.instance.organization
+            organization = self._effective_organization(attrs)
             if organization is not None and station.organization_id != organization.pk:
                 raise serializers.ValidationError(
                     {

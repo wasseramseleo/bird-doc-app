@@ -53,6 +53,20 @@ def scientist(user, organization):
 
 
 @pytest.fixture
+def membership(user, organization):
+    """Alice's single Mitgliedschaft in tenant A — her implicit active Organisation.
+
+    Use when a test needs Alice to have an active Organisation but **no** Beringer
+    row of her own polluting the org-scoped ``/scientists/`` autocomplete. Do not
+    combine with ``scientist`` (which adds its own Mitgliedschaft) — two
+    memberships make the active Organisation ambiguous and resolve to ``None``.
+    """
+    return Mitgliedschaft.objects.create(
+        user=user, organization=organization, rolle=Mitgliedschaft.Rolle.ADMIN
+    )
+
+
+@pytest.fixture
 def other_scientist(other_user):
     return Scientist.objects.create(user=other_user, handle="BOB")
 

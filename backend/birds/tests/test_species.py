@@ -178,6 +178,23 @@ def test_short_or_empty_search_returns_most_used_first(
 
 
 @pytest.mark.django_db
+def test_species_stays_global_across_tenants(
+    auth_client, auth_client_b, membership, scientist_b, species
+):
+    """Species is global reference data — explicitly NOT tenant-scoped (issue #74).
+    A Mitglied of tenant A (``membership``) and a Mitglied of tenant B
+    (``scientist_b``) get the same reference lookup, so a species is visible
+    regardless of which Organisation asks."""
+    a = auth_client.get(LIST_URL, {"search": "Zzztestus"}).json()["results"]
+    b = auth_client_b.get(LIST_URL, {"search": "Zzztestus"}).json()["results"]
+    a_ids = [row["id"] for row in a]
+    b_ids = [row["id"] for row in b]
+
+    assert a_ids == b_ids
+    assert a_ids == [str(species.id)]
+
+
+@pytest.mark.django_db
 def test_active_list_filter_still_limits_which_species_appear(
     auth_client,
     user,
