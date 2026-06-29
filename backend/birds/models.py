@@ -49,9 +49,22 @@ class Ring(models.Model):
     size = models.CharField(
         max_length=3, choices=RingSizes.choices, default=RingSizes.V, verbose_name=_("Ringgröße")
     )
+    # The owning Organisation — the tenant boundary (ADR 0006). Ring uniqueness is
+    # scoped to it, so two Organisations may each own the same (size, number): an
+    # Austrian V 0042 and a foreign V 0042 are different physical rings. Nullable
+    # only as a migration safety net for legacy rows that predate the field; the
+    # capture path always creates rings within the recording Organisation.
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.PROTECT,
+        related_name="rings",
+        null=True,
+        blank=True,
+        verbose_name=_("Organisation"),
+    )
 
     class Meta:
-        unique_together = ("size", "number")
+        unique_together = ("organization", "size", "number")
 
     def __str__(self):
         return f"{self.size} {self.number}"

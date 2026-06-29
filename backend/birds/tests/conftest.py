@@ -196,12 +196,12 @@ def project_b(organization_b, scientist_b):
 
 
 @pytest.fixture
-def data_entry_b(species, scientist_b, ringing_station_b):
-    # Species and Ring are global reference data (Ring scoping is ADR 0006, a
-    # later slice); only the Organisation-owned bits differ from tenant A.
+def data_entry_b(species, scientist_b, ringing_station_b, organization_b):
+    # Species is global reference data; the Ring is scoped to tenant B (ADR 0006),
+    # as are the other Organisation-owned bits that differ from tenant A.
     return DataEntry.objects.create(
         species=species,
-        ring=Ring.objects.create(number="800", size=Ring.RingSizes.V),
+        ring=Ring.objects.create(number="800", size=Ring.RingSizes.V, organization=organization_b),
         staff=scientist_b,
         ringing_station=ringing_station_b,
         date_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
