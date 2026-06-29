@@ -77,6 +77,34 @@ def test_user_cannot_access_other_users_list(auth_client, other_user, species):
 
 
 @pytest.mark.django_db
+def test_two_tenant_species_list_isolation(auth_client, auth_client_b, user, user_b):
+    """SpeciesLists are per-user, which is a strict subset of per-Organisation
+    isolation: a Mitglied of one tenant never sees another tenant's lists — no
+    A↔B leakage either direction (issue #74)."""
+    SpeciesList.objects.create(name="Mine", user=user, is_active=False)
+    SpeciesList.objects.create(name="Theirs", user=user_b, is_active=False)
+
+    a_names = [row["name"] for row in auth_client.get(LIST_URL).json()["results"]]
+    b_names = [row["name"] for row in auth_client_b.get(LIST_URL).json()["results"]]
+
+    assert a_names == ["Mine"]
+    assert b_names == ["Theirs"]
+
+
+@pytest.mark.django_db
+def test_cross_tenant_species_list_write_is_rejected(auth_client, other_user):
+    """A cross-tenant write cannot touch another account's list — it is a 404 (the
+    row is invisible), and the list is left untouched (issue #74)."""
+    other = SpeciesList.objects.create(name="Theirs", user=other_user, is_active=False)
+    detail = _detail_url(other.id)
+
+    assert auth_client.patch(detail, {"name": "hacked"}, format="json").status_code == 404
+    assert auth_client.delete(detail).status_code == 404
+    other.refresh_from_db()
+    assert other.name == "Theirs"
+
+
+@pytest.mark.django_db
 def test_unauthenticated_request_rejected(api_client):
     response = api_client.get(LIST_URL)
     assert response.status_code in (401, 403)

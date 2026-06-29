@@ -38,6 +38,43 @@ def test_landing_pages_share_one_stylesheet(client):
     assert "landing.css" in content
 
 
+def test_landing_page_shows_a_beta_badge(client):
+    # The hero carries a Beta badge announcing the public beta (issue #78).
+    content = client.get("/").content.decode()
+    assert "badge" in content
+    assert "Beta" in content
+
+
+def test_landing_page_shows_the_price_teaser(client):
+    # The price-teaser frames the three pricing facts (issue #78): free during the
+    # beta, a per-Organisation licence at 1.0, and a permanent preferential price
+    # for the beta cohort.
+    content = client.get("/").content.decode()
+    assert "kostenlos" in content
+    assert "pro Organisation" in content
+    assert "1.0" in content
+    assert "dauerhaft" in content
+    assert "Vorzugspreis" in content
+
+
+def test_landing_page_shows_the_austria_eu_hosting_statement(client):
+    # Austria/EU hosting reassurance (issue #78, ADR 0007).
+    content = client.get("/").content.decode()
+    assert "Österreich" in content
+    assert "EU" in content
+    assert "gehostet" in content or "Hosting" in content
+
+
+def test_landing_page_links_to_the_legal_pages(client):
+    from django.urls import reverse
+
+    content = client.get("/").content.decode()
+    # The landing page links to each legal page (issue #78).
+    assert reverse("landing:impressum") in content
+    assert reverse("landing:datenschutz") in content
+    assert reverse("landing:agb") in content
+
+
 def test_landing_page_uses_shared_base_template(client):
     # A shared public base template is in place and the landing page extends it,
     # so subsequent public pages (registration, legal, Warteliste, …) can reuse it.

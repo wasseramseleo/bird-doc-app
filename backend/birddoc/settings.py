@@ -175,6 +175,10 @@ EMAIL_BACKEND = env(
 DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@birddoc.at")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
+# Where in-app feedback ("Feedback / Fehler melden", issue #81) is delivered.
+# The operator's inbox — distinct from DEFAULT_FROM_EMAIL (the no-reply sender).
+OPERATOR_EMAIL = env("DJANGO_OPERATOR_EMAIL", default="operator@birddoc.at")
+
 # SMTP transport (Brevo EU relay). Only consulted when DJANGO_EMAIL_BACKEND points
 # at the SMTP backend; the dev console backend ignores these. Credentials come
 # from the environment — never commit the Brevo SMTP key.

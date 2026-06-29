@@ -23,6 +23,31 @@ class HomeView(TemplateView):
     template_name = "landing/home.html"
 
 
+class ImpressumView(TemplateView):
+    """The operator's Impressum — a server-rendered legal page (issue #78).
+
+    The text is a review-ready *draft*, gated on human/lawyer review before
+    go-live; operator-identifying details are clearly-marked placeholders."""
+
+    template_name = "landing/impressum.html"
+
+
+class DatenschutzView(TemplateView):
+    """The Datenschutzerklärung — what data is processed and by which
+    sub-processors (IPAX hosting, Brevo email) (issue #78). A review-ready
+    draft, gated on human/lawyer review before go-live."""
+
+    template_name = "landing/datenschutz.html"
+
+
+class AGBView(TemplateView):
+    """The AGB including a DPA (Auftragsverarbeitung) addendum — the Organisation
+    is controller, BirdDoc is processor (issue #78). A review-ready draft, gated
+    on human/lawyer review before go-live."""
+
+    template_name = "landing/agb.html"
+
+
 class GermanAuthFormMixin:
     """Render server-rendered public-landing forms in German.
 

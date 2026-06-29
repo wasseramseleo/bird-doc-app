@@ -2,8 +2,35 @@
 
 {% block content %}
     <p class="eyebrow">Feldjournal · Beringung</p>
-    <h1>BirdDoc</h1>
-    <p>Feld-Dokumentation für die Beringung — ein Datensatz pro gefangenem und
-        beringtem Vogel.</p>
+    <h1>BirdDoc <span class="badge badge--beta">Beta</span></h1>
+    <p class="lead">Feld-Dokumentation für die Beringung — ein Datensatz pro
+        gefangenem und beringtem Vogel.</p>
     <p><a class="button" href="{% url 'landing:register' %}">Organisation gründen</a></p>
+
+    <section class="hosting" aria-label="Hosting">
+        <span class="hosting__flag" aria-hidden="true">🇦🇹</span>
+        <p>
+            <strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben
+            in Österreich bzw. der EU — DSGVO-konform, ohne Drittanbieter-Tracking.
+        </p>
+    </section>
+
+    <section class="pricing" aria-label="Preise">
+        <h2>Preise</h2>
+        <ul class="price-teaser">
+            <li>
+                <span class="price-teaser__tag">Jetzt</span>
+                Während der öffentlichen Beta <strong>kostenlos</strong>.
+            </li>
+            <li>
+                <span class="price-teaser__tag">Ab 1.0</span>
+                Eine Lizenz <strong>pro Organisation</strong> — nie pro Kopf.
+            </li>
+            <li>
+                <span class="price-teaser__tag">Beta-Kohorte</span>
+                Wer während der Beta gründet, behält <strong>dauerhaft</strong>
+                einen <strong>Vorzugspreis</strong> — auch nach 1.0.
+            </li>
+        </ul>
+    </section>
 {% endblock %}

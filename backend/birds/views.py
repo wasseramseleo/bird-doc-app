@@ -6,6 +6,7 @@ from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .iwm_export import build_iwm_workbook
@@ -20,6 +21,11 @@ from .models import (
     Species,
     SpeciesList,
 )
+from .permissions import (
+    OTHER_ORG_MESSAGE,
+    IsOrgAdmin,
+    IsOrgAdminOrReadOnly,
+)
 from .serializers import (
     DataEntrySerializer,
     OrganizationSerializer,
@@ -31,6 +37,20 @@ from .serializers import (
     SpeciesSerializer,
 )
 from .tenancy import active_organization
+
+
+def _require_active_organization(user):
+    """Resolve the requester's active Organisation or refuse the write (403).
+
+    The shared guard behind every org-attaching create — capture, Beringer and
+    Projekt alike: a row must belong to a tenant, so without a resolvable active
+    Organisation the write cannot proceed (ADR 0005). Resolution itself lives in
+    ``birds.tenancy.active_organization``; this only adds the HTTP-refusal policy.
+    """
+    organization = active_organization(user)
+    if organization is None:
+        raise PermissionDenied("Keine aktive Organisation — eine Mitgliedschaft ist erforderlich.")
+    return organization
 
 
 class DataEntryPagination(PageNumberPagination):
@@ -88,12 +108,7 @@ class DataEntryViewSet(viewsets.ModelViewSet):
         A capture cannot be recorded without an active Organisation to own it, so
         an account with no resolvable membership is refused (ADR 0005).
         """
-        organization = active_organization(self.request.user)
-        if organization is None:
-            raise PermissionDenied(
-                "Keine aktive Organisation — eine Mitgliedschaft ist erforderlich."
-            )
-        serializer.save(organization=organization)
+        serializer.save(organization=_require_active_organization(self.request.user))
 
 
 class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
@@ -232,17 +247,56 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         return f"{int(number) + 1:0{len(number)}d}"
 
 
-class RingingStationViewSet(viewsets.ReadOnlyModelViewSet):
+class RingingStationViewSet(viewsets.ModelViewSet):
+    """Read for any Mitglied; create/edit/delete for the Organisation's Admin.
+
+    Managing Stationen is an Admin power (ADR 0005). Reads stay global (the list
+    is filterable by ``?organization``); writes are admin-only and confined to
+    the Admin's own Organisation, so a Station is never created in or moved to
+    another tenant.
+    """
+
     serializer_class = RingingStationSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdminOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "handle"]
 
     def get_queryset(self):
-        queryset = RingingStation.objects.select_related("organization").all().order_by("name")
-        organization = self.request.query_params.get("organization")
-        if organization:
-            queryset = queryset.filter(organization__handle=organization)
+        """Scope Stationen to the requester's active Organisation (the tenant
+        boundary — ADR 0005, issue #74): a Mitglied sees only its Organisation's
+        Stationen, so a cross-tenant detail fetch is a 404 (the row is absent),
+        not a 403. No active Organisation ⇒ empty list (mirrors the capture
+        endpoint). The optional ``?organization=<handle>`` filter is preserved but
+        can only narrow within the already-scoped set."""
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return RingingStation.objects.none()
+        queryset = (
+            RingingStation.objects.select_related("organization")
+            .filter(organization=organization)
+            .order_by("name")
+        )
+        handle = self.request.query_params.get("organization")
+        if handle:
+            queryset = queryset.filter(organization__handle=handle)
         return queryset
+
+    def perform_create(self, serializer):
+        self._reject_foreign_organization(serializer.validated_data.get("organization"))
+        serializer.save()
+
+    def perform_update(self, serializer):
+        target = serializer.validated_data.get("organization", serializer.instance.organization)
+        self._reject_foreign_organization(target)
+        serializer.save()
+
+    def _reject_foreign_organization(self, organization):
+        # A Station write must stay inside the Admin's own Organisation. (The
+        # IsOrgAdminOrReadOnly object check already blocks editing a *foreign*
+        # Station; this also blocks creating one in — or moving one to — another
+        # tenant.)
+        if organization != active_organization(self.request.user):
+            raise PermissionDenied(OTHER_ORG_MESSAGE)
 
 
 class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
@@ -255,27 +309,75 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
     See ADR 0001-account-independent-beringer and ADR 0003.
     """
 
-    queryset = (
-        Scientist.objects.select_related("user")
-        .exclude(handle=FALLBACK_BERINGER_HANDLE)
-        .order_by("last_name", "first_name")
-    )
     serializer_class = ScientistSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["handle", "first_name", "last_name"]
 
+    def get_queryset(self):
+        """Scope the Beringer autocomplete to the requester's active Organisation
+        (the tenant boundary — ADR 0005, issue #74): only own-Organisation
+        Beringer (Mitglieder and No-Account alike) appear, so a cross-tenant
+        detail fetch is a 404. The reserved ``GELÖSCHT`` fallback is org-less, so
+        the org filter already drops it; the explicit ``exclude`` keeps that
+        intent loud and survives even were the sink ever mis-assigned an
+        Organisation (ADR 0003). No active Organisation ⇒ empty list."""
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return Scientist.objects.none()
+        return (
+            Scientist.objects.select_related("user")
+            .filter(organization=organization)
+            .exclude(handle=FALLBACK_BERINGER_HANDLE)
+            .order_by("last_name", "first_name")
+        )
 
-class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Organization.objects.all().order_by("name")
+    def perform_create(self, serializer):
+        """A quick-added No-Account Beringer is org-owned, so it attaches to the
+        requester's active Organisation (ADR 0001, ADR 0005). Without one there is
+        no tenant to own it, so creation is refused (mirrors the capture
+        endpoint)."""
+        serializer.save(organization=_require_active_organization(self.request.user))
+
+
+class OrganizationViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
+    """Read for any Mitglied; edit for the Organisation's Admin.
+
+    Editing the Organisation is an Admin power (ADR 0005). Only edit is exposed —
+    org *creation* is gated by a Zugangscode (a separate slice) and there is no
+    delete — so an Admin can only ever edit their own Organisation
+    (``IsOrgAdminOrReadOnly`` confines the object to the active tenant).
+    """
+
     serializer_class = OrganizationSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdminOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "handle"]
+
+    def get_queryset(self):
+        """Scope Organisations to the ones the requester is a Mitglied of (the
+        tenant boundary — ADR 0005, issue #74): you see only your own
+        Organisation(s), so a cross-tenant detail fetch is a 404. This filters by
+        *membership* rather than the single active Organisation so a multi-org
+        account (modelled, UI deferred) still sees each of its Organisations."""
+        return (
+            Organization.objects.filter(mitgliedschaften__user=self.request.user)
+            .distinct()
+            .order_by("name")
+        )
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdminOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ["title"]
+
+    def get_permissions(self):
+        # The IWM export is a privileged Admin-only operation even though it is a
+        # GET, so it cannot ride the read exemption of ``IsOrgAdminOrReadOnly``.
+        if self.action == "export_iwm":
+            return [IsAuthenticated(), IsOrgAdmin()]
+        return super().get_permissions()
 
     def get_queryset(self):
         scientist = getattr(self.request.user, "scientist", None)
@@ -287,6 +389,14 @@ class ProjectViewSet(viewsets.ModelViewSet):
             .prefetch_related("scientists__user")
             .order_by("-updated")
         )
+
+    def perform_create(self, serializer):
+        """Attach the new Projekt to the requester's active Organisation (the
+        tenant boundary — ADR 0005, issue #74). The Organisation is
+        server-authoritative: a client-supplied ``organization_id`` cannot plant a
+        Projekt in another tenant. Without an active Organisation there is no
+        tenant to own it, so creation is refused (mirrors the capture endpoint)."""
+        serializer.save(organization=_require_active_organization(self.request.user))
 
     @action(detail=True, methods=["get"], url_path="export-iwm")
     def export_iwm(self, request, pk=None):

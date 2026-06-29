@@ -1,0 +1,103 @@
+{% extends "landing/base.html" %}
+
+{% block title %}AGB &amp; Auftragsverarbeitung · BirdDoc{% endblock %}
+
+{% block content %}
+    {% include "landing/_legal_draft_notice.html" %}
+
+    <p class="eyebrow">Rechtliches</p>
+    <h1>Allgemeine Geschäftsbedingungen (AGB)</h1>
+    <p>
+        Diese AGB regeln die Nutzung von BirdDoc zwischen dem Betreiber (laut
+        <a href="{% url 'landing:impressum' %}">Impressum</a>) und der
+        nutzenden Organisation.
+    </p>
+
+    <h2>1. Leistungsgegenstand</h2>
+    <p>
+        BirdDoc stellt eine Web-Anwendung zur Dokumentation der Vogelberingung
+        bereit. Während der öffentlichen Beta ist die Nutzung kostenlos; der
+        Leistungsumfang kann sich ändern.
+    </p>
+
+    <h2>2. Konto und Organisation</h2>
+    <p>
+        Die Gründung einer Organisation erfolgt über einen Zugangscode. Mit der
+        Gründung erkennt die gründende Person diese AGB samt der nachstehenden
+        Vereinbarung zur Auftragsverarbeitung (DPA) an.
+    </p>
+
+    <h2>3. Pflichten der Organisation</h2>
+    <p>
+        Die Organisation ist für die Rechtmäßigkeit der von ihr erfassten Daten
+        verantwortlich und sichert zu, zur Verarbeitung berechtigt zu sein.
+    </p>
+
+    <h2>4. Verfügbarkeit und Haftung</h2>
+    <p>
+        Während der Beta besteht kein Anspruch auf eine bestimmte Verfügbarkeit.
+        Die Haftung richtet sich nach den gesetzlichen Bestimmungen.
+        [PLATZHALTER: Haftungsbeschränkung nach rechtlicher Prüfung].
+    </p>
+
+    <h2>5. Laufzeit und Kündigung</h2>
+    <p>
+        Das Nutzungsverhältnis ist während der Beta jederzeit kündbar.
+        [PLATZHALTER: Kündigungsfristen ab Version 1.0].
+    </p>
+
+    <hr class="legal-rule">
+
+    <h1 id="dpa">Anhang: Vereinbarung zur Auftragsverarbeitung (DPA)</h1>
+    <p>
+        Diese Vereinbarung zur <strong>Auftragsverarbeitung</strong> nach
+        Art. 28 DSGVO ist Bestandteil der AGB und gilt für alle
+        personenbezogenen Daten, die die Organisation in BirdDoc verarbeitet.
+    </p>
+
+    <h2>A1. Rollen der Parteien</h2>
+    <p>
+        Die <strong>Organisation ist Verantwortliche</strong> im Sinne des
+        Art. 4 Z 7 DSGVO. Der <strong>Betreiber von BirdDoc ist
+        Auftragsverarbeiter</strong> im Sinne des Art. 4 Z 8 DSGVO und
+        verarbeitet die Daten ausschließlich nach dokumentierter Weisung der
+        Organisation.
+    </p>
+
+    <h2>A2. Gegenstand und Dauer</h2>
+    <p>
+        Gegenstand ist die Speicherung und Verarbeitung der Beringungs- und
+        Kontodaten zur Bereitstellung des Dienstes für die Dauer des
+        Nutzungsverhältnisses.
+    </p>
+
+    <h2>A3. Art der Daten und Betroffene</h2>
+    <p>
+        Verarbeitet werden Konto- und Felddaten von Mitgliedern und Beringerinnen
+        bzw. Beringern der Organisation (siehe
+        <a href="{% url 'landing:datenschutz' %}">Datenschutzerklärung</a>).
+    </p>
+
+    <h2>A4. Unterauftragsverarbeiter</h2>
+    <p>
+        Der Auftragsverarbeiter setzt folgende Unterauftragsverarbeiter ein:
+        <strong>IPAX OG</strong> (Hosting, Österreich) und <strong>Brevo</strong>
+        (transaktionale E-Mails). Die Daten werden in Österreich bzw. der EU
+        verarbeitet.
+    </p>
+
+    <h2>A5. Technische und organisatorische Maßnahmen</h2>
+    <p>
+        Der Auftragsverarbeiter trifft angemessene Maßnahmen nach Art. 32 DSGVO
+        (Verschlüsselung der Übertragung, Zugriffskontrolle, Mandantentrennung
+        je Organisation). [PLATZHALTER: vollständiges TOM-Verzeichnis].
+    </p>
+
+    <h2>A6. Löschung und Rückgabe</h2>
+    <p>
+        Nach Beendigung werden die Daten nach Wahl der Organisation gelöscht oder
+        zurückgegeben, soweit keine gesetzliche Aufbewahrungspflicht besteht.
+    </p>
+
+    <p class="legal-back"><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
+{% endblock %}

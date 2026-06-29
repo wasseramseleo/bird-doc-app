@@ -58,6 +58,16 @@
       <span>Neuer Fang</span>
     </a>
   }
+  <button
+    mat-button
+    type="button"
+    class="feedback-button"
+    aria-label="Feedback / Fehler melden"
+    (click)="openFeedback()"
+  >
+    <mat-icon>feedback</mat-icon>
+    <span>Fehler melden</span>
+  </button>
   <button mat-button [matMenuTriggerFor]="userMenu" class="user-trigger">
     <span>{{ userLabel() }}</span>
     <mat-icon>arrow_drop_down</mat-icon>
