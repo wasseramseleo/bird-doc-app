@@ -4,6 +4,8 @@ from decimal import Decimal
 import pytest
 from django.apps import apps as global_apps
 from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import ProtectedError
 
 from birds.models import Organization, Project, RingingStation, Scientist, Species, SpeciesList
 
@@ -38,6 +40,29 @@ def test_deleting_beringer_with_captures_reassigns_them_to_fallback(data_entry):
     fallback = Scientist.objects.get(handle="GELÖSCHT")
     assert data_entry.staff == fallback
     assert not Scientist.objects.filter(pk=beringer.pk).exists()
+
+
+@pytest.mark.django_db
+def test_fallback_beringer_cannot_be_deleted():
+    # The reserved sink itself must survive — deleting it would orphan every
+    # capture that was reassigned to it. (atomic() contains the rollback so the
+    # surrounding test transaction stays usable after the blocked delete.)
+    fallback = Scientist.objects.get(handle="GELÖSCHT")
+
+    with pytest.raises(ProtectedError), transaction.atomic():
+        fallback.delete()
+
+    assert Scientist.objects.filter(handle="GELÖSCHT").exists()
+
+
+@pytest.mark.django_db
+def test_fallback_beringer_cannot_be_bulk_deleted():
+    # The guard fires on the queryset (bulk) delete path too, not just on a
+    # single instance — the admin bulk action must not wipe the sink either.
+    with pytest.raises(ProtectedError), transaction.atomic():
+        Scientist.objects.filter(handle="GELÖSCHT").delete()
+
+    assert Scientist.objects.filter(handle="GELÖSCHT").exists()
 
 
 @pytest.mark.django_db

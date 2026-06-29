@@ -33,6 +33,12 @@ fallback Beringer rather than blocking or cascading:
 - `ScientistViewSet`'s queryset excludes the reserved Kürzel, so the fallback
   never appears in the Beringer list or autocomplete (including a search that
   would otherwise match its name) and no fresh capture can be filed against it.
+- The fallback itself is protected from deletion. A `pre_delete` signal on
+  `Scientist` raises `ProtectedError` when the instance is the fallback, which
+  blocks every ORM path (single, bulk, shell) for the same totality reason as
+  `on_delete=SET` — deleting the sink would orphan exactly the captures it
+  adopted. The receiver is bound to the real model class, so the reverse data
+  migration (which uses a historical model) can still tear the row down.
 
 ## Considered options
 

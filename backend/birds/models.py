@@ -2,6 +2,9 @@ import uuid
 
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models import ProtectedError
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 
 from .kuerzel import derive_handle
@@ -129,6 +132,25 @@ def get_fallback_beringer():
         },
     )
     return beringer
+
+
+@receiver(pre_delete, sender=Scientist)
+def protect_fallback_beringer(sender, instance, **kwargs):
+    """Block deletion of the reserved fallback Beringer on every ORM path.
+
+    The fallback is the sink that adopts deleted Beringers' captures; deleting
+    it would orphan exactly those captures. ``pre_delete`` fires for both single
+    (``instance.delete()``) and bulk (``QuerySet.delete()``) paths, so this one
+    guard covers admin, shell and ORM alike — the same totality argument that
+    puts the reassignment on ``on_delete=SET``. The receiver is bound to the
+    real ``Scientist`` class, so migrations (which use a historical model) can
+    still tear the row down on reverse.
+    """
+    if instance.handle == FALLBACK_BERINGER_HANDLE:
+        raise ProtectedError(
+            f"The reserved fallback Beringer ({FALLBACK_BERINGER_HANDLE}) cannot be deleted.",
+            {instance},
+        )
 
 
 class Organization(models.Model):
