@@ -9,6 +9,8 @@ from pathlib import Path
 
 import environ
 
+from birddoc.conf import resolve_secret_key
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
@@ -16,12 +18,11 @@ env = environ.Env(
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env(
-    "DJANGO_SECRET_KEY",
-    default="django-insecure-dev-only-do-not-use-in-production",
-)
-
 DEBUG = env("DJANGO_DEBUG")
+
+# In production (DJANGO_DEBUG=False) a real, env-driven SECRET_KEY is mandatory
+# and the insecure development default is rejected — see birddoc/conf.py.
+SECRET_KEY = resolve_secret_key(env, debug=DEBUG)
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
@@ -147,5 +148,17 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
+# Scope the session cookie to the app subdomain so the Angular SPA and Django
+# /admin (both served from app.birddoc.at) share one session. Unset in dev so
+# the cookie stays host-only and works on localhost.
+SESSION_COOKIE_DOMAIN = env("DJANGO_SESSION_COOKIE_DOMAIN", default=None)
+
 # Trust the X-Forwarded-Proto header set by Caddy/nginx in front of the app
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Email: console in dev (verification/reset mails print to the log); production
+# points DJANGO_EMAIL_BACKEND at a real SMTP backend.
+EMAIL_BACKEND = env(
+    "DJANGO_EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)

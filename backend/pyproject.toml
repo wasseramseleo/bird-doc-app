@@ -29,5 +29,5 @@ extend-exclude = ["*/migrations/*"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "birddoc.settings"
+DJANGO_SETTINGS_MODULE = "birddoc.settings_test"
 python_files = ["test_*.py", "*_test.py", "tests.py"]

@@ -87,4 +87,8 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 
 ### Settings Notes
 
-`birddoc/settings.py` has `DEBUG=True` and a hardcoded `SECRET_KEY` — development only. CORS is open for `localhost:4200`. Pagination is page-based, 10 items per page.
+`birddoc/settings.py` is env-driven (`django-environ`, see `.env.example`) and **hardened for a public deployment** (issue #73). Dev stays zero-config — `DJANGO_DEBUG` defaults to `False`, but a local `.env` sets it `true`, where `SECRET_KEY` falls back to the insecure dev default, CORS/CSRF default to `http://localhost:4200`, email prints to the console, and the session cookie is host-only.
+
+In production (`DJANGO_DEBUG=False`) the app **fails loudly at startup** unless `DJANGO_SECRET_KEY` is a real, non-`django-insecure-` secret — there is no insecure default reachable in prod. The fail-loud policy lives in `birddoc/conf.py::resolve_secret_key` (unit-tested directly) and is wired into `settings.py`. `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` and `DJANGO_SESSION_COOKIE_DOMAIN` are env-driven (prod points them at `app.birddoc.at` / `birddoc.at`); `SESSION_COOKIE_DOMAIN=app.birddoc.at` lets the SPA and `/admin` share one session. Cookies are `Secure` whenever `DEBUG` is off. Pagination is page-based, 10 items per page.
+
+The test suite runs against `birddoc/settings_test.py` (set via `DJANGO_SETTINGS_MODULE` in `pyproject.toml`), which injects a throwaway non-insecure `SECRET_KEY` before importing the real settings — pytest-django imports settings too early for a `conftest.py` to do this. Behaviour is covered in `birds/tests/test_settings.py`.
