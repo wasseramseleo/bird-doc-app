@@ -1,0 +1,36 @@
+{% extends "landing/base.html" %}
+
+{% block title %}Impressum · BirdDoc{% endblock %}
+
+{% block content %}
+    {% include "landing/_legal_draft_notice.html" %}
+
+    <p class="eyebrow">Rechtliches</p>
+    <h1>Impressum</h1>
+    <p>Angaben gemäß § 5 E-Commerce-Gesetz (ECG) und § 25 Mediengesetz (MedienG).</p>
+
+    <h2>Medieninhaber und Diensteanbieter</h2>
+    <p>
+        BirdDoc wird als <strong>Einzelunternehmen</strong> betrieben von:<br>
+        [PLATZHALTER: Vor- und Nachname]<br>
+        [PLATZHALTER: Straße und Hausnummer]<br>
+        [PLATZHALTER: PLZ und Ort], Österreich
+    </p>
+
+    <h2>Kontakt</h2>
+    <p>
+        E-Mail: [PLATZHALTER: kontakt@birddoc.at]<br>
+        Telefon: [PLATZHALTER: Telefonnummer]
+    </p>
+
+    <h2>Unternehmensgegenstand</h2>
+    <p>
+        Bereitstellung einer Web-Anwendung zur Dokumentation der Vogelberingung
+        (Beringung) für Beringerinnen und Beringer sowie Organisationen.
+    </p>
+
+    <h2>Umsatzsteuer / UID</h2>
+    <p>[PLATZHALTER: UID-Nummer bzw. Hinweis auf Kleinunternehmerregelung]</p>
+
+    <p class="legal-back"><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
+{% endblock %}
