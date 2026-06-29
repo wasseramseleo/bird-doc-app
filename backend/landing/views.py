@@ -3,8 +3,9 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.sites.shortcuts import get_current_site
+from django.core.mail import send_mail
 from django.template.loader import render_to_string
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils import translation
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
@@ -13,7 +14,7 @@ from django.views.generic import FormView, TemplateView
 from birds.accounts import EmailAlreadyExistsError
 from birds.registration import InvalidZugangscodeError, register_organisation
 
-from .forms import RegistrationForm
+from .forms import RegistrationForm, WartelisteForm
 
 
 class HomeView(TemplateView):
@@ -21,6 +22,49 @@ class HomeView(TemplateView):
     unauthenticated visitors without loading the SPA (issue #71)."""
 
     template_name = "landing/home.html"
+
+
+class WartelisteView(FormView):
+    """The public Warteliste — "Zugang anfragen" on the landing page (issue #80).
+
+    A server-rendered, unauthenticated form that stores a lead and emails the
+    operator so they learn of demand without polling, then sends the visitor to
+    a confirmation page. It grants nothing by itself — the operator reviews the
+    lead in the Django admin and issues a Zugangscode there."""
+
+    template_name = "landing/warteliste_form.html"
+    form_class = WartelisteForm
+    success_url = reverse_lazy("landing:warteliste_done")
+
+    def form_valid(self, form):
+        lead = form.save()
+        self._notify_operator(lead)
+        return super().form_valid(form)
+
+    def _notify_operator(self, lead):
+        """Email the operator that a Zugang was requested, with enough context
+        to act on it (and a link to the lead in the admin)."""
+        body = render_to_string(
+            "landing/warteliste_operator_email.txt",
+            {
+                "lead": lead,
+                "protocol": "https" if self.request.is_secure() else "http",
+                "domain": self.request.get_host(),
+                "admin_url": reverse("admin:landing_warteliste_change", args=[lead.pk]),
+            },
+        )
+        send_mail(
+            subject="BirdDoc — neue Zugang-Anfrage (Warteliste)",
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[settings.OPERATOR_EMAIL],
+        )
+
+
+class WartelisteDoneView(TemplateView):
+    """Confirms the access request was received (issue #80)."""
+
+    template_name = "landing/warteliste_done.html"
 
 
 class ImpressumView(TemplateView):

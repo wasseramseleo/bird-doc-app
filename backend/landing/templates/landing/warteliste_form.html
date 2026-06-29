@@ -1,0 +1,16 @@
+{% extends "landing/base.html" %}
+
+{% block title %}Zugang anfragen — BirdDoc{% endblock %}
+
+{% block content %}
+    <p class="eyebrow">Warteliste · Beringung</p>
+    <h1>Zugang anfragen</h1>
+    <p>BirdDoc ist in geschlossener Beta. Trag dich in die Warteliste ein und wir
+        melden uns, sobald ein Zugangscode frei wird. Es entstehen keine Kosten
+        und du gehst keine Verpflichtung ein.</p>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="button">Zugang anfragen</button>
+    </form>
+{% endblock %}

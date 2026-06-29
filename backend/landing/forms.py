@@ -3,12 +3,25 @@
 German-labelled, server-rendered forms reached by an ordinary unauthenticated
 visitor — no DRF, no SPA. The registration form gathers what founding an
 Organisation behind a Zugangscode needs (issue #79); the transactional creation
-itself lives in :mod:`birds.registration`.
+itself lives in :mod:`birds.registration`. The Warteliste form (issue #80)
+stores an access-request lead.
 """
 
 from django import forms
 from django.contrib.auth.password_validation import validate_password
 from django.utils.translation import gettext_lazy as _
+
+from .models import Warteliste
+
+
+class WartelisteForm(forms.ModelForm):
+    """The public "Zugang anfragen" form. Only the email is required — the
+    Organisation name and the note give the operator context but stay optional,
+    so leaving a lead costs the visitor a single field."""
+
+    class Meta:
+        model = Warteliste
+        fields = ["email", "organisation_name", "message"]
 
 
 class RegistrationForm(forms.Form):

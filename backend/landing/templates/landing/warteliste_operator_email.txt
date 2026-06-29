@@ -1,0 +1,14 @@
+{% autoescape off %}Neue Zugang-Anfrage über die Warteliste.
+
+E-Mail:       {{ lead.email }}
+Organisation: {{ lead.organisation_name|default:"—" }}
+Angefragt am: {{ lead.created }}
+
+Nachricht:
+{{ lead.message|default:"—" }}
+
+Im Django-Admin prüfen und ggf. einen Zugangscode ausstellen:
+{{ protocol }}://{{ domain }}{{ admin_url }}
+
+— BirdDoc
+{% endautoescape %}

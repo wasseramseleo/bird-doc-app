@@ -6,6 +6,15 @@ app_name = "landing"
 
 urlpatterns = [
     path("", views.HomeView.as_view(), name="home"),
+    # Public Warteliste — "Zugang anfragen" collects demand for Zugangscodes
+    # but grants nothing by itself; the operator reviews leads in the admin
+    # (issue #80).
+    path("zugang-anfragen/", views.WartelisteView.as_view(), name="warteliste"),
+    path(
+        "zugang-anfragen/gesendet/",
+        views.WartelisteDoneView.as_view(),
+        name="warteliste_done",
+    ),
     # Zugangscode-gated public registration: found an Organisation + email
     # verification, reachable unauthenticated at the apex (issue #79).
     path("registrierung/", views.RegisterView.as_view(), name="register"),
