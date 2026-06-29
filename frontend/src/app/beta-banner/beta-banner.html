@@ -1,0 +1,18 @@
+@if (visible()) {
+  <div class="beta-banner" role="status">
+    <mat-icon class="beta-banner__icon" aria-hidden="true">info</mat-icon>
+    <p class="beta-banner__text">
+      BirdDoc ist in der <strong>Beta-Phase</strong> und derzeit <strong>kostenlos</strong>.
+      Ab Version&nbsp;1.0 wird eine Lizenz pro Organisation fällig; Organisationen aus der
+      Beta behalten dauerhaft einen Vorzugspreis.
+    </p>
+    <button
+      mat-icon-button
+      class="beta-banner__dismiss"
+      aria-label="Hinweis schließen"
+      (click)="dismiss()"
+    >
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+}

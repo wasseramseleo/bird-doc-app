@@ -14,6 +14,7 @@ import {Scientist} from '../models/scientist.model';
 export class WorkbenchStorageService {
   private static readonly CURRENT_PROJECT_KEY = 'birddoc.currentProject';
   private static readonly LAST_BERINGER_KEY = 'birddoc.lastBeringerByProject';
+  private static readonly BETA_BANNER_DISMISSED_KEY = 'birddoc.betaBannerDismissed';
 
   loadCurrentProject(): Project | null {
     return this.read<Project>(WorkbenchStorageService.CURRENT_PROJECT_KEY);
@@ -39,6 +40,14 @@ export class WorkbenchStorageService {
       this.read<Record<string, Scientist>>(WorkbenchStorageService.LAST_BERINGER_KEY) ?? {};
     byProject[projectId] = beringer;
     this.write(WorkbenchStorageService.LAST_BERINGER_KEY, byProject);
+  }
+
+  loadBetaBannerDismissed(): boolean {
+    return this.read<boolean>(WorkbenchStorageService.BETA_BANNER_DISMISSED_KEY) ?? false;
+  }
+
+  saveBetaBannerDismissed(): void {
+    this.write(WorkbenchStorageService.BETA_BANNER_DISMISSED_KEY, true);
   }
 
   private read<T>(key: string): T | null {

@@ -100,6 +100,16 @@ describe('NavBar', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
+  it('shows a persistent "Beta" badge, even in the picker state with no active project', () => {
+    const { fixture, projectService } = setup();
+    expect(projectService.currentProject()).toBeNull();
+    fixture.detectChanges();
+
+    const badge = fixture.nativeElement.querySelector('.beta-badge') as HTMLElement;
+    expect(badge).withContext('Beta badge').not.toBeNull();
+    expect(badge.textContent).toContain('Beta');
+  });
+
   it('shows the switcher trigger with the active project title', () => {
     const ctx = setup();
     activate(ctx, makeProject());
