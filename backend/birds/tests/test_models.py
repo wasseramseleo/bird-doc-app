@@ -21,6 +21,39 @@ def test_data_migration_creates_single_ring_vernichtet_sentinel():
 
 
 @pytest.mark.django_db
+def test_data_migration_creates_single_fallback_beringer():
+    fallback = Scientist.objects.filter(handle="GELÖSCHT")
+
+    assert fallback.count() == 1
+    assert fallback.first().full_name == "Gelöschter Nutzer"
+
+
+@pytest.mark.django_db
+def test_deleting_beringer_with_captures_reassigns_them_to_fallback(data_entry):
+    beringer = data_entry.staff
+
+    beringer.delete()
+
+    data_entry.refresh_from_db()
+    fallback = Scientist.objects.get(handle="GELÖSCHT")
+    assert data_entry.staff == fallback
+    assert not Scientist.objects.filter(pk=beringer.pk).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_deleting_beringers_reassigns_captures_to_fallback(data_entry):
+    # The admin bulk-delete action runs a queryset .delete() — a distinct Django
+    # deletion path from a single instance. on_delete=SET reassigns either way.
+    beringer = data_entry.staff
+
+    Scientist.objects.filter(pk=beringer.pk).delete()
+
+    data_entry.refresh_from_db()
+    assert data_entry.staff.handle == "GELÖSCHT"
+    assert Scientist.objects.filter(handle="GELÖSCHT").count() == 1
+
+
+@pytest.mark.django_db
 def test_scientist_derives_kuerzel_on_save_when_blank():
     beringer = Scientist.objects.create(first_name="Filip", last_name="Reiter")
 

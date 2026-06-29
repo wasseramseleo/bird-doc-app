@@ -104,6 +104,33 @@ class Scientist(models.Model):
         return f"{self.handle}"
 
 
+# Reserved fallback Beringer that adopts the captures of a deleted Beringer.
+# Deleting a Beringer must never destroy capture data, so DataEntry.staff is
+# on_delete=SET(get_fallback_beringer) instead of PROTECT. The row is created by
+# a data migration and hidden from the Beringer autocomplete (ScientistViewSet).
+FALLBACK_BERINGER_HANDLE = "GELÖSCHT"
+FALLBACK_BERINGER_FIRST_NAME = "Gelöschter"
+FALLBACK_BERINGER_LAST_NAME = "Nutzer"
+
+
+def get_fallback_beringer():
+    """Return the reserved fallback Beringer, creating it defensively if absent.
+
+    Serves as the ``on_delete=SET(...)`` resolver for ``DataEntry.staff`` so a
+    deleted Beringer's captures are reassigned here across every deletion path
+    (admin single, admin bulk, ORM/shell). The row normally exists via data
+    migration; ``get_or_create`` keeps the contract safe even if it does not.
+    """
+    beringer, _ = Scientist.objects.get_or_create(
+        handle=FALLBACK_BERINGER_HANDLE,
+        defaults={
+            "first_name": FALLBACK_BERINGER_FIRST_NAME,
+            "last_name": FALLBACK_BERINGER_LAST_NAME,
+        },
+    )
+    return beringer
+
+
 class Organization(models.Model):
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     name = models.CharField(max_length=255, verbose_name=_("Name"))
@@ -267,7 +294,9 @@ class DataEntry(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     species = models.ForeignKey(Species, on_delete=models.PROTECT, verbose_name=_("Art"))
     ring = models.ForeignKey(Ring, on_delete=models.PROTECT, verbose_name=_("Ringnummer"))
-    staff = models.ForeignKey(Scientist, on_delete=models.PROTECT, verbose_name=_("Beringer"))
+    staff = models.ForeignKey(
+        Scientist, on_delete=models.SET(get_fallback_beringer), verbose_name=_("Beringer")
+    )
     ringing_station = models.ForeignKey(
         RingingStation, on_delete=models.PROTECT, verbose_name=_("Station")
     )
