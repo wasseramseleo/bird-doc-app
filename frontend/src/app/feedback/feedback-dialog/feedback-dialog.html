@@ -1,0 +1,33 @@
+<h2 mat-dialog-title>Feedback / Fehler melden</h2>
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <mat-dialog-content>
+    <p class="feedback-dialog__intro">
+      Etwas funktioniert nicht oder du hast einen Verbesserungsvorschlag?
+      Schreib uns – deine Nachricht geht direkt an das BirdDoc-Team.
+    </p>
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Deine Nachricht</mat-label>
+      <textarea
+        matInput
+        rows="6"
+        formControlName="message"
+        cdkFocusInitial
+        placeholder="Beschreibe das Problem oder deine Idee …"
+      ></textarea>
+      @if (form.controls.message.hasError('required') && form.controls.message.touched) {
+        <mat-error>Bitte gib eine Nachricht ein.</mat-error>
+      }
+    </mat-form-field>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" (click)="cancel()">Abbrechen</button>
+    <button
+      mat-flat-button
+      color="primary"
+      type="submit"
+      [disabled]="form.invalid || submitting()"
+    >
+      Senden
+    </button>
+  </mat-dialog-actions>
+</form>

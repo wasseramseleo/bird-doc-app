@@ -114,4 +114,13 @@ describe('ApiService', () => {
 
     expect(result).toEqual(response);
   });
+
+  it('sends feedback via POST /api/feedback/ with the message (not under /birds)', () => {
+    service.sendFeedback('Die Ringgröße lässt sich nicht speichern.').subscribe();
+
+    const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/feedback/'));
+    expect(req.request.url).not.toContain('/birds/');
+    expect(req.request.body).toEqual({ message: 'Die Ringgröße lässt sich nicht speichern.' });
+    req.flush(null);
+  });
 });

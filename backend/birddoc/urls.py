@@ -21,6 +21,7 @@ from django.urls import include, path
 urlpatterns = [
     path("api/birds/", include("birds.urls")),
     path("api/auth/", include("birds.auth_urls")),
+    path("api/feedback/", include("birds.feedback_urls")),
     path("admin/", admin.site.urls),
     # Public, server-rendered landing served at the apex host (birddoc.at),
     # kept separate from the headless `/api` routes above (issue #71, ADR 0007).
