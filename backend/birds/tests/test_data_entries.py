@@ -126,8 +126,12 @@ def test_create_creates_ring_when_missing(auth_client, species, scientist, ringi
 
 
 @pytest.mark.django_db
-def test_create_reuses_existing_ring(auth_client, species, scientist, ringing_station):
-    Ring.objects.create(number="400", size=Ring.RingSizes.V)
+def test_create_reuses_existing_ring(
+    auth_client, species, scientist, ringing_station, organization
+):
+    # Reuse is scoped to the recording Organisation (ADR 0006): a ring already
+    # owned by that org is reused rather than duplicated.
+    Ring.objects.create(number="400", size=Ring.RingSizes.V, organization=organization)
     response = auth_client.post(
         LIST_URL,
         _payload(species, scientist, ringing_station, ring_number="400"),

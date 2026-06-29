@@ -251,10 +251,13 @@ def test_admin_cannot_create_station_in_another_tenant(auth_client, scientist, o
 
 @pytest.mark.django_db
 def test_admin_cannot_manage_another_tenants_station(auth_client, scientist, ringing_station_b):
+    # Reads are tenant-scoped (issue #74), so another tenant's Station is absent
+    # from the queryset — a cross-tenant write is a 404 (the row is invisible),
+    # not a 403.
     detail = f"{STATIONS_URL}{ringing_station_b.handle}/"
 
-    assert auth_client.patch(detail, {"name": "X"}, format="json").status_code == 403
-    assert auth_client.delete(detail).status_code == 403
+    assert auth_client.patch(detail, {"name": "X"}, format="json").status_code == 404
+    assert auth_client.delete(detail).status_code == 404
     assert RingingStation.objects.filter(handle=ringing_station_b.handle).exists()
 
 
@@ -283,10 +286,12 @@ def test_admin_can_edit_organisation(auth_client, scientist, organization):
 
 @pytest.mark.django_db
 def test_admin_cannot_edit_another_tenants_organisation(auth_client, scientist, organization_b):
+    # Organisations are scoped to the requester's Mitgliedschaften (issue #74), so
+    # another tenant's Organisation is invisible — a cross-tenant edit is a 404.
     response = auth_client.patch(
         f"{ORGS_URL}{organization_b.handle}/", {"name": "X"}, format="json"
     )
-    assert response.status_code == 403
+    assert response.status_code == 404
     organization_b.refresh_from_db()
     assert organization_b.name == "Second Org"
 

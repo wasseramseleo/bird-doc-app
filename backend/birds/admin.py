@@ -167,9 +167,9 @@ class SpeciesAdmin(admin.ModelAdmin):
 
 @admin.register(Ring)
 class RingAdmin(admin.ModelAdmin):
-    list_display = ("size", "number")
+    list_display = ("size", "number", "organization")
     search_fields = ("number",)
-    list_filter = ("size",)
+    list_filter = ("size", "organization")
     ordering = (
         "size",
         "number",
