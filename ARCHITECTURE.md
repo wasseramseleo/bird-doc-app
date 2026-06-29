@@ -21,34 +21,37 @@
 
 ## Deployment Topology
 
+Hosted on an **IPAX VPS** (Debian 13, Austrian/EU data residency) with a public IP. Cloudflare and Tailscale are gone (ADR 0007): Caddy terminates TLS itself via Let's Encrypt, and deploy reaches the box over public SSH. The full runbook is [`docs/deploy.md`](docs/deploy.md).
+
 ```
                         Internet
-                           │ HTTPS
+                           │ HTTPS (HTTP/1.1, /2, /3)
                            ▼
-                    Cloudflare Edge
-                           │ Tunnel
-                           ▼
-        ┌────────── Proxmox LXC ──────────────┐
-        │                                     │
-        │  cloudflared (systemd)              │
-        │     │                               │
-        │     ▼  http://127.0.0.1:80          │
-        │  Caddy ──┬─▶ /api/*, /admin/*  → backend:8000  (gunicorn, UID 1001)
-        │          ├─▶ /static/*         → /srv/staticfiles  (shared volume)
-        │          └─▶ /                 → frontend:80       (nginx + Angular bundle)
-        │                                                    │
-        │                                                    ▼
-        │                                          Postgres 16 (named volume)
-        │                                                    ▲
-        └─────────────── tailscaled ─────────────────────────┘
+                  DNS A records → VPS public IP
+                           │
+        ┌────────────── IPAX VPS (Debian 13) ──────────────┐
+        │  ufw: 22 (SSH) · 80/443 (HTTP/S)                 │
+        │                                                  │
+        │  Caddy  :80/:443  (Let's Encrypt; public ingress)│
+        │   ├─ birddoc.at        ─┬─▶ /static/*  → /srv/staticfiles
+        │   │   (apex, landing)   └─▶ /          → backend:8000  (Django landing)
+        │   │                                                   (gunicorn, UID 1001)
+        │   ├─ app.birddoc.at    ─┬─▶ /api/*, /admin/*  → backend:8000
+        │   │   (SPA + API)       ├─▶ /static/*         → /srv/staticfiles
+        │   │                     └─▶ /                 → frontend:80  (nginx + Angular)
+        │   └─ birddoc.eu, app.birddoc.eu ─▶ 301 → .at canonical
+        │                                          │
+        │                                          ▼
+        │                                Postgres 16 (host bind /opt/bird-doc-app/pgdata)
+        └──────────────────────────────────────────────────┘
                             ▲
-                            │ Tailscale
-                            │
-              GitHub Actions runner ──▶ SSH ──▶ docker compose pull && up -d
+                            │ public SSH (key-only, firewalled)
+              GitHub Actions runner ──▶ scp compose+Caddyfile ──▶ docker compose pull && up -d
 ```
 
-- Public traffic enters via Cloudflare Tunnel only — the LXC publishes no host ports.
-- Admin / deploy access is over Tailscale; `SSH_HOST` in GitHub secrets is the LXC's MagicDNS name.
+- **Host-based routing.** Caddy splits by `Host`: the apex `birddoc.at` serves the server-rendered Django landing (ADR 0009); `app.birddoc.at` serves the Angular SPA at `/` with `/api` + `/admin` proxied to the same gunicorn. The landing and the API are one Django process, separated only by host + URL prefix. `birddoc.eu` and `app.birddoc.eu` 301-redirect to their `.at` counterparts (path + query preserved).
+- **TLS is the VPS's responsibility.** Caddy obtains and renews a Let's Encrypt certificate per hostname over the HTTP-01 challenge, so ports 80 and 443 must stay publicly reachable. No edge cache or WAF (accepted at beta scale — ADR 0007).
+- **Deploy is public SSH.** `SSH_HOST` in GitHub secrets is the VPS IP/DNS; auth is key-only and the firewall (ufw) limits exposure to 22/80/443.
 - `staticfiles` is a named docker volume shared read-only into Caddy; it is seeded by `collectstatic` on every backend start.
 
 ## Backend (`backend/`)

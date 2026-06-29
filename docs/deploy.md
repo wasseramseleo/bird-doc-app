@@ -1,77 +1,80 @@
 # Deployment
 
-This runbook brings the production stack online on a Proxmox LXC and wires up the GitHub Actions pipeline that owns every subsequent deploy. Run the steps top-to-bottom on a fresh LXC; once they're done, every push to `main` ships automatically.
+This runbook brings the production stack online on the **IPAX VPS** (Debian 13, Austrian/EU data residency) and wires up the GitHub Actions pipeline that owns every subsequent deploy. Cloudflare and Tailscale are gone (ADR 0007): the VPS has a public IP, **Caddy** terminates TLS via Let's Encrypt, and deploy reaches the box over public SSH. Run the steps top-to-bottom on a fresh VPS; once they're done, every push to `main` ships automatically.
+
+If you are **cutting over** from the old Proxmox LXC rather than standing up a clean install, do steps 1–9 first to prove the new box, then follow [Cutover from the LXC](#cutover-from-the-lxc) for the scheduled switch.
 
 ## Overview
 
 ```
 GitHub Actions (push to main)
   ├─ Build backend + frontend images → GHCR
-  └─ Join tailnet → SSH to LXC → scp compose + Caddyfile → render .env → docker compose up -d
+  └─ SSH to VPS → scp compose + Caddyfile → render .env → docker compose up -d
 
-LXC (Debian/Ubuntu on Proxmox)
-  ├─ tailscaled              (joins tailnet; how GitHub Actions reaches the box)
-  ├─ cloudflared (systemd)   (public ingress; TLS terminates at Cloudflare edge)
+IPAX VPS (Debian 13, public IP)
+  ├─ ufw firewall            (22 SSH, 80/443 HTTP/S)
   └─ docker compose stack    (/opt/bird-doc-app/docker-compose.prod.yml)
-       ├─ caddy   → 127.0.0.1:80   (only reached by local cloudflared)
+       ├─ caddy   → :80/:443  (terminates TLS via Let's Encrypt; public ingress)
+       │     ├─ birddoc.at        → backend (Django landing) + /static
+       │     ├─ app.birddoc.at    → / → frontend (SPA); /api,/admin → backend; /static
+       │     └─ birddoc.eu, app.birddoc.eu → 301 → .at canonical
        ├─ frontend (nginx + Angular build)
        ├─ backend  (gunicorn; entrypoint runs migrate + collectstatic)
        └─ db       (postgres:16-alpine, data at /opt/bird-doc-app/pgdata)
 ```
 
-Application code, image build, and compose file all live in this repo. The LXC holds no source — it only runs the compose stack the workflow drops into `/opt/bird-doc-app/`.
+Application code, image build, and compose file all live in this repo. The VPS holds no source — it only runs the compose stack the workflow drops into `/opt/bird-doc-app/`.
 
 ## Prerequisites (host operator)
 
 These must be true before running anything below. They're not steps.
 
-- **LXC base**: Debian 12 or Ubuntu 22.04/24.04.
+- **OS**: Debian 13 (Trixie).
+- **Public IP**: a routable IPv4 (and ideally IPv6) the DNS A/AAAA records point at.
 - **Sizing (starting point)**: 2 vCPU, 4 GB RAM, 20 GB disk. Postgres, Caddy data, and the two app images fit comfortably; bump RAM if the working set grows.
-- **Proxmox container options**: `features: nesting=1,keyctl=1`. Without these, the Docker daemon will refuse to start or fail with cgroup errors. `unprivileged=1` is fine.
-- **Network**: outbound internet for apt, GHCR, Tailscale, and Cloudflare.
+- **Network**: outbound internet for apt, GHCR, and Let's Encrypt; inbound 80/443 reachable from the public internet (Let's Encrypt validates over HTTP-01 on port 80).
 - **Access**: root or a sudo-capable user with SSH/console access.
 
-## Step 1 — Bootstrap the LXC
+## Step 1 — Bootstrap the VPS
 
-On the LXC, as root:
+On the VPS, as root:
 
 ```bash
 sudo bash deploy/bootstrap.sh
 ```
 
-Or, if you haven't cloned the repo on the LXC:
+Or, if you haven't cloned the repo on the VPS:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wasseramseleo/bird-doc-app/main/deploy/bootstrap.sh | sudo bash
 ```
 
-This installs Docker + the compose plugin, Tailscale, and cloudflared, and creates `/opt/bird-doc-app/{pgdata,caddy_data,caddy_config}` with `pgdata` locked to mode 700. Idempotent — safe to re-run.
+This installs Docker + the compose plugin, opens the **ufw** firewall for SSH (22) and HTTP/HTTPS (80/443 tcp + 443/udp for HTTP/3), and creates `/opt/bird-doc-app/{pgdata,caddy_data,caddy_config}` with `pgdata` locked to mode 700. Idempotent — safe to re-run.
 
-## Step 2 — Join the tailnet
+## Step 2 — Point DNS at the VPS
 
-GitHub Actions reaches the LXC only over Tailscale. There is no public SSH.
+Create A records (and AAAA if you have IPv6) at your DNS provider, pointing **directly** at the VPS public IP:
 
-```bash
-sudo tailscale up
-# or non-interactively:
-sudo tailscale up --authkey=tskey-...
-```
+| Host | Type | Value | Purpose |
+|---|---|---|---|
+| `birddoc.at` | A | `<VPS_IP>` | Apex → Django landing |
+| `app.birddoc.at` | A | `<VPS_IP>` | App subdomain → SPA + `/api` + `/admin` |
+| `birddoc.eu` | A | `<VPS_IP>` | 301 → `birddoc.at` |
+| `app.birddoc.eu` | A | `<VPS_IP>` | 301 → `app.birddoc.at` |
 
-Then capture the LXC's MagicDNS name — you'll need it for `SSH_HOST` in step 5:
+All four must resolve to the VPS before the first deploy, because Caddy obtains a Let's Encrypt certificate for **each** hostname on startup via the HTTP-01 challenge (port 80). The `.eu` hosts need certs too — they serve the 301 redirect over HTTPS.
 
-```bash
-tailscale status
-```
+> During cutover, leave the old DNS in place until the new box is proven (see [Cutover from the LXC](#cutover-from-the-lxc)). You can validate the VPS ahead of the DNS switch by adding `/etc/hosts` overrides on your workstation.
 
 ## Step 3 — Create the deploy SSH user
 
-Generate the keypair **on your workstation** (not the LXC); the private half becomes the `SSH_PRIVATE_KEY` GitHub secret.
+Generate the keypair **on your workstation** (not the VPS); the private half becomes the `SSH_PRIVATE_KEY` GitHub secret.
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/birddoc_deploy -C deploy@birddoc
 ```
 
-On the LXC, create the user and install the public key:
+On the VPS, create the user and install the public key:
 
 ```bash
 sudo adduser --disabled-password --gecos "" deploy
@@ -82,26 +85,26 @@ sudo -u deploy tee /home/deploy/.ssh/authorized_keys < birddoc_deploy.pub
 sudo chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
-Sanity check from your workstation (over Tailscale):
+Harden public SSH: in `/etc/ssh/sshd_config` set `PasswordAuthentication no` and `PermitRootLogin no`, then `systemctl reload ssh`. Key-only auth plus the ufw rule from step 1 is the whole exposure surface.
+
+Sanity check from your workstation:
 
 ```bash
-ssh -i ~/.ssh/birddoc_deploy deploy@<tailscale-magicdns-name> 'docker version'
+ssh -i ~/.ssh/birddoc_deploy deploy@<VPS_IP> 'docker version'
 ```
 
-## Step 4 — Connect the Cloudflare Tunnel
+## Step 4 — Set up Brevo (transactional mail)
 
-TLS terminates at Cloudflare. Caddy listens only on `127.0.0.1:80` inside the LXC; the tunnel is the only public path in.
+Every transactional mail (email verification, password reset, Org-Einladung, Warteliste/feedback notifications) leaves from `noreply@birddoc.at` over the Brevo EU SMTP relay.
 
-1. In the **Cloudflare Zero Trust dashboard** → Networks → Tunnels, create a new tunnel.
-2. Under **Public Hostnames**, add the production hostname (e.g. `birddoc.example.com`) pointing at `http://localhost:80`.
-3. Copy the tunnel token, then on the LXC:
+1. Create a **Brevo** account and add the sender domain `birddoc.at`.
+2. Publish the DNS records Brevo generates so SPF, DKIM and DMARC pass:
+   - **SPF** — add `include:spf.brevo.com` to (or create) the apex `TXT` SPF record.
+   - **DKIM** — the two `CNAME`/`TXT` records Brevo shows for the domain key.
+   - **DMARC** — a `_dmarc.birddoc.at` `TXT` record, e.g. `v=DMARC1; p=quarantine; rua=mailto:postmaster@birddoc.at`.
+3. Verify the domain in Brevo (it checks the records above) and create an **SMTP key** — its login + key become the `BREVO_SMTP_USER` / `BREVO_SMTP_PASSWORD` secrets in step 5.
 
-   ```bash
-   sudo cloudflared service install <TUNNEL_TOKEN>
-   systemctl status cloudflared
-   ```
-
-DNS for the hostname is managed inside the tunnel config — do **not** add an A/AAAA record at your DNS provider pointing at the LXC.
+Confirm alignment after DNS propagates (e.g. `dig +short TXT birddoc.at`, `dig +short TXT _dmarc.birddoc.at`) and send a Brevo test mail to a Gmail/Outlook inbox — the headers should show `spf=pass`, `dkim=pass`, `dmarc=pass`.
 
 ## Step 5 — Add GitHub Actions secrets
 
@@ -109,18 +112,21 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 
 | Secret | Value / how to generate |
 |---|---|
-| `TAILSCALE_AUTHKEY` | Ephemeral authkey from Tailscale admin → Settings → Keys |
-| `SSH_HOST` | LXC MagicDNS name from step 2 |
+| `SSH_HOST` | VPS public IP or DNS name |
 | `SSH_USER` | `deploy` |
 | `SSH_PRIVATE_KEY` | Contents of `~/.ssh/birddoc_deploy` from step 3 |
-| `DOMAIN` | `birddoc.example.com` (the tunnel hostname from step 4) |
 | `DJANGO_SECRET_KEY` | `openssl rand -hex 64` |
-| `DJANGO_ALLOWED_HOSTS` | `birddoc.example.com` (comma-separated if multiple) |
+| `DJANGO_ALLOWED_HOSTS` | `app.birddoc.at,birddoc.at` |
 | `POSTGRES_PASSWORD` | `openssl rand -base64 32` |
-| `CORS_ALLOWED_ORIGINS` | `https://birddoc.example.com` |
-| `CSRF_TRUSTED_ORIGINS` | `https://birddoc.example.com` |
+| `CORS_ALLOWED_ORIGINS` | `https://app.birddoc.at,https://birddoc.at` |
+| `CSRF_TRUSTED_ORIGINS` | `https://app.birddoc.at,https://birddoc.at` |
+| `SESSION_COOKIE_DOMAIN` | `app.birddoc.at` (SPA + `/admin` share one session) |
+| `APP_LOGIN_URL` | `https://app.birddoc.at/login` |
+| `OPERATOR_EMAIL` | operator inbox (e.g. `zugang@birddoc.at`) |
+| `BREVO_SMTP_USER` | Brevo SMTP login from step 4 |
+| `BREVO_SMTP_PASSWORD` | Brevo SMTP key from step 4 |
 
-`DATABASE_URL` is **constructed** by the workflow from `POSTGRES_PASSWORD` — don't set it as a secret.
+`DATABASE_URL` is **constructed** by the workflow from `POSTGRES_PASSWORD` — don't set it as a secret. The Caddy hostnames are baked into the `Caddyfile`, so there is no `DOMAIN` secret.
 
 ## Step 6 — Trigger the first deploy
 
@@ -129,10 +135,9 @@ Either push a commit to `main`, or run the workflow manually: **Actions → Depl
 The workflow:
 
 1. Builds `backend` and `frontend` images and pushes them to `ghcr.io/wasseramseleo/bird-doc-app-{backend,frontend}` as both `:latest` and `:sha-<commit>`.
-2. Joins the tailnet on the runner.
-3. SCPs `docker-compose.prod.yml` and `Caddyfile` into `/opt/bird-doc-app/`.
-4. Writes `/opt/bird-doc-app/.env` (mode 600) from the secrets above.
-5. Runs `docker compose -f docker-compose.prod.yml pull && up -d --remove-orphans`.
+2. SCPs `docker-compose.prod.yml` and `Caddyfile` into `/opt/bird-doc-app/`.
+3. Writes `/opt/bird-doc-app/.env` (mode 600) from the secrets above — including the Brevo SMTP transport, so prod mail sends over Brevo rather than the dev console backend.
+4. Runs `docker compose -f docker-compose.prod.yml pull && up -d --remove-orphans`.
 
 The backend image's entrypoint runs `migrate` and `collectstatic` before exec'ing gunicorn, so a fresh deploy is fully self-applying.
 
@@ -143,29 +148,91 @@ ssh deploy@<SSH_HOST>
 cd /opt/bird-doc-app
 docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs --tail 100 backend
-curl -I "https://$DOMAIN/"
+docker compose -f docker-compose.prod.yml logs --tail 100 caddy
+```
+
+Then from anywhere:
+
+```bash
+curl -I  https://birddoc.at/                       # 200 — landing
+curl -I  https://app.birddoc.at/                    # 200/302 — SPA
+curl -sI https://birddoc.eu/     | grep -i location # -> https://birddoc.at/
+curl -sI https://app.birddoc.eu/ | grep -i location # -> https://app.birddoc.at/
 ```
 
 Expected:
 
 - All four services (`db`, `backend`, `frontend`, `caddy`) show `Up`/`healthy`.
-- Backend log shows `Operations to perform: Apply all migrations …` followed by `Booting worker`.
-- `curl -I` returns `HTTP/2 200` (or 302 if there's a frontend redirect).
+- Caddy log shows `certificate obtained successfully` for each hostname.
+- Backend log shows `Apply all migrations …` followed by `Booting worker`.
+- The `.eu` curls return `301` with the `.at` `Location`.
 
 ## Step 8 — Create the Django superuser (one-time)
+
+Skip this when cutting over — the LXC dump already carries the accounts.
 
 ```bash
 docker compose -f /opt/bird-doc-app/docker-compose.prod.yml exec backend \
   python manage.py createsuperuser
 ```
 
-Admin UI: `https://<DOMAIN>/admin/`.
+Admin UI: `https://app.birddoc.at/admin/`.
+
+## Step 9 — Backup + tested restore (before go-public)
+
+Prove the backup path **before** the cutover, so the LXC can be retired safely.
+
+**Take a full backup** (on whichever box currently holds the live data):
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db \
+  pg_dump -U birddoc -Fc birddoc > "birddoc-$(date +%Y%m%d-%H%M).dump"
+```
+
+**Test the restore** into a throwaway database and confirm the row counts match:
+
+```bash
+# scratch DB inside the running postgres container
+docker compose -f docker-compose.prod.yml exec -T db \
+  createdb -U birddoc restore_check
+docker compose -f docker-compose.prod.yml exec -T db \
+  pg_restore -U birddoc -d restore_check --no-owner < birddoc-YYYYMMDD-HHMM.dump
+docker compose -f docker-compose.prod.yml exec -T db \
+  psql -U birddoc -d restore_check -c "select count(*) from birds_dataentry;"
+docker compose -f docker-compose.prod.yml exec -T db \
+  dropdb -U birddoc restore_check
+```
+
+Keep the dump off-box (download it), and back up the host path `/opt/bird-doc-app/pgdata` as well.
+
+## Cutover from the LXC
+
+The old Proxmox LXC stays running as the rollback until the VPS is verified. The data move itself — reshaping the single-tenant IWM Linz data into the tenancy model — is the **cutover transform** (issue #82); run it as part of this window.
+
+1. **Announce a short maintenance window** to `filip` (IWM Linz). Downtime is roughly the dump → transfer → restore → transform time.
+2. **Freeze writes on the LXC** (stop the old app container, leave its `db` up) and take a final dump:
+   ```bash
+   docker compose -f docker-compose.prod.yml exec -T db \
+     pg_dump -U birddoc -Fc birddoc > birddoc-cutover.dump
+   ```
+3. **Restore onto the VPS** (stack up, DB healthy):
+   ```bash
+   scp birddoc-cutover.dump deploy@<VPS_IP>:/opt/bird-doc-app/
+   docker compose -f /opt/bird-doc-app/docker-compose.prod.yml exec -T db \
+     pg_restore -U birddoc -d birddoc --clean --no-owner < /opt/bird-doc-app/birddoc-cutover.dump
+   ```
+4. **Run the cutover transform** (issue #82) so the existing IWM Linz data lands in the tenancy model, then `migrate` if needed (the entrypoint runs it on the next boot anyway).
+5. **Smoke-test over `/etc/hosts` overrides** pointing the four hostnames at the VPS IP: log in as `filip`, open a project, record a capture, pull the IWM export.
+6. **Switch DNS** (step 2) to the VPS IP. Caddy issues certs as each name resolves. Watch `docker compose logs -f caddy`.
+7. **Verify** (step 7) against the real hostnames once DNS propagates.
+8. **Keep the LXC** powered (writes frozen) as rollback until the VPS has run clean for a day or two; rollback = point DNS back at the LXC's previous ingress.
 
 ## Operations
 
 **Tail logs**
 ```bash
 docker compose -f /opt/bird-doc-app/docker-compose.prod.yml logs -f backend
+docker compose -f /opt/bird-doc-app/docker-compose.prod.yml logs -f caddy
 ```
 
 **Roll back to a previous build**
@@ -181,13 +248,14 @@ Re-run the Deploy workflow; it always rewrites `/opt/bird-doc-app/.env` mode 600
 **Database backup**
 ```bash
 docker compose -f /opt/bird-doc-app/docker-compose.prod.yml exec -T db \
-  pg_dump -U birddoc birddoc > "birddoc-$(date +%Y%m%d).sql"
+  pg_dump -U birddoc -Fc birddoc > "birddoc-$(date +%Y%m%d).dump"
 ```
 Postgres data lives on the host at `/opt/bird-doc-app/pgdata`; back that path up too.
 
 ## Known constraints
 
-- **TLS at the edge only.** Do not publish ports 80/443 on the LXC host; Caddy is bound to `127.0.0.1:80` and the only reader is the local `cloudflared` service.
+- **TLS is the VPS's job now.** Caddy obtains and renews Let's Encrypt certs over the HTTP-01 challenge — ports 80 **and** 443 must stay reachable from the public internet (ufw allows them). There is no edge cache or WAF in front (ADR 0007, accepted at beta scale).
+- **DNS must resolve before first boot.** Caddy can't get a certificate for a hostname that doesn't point at the box yet; a name added later picks up its cert on the next request. The `.eu` redirect hosts need certs too.
 - **`staticfiles` volume ownership.** If the named volume was created by an older image build it can be root-owned and `collectstatic` will fail. Remediation:
   ```bash
   docker compose -f /opt/bird-doc-app/docker-compose.prod.yml down
@@ -195,4 +263,3 @@ Postgres data lives on the host at `/opt/bird-doc-app/pgdata`; back that path up
   docker compose -f /opt/bird-doc-app/docker-compose.prod.yml up -d
   ```
   The current backend image pre-creates `/app/staticfiles` with `app:app` (UID 1001) so a fresh volume inherits writable permissions.
-- **Docker-in-LXC.** Requires Proxmox container features `nesting=1,keyctl=1`. Symptoms of missing features: the docker daemon refuses to start, or `docker run` errors on cgroup setup.
