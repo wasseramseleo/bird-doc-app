@@ -38,7 +38,7 @@ const SPECIES = {
   family_name: '',
   order_name: '',
   ring_size: null,
-  is_sentinel: false,
+  special_kind: '',
 };
 
 function page0<T>(results: T[]) {

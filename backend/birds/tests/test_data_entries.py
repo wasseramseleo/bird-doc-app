@@ -86,6 +86,64 @@ def test_create_reuses_existing_ring(auth_client, species, scientist, ringing_st
 
 
 @pytest.mark.django_db
+def test_create_aves_ignota_without_comment_returns_400(
+    auth_client, aves_ignota_species, scientist, ringing_station
+):
+    """POST for Aves ignota with a blank Bemerkung is rejected (serializer layer)."""
+    response = auth_client.post(
+        LIST_URL,
+        _payload(aves_ignota_species, scientist, ringing_station, ring_number="660"),
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "comment" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_aves_ignota_with_comment_succeeds(
+    auth_client, aves_ignota_species, scientist, ringing_station
+):
+    payload = _payload(aves_ignota_species, scientist, ringing_station, ring_number="661")
+    payload["comment"] = "Irrgast, nicht auf der Artenliste."
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert DataEntry.objects.count() == 1
+    assert DataEntry.objects.get().comment == "Irrgast, nicht auf der Artenliste."
+
+
+@pytest.mark.django_db
+def test_create_ring_destroyed_nulls_bird_data_server_side(
+    auth_client, sentinel_species, scientist, ringing_station
+):
+    """A 'Ring Vernichtet' capture files no bird data — every bird-data field is
+    nulled server-side regardless of what the client sent (no regression)."""
+    payload = _payload(sentinel_species, scientist, ringing_station, ring_number="662")
+    payload.update(
+        {
+            "age_class": DataEntry.AgeClass.THIS_YEAR,
+            "sex": DataEntry.Sex.MALE,
+            "bird_status": DataEntry.BirdStatus.FIRST_CATCH,
+            "wing_span": "73.0",
+            "weight_gram": "18.0",
+        }
+    )
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get()
+    assert entry.age_class is None
+    assert entry.sex is None
+    assert entry.bird_status is None
+    assert entry.wing_span is None
+    assert entry.weight_gram is None
+    assert entry.ring.number == "662"
+
+
+@pytest.mark.django_db
 def test_update_switches_ring_and_cleans_orphan(
     auth_client, data_entry, species, scientist, ringing_station
 ):

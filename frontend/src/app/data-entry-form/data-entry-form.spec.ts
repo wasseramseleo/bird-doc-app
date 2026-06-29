@@ -321,7 +321,7 @@ describe('DataEntryFormComponent', () => {
       family_name: '',
       order_name: '',
       ring_size: null,
-      is_sentinel: true,
+      special_kind: 'ring_destroyed',
     };
 
     function selectSpecies(species: Species) {
@@ -337,7 +337,7 @@ describe('DataEntryFormComponent', () => {
 
       selectSpecies(sentinel);
 
-      expect(component.isSentinel()).toBe(true);
+      expect(component.isRingDestroyed()).toBe(true);
       expect(has('[formControlName="age_class"]')).toBe(false);
       expect(has('[formControlName="sex"]')).toBe(false);
       expect(has('[formControlName="bird_status"]')).toBe(false);
@@ -368,13 +368,79 @@ describe('DataEntryFormComponent', () => {
     });
 
     it('keeps the bird fields visible when a normal Art is selected', () => {
-      const normal: Species = { ...sentinel, id: 's1', common_name_de: 'Kohlmeise', is_sentinel: false };
+      const normal: Species = { ...sentinel, id: 's1', common_name_de: 'Kohlmeise', special_kind: '' };
 
       selectSpecies(normal);
 
-      expect(component.isSentinel()).toBe(false);
+      expect(component.isRingDestroyed()).toBe(false);
       expect(has('[formControlName="age_class"]')).toBe(true);
       expect(has('[formControlName="bird_status"]')).toBe(true);
+    });
+  });
+
+  describe('Aves ignota unknown_species (full form, mandatory Bemerkung) (#57)', () => {
+    const avesIgnota: Species = {
+      id: 'aves',
+      common_name_de: 'Art nicht in der Liste (Aves ignota)',
+      common_name_en: 'Species not listed',
+      scientific_name: 'Aves ignota',
+      family_name: '—',
+      order_name: '—',
+      ring_size: null,
+      special_kind: 'unknown_species',
+    };
+
+    function selectSpecies(species: Species) {
+      component.onSpeciesSelected({ option: { value: species } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+    }
+
+    const has = (selector: string) => fixture.nativeElement.querySelector(selector) !== null;
+
+    it('keeps the full measurement form (does not collapse) when Aves ignota is selected', () => {
+      selectSpecies(avesIgnota);
+
+      expect(component.isUnknownSpecies()).toBe(true);
+      expect(component.isRingDestroyed()).toBe(false);
+      // Unlike a destroyed ring, every bird field stays in the form.
+      expect(has('[formControlName="age_class"]')).toBe(true);
+      expect(has('[formControlName="sex"]')).toBe(true);
+      expect(has('[formControlName="bird_status"]')).toBe(true);
+      expect(has('[formControlName="tarsus"]')).toBe(true);
+    });
+
+    it('makes the Bemerkung required while Aves ignota is selected', () => {
+      const comment = component.entryForm.get('comment')!;
+      // A normal taxon leaves the comment optional.
+      expect(comment.hasError('required')).toBe(false);
+
+      selectSpecies(avesIgnota);
+
+      expect(comment.hasError('required')).toBe(true);
+
+      comment.setValue('Seltener Irrgast.');
+      expect(comment.hasError('required')).toBe(false);
+    });
+
+    it('releases the required Bemerkung again when a normal Art is selected next', () => {
+      selectSpecies(avesIgnota);
+      const normal: Species = { ...avesIgnota, id: 's1', common_name_de: 'Kohlmeise', special_kind: '' };
+
+      selectSpecies(normal);
+
+      expect(component.isUnknownSpecies()).toBe(false);
+      expect(component.entryForm.get('comment')!.hasError('required')).toBe(false);
+    });
+
+    it('shows an inline field error for the empty mandatory Bemerkung', () => {
+      selectSpecies(avesIgnota);
+      const comment = component.entryForm.get('comment')!;
+      comment.markAsTouched();
+      fixture.detectChanges();
+
+      const error = fixture.nativeElement.querySelector('mat-error');
+      expect(error).not.toBeNull();
+      expect(error.textContent).toContain('Aves ignota');
     });
   });
 
@@ -387,7 +453,7 @@ describe('DataEntryFormComponent', () => {
       family_name: '',
       order_name: '',
       ring_size: null,
-      is_sentinel: true,
+      special_kind: 'ring_destroyed',
     };
     const project = {
       id: 'p1',
@@ -441,7 +507,7 @@ describe('DataEntryFormComponent', () => {
 
       expect(dialogMock.open).toHaveBeenCalled();
       expect(component.entryForm.get('species')!.value).toEqual(sentinel);
-      expect(component.isSentinel()).toBe(true);
+      expect(component.isRingDestroyed()).toBe(true);
     });
 
     it('leaves the form untouched when the confirmation is cancelled', () => {
@@ -450,7 +516,7 @@ describe('DataEntryFormComponent', () => {
       component.onDestroyedRing();
 
       expect(dialogMock.open).toHaveBeenCalled();
-      expect(component.isSentinel()).toBe(false);
+      expect(component.isRingDestroyed()).toBe(false);
       expect(component.entryForm.get('species')!.value).not.toEqual(sentinel);
     });
 
@@ -596,7 +662,7 @@ describe('DataEntryFormComponent', () => {
       const sentinelEntry = {
         ...savedEntry(),
         id: '43',
-        species: { id: 'sent', common_name_de: 'Ring Vernichtet', scientific_name: '', is_sentinel: true },
+        species: { id: 'sent', common_name_de: 'Ring Vernichtet', scientific_name: '', special_kind: 'ring_destroyed' },
         bird_status: null,
         age_class: null,
         sex: null,
@@ -606,7 +672,7 @@ describe('DataEntryFormComponent', () => {
         .flush(sentinelEntry);
       f.detectChanges();
 
-      expect(f.componentInstance.isSentinel()).toBe(true);
+      expect(f.componentInstance.isRingDestroyed()).toBe(true);
       expect(f.nativeElement.querySelector('[formControlName="age_class"]')).toBeNull();
     });
 
@@ -1047,7 +1113,7 @@ describe('DataEntryFormComponent', () => {
       family_name: '',
       order_name: '',
       ring_size,
-      is_sentinel: false,
+      special_kind: '',
     });
     const project = {
       id: 'p1',

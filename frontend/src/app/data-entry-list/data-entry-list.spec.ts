@@ -41,7 +41,7 @@ describe('DataEntryListComponent', () => {
       created: '2026-06-01T08:00:00Z',
       date_time: '2026-06-01T08:00:00Z',
       ring: { id: 'r1', number: '901234', size: 'M' },
-      species: { id: 's1', common_name_de: 'Kohlmeise', is_sentinel: false },
+      species: { id: 's1', common_name_de: 'Kohlmeise', special_kind: '' },
       bird_status: BirdStatus.FirstCatch,
       staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
       tarsus: 19,
@@ -87,10 +87,10 @@ describe('DataEntryListComponent', () => {
 
   it('marks a sentinel "Ring Vernichtet" row discreetly and leaves normal rows unmarked', () => {
     flushEntries([
-      row({ id: 'normal', species: { id: 's1', common_name_de: 'Kohlmeise', is_sentinel: false } as never }),
+      row({ id: 'normal', species: { id: 's1', common_name_de: 'Kohlmeise', special_kind: '' } as never }),
       row({
         id: 'sentinel',
-        species: { id: 'sent', common_name_de: 'Ring Vernichtet', is_sentinel: true } as never,
+        species: { id: 'sent', common_name_de: 'Ring Vernichtet', special_kind: 'ring_destroyed' } as never,
         bird_status: null as never,
         tarsus: null as never,
       }),

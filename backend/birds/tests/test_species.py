@@ -36,6 +36,19 @@ def test_active_list_still_includes_sentinel_species(auth_client, user, species,
 
 
 @pytest.mark.django_db
+def test_active_list_still_includes_unknown_species_row(
+    auth_client, user, species, aves_ignota_species
+):
+    """An active list that omits 'Aves ignota' must not hide it — its
+    always-selectable trait bypasses the active Artenliste."""
+    sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
+    sl.species.add(species)
+
+    ids = {row["id"] for row in auth_client.get(LIST_URL).json()["results"]}
+    assert str(aves_ignota_species.id) in ids
+
+
+@pytest.mark.django_db
 def test_searching_ring_finds_sentinel(auth_client, sentinel_species):
     response = auth_client.get(LIST_URL, {"search": "Ring"})
     ids = {row["id"] for row in response.json()["results"]}
@@ -52,16 +65,17 @@ def test_user_with_no_active_list_sees_all_species(auth_client, species, species
 
 
 @pytest.mark.django_db
-def test_user_with_active_list_sees_list_species_and_sentinel_only(
-    auth_client, user, species, species_other, sentinel_species
+def test_user_with_active_list_sees_list_species_and_sonderart_only(
+    auth_client, user, species, species_other, sentinel_species, aves_ignota_species
 ):
     sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
     sl.species.add(species)
 
     body = auth_client.get(LIST_URL).json()
     ids = {row["id"] for row in body["results"]}
-    # The active list filters out species_other but never the sentinel.
-    assert ids == {str(species.id), str(sentinel_species.id)}
+    # The active list filters out species_other but never the always-selectable
+    # Sonderart rows (Ring Vernichtet and Aves ignota).
+    assert ids == {str(species.id), str(sentinel_species.id), str(aves_ignota_species.id)}
 
 
 @pytest.mark.django_db
@@ -165,7 +179,15 @@ def test_short_or_empty_search_returns_most_used_first(
 
 @pytest.mark.django_db
 def test_active_list_filter_still_limits_which_species_appear(
-    auth_client, user, species, species_other, sentinel_species, scientist, ringing_station, project
+    auth_client,
+    user,
+    species,
+    species_other,
+    sentinel_species,
+    aves_ignota_species,
+    scientist,
+    ringing_station,
+    project,
 ):
     """Frequency reorders, but the active list still decides membership."""
     # species_other is used more, but it is not on the active list -> stays out.
@@ -177,7 +199,8 @@ def test_active_list_filter_still_limits_which_species_appear(
     sl.species.add(species)
 
     ids = set(_order(auth_client.get(LIST_URL, {"project": str(project.id)})))
-    assert ids == {str(species.id), str(sentinel_species.id)}
+    # The always-selectable Sonderart rows pass through alongside the list member.
+    assert ids == {str(species.id), str(sentinel_species.id), str(aves_ignota_species.id)}
 
 
 @pytest.mark.django_db

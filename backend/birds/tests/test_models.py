@@ -13,11 +13,23 @@ seed_migration = importlib.import_module(
 
 
 @pytest.mark.django_db
-def test_data_migration_creates_single_ring_vernichtet_sentinel():
-    sentinels = Species.objects.filter(is_sentinel=True)
+def test_data_migration_converts_sentinel_to_ring_destroyed():
+    rows = Species.objects.filter(special_kind=Species.SpecialKind.RING_DESTROYED)
 
-    assert sentinels.count() == 1
-    assert sentinels.first().common_name_de == "Ring Vernichtet"
+    assert rows.count() == 1
+    assert rows.first().common_name_de == "Ring Vernichtet"
+
+
+@pytest.mark.django_db
+def test_data_migration_creates_single_aves_ignota_unknown_species():
+    rows = Species.objects.filter(special_kind=Species.SpecialKind.UNKNOWN_SPECIES)
+
+    assert rows.count() == 1
+    row = rows.first()
+    assert row.common_name_de == "Art nicht in der Liste (Aves ignota)"
+    assert row.scientific_name == "Aves ignota"
+    assert row.common_name_en == "Species not listed"
+    assert row.ring_size is None
 
 
 @pytest.mark.django_db

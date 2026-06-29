@@ -78,15 +78,16 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """
         Candidate species are filtered exactly as before: an active species
-        list narrows the set to its members plus the always-selectable sentinel
-        species; otherwise all species are candidates. Frequency only reorders
-        the candidates — see ``_order_by_usage``.
+        list narrows the set to its members plus the always-selectable Sonderart
+        rows (every Species whose ``special_kind`` is set — "Ring Vernichtet" and
+        "Aves ignota"); otherwise all species are candidates. Frequency only
+        reorders the candidates — see ``_order_by_usage``.
         """
         user = self.request.user
         active_list = SpeciesList.objects.filter(user=user, is_active=True).first()
         if active_list:
             candidate_ids = Species.objects.filter(
-                Q(lists=active_list) | Q(is_sentinel=True)
+                Q(lists=active_list) | ~Q(special_kind="")
             ).values_list("id", flat=True)
             candidates = Species.objects.filter(id__in=candidate_ids)
         else:
@@ -147,9 +148,9 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         one — i.e. it follows the most recently created (``created``) capture in
         the project that drew a fresh number from the rope, never ``max + 1``.
         A capture consumes a number when it is a first catch (Erstfang) **or** a
-        destroyed-ring sentinel record (``species.is_sentinel``); recaptures
-        (Wiederfang) consume nothing and are excluded. The recording Beringer is
-        irrelevant.
+        destroyed-ring record (``species.special_kind == "ring_destroyed"``);
+        recaptures (Wiederfang) consume nothing and are excluded. The recording
+        Beringer is irrelevant.
 
         The numeric value is incremented while the original width is preserved,
         so ``0042`` → ``0043``. The response is ``{"next_number": <string>}``,
@@ -163,7 +164,8 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         project = request.query_params.get("project")
 
         consumptions = DataEntry.objects.filter(ring__size=ring_size).filter(
-            Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH) | Q(species__is_sentinel=True)
+            Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH)
+            | Q(species__special_kind=Species.SpecialKind.RING_DESTROYED)
         )
         if project:
             consumptions = consumptions.filter(project=project)
