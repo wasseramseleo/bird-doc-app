@@ -6,6 +6,15 @@ app_name = "landing"
 
 urlpatterns = [
     path("", views.HomeView.as_view(), name="home"),
+    # Zugangscode-gated public registration: found an Organisation + email
+    # verification, reachable unauthenticated at the apex (issue #79).
+    path("registrierung/", views.RegisterView.as_view(), name="register"),
+    path("registrierung/gesendet/", views.RegisterDoneView.as_view(), name="register_done"),
+    path(
+        "registrierung/bestaetigen/<uidb64>/<token>/",
+        views.RegisterVerifyView.as_view(),
+        name="register_verify",
+    ),
     # Public legal & trust surface, server-rendered on the shared landing base
     # (issue #78). German slugs mirror `passwort-zuruecksetzen/`. The texts are
     # review-ready drafts, gated on human/lawyer review before go-live.

@@ -19,7 +19,7 @@ def normalize_email(email):
     return email.strip().lower()
 
 
-def create_public_account(email, password):
+def create_public_account(email, password, is_active=True):
     """Create a public account whose login identifier is its email.
 
     The email is normalised (lowercased) and stored as both ``username`` and
@@ -27,9 +27,14 @@ def create_public_account(email, password):
     the existing ``User.username`` unique constraint; we pre-check
     case-insensitively to raise a clean :class:`EmailAlreadyExistsError` instead
     of a low-level ``IntegrityError``.
+
+    Pass ``is_active=False`` for a double-opt-in account that must verify its
+    email before it can log in (the auth backend refuses inactive logins).
     """
     email = normalize_email(email)
     User = get_user_model()
     if User.objects.filter(Q(username__iexact=email) | Q(email__iexact=email)).exists():
         raise EmailAlreadyExistsError(email)
-    return User.objects.create_user(username=email, email=email, password=password)
+    return User.objects.create_user(
+        username=email, email=email, password=password, is_active=is_active
+    )
