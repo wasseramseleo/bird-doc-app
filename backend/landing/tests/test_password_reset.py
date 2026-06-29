@@ -75,3 +75,21 @@ def test_request_for_unknown_email_reveals_nothing_and_sends_no_mail(client, db,
     assert response.status_code == 302
     assert response.url == reverse("landing:password_reset_done")
     assert mailoutbox == []
+
+
+def test_set_password_page_renders_the_auth_form_in_german(client, account, mailoutbox):
+    # Django's built-in auth form (field labels, password-validator help texts,
+    # error messages) is rendered in German on the public landing, not English.
+    client.post(reverse("landing:password_reset"), {"email": "ringer@example.org"})
+    confirm_path = RESET_LINK.search(mailoutbox[0].body).group(0)
+    set_password_url = client.get(confirm_path).url
+    content = client.get(set_password_url).content.decode()
+
+    # The English defaults are gone — both the field labels...
+    assert "New password" not in content
+    # ...and the password-validator help text.
+    assert "Your password" not in content
+    # ...replaced by Django's German catalog (the confirmation field label and
+    # the validator help text both come from the form, not our own templates).
+    assert "Neues Passwort bestätigen" in content
+    assert "Das Passwort muss mindestens 8 Zeichen enthalten." in content
