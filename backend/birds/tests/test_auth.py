@@ -1,8 +1,47 @@
 import pytest
 
+from birds.accounts import create_public_account
+
 LOGIN_URL = "/api/auth/login/"
 LOGOUT_URL = "/api/auth/logout/"
 ME_URL = "/api/auth/me/"
+
+
+@pytest.mark.django_db
+def test_login_with_email_for_public_account(api_client):
+    create_public_account("birder@example.com", "hunter2-very-strong")
+    response = api_client.post(
+        LOGIN_URL,
+        {"username": "birder@example.com", "password": "hunter2-very-strong"},
+        format="json",
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "birder@example.com"
+
+
+@pytest.mark.django_db
+def test_login_with_email_is_case_insensitive(api_client):
+    create_public_account("birder@example.com", "hunter2-very-strong")
+    response = api_client.post(
+        LOGIN_URL,
+        {"username": "Birder@Example.COM", "password": "hunter2-very-strong"},
+        format="json",
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "birder@example.com"
+
+
+@pytest.mark.django_db
+def test_legacy_username_account_still_logs_in_by_username(api_client, user):
+    # `user` fixture is a legacy account: username "alice", no email set.
+    assert user.email == ""
+    response = api_client.post(
+        LOGIN_URL,
+        {"username": "alice", "password": "hunter2-very-strong"},
+        format="json",
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "alice"
 
 
 @pytest.mark.django_db
