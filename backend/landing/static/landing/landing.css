@@ -1,23 +1,26 @@
-/* BirdDoc public landing — a quiet "field journal" identity for the apex pages.
+/* BirdDoc public landing — the apex pages on the app's shared brand layer.
  *
- * Palette is drawn from field ornithology rather than the usual cream/terracotta:
- * cool field-paper, dark olive ink, and a single brass accent that nods to the
- * aluminium/brass leg ring. The signature is the record-card with an engraved
- * brass top edge and the ○ ring emblem in the wordmark. */
+ * The palette and type families are NOT defined here: they come from the
+ * canonical brand-tokens.css (the warm cream paper, the ink, the warm
+ * ink-brown accent, Lora + Inter), linked ahead of this file and shipped
+ * byte-identical to the Angular app (ADR 0009). This file maps those --bd-*
+ * tokens onto the landing's own semantic names and keeps the record-card
+ * layout — one brand across birddoc.at and app.birddoc.at. */
 
 :root {
-    --paper: #f1f3ef;
-    --card: #ffffff;
-    --ink: #20271f;
-    --muted: #5c655a;
-    --line: #d9decf;
-    --accent: #8a5e2b;
-    --accent-strong: #6e4a20;
-    --accent-tint: rgba(138, 94, 43, 0.18);
-    --danger: #9b2d20;
+    --paper: var(--bd-paper);
+    --card: var(--bd-paper-elev);
+    --ink: var(--bd-ink);
+    --muted: var(--bd-ink-soft);
+    --line: var(--bd-line);
+    --accent: var(--bd-accent);
+    --accent-strong: var(--bd-accent-deep);
+    --accent-tint: color-mix(in srgb, var(--bd-accent) 18%, transparent);
+    --danger: var(--bd-error);
     --radius: 10px;
     --measure: 34rem;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    /* Body + headings come from brand-tokens.css (Inter / Lora). A monospace
+       face stays for the small field-record labels (eyebrows, tags). */
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -32,7 +35,6 @@ body {
     flex-direction: column;
     background-color: var(--paper);
     color: var(--ink);
-    font-family: var(--sans);
     font-size: 1rem;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
@@ -61,20 +63,18 @@ body {
 .wordmark {
     display: inline-flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.5rem;
     text-decoration: none;
     color: var(--ink);
+    /* The app's nav brand: Lora, mixed-case, 18px beside a 28px mark. */
+    font-family: 'Lora', Georgia, serif;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    font-size: 0.95rem;
+    font-size: 1.125rem;
 }
 
-.wordmark__ring {
-    width: 0.85rem;
-    height: 0.85rem;
-    border-radius: 50%;
-    border: 2px solid var(--accent);
+.wordmark__mark {
+    width: 1.75rem;
+    height: 1.75rem;
     flex: none;
 }
 

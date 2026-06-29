@@ -1,0 +1,45 @@
+/* BirdDoc brand tokens — the single canonical source of the brand layer.
+ *
+ * Consumed by BOTH build roots (ADR 0009): the Angular app imports this file
+ * directly (see frontend/angular.json), and the Django landing ships a
+ * byte-identical copy in its static assets (backend/landing/static/landing/).
+ * A CI parity test fails the build if the two ever diverge — the share is
+ * source-time, not a runtime link (separate subdomains, no CDN per ADR 0007).
+ *
+ * Edit THIS file. Never hand-edit a copy; re-copy from here instead.
+ */
+
+:root {
+  /* Surfaces */
+  --bd-paper:        #F7F2E8;
+  --bd-paper-elev:   #FBF7EE;
+  --bd-paper-sunk:   #EFE9DC;
+
+  /* Ink */
+  --bd-ink:          #2B2A26;
+  --bd-ink-soft:     #6B655B;
+  --bd-ink-faint:    #A6A095;
+
+  /* Accent (warm ink-brown drawn from the logo) */
+  --bd-accent:       #8B5A3C;
+  --bd-accent-soft:  #D9C3B0;
+  --bd-accent-deep:  #6B4530;
+
+  /* Line work */
+  --bd-line:         #C9C0AE;
+
+  /* Semantic */
+  --bd-success:      #4F7A4A;
+  --bd-warning:      #B07A24;
+  --bd-error:        #A8412D;
+}
+
+/* Type families — Lora (display) + Inter (body). The shared brand decision;
+ * each build root layers its own sizes/weights/colours on top. */
+body {
+  font-family: 'Inter', 'Helvetica Neue', sans-serif;
+}
+
+h1, h2, h3 {
+  font-family: 'Lora', Georgia, serif;
+}
