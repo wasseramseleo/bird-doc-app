@@ -29,6 +29,15 @@ def test_landing_page_is_server_rendered_not_the_spa(client):
     assert "app-root" not in content
 
 
+def test_landing_pages_share_one_stylesheet(client):
+    # Every public page extends landing/base.html, so a single linked stylesheet
+    # gives the home page and the reset flow one consistent look.
+    response = client.get("/")
+    content = response.content.decode()
+    assert 'rel="stylesheet"' in content
+    assert "landing.css" in content
+
+
 def test_landing_page_uses_shared_base_template(client):
     # A shared public base template is in place and the landing page extends it,
     # so subsequent public pages (registration, legal, Warteliste, …) can reuse it.

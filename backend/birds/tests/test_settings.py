@@ -66,6 +66,12 @@ _SETTINGS_ENV_KEYS = (
     "CSRF_TRUSTED_ORIGINS",
     "DJANGO_SESSION_COOKIE_DOMAIN",
     "DJANGO_EMAIL_BACKEND",
+    "DJANGO_DEFAULT_FROM_EMAIL",
+    "DJANGO_EMAIL_HOST",
+    "DJANGO_EMAIL_PORT",
+    "DJANGO_EMAIL_HOST_USER",
+    "DJANGO_EMAIL_HOST_PASSWORD",
+    "DJANGO_EMAIL_USE_TLS",
 )
 
 # A production-like deployment of the app subdomain + apex (ADR 0007).
@@ -140,3 +146,34 @@ def test_development_defaults_remain_working(reload_settings):
     assert settings.CORS_ALLOWED_ORIGINS == ["http://localhost:4200"]
     assert settings.SESSION_COOKIE_DOMAIN is None
     assert settings.SESSION_COOKIE_SECURE is False
+
+
+# --- Transactional email (issue #77) -----------------------------------------
+
+
+def test_transactional_mail_leaves_from_the_birddoc_sender(reload_settings):
+    # Every transactional mail (reset, later verification/invites) is from
+    # noreply@birddoc.at unless the environment overrides it.
+    settings = reload_settings(DJANGO_DEBUG="true")
+    assert settings.DEFAULT_FROM_EMAIL == "noreply@birddoc.at"
+    assert settings.SERVER_EMAIL == "noreply@birddoc.at"
+
+
+def test_production_email_uses_env_driven_smtp(reload_settings):
+    # In prod the backend points at SMTP and the Brevo (EU) relay credentials
+    # are read entirely from the environment — nothing secret is hard-coded.
+    settings = reload_settings(
+        **_PROD_ENV,
+        DJANGO_EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        DJANGO_EMAIL_HOST="smtp-relay.brevo.com",
+        DJANGO_EMAIL_PORT="587",
+        DJANGO_EMAIL_HOST_USER="brevo-smtp-user",
+        DJANGO_EMAIL_HOST_PASSWORD="brevo-smtp-key",
+        DJANGO_EMAIL_USE_TLS="true",
+    )
+    assert settings.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
+    assert settings.EMAIL_HOST == "smtp-relay.brevo.com"
+    assert settings.EMAIL_PORT == 587
+    assert settings.EMAIL_HOST_USER == "brevo-smtp-user"
+    assert settings.EMAIL_HOST_PASSWORD == "brevo-smtp-key"
+    assert settings.EMAIL_USE_TLS is True

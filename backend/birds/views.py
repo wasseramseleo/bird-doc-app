@@ -174,6 +174,17 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Ring.objects.all()
     serializer_class = RingSerializer
 
+    def get_queryset(self):
+        """Scope the ring list to the requester's active Organisation (the tenant
+        boundary — ADR 0006): a Mitglied sees only its own Organisation's rings,
+        and an account with no resolvable active Organisation sees an empty list
+        (empty, not a 403 — mirrors the capture and project endpoints).
+        """
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return Ring.objects.none()
+        return super().get_queryset().filter(organization=organization).order_by("size", "number")
+
     @action(detail=False, methods=["get"], url_path="next-number")
     def next_number(self, request):
         """
@@ -191,14 +202,25 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         so ``0042`` → ``0043``. The response is ``{"next_number": <string>}``,
         or ``{"next_number": null}`` when the project has no qualifying capture
         of that size or the previous number is non-numeric. See issues #22, #42.
+
+        The suggestion is scoped to the requester's active Organisation (the
+        tenant boundary — ADR 0006): another Organisation's consumption of the
+        same size never drives it, and an account with no active Organisation
+        gets ``null``.
         """
         ring_size = request.query_params.get("size")
         if not ring_size:
             return Response({"error": "Ring size parameter is required."}, status=400)
 
+        organization = active_organization(request.user)
+        if organization is None:
+            return Response({"next_number": None})
+
         project = request.query_params.get("project")
 
-        consumptions = DataEntry.objects.filter(ring__size=ring_size).filter(
+        consumptions = DataEntry.objects.filter(
+            organization=organization, ring__size=ring_size
+        ).filter(
             Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH)
             | Q(species__special_kind=Species.SpecialKind.RING_DESTROYED)
         )

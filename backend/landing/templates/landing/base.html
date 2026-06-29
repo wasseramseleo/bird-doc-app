@@ -1,16 +1,29 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}BirdDoc{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'landing/landing.css' %}">
 </head>
 <body>
-    <header>
-        <a href="/">BirdDoc</a>
+    <header class="site-header">
+        <div class="site-header__inner">
+            <a class="wordmark" href="/">
+                <span class="wordmark__ring" aria-hidden="true"></span>BirdDoc
+            </a>
+        </div>
     </header>
-    <main>
-        {% block content %}{% endblock %}
+    <main class="site-main">
+        <div class="panel">
+            {% block content %}{% endblock %}
+        </div>
     </main>
+    <footer class="site-footer">
+        <div class="site-footer__inner">
+            Feldjournal für die Vogelberingung · <span class="place">Österreich</span>
+        </div>
+    </footer>
 </body>
 </html>
