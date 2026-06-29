@@ -63,16 +63,6 @@ def test_ringing_stations_filter_by_organization(
 
 
 @pytest.mark.django_db
-def test_ringing_stations_endpoint_is_read_only(auth_client, organization):
-    response = auth_client.post(
-        "/api/birds/ringing-stations/",
-        {"handle": "X", "name": "X", "organization_id": organization.handle},
-        format="json",
-    )
-    assert response.status_code == 405
-
-
-@pytest.mark.django_db
 def test_organizations_list_shows_only_own_memberships(
     auth_client, membership, organization, organization_b
 ):
@@ -116,8 +106,15 @@ def test_organizations_search(auth_client, membership, organization):
 
 
 @pytest.mark.django_db
-def test_organizations_endpoint_is_read_only(auth_client):
-    response = auth_client.post(
+def test_organizations_cannot_be_created_or_deleted_via_api(auth_client, scientist, organization):
+    # The Organisation endpoint exposes edit (Admin-only) but neither create
+    # (founding an Organisation is gated by a Zugangscode, a separate slice) nor
+    # delete — so even an Admin gets 405 on those verbs. (Station/Organisation
+    # *write authorization* is covered in test_authorization.py.)
+    create = auth_client.post(
         "/api/birds/organizations/", {"handle": "X", "name": "X"}, format="json"
     )
-    assert response.status_code == 405
+    delete = auth_client.delete(f"/api/birds/organizations/{organization.handle}/")
+
+    assert create.status_code == 405
+    assert delete.status_code == 405

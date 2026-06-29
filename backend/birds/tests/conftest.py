@@ -151,6 +151,35 @@ def project(organization, scientist):
     return p
 
 
+# --- Rolle: a plain Mitglied of tenant A (issue #76, ADR 0005) ---------------
+# ``scientist`` (Alice) is an *Admin* of tenant A; this is a second account in
+# the same Organisation whose Rolle is plain ``Mitglied``. It lets a test prove
+# the Admin-vs-Mitglied split on a single tenant: the Mitglied may capture across
+# the Organisation but is refused every structural-management action.
+
+
+@pytest.fixture
+def mitglied_user(db):
+    return User.objects.create_user(username="mara", password="hunter2-very-strong")
+
+
+@pytest.fixture
+def mitglied_scientist(mitglied_user, organization):
+    """Mara — a Beringer whose Rolle in tenant A is plain Mitglied (not Admin)."""
+    s = Scientist.objects.create(user=mitglied_user, handle="MAR", organization=organization)
+    Mitgliedschaft.objects.create(
+        user=mitglied_user, organization=organization, rolle=Mitgliedschaft.Rolle.MITGLIED
+    )
+    return s
+
+
+@pytest.fixture
+def mitglied_client(mitglied_user):
+    client = APIClient()
+    client.force_authenticate(user=mitglied_user)
+    return client
+
+
 # --- Two-tenant harness (ADR 0005, issue #69) -------------------------------
 # Tenant A is the existing single-tenant set (``organization`` / ``scientist`` /
 # ``ringing_station`` / ``project`` / ``data_entry``); tenant B mirrors it below.

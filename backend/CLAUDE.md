@@ -44,16 +44,18 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 
 | Endpoint | Model | Access (all authenticated) |
 |---|---|---|
-| `/data-entries/` | `DataEntry` | Full CRUD (scoped to the active Organisation — ADR 0005) |
+| `/data-entries/` | `DataEntry` | Full CRUD for any Mitglied (scoped to the active Organisation — ADR 0005) |
 | `/species/` | `Species` | Read-only + search |
 | `/rings/` | `Ring` | Read-only + `next-number` action (scoped to the active Organisation — ADR 0006) |
-| `/ringing-stations/` | `RingingStation` | Read-only + search (scoped to the active Organisation — ADR 0005) |
-| `/scientists/` | `Scientist` | Read + search + authenticated create (ADR 0001); no edit/delete (scoped to the active Organisation — ADR 0005) |
+| `/ringing-stations/` | `RingingStation` | Read + search for any Mitglied (scoped to the active Organisation — ADR 0005); create/edit/delete **Admin-only** (issue #76) |
+| `/scientists/` | `Scientist` | Read + search + authenticated create (ADR 0001; scoped to the active Organisation — ADR 0005); no edit/delete (deletion is Admin-only via Django admin — ADR 0003) |
 | `/species-lists/` | `SpeciesList` | Full CRUD (per-user) |
-| `/organizations/` | `Organization` | Read-only + search (scoped to the requester's Mitgliedschaften — ADR 0005) |
-| `/projects/` | `Project` | Full CRUD (scoped to the user's Beringer; create attaches to the active Organisation — ADR 0005) |
+| `/organizations/` | `Organization` | Read + search (scoped to the requester's Mitgliedschaften — ADR 0005); edit **Admin-only**, no create/delete (issue #76) |
+| `/projects/` | `Project` | Read for any Mitglied (scoped to the user's Beringer; create attaches to the active Organisation — ADR 0005); create/edit/delete and IWM export **Admin-only** (issue #76) |
 
 ### Key Non-Obvious Behaviors
+
+**Rolle authorization (Admin vs Mitglied)** — Structural management is **Admin**-only; capture work stays open to any **Mitglied** (ADR 0005, issue #76). `birds/permissions.py` turns the active Organisation's `Mitgliedschaft.Rolle` into two DRF permissions: `IsOrgAdminOrReadOnly` (reads open within the tenant, writes Admin-only) gates `ProjectViewSet`, `RingingStationViewSet` and `OrganizationViewSet`; `IsOrgAdmin` (Admin-only for every method) gates the IWM export action — a privileged GET that must not ride the read exemption. "Admin" means the requester's `active_organization` membership has `Rolle == Admin` (`is_org_admin()`). A refused Mitglied gets a clear German `detail` message (`ADMIN_ONLY_MESSAGE`), never a bare 403. Because reads are themselves tenant-scoped (ADR 0005, issue #74), a *cross-tenant* Station/Organisation write is a **404** (the row is absent from the scoped queryset), while a same-tenant write by a non-Admin is a **403**; `perform_create`/`perform_update` additionally refuse a Station whose Organisation is not the actor's own. Captures (`/data-entries/`), per-user SpeciesLists, and the no-account Beringer quick-add (`POST /scientists/`, ADR 0001) are deliberately **not** Rolle-gated — a plain Mitglied does all capture CRUD across the whole Organisation. Beringer deletion stays Admin-only via the Django admin (no API delete — ADR 0003) and reassigns captures to the `GELÖSCHT` fallback at the model layer.
 
 **Ring lifecycle** — Rings are not created by the client directly. `DataEntrySerializer._get_or_create_ring()` handles creation/lookup on `DataEntry` save, **scoped to the recording Organisation** (ADR 0006): the lookup keys on `(organization, size, number)`, so recording a number another Organisation owns creates a *new* `Ring` in the recording Organisation rather than reusing the other's. When a `DataEntry` ring changes, the old `Ring` is deleted if no longer referenced (transactional cleanup in `serializers.py`).
 
