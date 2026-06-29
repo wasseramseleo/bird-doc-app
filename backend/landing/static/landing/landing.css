@@ -715,6 +715,52 @@ body {
     color: var(--muted);
 }
 
+/* The org trust beats — data sovereignty, no lock-in, the honest solo-operator
+   continuity answer, and the master's-thesis credibility signal (issue #105) —
+   as a 2×2 grid of field-record cards, sharing the relief card's brass edge. */
+.org-trust {
+    list-style: none;
+    margin: 1.5rem 0 1.75rem;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 46rem) {
+    .org-trust {
+        grid-template-columns: 1fr;
+    }
+}
+
+.org-trust__item {
+    padding: 1.1rem 1.2rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+}
+
+.org-trust__title {
+    margin: 0 0 0.4rem;
+    font-size: 1.02rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.org-trust__item p {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--muted);
+}
+
+/* The light beta-pilot mention that sits between the beats and the Gespräch CTA. */
+.audience__pilot {
+    max-width: 38rem;
+    color: var(--ink);
+    font-size: 0.96rem;
+}
+
 /* ── Pricing heading on the marketing home ────────────────────────────── */
 
 .pricing__title {

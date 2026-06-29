@@ -117,6 +117,56 @@ def test_home_fuer_beringer_section_names_pain_relief_beta_and_warteliste_cta(cl
     assert reverse("landing:warteliste") in content
 
 
+def test_home_fuer_organisationen_section_carries_the_four_trust_beats(client):
+    # The Für-Organisationen section has to earn a scheme-level decision from a
+    # central body (e.g. the Österreichische Vogelwarte) — it leads with four
+    # trust beats (issue #105).
+    content = client.get("/").content.decode()
+    assert 'id="organisationen"' in content
+    # 1) Data sovereignty — Österreich/EU hosting, DSGVO, the Organisation as
+    #    controller (Verantwortliche) and BirdDoc as processor (Auftragsverarbeiter).
+    assert "DSGVO" in content
+    assert "Verantwortliche" in content
+    assert "Auftragsverarbeiter" in content
+    # 2) No lock-in — every group owns its data and can export it any time via
+    #    IWM/EURING, so adopting BirdDoc is reversible.
+    assert "Lock-in" in content
+    assert "EURING" in content
+    assert "exportier" in content
+    assert "umkehrbar" in content
+    # 3) The honest continuity answer — BirdDoc is run by a one-person
+    #    Einzelunternehmen, surfaced rather than hidden.
+    assert "Einzelunternehmen" in content
+    # 4) Credibility — proven in the field, born from a master's-thesis project.
+    assert "Masterarbeit" in content
+
+
+def test_home_fuer_organisationen_frames_rollout_without_a_scheme_cockpit(client):
+    # The org section frames the rolled-out-but-each-group-private model and never
+    # implies a scheme-level cockpit or a parent-of-Organisations tier (issue #105,
+    # ADR 0005, CONTEXT.md: the national authority is NOT an Organisation, and the
+    # model holds no parent-of-Organisations entity).
+    content = client.get("/").content.decode()
+    # Rolled out across the scene, yet each group keeps its own private workbench.
+    assert "ausrollen" in content or "Einführung" in content
+    assert "Arbeitsbereich" in content
+    # A light, no-commitment beta-pilot is mentioned — no fixed timeline, no SLA.
+    assert "Pilot" in content
+    # ...and never a central cockpit / scheme-wide dashboard over everyone's data.
+    assert "Cockpit" not in content
+    assert "Dashboard" not in content
+
+
+def test_home_fuer_organisationen_ends_in_the_gespraech_cta(client):
+    from django.urls import reverse
+
+    content = client.get("/").content.decode()
+    # The section ends in a "Gespräch anfragen" CTA wired to the typed Organisation
+    # lead form (issue #105, building on the #103 Gespräch funnel).
+    assert "Gespräch anfragen" in content
+    assert reverse("landing:gespraech") in content
+
+
 def test_home_top_nav_carries_anchors_login_out_and_lang_slot(client, settings):
     # The marketing home wears a full top nav (issue #104): in-page anchors to
     # its IA sections, an *Anmelden* action that links OUT to the SPA login

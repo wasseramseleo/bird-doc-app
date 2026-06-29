@@ -149,10 +149,11 @@ def test_home_page_links_to_the_warteliste(client):
 def test_home_page_links_to_the_gespraech_funnel(client):
     # The apex landing page also offers the organisation track its own CTA — a
     # Gespräch, distinct from the individual Beringer's Warteliste (issue #103).
+    # The org-track slice (#105) labels that CTA "Gespräch anfragen".
     response = client.get(reverse("landing:home"))
     content = response.content.decode()
     assert reverse("landing:gespraech") in content
-    assert "Gespräch vereinbaren" in content
+    assert "Gespräch anfragen" in content
 
 
 def test_a_legacy_style_lead_defaults_to_a_beringer_lead(db):

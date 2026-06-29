@@ -110,18 +110,57 @@ the DE/EN toggle the i18n slice wires up.
     </section>
 
     {% comment %}
-    The Für-Organisationen section is fleshed out in the org-track slice; this
-    anchored placeholder gives the fork band + nav a target and keeps the
-    Gespräch funnel (and the Zugangscode-gated founding path) reachable.
+    The Für-Organisationen section (issue #105): it has to earn a scheme-level
+    decision from a central body such as the Österreichische Vogelwarte — an
+    out-of-model endorser, never a cockpit. It leads with four trust beats —
+    data sovereignty, no lock-in, the honest solo-operator continuity answer,
+    and the master's-thesis credibility signal.
     {% endcomment %}
     <section class="audience audience--org" id="organisationen"
              aria-labelledby="audience-org-title">
         <p class="eyebrow">Für Organisationen &amp; Vogelwarten</p>
-        <h2 id="audience-org-title" class="audience__title">Für Organisationen &amp; Vogelwarten</h2>
-        <p>Eine schemaweite Einführung für eine ganze Beringungs-Landschaft —
-            DSGVO-konform, in Österreich gehostet, ohne Lock-in.</p>
+        <h2 id="audience-org-title" class="audience__title">Schemaweit einführen — jede Gruppe bleibt für sich</h2>
+        <p class="audience__pain">BirdDoc lässt sich über eine ganze
+            Beringungs-Landschaft ausrollen — und jede Gruppe behält dabei ihren
+            eigenen, privaten Arbeitsbereich. Es gibt keine schemaweite Zentrale,
+            die in alle Fänge sieht: Organisationen sehen die Daten der jeweils
+            anderen nie.</p>
+
+        <ul class="org-trust">
+            <li class="org-trust__item">
+                <h3 class="org-trust__title">Datenhoheit</h3>
+                <p>Alle Beringungsdaten liegen in Österreich bzw. der EU und
+                    werden DSGVO-konform verarbeitet. Die Organisation bleibt
+                    <strong>Verantwortliche</strong> im Sinne der DSGVO — BirdDoc
+                    ist ausschließlich <strong>Auftragsverarbeiter</strong>.</p>
+            </li>
+            <li class="org-trust__item">
+                <h3 class="org-trust__title">Kein Lock-in</h3>
+                <p>Jede Gruppe besitzt ihre Daten und kann sie jederzeit
+                    exportieren — als IWM- oder EURING-Datei. Eine Einführung von
+                    BirdDoc ist damit jederzeit umkehrbar.</p>
+            </li>
+            <li class="org-trust__item">
+                <h3 class="org-trust__title">Kontinuität — ehrlich beantwortet</h3>
+                <p>BirdDoc wird von einem <strong>Einzelunternehmen</strong>
+                    betrieben, von einer einzelnen Person. Statt dieses Risiko zu
+                    verstecken, beantworten wir es offen: Weil deine Daten dir
+                    gehören und jederzeit exportierbar sind, bleibst du
+                    unabhängig davon, wer BirdDoc betreibt.</p>
+            </li>
+            <li class="org-trust__item">
+                <h3 class="org-trust__title">Im Feld bewährt</h3>
+                <p>BirdDoc dokumentiert bereits echte Beringung — entstanden als
+                    <strong>Masterarbeit</strong> und im täglichen Feldeinsatz
+                    erprobt.</p>
+            </li>
+        </ul>
+
+        <p class="audience__pilot">Für interessierte Gruppen ist ein begleiteter
+            <strong>Beta-Pilot</strong> möglich — ohne festen Zeitplan.</p>
+
         <p class="audience__org-ctas">
-            <a class="button button--ghost" href="{% url 'landing:gespraech' %}">Gespräch vereinbaren</a>
+            <a class="button" href="{% url 'landing:gespraech' %}">Gespräch anfragen</a>
             <a class="audience__founder" href="{% url 'landing:register' %}">Schon einen Zugangscode? Organisation gründen</a>
         </p>
     </section>
