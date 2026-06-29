@@ -93,7 +93,7 @@ def run_cutover(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("birds", "0048_zugangscode"),
+        ("birds", "0049_orgeinladung"),
     ]
 
     operations = [

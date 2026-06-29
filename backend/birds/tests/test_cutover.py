@@ -1,7 +1,7 @@
 """Cutover transform: migrate the existing single-tenant data into the tenancy
 model (issue #82, ADR 0005/0006).
 
-The transform is a one-shot data migration (``0049``) run during a scheduled
+The transform is a one-shot data migration (``0050``) run during a scheduled
 maintenance window. It is exercised here the way the repo tests its other data
 migrations (see ``test_models.py``): import the migration module and call its
 function with the *real* app registry (``global_apps``) against a representative
@@ -29,7 +29,7 @@ from birds.models import (
     Species,
 )
 
-cutover = importlib.import_module("birds.migrations.0049_cutover_to_iwm_linz")
+cutover = importlib.import_module("birds.migrations.0050_cutover_to_iwm_linz")
 
 
 @pytest.fixture
