@@ -14,6 +14,8 @@ router.register(r"scientists", views.ScientistViewSet, basename="scientist")
 router.register(r"species-lists", views.SpeciesListViewSet, basename="specieslist")
 router.register(r"organizations", views.OrganizationViewSet, basename="organization")
 router.register(r"projects", views.ProjectViewSet, basename="project")
+router.register(r"invitations", views.OrgEinladungViewSet, basename="invitation")
+router.register(r"mitgliedschaften", views.MitgliedschaftViewSet, basename="mitgliedschaft")
 
 # The API URLs are now determined automatically by the router.
 # We just need to include the router.urls in our urlpatterns.

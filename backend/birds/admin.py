@@ -10,6 +10,7 @@ from .models import (
     DataEntry,
     Mitgliedschaft,
     Organization,
+    OrgEinladung,
     Project,
     Ring,
     RingingStation,
@@ -157,6 +158,16 @@ class MitgliedschaftAdmin(admin.ModelAdmin):
     search_fields = ("user__username", "organization__handle", "organization__name")
     ordering = ("organization", "user__username")
     autocomplete_fields = ("user",)
+
+
+@admin.register(OrgEinladung)
+class OrgEinladungAdmin(admin.ModelAdmin):
+    list_display = ("email", "organization", "rolle", "invited_by", "accepted_at", "created")
+    list_filter = ("organization", "rolle")
+    search_fields = ("email", "organization__handle", "organization__name")
+    ordering = ("-created",)
+    readonly_fields = ("token", "accepted_at", "created", "updated")
+    autocomplete_fields = ("invited_by",)
 
 
 @admin.register(Scientist)

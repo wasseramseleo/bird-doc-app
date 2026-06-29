@@ -30,6 +30,14 @@ urlpatterns = [
     path("impressum/", views.ImpressumView.as_view(), name="impressum"),
     path("datenschutz/", views.DatenschutzView.as_view(), name="datenschutz"),
     path("agb/", views.AGBView.as_view(), name="agb"),
+    # Public Org-Einladung accept flow (issue #83): the token in the path is the
+    # accept-link secret, mailed only to the invitee. Server-rendered, reachable
+    # unauthenticated at the apex like the password-reset flow.
+    path(
+        "einladung/<token>/",
+        views.OrgEinladungAcceptView.as_view(),
+        name="invitation_accept",
+    ),
     # Built-in password reset, server-rendered as Landing-app templates and
     # reachable unauthenticated at the apex (issue #77). Names live under the
     # `landing:` namespace, so the views and the email template reverse the

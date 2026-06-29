@@ -1,3 +1,4 @@
+import secrets
 import uuid
 
 from django.contrib.auth.models import User
@@ -314,6 +315,67 @@ class Zugangscode(models.Model):
 
     def __str__(self):
         return self.code
+
+
+def generate_invite_token():
+    """A high-entropy, URL-safe token that doubles as the secret in the accept
+    link — possession of the token (mailed only to the invitee's address) is the
+    proof that authorises joining the Organisation."""
+    return secrets.token_urlsafe(32)
+
+
+class OrgEinladung(models.Model):
+    """An Admin's invitation of a colleague into an already-admitted Organisation
+    as a Mitglied (the Org-Einladung — ADR 0005, issue #83).
+
+    Distinct from a Zugangscode: it grows a team *inside* one Organisation and is
+    **ungated** by the operator — but capped by the Organisation's Seat-Limit.
+    Each *pending* (un-accepted) Einladung reserves one Mitgliedsplatz, exactly as
+    a Mitgliedschaft consumes one; no-account Beringer consume none. Accepting it
+    on the public Landing creates the account (if new) and the Mitgliedschaft and
+    stamps ``accepted_at`` — see ``birds.invitations``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="invitations",
+        verbose_name=_("Organisation"),
+    )
+    email = models.EmailField(verbose_name=_("E-Mail"))
+    rolle = models.CharField(
+        max_length=16,
+        choices=Mitgliedschaft.Rolle.choices,
+        default=Mitgliedschaft.Rolle.MITGLIED,
+        verbose_name=_("Rolle"),
+    )
+    token = models.CharField(
+        max_length=64, unique=True, default=generate_invite_token, editable=False
+    )
+    invited_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_invitations",
+        verbose_name=_("Eingeladen von"),
+    )
+    accepted_at = models.DateTimeField(null=True, blank=True, verbose_name=_("Angenommen am"))
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Org-Einladung")
+        verbose_name_plural = _("Org-Einladungen")
+        ordering = ("-created",)
+
+    @property
+    def is_pending(self):
+        return self.accepted_at is None
+
+    def __str__(self):
+        return f"{self.email} → {self.organization_id} ({self.rolle})"
 
 
 class RingingStation(models.Model):

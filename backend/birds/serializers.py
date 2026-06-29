@@ -4,7 +4,9 @@ from rest_framework import serializers
 
 from .models import (
     DataEntry,
+    Mitgliedschaft,
     Organization,
+    OrgEinladung,
     Project,
     Ring,
     RingingStation,
@@ -323,3 +325,39 @@ class SpeciesListSerializer(serializers.ModelSerializer):
         model = SpeciesList
         fields = ["id", "name", "is_active", "species", "species_ids", "updated"]
         read_only_fields = ["id", "updated"]
+
+
+class OrgEinladungSerializer(serializers.ModelSerializer):
+    """An Org-Einladung as seen by the inviting Admin (issue #83).
+
+    The Admin supplies only ``email`` and an optional ``rolle``; the Organisation,
+    inviter and secret token are set server-side. The token is **never** returned —
+    it is the accept-link secret and is mailed to the invitee alone.
+    """
+
+    class Meta:
+        model = OrgEinladung
+        fields = ["id", "email", "rolle", "accepted_at", "created"]
+        read_only_fields = ["id", "accepted_at", "created"]
+
+
+class MitgliedschaftSerializer(serializers.ModelSerializer):
+    """A Mitgliedschaft as managed by the Organisation's Admin (issue #83).
+
+    Only the ``rolle`` is writable (Admin ↔ Mitglied); the account it belongs to
+    is fixed. The account's identifying fields are surfaced read-only so the Admin
+    can recognise who they are removing or re-roling.
+    """
+
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+    handle = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Mitgliedschaft
+        fields = ["id", "username", "email", "handle", "rolle", "created"]
+        read_only_fields = ["id", "username", "email", "handle", "created"]
+
+    def get_handle(self, obj):
+        scientist = getattr(obj.user, "scientist", None)
+        return scientist.handle if scientist is not None else None
