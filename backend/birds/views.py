@@ -4,6 +4,7 @@ from django.db.models import Count, Q
 from django.http import HttpResponse
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
@@ -29,6 +30,7 @@ from .serializers import (
     SpeciesListSerializer,
     SpeciesSerializer,
 )
+from .tenancy import active_organization
 
 
 class DataEntryPagination(PageNumberPagination):
@@ -54,10 +56,20 @@ class DataEntryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Optionally filters the queryset by ring_size and ring_number
-        if they are provided as query parameters.
+        Scopes captures to the requester's active Organisation (the tenant
+        boundary — ADR 0005): a Mitglied of one Organisation sees only its
+        captures, and a cross-tenant row is simply absent from the queryset, so
+        a detail/write against it is a 404 (not a 403). An account with no
+        resolvable active Organisation sees an empty list (mirrors
+        ``ProjectViewSet`` — empty, not a 403).
+
+        Within that scope the queryset is optionally filtered by ring_size and
+        ring_number if they are provided as query parameters.
         """
-        queryset = super().get_queryset()
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return DataEntry.objects.none()
+        queryset = super().get_queryset().filter(organization=organization)
         ring_size = self.request.query_params.get("ring_size")
         ring_number = self.request.query_params.get("ring_number")
         project = self.request.query_params.get("project")
@@ -69,6 +81,19 @@ class DataEntryViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(project=project).order_by("-created")
 
         return queryset
+
+    def perform_create(self, serializer):
+        """Attach the new capture to the requester's active Organisation.
+
+        A capture cannot be recorded without an active Organisation to own it, so
+        an account with no resolvable membership is refused (ADR 0005).
+        """
+        organization = active_organization(self.request.user)
+        if organization is None:
+            raise PermissionDenied(
+                "Keine aktive Organisation — eine Mitgliedschaft ist erforderlich."
+            )
+        serializer.save(organization=organization)
 
 
 class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):

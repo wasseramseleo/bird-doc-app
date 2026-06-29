@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from birds.models import (
     DataEntry,
+    Mitgliedschaft,
     Organization,
     Project,
     Ring,
@@ -38,8 +39,17 @@ def auth_client(api_client, user):
 
 
 @pytest.fixture
-def scientist(user):
-    return Scientist.objects.create(user=user, handle="ALC")
+def scientist(user, organization):
+    """Alice — the primary Beringer, an Admin Mitglied of tenant A (``organization``).
+
+    Her single Mitgliedschaft makes ``organization`` her implicit active
+    Organisation, so the org-scoped capture endpoint resolves to tenant A.
+    """
+    s = Scientist.objects.create(user=user, handle="ALC", organization=organization)
+    Mitgliedschaft.objects.create(
+        user=user, organization=organization, rolle=Mitgliedschaft.Rolle.ADMIN
+    )
+    return s
 
 
 @pytest.fixture
@@ -125,3 +135,74 @@ def project(organization, scientist):
     p = Project.objects.create(title="My Project", organization=organization)
     p.scientists.add(scientist)
     return p
+
+
+# --- Two-tenant harness (ADR 0005, issue #69) -------------------------------
+# Tenant A is the existing single-tenant set (``organization`` / ``scientist`` /
+# ``ringing_station`` / ``project`` / ``data_entry``); tenant B mirrors it below.
+# Each tenant is complete — its own Organisation, Mitglieder, no-account
+# Beringer, Station, Projekt and captures — so isolation tests can prove a
+# Mitglied of one tenant never sees the other's data.
+
+
+@pytest.fixture
+def organization_b(db):
+    return Organization.objects.create(handle="ORG2", name="Second Org", country="AT")
+
+
+@pytest.fixture
+def user_b(db):
+    return User.objects.create_user(username="bruno", password="hunter2-very-strong")
+
+
+@pytest.fixture
+def scientist_b(user_b, organization_b):
+    """Bruno — an Admin Mitglied of tenant B (``organization_b``)."""
+    s = Scientist.objects.create(user=user_b, handle="BRU", organization=organization_b)
+    Mitgliedschaft.objects.create(
+        user=user_b, organization=organization_b, rolle=Mitgliedschaft.Rolle.ADMIN
+    )
+    return s
+
+
+@pytest.fixture
+def no_account_beringer_b(organization_b):
+    """A no-account Beringer owned by tenant B (a selectable name, not an actor)."""
+    return Scientist.objects.create(
+        first_name="Berta", last_name="Helfer", organization=organization_b
+    )
+
+
+@pytest.fixture
+def auth_client_b(user_b):
+    # An independent client so a test can act as tenant A and tenant B at once.
+    client = APIClient()
+    client.force_authenticate(user=user_b)
+    return client
+
+
+@pytest.fixture
+def ringing_station_b(organization_b):
+    return RingingStation.objects.create(
+        handle="STN2", name="Station B", organization=organization_b
+    )
+
+
+@pytest.fixture
+def project_b(organization_b, scientist_b):
+    p = Project.objects.create(title="Project B", organization=organization_b)
+    p.scientists.add(scientist_b)
+    return p
+
+
+@pytest.fixture
+def data_entry_b(species, scientist_b, ringing_station_b):
+    # Species and Ring are global reference data (Ring scoping is ADR 0006, a
+    # later slice); only the Organisation-owned bits differ from tenant A.
+    return DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="800", size=Ring.RingSizes.V),
+        staff=scientist_b,
+        ringing_station=ringing_station_b,
+        date_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )

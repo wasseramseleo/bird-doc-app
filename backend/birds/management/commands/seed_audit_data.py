@@ -21,6 +21,7 @@ from django.utils import timezone
 
 from birds.models import (
     DataEntry,
+    Mitgliedschaft,
     Organization,
     Project,
     Ring,
@@ -86,6 +87,21 @@ class Command(BaseCommand):
                 handle=handle, defaults={"name": name, "country": "AT"}
             )
             orgs[handle] = org
+
+        # --- Mitgliedschaften: both users belong to AOC (the captures' org) ---
+        # The capture endpoint is scoped to the active Organisation (ADR 0005);
+        # a single membership each makes AOC their active Organisation so the
+        # seeded captures are visible.
+        for sci, user, rolle in (
+            (claude_sci, claude, Mitgliedschaft.Rolle.ADMIN),
+            (viewer_sci, viewer, Mitgliedschaft.Rolle.MITGLIED),
+        ):
+            if sci.organization_id is None:
+                sci.organization = orgs["AOC"]
+                sci.save(update_fields=["organization"])
+            Mitgliedschaft.objects.get_or_create(
+                user=user, organization=orgs["AOC"], defaults={"rolle": rolle}
+            )
 
         # --- Ringing station under an org (create_test_data's TEST has none) -
         station, _ = RingingStation.objects.get_or_create(

@@ -5,8 +5,14 @@ from io import StringIO
 import pytest
 from django.contrib.admin.sites import AdminSite
 
-from birds.admin import ProjectAdmin, RingingStationAdmin, export_as_csv
-from birds.models import DataEntry, Project, Ring, RingingStation
+from birds.admin import (
+    MitgliedschaftAdmin,
+    OrganizationAdmin,
+    ProjectAdmin,
+    RingingStationAdmin,
+    export_as_csv,
+)
+from birds.models import DataEntry, Mitgliedschaft, Organization, Project, Ring, RingingStation
 
 
 @pytest.mark.django_db
@@ -42,4 +48,25 @@ def test_project_capture_context_fields_editable_in_admin():
     form_fields = admin.get_form(request=None).base_fields
 
     for field in ("circumstance", "capture_method", "lure"):
+        assert field in form_fields
+
+
+@pytest.mark.django_db
+def test_organization_tenancy_fields_editable_in_admin():
+    # The operator manages the per-Organisation tenant/monetisation fields from
+    # the Django admin (issue #69, ADR 0005).
+    admin = OrganizationAdmin(Organization, AdminSite())
+    form_fields = admin.get_form(request=None).base_fields
+
+    for field in ("plan", "seat_limit", "beta_cohort"):
+        assert field in form_fields
+
+
+@pytest.mark.django_db
+def test_mitgliedschaft_fields_editable_in_admin():
+    # The operator manages who belongs to which Organisation, and their Rolle.
+    admin = MitgliedschaftAdmin(Mitgliedschaft, AdminSite())
+    form_fields = admin.get_form(request=None).base_fields
+
+    for field in ("user", "organization", "rolle"):
         assert field in form_fields

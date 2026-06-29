@@ -44,7 +44,7 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 
 | Endpoint | Model | Access (all authenticated) |
 |---|---|---|
-| `/data-entries/` | `DataEntry` | Full CRUD |
+| `/data-entries/` | `DataEntry` | Full CRUD (scoped to the active Organisation — ADR 0005) |
 | `/species/` | `Species` | Read-only + search |
 | `/rings/` | `Ring` | Read-only + `next-number` action |
 | `/ringing-stations/` | `RingingStation` | Read-only + search |
@@ -67,6 +67,8 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 
 **Projects scoped to the user's Beringer** — `ProjectViewSet.get_queryset()` (`views.py:224-233`) returns `Project.objects.none()` — an **empty list, not a 403** — when the requesting user has no linked `Scientist` (Beringer). Authenticated users without a Beringer simply see no projects.
 
+**Captures scoped to the active Organisation (tenant boundary)** — The Organisation is the tenant (ADR 0005). `DataEntryViewSet.get_queryset()` filters to the requester's **active Organisation** (`birds/tenancy.py:active_organization()` — the org of the account's single `Mitgliedschaft`; `None` when there are zero or several memberships, the latter awaiting the deferred org-switcher). No active Organisation ⇒ `DataEntry.objects.none()` (empty, not a 403, mirroring projects). A cross-tenant detail/write is therefore a **404** (the row is absent from the queryset), never a 403. `perform_create()` attaches each new capture to the active Organisation and **refuses (403)** when there is none. `DataEntry.organization` is the source of truth; `DataEntry.save()` falls back to `ringing_station.organization` when it is left unset (admin/ORM paths), so every capture is org-owned. **This slice scopes the capture endpoint only** — `/rings/`, `/ringing-stations/`, `/scientists/`, `/projects/` follow in their own slices.
+
 **Write vs. read payload shape** — POST/PUT/PATCH to `/data-entries/` accept flat IDs (`species_id`, `staff_id`, `ringing_station_id`, `ring_number`, `ring_size`); GET returns nested objects. The two shapes are intentionally different — never feed a GET response body back as a write payload, and never POST to `/rings/` directly.
 
 **CSV export** — `DataEntryAdmin` includes an "Als CSV exportieren" bulk action that serializes biometric fields and appends boolean flags (mites, hunger stripes, brood patch, CPL+) as text into the comment column. (Per-project IWM `.xlsx` export is a separate path — `GET /projects/{id}/export-iwm/`, `iwm_export.py`.)
@@ -74,7 +76,7 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 ### Data Model Summary
 
 `DataEntry` is the core model — one record per captured bird. It holds:
-- FKs to `Species`, `Ring`, `Scientist` (staff), `RingingStation`
+- FKs to `Species`, `Ring`, `Scientist` (staff), `RingingStation`, `Organization` (tenant owner)
 - Capture metadata: `date_time`, net location/height/direction
 - Biometric measurements (all `DecimalField`): weight, wing span, feather length, tarsus
 - Classification fields: age class, sex, fat deposit, muscle class
@@ -84,6 +86,8 @@ All API routes are under `/api/birds/` via DRF router in `birds/urls.py`. **The 
 `Ring` has a unique constraint on `(size, number)`. Sizes are the full Austrian scheme (`Ring.RingSizes`: `AS, BS, C, D, DS, DA, F, FA, G, GA, H, HA, K, KA, L, LA, M, N, NA, P, PA, R, S, SA, T, TA, V, X`); the frontend currently surfaces the common subset `V, T, S, X, P`.
 
 `Species` is a large lookup table (~1M rows) loaded from a CSV migration. It carries the recommended ring size per species, which the frontend uses to pre-fill the ring size field.
+
+`Organization` is the **tenant** (ADR 0005). It carries per-Organisation monetisation fields: `plan` (default `beta`), `seat_limit` (default 5), and a durable `beta_cohort` marker (separate from the mutable `plan`) — all editable in the Django admin. `Mitgliedschaft` links a Django `User` to an `Organization` with a `Rolle` (`Admin | Mitglied`); `unique_together(user, organization)` permits multiple memberships per account (multi-org) while forbidding a duplicate within one Organisation. `Scientist` (Beringer) carries a nullable `organization` FK — real Beringer (Mitglieder + no-account) are org-owned; only the reserved `GELÖSCHT` fallback sink stays org-less.
 
 ### Settings Notes
 
