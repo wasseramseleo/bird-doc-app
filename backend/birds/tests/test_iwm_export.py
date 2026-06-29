@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from decimal import Decimal
 from io import BytesIO
 
@@ -36,6 +36,24 @@ def _read_rows(content):
         if ws.cell(row=1, column=c).value
     }
     return {header: ws.cell(row=2, column=col).value for header, col in headers.items()}
+
+
+@pytest.mark.django_db
+def test_export_emits_vienna_localtime_for_datum_and_uhrzeit(species, scientist, ringing_station):
+    # 23:00 UTC is 01:00 the next day in Vienna (CEST, UTC+2). Both the date
+    # and the time must reflect the Vienna wall clock the Beringer observed.
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="604", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 6, 30, 23, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Datum"] == datetime(2026, 7, 1, 0, 0)
+    assert row["Uhrzeit"] == time(1, 0)
 
 
 @pytest.mark.django_db

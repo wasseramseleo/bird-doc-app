@@ -79,7 +79,10 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+# Anchor the capture-time round trip to Vienna: naive wall-clock input is
+# interpreted as Europe/Vienna and server-side renderers emit Vienna localtime
+# (issue #60). zoneinfo handles DST, so summer/winter offsets stay correct.
+TIME_ZONE = "Europe/Vienna"
 USE_I18N = True
 USE_TZ = True
 
