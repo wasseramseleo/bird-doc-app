@@ -57,6 +57,7 @@ import {
   BeringerCreateDialogResult,
 } from './beringer-create-dialog/beringer-create-dialog';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
+import {selectedOptionValidator} from '../shared/validators/selected-option.validator';
 
 @Component({
   selector: 'app-data-entry-form',
@@ -132,10 +133,13 @@ export class DataEntryFormComponent implements OnInit {
 
   // Form Definition
   entryForm = this.fb.group({
-    ringing_station: [null as RingingStation | null, Validators.required],
-    staff: [null as Scientist | null, Validators.required],
+    // #58: each autocomplete must hold a real selected record, not free text the
+    // user typed but never picked — selectedOptionValidator fails the latter inline
+    // so it never POSTs a missing id and surfaces as an opaque 400.
+    ringing_station: [null as RingingStation | null, [Validators.required, selectedOptionValidator]],
+    staff: [null as Scientist | null, [Validators.required, selectedOptionValidator]],
     date_time: [this.getInitialDateTime(), Validators.required],
-    species: [null as Species | null, Validators.required],
+    species: [null as Species | null, [Validators.required, selectedOptionValidator]],
     bird_status: [null as BirdStatus | null, Validators.required],
     ring_size: [null as RingSize | null, Validators.required],
     ring_number: ['', [Validators.required, Validators.pattern('^[0-9]*$')]],

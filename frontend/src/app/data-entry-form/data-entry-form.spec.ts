@@ -149,6 +149,26 @@ describe('DataEntryFormComponent', () => {
 
       expect(component.entryForm.get('staff')!.value).toEqual(created);
     });
+
+    it('satisfies the selection validator once the new Beringer is created (#58)', () => {
+      const created = { id: '7', handle: 'FRE', full_name: 'Filip Reiter' };
+      dialogMock.open.and.returnValue({
+        afterClosed: () => of({ first_name: 'Filip', last_name: 'Reiter', handle: 'FRE' }),
+      });
+
+      // The unknown Kürzel typed as free text would otherwise be an unmatched option.
+      component.entryForm.get('staff')!.setValue('FRE' as never);
+      expect(component.entryForm.get('staff')!.hasError('unmatchedOption')).toBe(true);
+
+      component.onCreateBeringer('FRE');
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'))
+        .flush(created);
+
+      // Creation ends by setting the control to the created Beringer object.
+      expect(component.entryForm.get('staff')!.hasError('unmatchedOption')).toBe(false);
+      expect(component.entryForm.get('staff')!.valid).toBe(true);
+    });
   });
 
   describe('pre-filling the Station from the Projekt default', () => {
@@ -1345,6 +1365,87 @@ describe('DataEntryFormComponent', () => {
       const spy = spyOn(component, 'onReset');
       resetButton.click();
       expect(spy).toHaveBeenCalled();
+    });
+  });
+
+  describe('inline autocomplete validation for Art/Station/Beringer (#58)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    const field = (name: string): HTMLElement =>
+      (fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement).closest(
+        'mat-form-field',
+      ) as HTMLElement;
+
+    const errorsIn = (name: string): string[] =>
+      Array.from(field(name).querySelectorAll('mat-error')).map((e) =>
+        (e as HTMLElement).textContent!.trim(),
+      );
+
+    it('marks the Art control invalid with an unmatchedOption error for typed free text', () => {
+      component.entryForm.get('species')!.setValue('Kohlmeisx' as never);
+
+      expect(component.entryForm.get('species')!.hasError('unmatchedOption')).toBe(true);
+      expect(component.entryForm.invalid).toBe(true);
+    });
+
+    it('accepts a real selected record (no error) once an option is chosen', () => {
+      component.entryForm
+        .get('species')!
+        .setValue({ id: 's1', common_name_de: 'Kohlmeise' } as never);
+
+      expect(component.entryForm.get('species')!.hasError('unmatchedOption')).toBe(false);
+      expect(component.entryForm.get('species')!.valid).toBe(true);
+    });
+
+    it('surfaces the Art message on blur/submit, never while still typing', () => {
+      const species = component.entryForm.get('species')!;
+      species.setValue('Kohlmeisx' as never);
+      fixture.detectChanges();
+      // While typing (untouched, not submitted) the field shows no error.
+      expect(errorsIn('species')).toEqual([]);
+
+      species.markAsTouched();
+      fixture.detectChanges();
+      expect(errorsIn('species')).toContain('Unbekannte Art – bitte aus der Liste wählen');
+    });
+
+    it('applies the same rule with its own message to Station and Beringer', () => {
+      component.entryForm.get('ringing_station')!.setValue('Linzz' as never);
+      component.entryForm.get('staff')!.setValue('FREX' as never);
+      component.entryForm.get('ringing_station')!.markAsTouched();
+      component.entryForm.get('staff')!.markAsTouched();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('ringing_station')!.hasError('unmatchedOption')).toBe(true);
+      expect(component.entryForm.get('staff')!.hasError('unmatchedOption')).toBe(true);
+      expect(errorsIn('ringing_station')).toContain(
+        'Unbekannte Station – bitte aus der Liste wählen',
+      );
+      expect(errorsIn('staff')).toContain('Unbekannter Beringer – bitte aus der Liste wählen');
+    });
+
+    it('fires no POST while a control holds unmatched free text, keeping the typed text', () => {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      // Art typed but never picked from the list.
+      component.entryForm.get('species')!.setValue('Kohlmeisx' as never);
+
+      component.onSubmit();
+
+      httpMock.expectNone((r) => r.method === 'POST');
+      // The typed text stays so the Beringer fixes the spelling instead of retyping.
+      expect(component.entryForm.get('species')!.value as unknown).toBe('Kohlmeisx');
     });
   });
 });
