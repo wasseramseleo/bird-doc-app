@@ -1,0 +1,233 @@
+/* BirdDoc public landing — a quiet "field journal" identity for the apex pages.
+ *
+ * Palette is drawn from field ornithology rather than the usual cream/terracotta:
+ * cool field-paper, dark olive ink, and a single brass accent that nods to the
+ * aluminium/brass leg ring. The signature is the record-card with an engraved
+ * brass top edge and the ○ ring emblem in the wordmark. */
+
+:root {
+    --paper: #f1f3ef;
+    --card: #ffffff;
+    --ink: #20271f;
+    --muted: #5c655a;
+    --line: #d9decf;
+    --accent: #8a5e2b;
+    --accent-strong: #6e4a20;
+    --accent-tint: rgba(138, 94, 43, 0.18);
+    --danger: #9b2d20;
+    --radius: 10px;
+    --measure: 34rem;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 1rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Header — a slim band echoing the engraved edge of a ring */
+.site-header {
+    border-bottom: 1px solid var(--line);
+}
+
+.site-header__inner,
+.site-main,
+.site-footer__inner {
+    width: 100%;
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+}
+
+.site-header__inner {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+.wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 0.95rem;
+}
+
+.wordmark__ring {
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    flex: none;
+}
+
+.wordmark:hover {
+    color: var(--accent-strong);
+}
+
+/* Centred content column */
+.site-main {
+    flex: 1 0 auto;
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+}
+
+/* The field record card — signature brass top edge */
+.panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 2rem 1.75rem 2.25rem;
+    box-shadow:
+        0 1px 2px rgba(32, 39, 31, 0.04),
+        0 18px 40px -30px rgba(32, 39, 31, 0.45);
+}
+
+.panel h1 {
+    margin: 0 0 0.6rem;
+    font-size: 1.6rem;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.panel p {
+    margin: 0 0 1.2rem;
+    color: var(--muted);
+}
+
+.panel a {
+    color: var(--accent-strong);
+    text-underline-offset: 2px;
+}
+
+/* Eyebrow — a mono field-record label above the heading */
+.panel p.eyebrow {
+    margin-bottom: 0.6rem;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    color: var(--accent);
+}
+
+/* Forms (Django's {{ form.as_p }} output) */
+.panel form p {
+    margin: 0 0 1.15rem;
+}
+
+.panel label {
+    display: block;
+    margin-bottom: 0.35rem;
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.panel input[type="email"],
+.panel input[type="password"],
+.panel input[type="text"] {
+    width: 100%;
+    padding: 0.6rem 0.7rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.panel input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.helptext {
+    display: block;
+    margin-top: 0.4rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.helptext ul {
+    margin: 0.3rem 0 0;
+    padding-left: 1.1rem;
+}
+
+.button {
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent-strong);
+    border-radius: 8px;
+    padding: 0.65rem 1.25rem;
+    margin-top: 0.25rem;
+}
+
+.button:hover {
+    background: var(--accent-strong);
+}
+
+.button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.errorlist {
+    list-style: none;
+    margin: 0 0 0.6rem;
+    padding: 0;
+    color: var(--danger);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* Footer — a quiet field note */
+.site-footer {
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.site-footer__inner {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+}
+
+.site-footer .place {
+    font-family: var(--mono);
+    letter-spacing: 0.08em;
+}
+
+@media (max-width: 30rem) {
+    .panel {
+        padding: 1.5rem 1.25rem 1.75rem;
+    }
+
+    .site-main {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+}

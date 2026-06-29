@@ -165,8 +165,21 @@ SESSION_COOKIE_DOMAIN = env("DJANGO_SESSION_COOKIE_DOMAIN", default=None)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Email: console in dev (verification/reset mails print to the log); production
-# points DJANGO_EMAIL_BACKEND at a real SMTP backend.
+# points DJANGO_EMAIL_BACKEND at the SMTP backend and supplies the Brevo (EU)
+# SMTP credentials below. Every transactional mail leaves from noreply@birddoc.at
+# (issue #77).
 EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND",
     default="django.core.mail.backends.console.EmailBackend",
 )
+DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@birddoc.at")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# SMTP transport (Brevo EU relay). Only consulted when DJANGO_EMAIL_BACKEND points
+# at the SMTP backend; the dev console backend ignores these. Credentials come
+# from the environment — never commit the Brevo SMTP key.
+EMAIL_HOST = env("DJANGO_EMAIL_HOST", default="smtp-relay.brevo.com")
+EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=True)
