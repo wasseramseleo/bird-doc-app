@@ -28,6 +28,68 @@ def test_scientist_sees_only_projects_they_belong_to(
 
 
 @pytest.mark.django_db
+def test_new_project_attaches_to_active_organisation(auth_client, scientist, organization):
+    """A newly created Projekt attaches to the requester's active Organisation,
+    server-side — no client-supplied organization_id needed (issue #74)."""
+    response = auth_client.post(LIST_URL, {"title": "P", "description": ""}, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert Project.objects.get(title="P").organization == organization
+
+
+@pytest.mark.django_db
+def test_create_project_ignores_client_supplied_foreign_organisation(
+    auth_client, scientist, organization
+):
+    """The owning Organisation is server-authoritative: a client cannot plant a
+    Projekt in another tenant by supplying a foreign organization_id (issue #74)."""
+    other = Organization.objects.create(handle="ORG2", name="Other Org")
+    response = auth_client.post(
+        LIST_URL,
+        {"title": "P", "organization_id": other.handle},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    assert Project.objects.get(title="P").organization == organization
+
+
+@pytest.mark.django_db
+def test_create_project_rejected_without_active_organisation(auth_client):
+    """Without a Mitgliedschaft there is no active Organisation to own the Projekt,
+    so creation is refused (issue #74)."""
+    response = auth_client.post(LIST_URL, {"title": "P"}, format="json")
+
+    assert response.status_code == 403
+    assert not Project.objects.filter(title="P").exists()
+
+
+@pytest.mark.django_db
+def test_cross_tenant_project_detail_and_write_return_404(auth_client, scientist, project_b):
+    """A cross-tenant Projekt is invisible: detail and write both 404 (issue #74)."""
+    detail = f"{LIST_URL}{project_b.id}/"
+
+    assert auth_client.get(detail).status_code == 404
+    assert auth_client.patch(detail, {"title": "hacked"}, format="json").status_code == 404
+    assert auth_client.delete(detail).status_code == 404
+    project_b.refresh_from_db()
+    assert project_b.title == "Project B"
+
+
+@pytest.mark.django_db
+def test_two_tenant_project_isolation_has_no_leakage(
+    auth_client, auth_client_b, project, project_b
+):
+    """Two complete tenants: a Mitglied of A sees only A's Projekte and a Mitglied
+    of B sees only B's — no A↔B leakage (issue #74)."""
+    a_ids = [row["id"] for row in auth_client.get(LIST_URL).json()["results"]]
+    b_ids = [row["id"] for row in auth_client_b.get(LIST_URL).json()["results"]]
+
+    assert a_ids == [str(project.id)]
+    assert b_ids == [str(project_b.id)]
+
+
+@pytest.mark.django_db
 def test_create_auto_adds_creator_scientist(auth_client, scientist, organization):
     response = auth_client.post(
         LIST_URL,
