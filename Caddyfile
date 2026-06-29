@@ -1,22 +1,61 @@
-http://{$DOMAIN}:80 {
-    encode gzip
+# Caddy reverse proxy for the IPAX VPS (ADR 0007 — Cloudflare removed).
+#
+# Caddy terminates TLS itself via Let's Encrypt (ACME) for every hostname below;
+# DNS A records point straight at the VPS public IP. Ports 80 and 443 are
+# published on the host (see docker-compose.prod.yml) — 80 carries the ACME
+# HTTP-01 challenge plus the automatic HTTP->HTTPS redirect, 443 serves traffic.
+{
+	# ACME account email — Let's Encrypt sends expiry/again-failure notices here.
+	email operator@birddoc.at
+}
 
-    # Django backend: API + admin (path NOT stripped)
-    handle /api/* {
-        reverse_proxy backend:8000
-    }
-    handle /admin* {
-        reverse_proxy backend:8000
-    }
+# Apex: the public, server-rendered Django landing (marketing + the Zugangscode
+# registration, email-verification, password-reset and Org-Einladung accept
+# flows). Same gunicorn as the API, routed here by Host (ADR 0009).
+birddoc.at {
+	encode gzip
 
-    # Static files served directly from the shared volume
-    handle_path /static/* {
-        root * /srv/staticfiles
-        file_server
-    }
+	# Brand assets + the landing's own CSS, collected into the shared volume.
+	handle_path /static/* {
+		root * /srv/staticfiles
+		file_server
+	}
 
-    # Angular SPA (catchall)
-    handle {
-        reverse_proxy frontend:80
-    }
+	# Landing pages (catchall) -> Django.
+	handle {
+		reverse_proxy backend:8000
+	}
+}
+
+# App subdomain: the Angular SPA at /, with the headless API and Django admin.
+app.birddoc.at {
+	encode gzip
+
+	# Django backend: API + admin (path NOT stripped).
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /admin* {
+		reverse_proxy backend:8000
+	}
+
+	# Static files served directly from the shared volume.
+	handle_path /static/* {
+		root * /srv/staticfiles
+		file_server
+	}
+
+	# Angular SPA (catchall).
+	handle {
+		reverse_proxy frontend:80
+	}
+}
+
+# birddoc.at is canonical; the .eu hosts 301-redirect to their .at counterparts,
+# preserving path + query ({uri}). `permanent` = HTTP 301.
+birddoc.eu {
+	redir https://birddoc.at{uri} permanent
+}
+app.birddoc.eu {
+	redir https://app.birddoc.at{uri} permanent
 }

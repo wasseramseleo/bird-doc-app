@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# One-time bootstrap for bird-doc-app on a Proxmox LXC container (Debian/Ubuntu).
-# Installs Docker, Tailscale, and cloudflared, then prepares /opt/bird-doc-app.
-# Run as root on a fresh LXC:
-#   curl -fsSL https://raw.githubusercontent.com/<owner>/bird-doc-app/main/deploy/bootstrap.sh | sudo bash
+# One-time bootstrap for bird-doc-app on the IPAX VPS (Debian 13).
+# Installs Docker, opens the firewall for HTTP/HTTPS/SSH, and prepares
+# /opt/bird-doc-app. Cloudflare and Tailscale are gone (ADR 0007): the VPS has a
+# public IP, Caddy terminates TLS via Let's Encrypt, and deploy reaches the box
+# over public SSH.
+# Run as root on a fresh VPS:
+#   curl -fsSL https://raw.githubusercontent.com/wasseramseleo/bird-doc-app/main/deploy/bootstrap.sh | sudo bash
 # or scp this file over and run `sudo bash bootstrap.sh`.
 
 set -euo pipefail
@@ -39,24 +42,16 @@ else
   echo "   docker already installed: $(docker --version)"
 fi
 
-echo ">> Installing Tailscale"
-if ! command -v tailscale >/dev/null 2>&1; then
-  curl -fsSL https://tailscale.com/install.sh | sh
-else
-  echo "   tailscale already installed: $(tailscale version | head -n1)"
+echo ">> Configuring the firewall (ufw): allow SSH, HTTP, HTTPS"
+if ! command -v ufw >/dev/null 2>&1; then
+  apt-get install -y ufw
 fi
-systemctl enable --now tailscaled
-
-echo ">> Installing cloudflared"
-if ! command -v cloudflared >/dev/null 2>&1; then
-  arch="$(dpkg --print-architecture)"
-  curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}.deb" \
-    -o /tmp/cloudflared.deb
-  apt-get install -y /tmp/cloudflared.deb
-  rm -f /tmp/cloudflared.deb
-else
-  echo "   cloudflared already installed: $(cloudflared --version | head -n1)"
-fi
+ufw allow 22/tcp        # public SSH (deploy + admin)
+ufw allow 80/tcp        # Let's Encrypt ACME HTTP-01 + HTTP->HTTPS redirect
+ufw allow 443/tcp       # HTTPS
+ufw allow 443/udp       # HTTP/3 (QUIC)
+ufw --force enable
+ufw status verbose
 
 echo ">> Creating ${APP_DIR} directory tree"
 mkdir -p "${APP_DIR}"/{pgdata,caddy_data,caddy_config}
@@ -66,34 +61,45 @@ cat <<'EOF'
 
 >> Bootstrap complete.
 
-Next steps:
+Next steps (see docs/deploy.md for the full runbook):
 
-1. Join the tailnet:
-     tailscale up
-   (or non-interactively: tailscale up --authkey=tskey-...)
+1. Point DNS A records straight at this VPS's public IP:
+     birddoc.at        A   <VPS_IP>
+     app.birddoc.at    A   <VPS_IP>
+     birddoc.eu        A   <VPS_IP>   (301 -> birddoc.at)
+     app.birddoc.eu    A   <VPS_IP>   (301 -> app.birddoc.at)
+   Caddy obtains a Let's Encrypt certificate for each once DNS resolves here.
 
-2. Connect the Cloudflare Tunnel:
-     sudo cloudflared service install <TUNNEL_TOKEN>
-   Create the tunnel in the Cloudflare Zero Trust dashboard first; point the public
-   hostname at http://localhost:80 (Caddy listens on 127.0.0.1:80 inside the LXC).
+2. Create the deploy SSH user (key-only) — its private key becomes the
+   SSH_PRIVATE_KEY GitHub secret:
+     adduser --disabled-password --gecos "" deploy
+     usermod -aG docker deploy
+     install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+     # install the deploy public key into /home/deploy/.ssh/authorized_keys
 
-3. Add the following secrets in GitHub → Settings → Secrets and variables → Actions:
-     TAILSCALE_AUTHKEY         ephemeral authkey for the deploy workflow's runner
-     SSH_HOST                  Tailscale IP or MagicDNS name of this LXC
-     SSH_USER                  deploy user (must be in the docker group, or root)
+3. Add the following secrets in GitHub -> Settings -> Secrets and variables ->
+   Actions:
+     SSH_HOST                  public IP or DNS name of this VPS
+     SSH_USER                  deploy (must be in the docker group, or root)
      SSH_PRIVATE_KEY           private key authorized on the deploy user
-     DOMAIN                    e.g. birddoc.example.com (the Cloudflare Tunnel hostname)
      DJANGO_SECRET_KEY         long random string (`openssl rand -hex 64`)
-     DJANGO_ALLOWED_HOSTS      e.g. birddoc.example.com
+     DJANGO_ALLOWED_HOSTS      app.birddoc.at,birddoc.at
      POSTGRES_PASSWORD         database password
-     CORS_ALLOWED_ORIGINS      e.g. https://birddoc.example.com
-     CSRF_TRUSTED_ORIGINS      e.g. https://birddoc.example.com
+     CORS_ALLOWED_ORIGINS      https://app.birddoc.at,https://birddoc.at
+     CSRF_TRUSTED_ORIGINS      https://app.birddoc.at,https://birddoc.at
+     SESSION_COOKIE_DOMAIN     app.birddoc.at
+     APP_LOGIN_URL             https://app.birddoc.at/login
+     OPERATOR_EMAIL            operator inbox (e.g. zugang@birddoc.at)
+     BREVO_SMTP_USER           Brevo SMTP login
+     BREVO_SMTP_PASSWORD       Brevo SMTP key (never commit it)
 
-4. Push to main — GitHub Actions builds images, pushes to GHCR, connects to the
-   tailnet, then SSHes in to roll out docker-compose.prod.yml.
+4. Push to main — GitHub Actions builds images, pushes to GHCR, then SSHes in to
+   roll out docker-compose.prod.yml.
 
 5. Verify after first deploy:
-     curl -I https://<DOMAIN>/
-     docker compose -f /opt/bird-doc-app/docker-compose.prod.yml logs backend
+     curl -I https://birddoc.at/
+     curl -I https://app.birddoc.at/
+     curl -sI https://birddoc.eu/ | grep -i location   # -> https://birddoc.at/
+     docker compose -f /opt/bird-doc-app/docker-compose.prod.yml logs caddy
 
 EOF
