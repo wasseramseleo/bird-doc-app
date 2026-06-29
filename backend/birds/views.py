@@ -6,6 +6,7 @@ from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .iwm_export import build_iwm_workbook
@@ -19,6 +20,11 @@ from .models import (
     Scientist,
     Species,
     SpeciesList,
+)
+from .permissions import (
+    OTHER_ORG_MESSAGE,
+    IsOrgAdmin,
+    IsOrgAdminOrReadOnly,
 )
 from .serializers import (
     DataEntrySerializer,
@@ -210,8 +216,17 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         return f"{int(number) + 1:0{len(number)}d}"
 
 
-class RingingStationViewSet(viewsets.ReadOnlyModelViewSet):
+class RingingStationViewSet(viewsets.ModelViewSet):
+    """Read for any Mitglied; create/edit/delete for the Organisation's Admin.
+
+    Managing Stationen is an Admin power (ADR 0005). Reads stay global (the list
+    is filterable by ``?organization``); writes are admin-only and confined to
+    the Admin's own Organisation, so a Station is never created in or moved to
+    another tenant.
+    """
+
     serializer_class = RingingStationSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdminOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "handle"]
 
@@ -221,6 +236,23 @@ class RingingStationViewSet(viewsets.ReadOnlyModelViewSet):
         if organization:
             queryset = queryset.filter(organization__handle=organization)
         return queryset
+
+    def perform_create(self, serializer):
+        self._reject_foreign_organization(serializer.validated_data.get("organization"))
+        serializer.save()
+
+    def perform_update(self, serializer):
+        target = serializer.validated_data.get("organization", serializer.instance.organization)
+        self._reject_foreign_organization(target)
+        serializer.save()
+
+    def _reject_foreign_organization(self, organization):
+        # A Station write must stay inside the Admin's own Organisation. (The
+        # IsOrgAdminOrReadOnly object check already blocks editing a *foreign*
+        # Station; this also blocks creating one in — or moving one to — another
+        # tenant.)
+        if organization != active_organization(self.request.user):
+            raise PermissionDenied(OTHER_ORG_MESSAGE)
 
 
 class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
@@ -243,17 +275,34 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
     search_fields = ["handle", "first_name", "last_name"]
 
 
-class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
+class OrganizationViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
+    """Read for any Mitglied; edit for the Organisation's Admin.
+
+    Editing the Organisation is an Admin power (ADR 0005). Only edit is exposed —
+    org *creation* is gated by a Zugangscode (a separate slice) and there is no
+    delete — so an Admin can only ever edit their own Organisation
+    (``IsOrgAdminOrReadOnly`` confines the object to the active tenant).
+    """
+
     queryset = Organization.objects.all().order_by("name")
     serializer_class = OrganizationSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdminOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "handle"]
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdminOrReadOnly]
     filter_backends = [filters.SearchFilter]
     search_fields = ["title"]
+
+    def get_permissions(self):
+        # The IWM export is a privileged Admin-only operation even though it is a
+        # GET, so it cannot ride the read exemption of ``IsOrgAdminOrReadOnly``.
+        if self.action == "export_iwm":
+            return [IsAuthenticated(), IsOrgAdmin()]
+        return super().get_permissions()
 
     def get_queryset(self):
         scientist = getattr(self.request.user, "scientist", None)
