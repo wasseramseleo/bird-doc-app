@@ -174,14 +174,16 @@ export class DataEntryFormComponent implements OnInit {
   private readonly birdStatus = toSignal(this.entryForm.get('bird_status')!.valueChanges);
   readonly isRecatch = computed(() => this.birdStatus() === BirdStatus.ReCatch);
 
-  // #26: the Kleingefieder (small-feather) moult fields are recorded only for
-  // diesjährige birds (Alter = 3). Track the age class so the two fields can
-  // react to changes; seed with the form's current value since valueChanges
-  // does not emit until the first change.
+  // #26: only the Kleingefieder *Fortschritt* (small-feather moult progress,
+  // J/U/M/N) is recorded for diesjährige birds (Alter = 3) alone — it tracks the
+  // post-juvenile moult that only a this-year bird undergoes. The *Intensität*
+  // and the Handschwingenmauser are recorded for every age class. Track the age
+  // class so the Fortschritt field can react to changes; seed with the form's
+  // current value since valueChanges does not emit until the first change.
   private readonly ageClass = toSignal(this.entryForm.get('age_class')!.valueChanges, {
     initialValue: this.entryForm.get('age_class')!.value,
   });
-  readonly smallFeatherActive = computed(() => this.ageClass() === AgeClass.ThisYear);
+  readonly isDiesjaehrig = computed(() => this.ageClass() === AgeClass.ThisYear);
 
   // Issue #19/#57: the selected Art drives the Sonderart behaviours, keyed off
   // its special_kind. A 'ring_destroyed' Art ("Ring Vernichtet") collapses the
@@ -379,21 +381,21 @@ export class DataEntryFormComponent implements OnInit {
       control.updateValueAndValidity({ emitEvent: false });
     });
 
-    // #26: keep the Kleingefieder fields in lockstep with the age class. Only a
-    // diesjähriger Vogel (Alter = 3) moults its small feathers, so for every
-    // other age class the two fields are cleared and disabled (greyed out but
-    // still visible). Clearing matters: the export reads getRawValue(), which
-    // includes disabled controls, so a stale value would otherwise leak through.
+    // #26: only the Kleingefieder Fortschritt (small_feather_app, J/U/M/N) is
+    // tied to the age class — it records the post-juvenile moult that only a
+    // diesjähriger Vogel (Alter = 3) undergoes, so for every other age class it
+    // is cleared and disabled (greyed out but still visible). The Intensität
+    // (small_feather_int) and the Handschwingenmauser stay enabled for all ages
+    // and are deliberately left untouched here. Clearing matters: the export
+    // reads getRawValue(), which includes disabled controls, so a stale value
+    // would otherwise leak through.
     effect(() => {
-      const active = this.smallFeatherActive();
-      for (const name of ['small_feather_int', 'small_feather_app']) {
-        const control = this.entryForm.get(name)!;
-        if (active) {
-          control.enable({ emitEvent: false });
-        } else {
-          control.setValue(null, { emitEvent: false });
-          control.disable({ emitEvent: false });
-        }
+      const control = this.entryForm.get('small_feather_app')!;
+      if (this.isDiesjaehrig()) {
+        control.enable({ emitEvent: false });
+      } else {
+        control.setValue(null, { emitEvent: false });
+        control.disable({ emitEvent: false });
       }
     });
 

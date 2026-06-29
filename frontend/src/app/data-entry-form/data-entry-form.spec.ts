@@ -1089,7 +1089,7 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
-  describe('conditional Kleingefieder fields (only for Diesjährig / Alter = 3) (#26)', () => {
+  describe('conditional Kleingefieder Fortschritt (only for Diesjährig / Alter = 3) (#26)', () => {
     const intControl = () => component.entryForm.get('small_feather_int')!;
     const appControl = () => component.entryForm.get('small_feather_app')!;
 
@@ -1098,21 +1098,22 @@ describe('DataEntryFormComponent', () => {
       fixture.detectChanges();
     }
 
-    it('disables both small-feather fields at the initial age class (not Diesjährig)', () => {
-      // The form starts at AgeClass.Unknown (2), so the fields are recorded for
-      // no bird yet and must be disabled.
-      expect(intControl().disabled).toBe(true);
+    it('enables the Intensität but disables the Fortschritt at the initial age class (not Diesjährig)', () => {
+      // The form starts at AgeClass.Unknown (2). The Intensität is recorded for
+      // every age class, so it is enabled from the start; only the Fortschritt
+      // (post-juvenile moult progress) waits for a diesjährig age.
+      expect(intControl().enabled).toBe(true);
       expect(appControl().disabled).toBe(true);
     });
 
-    it('enables both small-feather fields when the age class is Diesjährig (3)', () => {
+    it('enables both Kleingefieder fields when the age class is Diesjährig (3)', () => {
       setAge(AgeClass.ThisYear);
 
       expect(intControl().enabled).toBe(true);
       expect(appControl().enabled).toBe(true);
     });
 
-    it('clears and disables both fields when the age class changes away from Diesjährig, leaving no stale value for the export', () => {
+    it('clears and disables only the Fortschritt when the age class changes away from Diesjährig, keeping the Intensität and its value', () => {
       // Record Kleingefieder for a diesjähriger Vogel...
       setAge(AgeClass.ThisYear);
       intControl().setValue(SmallFeatherIntMoult.Many);
@@ -1121,16 +1122,33 @@ describe('DataEntryFormComponent', () => {
       // ...then correct the age class to a non-diesjährig value.
       setAge(AgeClass.NotThisYear);
 
-      expect(intControl().disabled).toBe(true);
+      // The Fortschritt is diesjährig-only: cleared + disabled. getRawValue() is
+      // the export shape and includes disabled controls, so the cleared value
+      // must hold there, not just in value.
       expect(appControl().disabled).toBe(true);
-      // getRawValue() is the export shape and includes disabled controls, so the
-      // cleared value must hold here, not just in value.
+      // The Intensität is age-independent: it stays enabled and keeps its value.
+      expect(intControl().enabled).toBe(true);
+      expect(intControl().value).toBe(SmallFeatherIntMoult.Many);
       const raw = component.entryForm.getRawValue();
-      expect(raw.small_feather_int).toBeNull();
+      expect(raw.small_feather_int).toBe(SmallFeatherIntMoult.Many);
       expect(raw.small_feather_app).toBeNull();
     });
 
-    it('keeps the disabled fields visible in the layout (greyed out, not removed)', () => {
+    it('keeps a loaded Intensität value for a non-diesjährig bird (edit mode does not wipe it)', () => {
+      // Simulate loading a saved record: a non-diesjährig bird with a recorded
+      // Intensität. The age-class effect must not clear it on patch.
+      component.entryForm.patchValue({
+        age_class: AgeClass.NotThisYear,
+        small_feather_int: SmallFeatherIntMoult.Some,
+      });
+      fixture.detectChanges();
+
+      expect(intControl().enabled).toBe(true);
+      expect(intControl().value).toBe(SmallFeatherIntMoult.Some);
+      expect(appControl().disabled).toBe(true);
+    });
+
+    it('keeps the disabled Fortschritt visible in the layout (greyed out, not removed)', () => {
       setAge(AgeClass.NotThisYear);
 
       const el = (name: string) =>
@@ -1139,21 +1157,26 @@ describe('DataEntryFormComponent', () => {
       expect(el('small_feather_app')).not.toBeNull();
     });
 
-    it('skips the disabled small-feather fields in the keyboard focus run', fakeAsync(() => {
-      // muscle_class → (small_feather_int, small_feather_app) → hand_wing.
-      // With a non-diesjährig age class the two middle fields are disabled and
-      // must be jumped over, landing focus on hand_wing.
+    it('skips the disabled Fortschritt in the keyboard focus run, but stops on the enabled Intensität', fakeAsync(() => {
+      // muscle_class → small_feather_int → (small_feather_app) → hand_wing.
+      // With a non-diesjährig age class the Intensität is enabled (focus stops
+      // there) and the Fortschritt is disabled (jumped over to hand_wing).
       setAge(AgeClass.NotThisYear);
 
       const el = (name: string) =>
         fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
-      const muscle = el('muscle_class');
-      muscle.focus();
+      const press = (from: HTMLElement) => {
+        from.focus();
+        from.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+        );
+        tick(50);
+      };
 
-      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
-      muscle.dispatchEvent(event);
-      tick(50);
+      press(el('muscle_class'));
+      expect(document.activeElement).toBe(el('small_feather_int'));
 
+      press(el('small_feather_int'));
       expect(document.activeElement).toBe(el('hand_wing'));
     }));
   });
