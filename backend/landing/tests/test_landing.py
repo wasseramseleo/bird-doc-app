@@ -75,6 +75,65 @@ def test_landing_page_links_to_the_legal_pages(client):
     assert reverse("landing:agb") in content
 
 
+def test_home_renders_the_shared_hero_thesis(client):
+    # The shared hero opens on the common truth both audiences hold (issue #104):
+    # an end to paper-and-Excel documentation. A placeholder marks where the
+    # credible Fang-Karte artifact + Ringserie sequence land (built in the hero
+    # slice), so the hero is laid out around it here.
+    content = client.get("/").content.decode()
+    assert "Schluss mit Papier und Excel" in content
+    assert "hero__artifact" in content
+
+
+def test_home_fork_band_renders_both_audience_columns_in_the_dom(client):
+    # The two-column fork band carries BOTH audience columns server-side (issue
+    # #104) — SEO, and it works without JS; neither column is hidden behind a
+    # tab/toggle. The org column links down to the Für-Organisationen section.
+    content = client.get("/").content.decode()
+    assert content.count("fork__col") >= 2
+    assert "Für Beringer" in content
+    assert "Für Organisationen &amp; Vogelwarten" in content
+    assert "#organisationen" in content
+
+
+def test_home_fuer_beringer_section_names_pain_relief_beta_and_warteliste_cta(client):
+    from django.urls import reverse
+
+    content = client.get("/").content.decode()
+    # The Für-Beringer section is the anchored destination of the nav + fork band.
+    assert 'id="fuer-beringer"' in content
+    assert 'id="funktionen"' in content
+    # It names the pain — manual documentation on paper and in Excel...
+    assert "Papier" in content
+    assert "Excel" in content
+    # ...shows the concrete relief — a clean Fang-Karte, smart ring-numbering,
+    # the IWM export...
+    assert "Fang-Karte" in content
+    assert "Ringnummer" in content
+    assert "IWM" in content
+    # ...carries the beta framing, and ends in the Warteliste CTA wired to the
+    # typed lead form.
+    assert "Beta" in content
+    assert reverse("landing:warteliste") in content
+
+
+def test_home_top_nav_carries_anchors_login_out_and_lang_slot(client, settings):
+    # The marketing home wears a full top nav (issue #104): in-page anchors to
+    # its IA sections, an *Anmelden* action that links OUT to the SPA login
+    # (login stays in the SPA — ADR 0008, never a server-rendered form), and a
+    # slot for the DE/EN toggle wired up later by the i18n slice.
+    content = client.get("/").content.decode()
+    assert "site-nav" in content
+    assert "#funktionen" in content
+    assert "#organisationen" in content
+    assert "#preise" in content
+    # Anmelden points at the SPA login URL, not a landing route.
+    assert "Anmelden" in content
+    assert settings.APP_LOGIN_URL in content
+    # The DE/EN toggle slot is present for the i18n slice to upgrade.
+    assert "lang-toggle" in content
+
+
 def test_landing_page_uses_shared_base_template(client):
     # A shared public base template is in place and the landing page extends it,
     # so subsequent public pages (registration, legal, Warteliste, …) can reuse it.

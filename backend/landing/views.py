@@ -55,9 +55,17 @@ def _notify_operator_of_lead(request, lead):
 
 class HomeView(TemplateView):
     """The public apex landing page — a plain, server-rendered page served to
-    unauthenticated visitors without loading the SPA (issue #71)."""
+    unauthenticated visitors without loading the SPA (issue #71).
+
+    The dual-track marketing home (issue #104): a top nav whose *Anmelden* action
+    links OUT to the SPA login (login stays in the SPA — ADR 0008), a shared hero
+    thesis, a two-track fork band, the Für-Beringer audience section ending in the
+    Warteliste CTA, and the restyled beta badge + price teaser."""
 
     template_name = "landing/home.html"
+
+    def get_context_data(self, **kwargs):
+        return {**super().get_context_data(**kwargs), "app_login_url": settings.APP_LOGIN_URL}
 
 
 class WartelisteView(FormView):

@@ -326,43 +326,56 @@ body {
     text-align: center;
 }
 
-/* Two tracks — the Beringer and the Organisation funnels, side by side */
-.tracks {
+/* The fork band — the Beringer and Organisation columns, side by side. Both are
+   always in the DOM (issue #104); the grid collapses to one column on mobile. */
+.fork {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
-    margin: 1.75rem 0;
+    margin: 2.5rem 0;
 }
 
-@media (max-width: 32rem) {
-    .tracks {
+@media (max-width: 38rem) {
+    .fork {
         grid-template-columns: 1fr;
     }
 }
 
-.track {
-    padding: 1rem 1.1rem;
-    background: var(--paper);
+.fork__col {
+    padding: 1.25rem 1.3rem;
+    background: var(--card);
     border: 1px solid var(--line);
     border-top: 3px solid var(--accent);
-    border-radius: 8px;
+    border-radius: var(--radius);
 }
 
-.track__title {
+.fork__title {
     margin: 0 0 0.5rem;
-    font-size: 1rem;
+    font-size: 1.15rem;
     letter-spacing: -0.01em;
     color: var(--ink);
 }
 
-.track p {
+.fork__col p {
     margin: 0 0 0.7rem;
-    font-size: 0.92rem;
+    font-size: 0.95rem;
     color: var(--muted);
 }
 
-.track p:last-child {
+.fork__col p:last-child {
     margin-bottom: 0;
+}
+
+.fork__more {
+    color: var(--accent-strong);
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    text-underline-offset: 2px;
+}
+
+.fork__more:hover {
+    text-decoration: underline;
 }
 
 /* ── Legal pages ──────────────────────────────────────────────────────── */
@@ -460,4 +473,273 @@ body {
         padding-top: 2rem;
         padding-bottom: 2rem;
     }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Marketing home (issue #104)
+
+   The dual-track marketing home breaks out of the narrow single-card form
+   column the destination/auth/legal pages share: it widens the brand measure
+   and lays out an open, multi-section IA (top nav, hero thesis, fork band,
+   audience sections, price teaser) directly on the brand tokens — not
+   reinvented. The accessibility floor the brand carries holds: visible
+   keyboard focus, a sensible DOM reading order, responsive to mobile.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.page--marketing {
+    /* Widen the shared header/main/footer measure for the marketing surface. */
+    --measure: 62rem;
+}
+
+/* A visible focus ring on every interactive element, not just form fields —
+   the keyboard-accessibility floor for the marketing nav + in-page links. */
+.page--marketing a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/* ── Top nav ──────────────────────────────────────────────────────────── */
+
+.site-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 1.4rem;
+    font-size: 0.92rem;
+}
+
+.site-nav__link {
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.site-nav__link:hover {
+    color: var(--accent-strong);
+}
+
+.site-nav__link--login {
+    color: var(--accent-strong);
+    font-weight: 600;
+}
+
+/* DE/EN toggle slot — a quiet mono chip until the i18n slice wires it up. */
+.lang-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+}
+
+.lang-toggle__current {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.lang-toggle__sep,
+.lang-toggle__other {
+    color: var(--muted);
+}
+
+@media (max-width: 40rem) {
+    /* Stack the nav under the wordmark on small screens. */
+    .page--marketing .site-header__inner {
+        flex-wrap: wrap;
+    }
+
+    .site-nav {
+        width: 100%;
+    }
+}
+
+/* ── Shared section rhythm ────────────────────────────────────────────── */
+
+.page--marketing .eyebrow {
+    margin: 0 0 0.5rem;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    color: var(--accent);
+}
+
+.page--marketing .lead {
+    color: var(--ink);
+    font-size: 1.1rem;
+    line-height: 1.55;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+
+.hero {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    align-items: center;
+    gap: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.hero__thesis {
+    margin: 0.2rem 0 0.9rem;
+    font-size: clamp(2rem, 4.5vw, 2.9rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+}
+
+.hero__copy .lead {
+    max-width: 34rem;
+}
+
+.hero__ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.4rem;
+}
+
+/* The artifact slot — a brass-edged placeholder framing where the Fang-Karte
+   artifact + Ringserie sequence land (built in the hero slice). */
+.hero__artifact {
+    min-height: 17rem;
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--radius);
+    background:
+        radial-gradient(circle at 28% 26%,
+            color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%),
+        repeating-linear-gradient(
+            transparent 0 1.65rem,
+            color-mix(in srgb, var(--line) 45%, transparent) 1.65rem 1.7rem),
+        var(--card);
+    box-shadow:
+        0 1px 2px rgba(32, 39, 31, 0.04),
+        0 18px 40px -30px rgba(32, 39, 31, 0.45);
+}
+
+@media (max-width: 46rem) {
+    .hero {
+        grid-template-columns: 1fr;
+        gap: 1.75rem;
+    }
+
+    /* Drop the decorative placeholder on small screens — it carries no content
+       (aria-hidden) and the real artifact will define its own mobile layout. */
+    .hero__artifact {
+        display: none;
+    }
+}
+
+/* ── Audience sections (Für Beringer; Für Organisationen placeholder) ──── */
+
+.audience {
+    margin: 2.75rem 0;
+    padding-top: 2.25rem;
+    border-top: 1px solid var(--line);
+}
+
+.audience__title {
+    margin: 0 0 0.8rem;
+    font-size: 1.55rem;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.audience__pain {
+    max-width: 38rem;
+    color: var(--muted);
+    font-size: 1.02rem;
+}
+
+.audience__beta {
+    max-width: 38rem;
+    color: var(--ink);
+}
+
+.audience__beta strong {
+    color: var(--ink);
+}
+
+.audience__org-ctas {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+}
+
+.audience__founder {
+    color: var(--accent-strong);
+    font-size: 0.92rem;
+    text-underline-offset: 2px;
+}
+
+/* The relief — the three concrete capabilities, as field-record cards. */
+.relief {
+    list-style: none;
+    margin: 1.5rem 0 1.75rem;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 46rem) {
+    .relief {
+        grid-template-columns: 1fr;
+    }
+}
+
+.relief__item {
+    padding: 1.1rem 1.2rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+}
+
+.relief__title {
+    margin: 0 0 0.4rem;
+    font-size: 1.02rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.relief__item p {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--muted);
+}
+
+/* ── Pricing heading on the marketing home ────────────────────────────── */
+
+.pricing__title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 0.9rem;
+    font-size: 1.3rem;
+    letter-spacing: -0.01em;
+}
+
+.pricing__title .badge {
+    margin-left: 0;
+}
+
+/* ── Ghost button — the secondary, lower-emphasis action ──────────────── */
+
+.button--ghost {
+    color: var(--accent-strong);
+    background: transparent;
+    border-color: var(--accent-soft);
+}
+
+.button--ghost:hover {
+    color: #fff;
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
 }
