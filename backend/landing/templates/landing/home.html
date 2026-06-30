@@ -1,59 +1,49 @@
 {% extends "landing/base.html" %}
+{% load i18n %}
 
 {% block body_class %}page--marketing{% endblock %}
 
 {% comment %}
 The marketing home's full top nav fills the header slot beside the wordmark
 (issue #104): in-page anchors to the IA sections, an *Anmelden* action that
-links OUT to the SPA login (login stays in the SPA — ADR 0008), and a slot for
-the DE/EN toggle the i18n slice wires up.
+links OUT to the SPA login (login stays in the SPA — ADR 0008), and the DE/EN
+toggle (issue #107). The marketing home and the two lead forms are the bilingual
+surface; the toggle switches between German (apex, no prefix) and English (/en/).
 {% endcomment %}
 {% block header_back %}
-    <nav class="site-nav" aria-label="Hauptnavigation">
-        <a class="site-nav__link" href="#funktionen">Funktionen</a>
-        <a class="site-nav__link" href="#organisationen">Für Organisationen</a>
-        <a class="site-nav__link" href="#preise">Preise</a>
-        <a class="site-nav__link site-nav__link--login" href="{{ app_login_url }}">Anmelden</a>
-        <div class="site-nav__lang lang-toggle" aria-label="Sprache">
-            {% comment %}
-            DE/EN toggle slot — the i18n slice upgrades this into a working
-            language switch; until then it shows the current language.
-            {% endcomment %}
-            <span class="lang-toggle__current" aria-current="true">DE</span>
-            <span class="lang-toggle__sep" aria-hidden="true">/</span>
-            <span class="lang-toggle__other">EN</span>
-        </div>
+    <nav class="site-nav" aria-label="{% translate 'Hauptnavigation' %}">
+        <a class="site-nav__link" href="#funktionen">{% translate "Funktionen" %}</a>
+        <a class="site-nav__link" href="#organisationen">{% translate "Für Organisationen" %}</a>
+        <a class="site-nav__link" href="#preise">{% translate "Preise" %}</a>
+        <a class="site-nav__link site-nav__link--login" href="{{ app_login_url }}">{% translate "Anmelden" %}</a>
+        {% include "landing/_lang_toggle.html" %}
     </nav>
 {% endblock %}
 
 {% block main %}
     {% comment %}
     A shared hero thesis opening on the common truth both audiences hold — an
-    end to paper-and-Excel documentation. The artifact slot is where the
-    credible Fang-Karte + the page-threading Ringserie sequence land (built in
-    the hero slice).
+    end to paper-and-Excel documentation. The artifact slot carries the credible
+    Fang-Karte + the page-threading Ringserie sequence (built in the hero slice).
     {% endcomment %}
     <section class="hero" id="top">
         <div class="hero__copy">
-            <p class="eyebrow">Feldjournal · Beringung</p>
-            <h1 class="hero__thesis">Schluss mit Papier und Excel</h1>
-            <p class="lead">BirdDoc ist die Feld-Dokumentation für die Beringung —
-                ein sauberer Datensatz pro gefangenem und beringtem Vogel, statt
-                loser Zettel und verstreuter Tabellen.
+            <p class="eyebrow">{% translate "Feldjournal · Beringung" %}</p>
+            <h1 class="hero__thesis">{% translate "Schluss mit Papier und Excel" %}</h1>
+            <p class="lead">{% blocktranslate trimmed %}BirdDoc ist die Feld-Dokumentation für die Beringung — ein sauberer Datensatz pro gefangenem und beringtem Vogel, statt loser Zettel und verstreuter Tabellen.{% endblocktranslate %}
                 <span class="badge badge--beta">Beta</span></p>
+            {% include "landing/_app_german_only_note.html" %}
             <p class="hero__ctas">
-                <a class="button" href="#fuer-beringer">Für Beringer</a>
-                <a class="button button--ghost" href="#organisationen">Für Organisationen</a>
+                <a class="button" href="#fuer-beringer">{% translate "Für Beringer" %}</a>
+                <a class="button button--ghost" href="#organisationen">{% translate "Für Organisationen" %}</a>
             </p>
         </div>
         <div class="hero__artifact">
             {% comment %}
             The signature: a static, ornithologically credible Fang-Karte — one
-            record per captured bird (issue #106). It carries no JS. The species
-            is a real Artenliste row, the ring rides the size the app recommends
-            for THAT species (its Empfohlene Ringgröße), the biometrics are
-            plausible, and the Kürzel follows the Austrian standard. Ring numbers
-            and biometrics are set in tabular-nums — the brand's "data voice".
+            record per captured bird (issue #106). Its field labels stay German
+            even under /en/: it is an honest preview of the German app itself, so
+            it deliberately reads in the product's language (ADR 0009).
             {% endcomment %}
             <article class="fang-karte" aria-label="Beispiel-Fang-Karte">
                 <header class="fang-karte__head">
@@ -92,33 +82,28 @@ the DE/EN toggle the i18n slice wires up.
 
     {% comment %}
     The Ringserie number thread (issue #106): a run of CONSUMED ring numbers
-    (last-consumed + 1) threading the page as an honest structural marker — not a
-    decorative 01/02/03. Set in tabular-nums (the data voice). It carries the
-    page's single motion: a gentle load reveal, fully suppressed under
-    prefers-reduced-motion (handled in CSS — no JS).
+    (last-consumed + 1) threading the page as an honest structural marker. Set in
+    tabular-nums (the data voice). The numbers themselves are data, not copy.
     {% endcomment %}
-    <p class="ringserie ringserie--reveal data" aria-label="Ringserie — fortlaufende Ringnummern">
-        {% for number in fang_karte.ringserie %}<span class="ringserie__num">{{ number }}</span>{% if not forloop.last %}<span class="ringserie__sep" aria-hidden="true">·</span>{% endif %}{% endfor %}<span class="ringserie__sep" aria-hidden="true">·</span><span class="ringserie__next" title="Nächste Nummer: letzte verbrauchte + 1">{{ fang_karte.next_number }}</span>
+    <p class="ringserie ringserie--reveal data" aria-label="{% translate 'Ringserie — fortlaufende Ringnummern' %}">
+        {% for number in fang_karte.ringserie %}<span class="ringserie__num">{{ number }}</span>{% if not forloop.last %}<span class="ringserie__sep" aria-hidden="true">·</span>{% endif %}{% endfor %}<span class="ringserie__sep" aria-hidden="true">·</span><span class="ringserie__next" title="{% translate 'Nächste Nummer: letzte verbrauchte + 1' %}">{{ fang_karte.next_number }}</span>
     </p>
 
     {% comment %}
     The fork band — both audience columns rendered server-side at once (SEO;
-    works without JS). Each column is a short teaser that leads down to its own
+    works without JS). Each column is a short teaser leading down to its own
     detailed section further on the page.
     {% endcomment %}
-    <div class="fork" aria-label="Für wen ist BirdDoc?">
+    <div class="fork" aria-label="{% translate 'Für wen ist BirdDoc?' %}">
         <section class="fork__col">
-            <h2 class="fork__title">Für Beringer</h2>
-            <p>Du beringst selbst und willst Papier und Excel hinter dir lassen?
-                BirdDoc bringt deine Fänge in eine saubere Fang-Karte.</p>
-            <p><a class="fork__more" href="#fuer-beringer">Für Beringer ansehen</a></p>
+            <h2 class="fork__title">{% translate "Für Beringer" %}</h2>
+            <p>{% blocktranslate trimmed %}Du beringst selbst und willst Papier und Excel hinter dir lassen? BirdDoc bringt deine Fänge in eine saubere Fang-Karte.{% endblocktranslate %}</p>
+            <p><a class="fork__more" href="#fuer-beringer">{% translate "Für Beringer ansehen" %}</a></p>
         </section>
         <section class="fork__col">
-            <h2 class="fork__title">Für Organisationen &amp; Vogelwarten</h2>
-            <p>Du entscheidest für eine ganze Beringungs-Landschaft? Eine
-                schemaweite Einführung — DSGVO-konform, in Österreich gehostet,
-                ohne Lock-in.</p>
-            <p><a class="fork__more" href="#organisationen">Für Organisationen ansehen</a></p>
+            <h2 class="fork__title">{% translate "Für Organisationen &amp; Vogelwarten" %}</h2>
+            <p>{% blocktranslate trimmed %}Du entscheidest für eine ganze Beringungs-Landschaft? Eine schemaweite Einführung — DSGVO-konform, in Österreich gehostet, ohne Lock-in.{% endblocktranslate %}</p>
+            <p><a class="fork__more" href="#organisationen">{% translate "Für Organisationen ansehen" %}</a></p>
         </section>
     </div>
 
@@ -129,34 +114,27 @@ the DE/EN toggle the i18n slice wires up.
     form. The relief block carries the `funktionen` anchor.
     {% endcomment %}
     <section class="audience" id="fuer-beringer" aria-labelledby="audience-beringer-title">
-        <p class="eyebrow">Für Beringer</p>
-        <h2 id="audience-beringer-title" class="audience__title">Vom Zettel zur Fang-Karte</h2>
-        <p class="audience__pain">Heute hältst du jeden Fang auf Papier fest und
-            überträgst ihn später mühsam in Excel — fehleranfällig, doppelt
-            erfasst und schwer zu durchsuchen.</p>
+        <p class="eyebrow">{% translate "Für Beringer" %}</p>
+        <h2 id="audience-beringer-title" class="audience__title">{% translate "Vom Zettel zur Fang-Karte" %}</h2>
+        <p class="audience__pain">{% blocktranslate trimmed %}Heute hältst du jeden Fang auf Papier fest und überträgst ihn später mühsam in Excel — fehleranfällig, doppelt erfasst und schwer zu durchsuchen.{% endblocktranslate %}</p>
 
         <ul class="relief" id="funktionen">
             <li class="relief__item">
-                <h3 class="relief__title">Eine saubere Fang-Karte</h3>
-                <p>Alle Felder eines Fangs an einem Ort — ein Datensatz pro
-                    Vogel, statt loser Zettel.</p>
+                <h3 class="relief__title">{% translate "Eine saubere Fang-Karte" %}</h3>
+                <p>{% blocktranslate trimmed %}Alle Felder eines Fangs an einem Ort — ein Datensatz pro Vogel, statt loser Zettel.{% endblocktranslate %}</p>
             </li>
             <li class="relief__item">
-                <h3 class="relief__title">Intelligente Ringnummerierung</h3>
-                <p>Die nächste Ringnummer der Serie wird automatisch
-                    vorgeschlagen — kein Abzählen, kein Vertippen.</p>
+                <h3 class="relief__title">{% translate "Intelligente Ringnummerierung" %}</h3>
+                <p>{% blocktranslate trimmed %}Die nächste Ringnummer der Serie wird automatisch vorgeschlagen — kein Abzählen, kein Vertippen.{% endblocktranslate %}</p>
             </li>
             <li class="relief__item">
-                <h3 class="relief__title">IWM-Export auf Knopfdruck</h3>
-                <p>Die Meldung an die Vogelwarte als fertiger IWM-Export — ohne
-                    Handarbeit.</p>
+                <h3 class="relief__title">{% translate "IWM-Export auf Knopfdruck" %}</h3>
+                <p>{% blocktranslate trimmed %}Die Meldung an die Vogelwarte als fertiger IWM-Export — ohne Handarbeit.{% endblocktranslate %}</p>
             </li>
         </ul>
 
-        <p class="audience__beta">BirdDoc ist in geschlossener Beta und während
-            der Beta <strong>kostenlos</strong>. Trag dich in die Warteliste ein
-            — wir melden uns, sobald ein Zugangscode frei wird.</p>
-        <p><a class="button" href="{% url 'landing:warteliste' %}">Zugang anfragen</a></p>
+        <p class="audience__beta">{% blocktranslate trimmed %}BirdDoc ist in geschlossener Beta und während der Beta <strong>kostenlos</strong>. Trag dich in die Warteliste ein — wir melden uns, sobald ein Zugangscode frei wird.{% endblocktranslate %}</p>
+        <p><a class="button" href="{% url 'landing:warteliste' %}">{% translate "Zugang anfragen" %}</a></p>
     </section>
 
     {% comment %}
@@ -168,80 +146,60 @@ the DE/EN toggle the i18n slice wires up.
     {% endcomment %}
     <section class="audience audience--org" id="organisationen"
              aria-labelledby="audience-org-title">
-        <p class="eyebrow">Für Organisationen &amp; Vogelwarten</p>
-        <h2 id="audience-org-title" class="audience__title">Schemaweit einführen — jede Gruppe bleibt für sich</h2>
-        <p class="audience__pain">BirdDoc lässt sich über eine ganze
-            Beringungs-Landschaft ausrollen — und jede Gruppe behält dabei ihren
-            eigenen, privaten Arbeitsbereich. Es gibt keine schemaweite Zentrale,
-            die in alle Fänge sieht: Organisationen sehen die Daten der jeweils
-            anderen nie.</p>
+        <p class="eyebrow">{% translate "Für Organisationen &amp; Vogelwarten" %}</p>
+        <h2 id="audience-org-title" class="audience__title">{% translate "Schemaweit einführen — jede Gruppe bleibt für sich" %}</h2>
+        <p class="audience__pain">{% blocktranslate trimmed %}BirdDoc lässt sich über eine ganze Beringungs-Landschaft ausrollen — und jede Gruppe behält dabei ihren eigenen, privaten Arbeitsbereich. Es gibt keine schemaweite Zentrale, die in alle Fänge sieht: Organisationen sehen die Daten der jeweils anderen nie.{% endblocktranslate %}</p>
 
         <ul class="org-trust">
             <li class="org-trust__item">
-                <h3 class="org-trust__title">Datenhoheit</h3>
-                <p>Alle Beringungsdaten liegen in Österreich bzw. der EU und
-                    werden DSGVO-konform verarbeitet. Die Organisation bleibt
-                    <strong>Verantwortliche</strong> im Sinne der DSGVO — BirdDoc
-                    ist ausschließlich <strong>Auftragsverarbeiter</strong>.</p>
+                <h3 class="org-trust__title">{% translate "Datenhoheit" %}</h3>
+                <p>{% blocktranslate trimmed %}Alle Beringungsdaten liegen in Österreich bzw. der EU und werden DSGVO-konform verarbeitet. Die Organisation bleibt <strong>Verantwortliche</strong> im Sinne der DSGVO — BirdDoc ist ausschließlich <strong>Auftragsverarbeiter</strong>.{% endblocktranslate %}</p>
             </li>
             <li class="org-trust__item">
-                <h3 class="org-trust__title">Kein Lock-in</h3>
-                <p>Jede Gruppe besitzt ihre Daten und kann sie jederzeit
-                    exportieren — als IWM- oder EURING-Datei. Eine Einführung von
-                    BirdDoc ist damit jederzeit umkehrbar.</p>
+                <h3 class="org-trust__title">{% translate "Kein Lock-in" %}</h3>
+                <p>{% blocktranslate trimmed %}Jede Gruppe besitzt ihre Daten und kann sie jederzeit exportieren — als IWM- oder EURING-Datei. Eine Einführung von BirdDoc ist damit jederzeit umkehrbar.{% endblocktranslate %}</p>
             </li>
             <li class="org-trust__item">
-                <h3 class="org-trust__title">Kontinuität — ehrlich beantwortet</h3>
-                <p>BirdDoc wird von einem <strong>Einzelunternehmen</strong>
-                    betrieben, von einer einzelnen Person. Statt dieses Risiko zu
-                    verstecken, beantworten wir es offen: Weil deine Daten dir
-                    gehören und jederzeit exportierbar sind, bleibst du
-                    unabhängig davon, wer BirdDoc betreibt.</p>
+                <h3 class="org-trust__title">{% translate "Kontinuität — ehrlich beantwortet" %}</h3>
+                <p>{% blocktranslate trimmed %}BirdDoc wird von einem <strong>Einzelunternehmen</strong> betrieben, von einer einzelnen Person. Statt dieses Risiko zu verstecken, beantworten wir es offen: Weil deine Daten dir gehören und jederzeit exportierbar sind, bleibst du unabhängig davon, wer BirdDoc betreibt.{% endblocktranslate %}</p>
             </li>
             <li class="org-trust__item">
-                <h3 class="org-trust__title">Im Feld bewährt</h3>
-                <p>BirdDoc dokumentiert bereits echte Beringung — entstanden als
-                    <strong>Masterarbeit</strong> und im täglichen Feldeinsatz
-                    erprobt.</p>
+                <h3 class="org-trust__title">{% translate "Im Feld bewährt" %}</h3>
+                <p>{% blocktranslate trimmed %}BirdDoc dokumentiert bereits echte Beringung — entstanden als <strong>Masterarbeit</strong> und im täglichen Feldeinsatz erprobt.{% endblocktranslate %}</p>
             </li>
         </ul>
 
-        <p class="audience__pilot">Für interessierte Gruppen ist ein begleiteter
-            <strong>Beta-Pilot</strong> möglich — ohne festen Zeitplan.</p>
+        <p class="audience__pilot">{% blocktranslate trimmed %}Für interessierte Gruppen ist ein begleiteter <strong>Beta-Pilot</strong> möglich — ohne festen Zeitplan.{% endblocktranslate %}</p>
 
         <p class="audience__org-ctas">
-            <a class="button" href="{% url 'landing:gespraech' %}">Gespräch anfragen</a>
-            <a class="audience__founder" href="{% url 'landing:register' %}">Schon einen Zugangscode? Organisation gründen</a>
+            <a class="button" href="{% url 'landing:gespraech' %}">{% translate "Gespräch anfragen" %}</a>
+            <a class="audience__founder" href="{% url 'landing:register' %}">{% translate "Schon einen Zugangscode? Organisation gründen" %}</a>
         </p>
     </section>
 
     <section class="hosting" aria-label="Hosting">
         <span class="hosting__flag" aria-hidden="true">🇦🇹</span>
-        <p>
-            <strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben
-            in Österreich bzw. der EU — DSGVO-konform, ohne Drittanbieter-Tracking.
-        </p>
+        <p>{% blocktranslate trimmed %}<strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben in Österreich bzw. der EU — DSGVO-konform, ohne Drittanbieter-Tracking.{% endblocktranslate %}</p>
     </section>
 
     {% comment %}
     The restyled beta badge + three-row price teaser — content preserved from
     the #78 work, re-skinned into the brand, not reinvented.
     {% endcomment %}
-    <section class="pricing" id="preise" aria-label="Preise">
-        <h2 class="pricing__title">Preise <span class="badge badge--beta">Beta</span></h2>
+    <section class="pricing" id="preise" aria-label="{% translate 'Preise' %}">
+        <h2 class="pricing__title">{% translate "Preise" %} <span class="badge badge--beta">Beta</span></h2>
         <ul class="price-teaser">
             <li>
-                <span class="price-teaser__tag">Jetzt</span>
-                Während der öffentlichen Beta <strong>kostenlos</strong>.
+                <span class="price-teaser__tag">{% translate "Jetzt" %}</span>
+                {% blocktranslate trimmed %}Während der öffentlichen Beta <strong>kostenlos</strong>.{% endblocktranslate %}
             </li>
             <li>
-                <span class="price-teaser__tag">Ab 1.0</span>
-                Eine Lizenz <strong>pro Organisation</strong> — nie pro Kopf.
+                <span class="price-teaser__tag">{% translate "Ab 1.0" %}</span>
+                {% blocktranslate trimmed %}Eine Lizenz <strong>pro Organisation</strong> — nie pro Kopf.{% endblocktranslate %}
             </li>
             <li>
-                <span class="price-teaser__tag">Beta-Kohorte</span>
-                Wer während der Beta gründet, behält <strong>dauerhaft</strong>
-                einen <strong>Vorzugspreis</strong> — auch nach 1.0.
+                <span class="price-teaser__tag">{% translate "Beta-Kohorte" %}</span>
+                {% blocktranslate trimmed %}Wer während der Beta gründet, behält <strong>dauerhaft</strong> einen <strong>Vorzugspreis</strong> — auch nach 1.0.{% endblocktranslate %}
             </li>
         </ul>
     </section>

@@ -1,0 +1,743 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-30 01:59+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Eingelöst"
+msgstr ""
+
+msgid "AS"
+msgstr ""
+
+msgid "BS"
+msgstr ""
+
+msgid "C"
+msgstr ""
+
+msgid "D"
+msgstr ""
+
+msgid "DS"
+msgstr ""
+
+msgid "DA"
+msgstr ""
+
+msgid "F"
+msgstr ""
+
+msgid "FA"
+msgstr ""
+
+msgid "G"
+msgstr ""
+
+msgid "GA"
+msgstr ""
+
+msgid "H"
+msgstr ""
+
+msgid "HA"
+msgstr ""
+
+msgid "K"
+msgstr ""
+
+msgid "KA"
+msgstr ""
+
+msgid "L"
+msgstr ""
+
+msgid "LA"
+msgstr ""
+
+msgid "M"
+msgstr ""
+
+msgid "N"
+msgstr ""
+
+msgid "NA"
+msgstr ""
+
+msgid "P"
+msgstr ""
+
+msgid "PA"
+msgstr ""
+
+msgid "R"
+msgstr ""
+
+msgid "S"
+msgstr ""
+
+msgid "SA"
+msgstr ""
+
+msgid "T"
+msgstr ""
+
+msgid "TA"
+msgstr ""
+
+msgid "V"
+msgstr ""
+
+msgid "X"
+msgstr ""
+
+msgid "Ringgröße"
+msgstr ""
+
+msgid "Organisation"
+msgstr "Organisation"
+
+msgid "Normale Art"
+msgstr ""
+
+msgid "Ring vernichtet"
+msgstr ""
+
+msgid "Unbekannte Art (Aves ignota)"
+msgstr ""
+
+msgid "Empfohlene Ringgröße"
+msgstr ""
+
+msgid "Sonderart"
+msgstr ""
+
+msgid "Beringer"
+msgstr ""
+
+msgid "Vorname"
+msgstr ""
+
+msgid "Nachname"
+msgstr ""
+
+msgid "Kürzel"
+msgstr ""
+
+msgid "Beta"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "Land"
+msgstr ""
+
+msgid "Plan"
+msgstr ""
+
+msgid "Seat-Limit"
+msgstr ""
+
+msgid "Beta-Kohorte"
+msgstr "Beta cohort"
+
+msgid "Admin"
+msgstr ""
+
+msgid "Mitglied"
+msgstr ""
+
+msgid "Konto"
+msgstr ""
+
+msgid "Rolle"
+msgstr ""
+
+msgid "Mitgliedschaft"
+msgstr ""
+
+msgid "Mitgliedschaften"
+msgstr ""
+
+msgid "Zugangscode"
+msgstr ""
+
+msgid "Notiz"
+msgstr ""
+
+msgid "Optionaler Vermerk des Betreibers (für wen / warum ausgestellt)."
+msgstr ""
+
+msgid "Eingelöst am"
+msgstr ""
+
+msgid "Gegründete Organisation"
+msgstr ""
+
+msgid "Zugangscodes"
+msgstr ""
+
+msgid "E-Mail"
+msgstr "Email"
+
+msgid "Eingeladen von"
+msgstr ""
+
+msgid "Angenommen am"
+msgstr ""
+
+msgid "Org-Einladung"
+msgstr ""
+
+msgid "Org-Einladungen"
+msgstr ""
+
+msgid "Region"
+msgstr ""
+
+msgid "Ortskodierung"
+msgstr ""
+
+msgid "Breitengrad"
+msgstr ""
+
+msgid "Längengrad"
+msgstr ""
+
+msgid "unbekannt"
+msgstr ""
+
+msgid "mit der Hand gefangen"
+msgstr ""
+
+msgid "am Nest, alle Methoden außer Handfang"
+msgstr ""
+
+msgid "Japannetz"
+msgstr ""
+
+msgid "Käfigfalle (Reuse)"
+msgstr ""
+
+msgid "Klappnetz"
+msgstr ""
+
+msgid "Hollandfalle"
+msgstr ""
+
+msgid "mit sonstigem Netz"
+msgstr ""
+
+msgid "Helgolandreuse oder Entenlocke"
+msgstr ""
+
+msgid "Ball-Chatri oder Schlingen-Falle"
+msgstr ""
+
+msgid "mit Blend-Licht"
+msgstr ""
+
+msgid "durch Beringer ausgelöste Falle"
+msgstr ""
+
+msgid "durch Vogel selbst ausgelöste Falle"
+msgstr ""
+
+msgid "sicher kein Lockmittel"
+msgstr ""
+
+msgid "mehr als ein Lockmittel"
+msgstr ""
+
+msgid "Futter als Lockmittel"
+msgstr ""
+
+msgid "Wasser als Lockmittel"
+msgstr ""
+
+msgid "Licht als Lockmittel"
+msgstr ""
+
+msgid "lebender Lockvogel"
+msgstr ""
+
+msgid "künstlicher/ausgestopfter Lockvogel"
+msgstr ""
+
+msgid "Klangattrappe (gleiche Art)"
+msgstr ""
+
+msgid "Klangattrappe (andere Arten)"
+msgstr ""
+
+msgid "Lockpfeife"
+msgstr ""
+
+msgid "Titel"
+msgstr ""
+
+msgid "Beschreibung"
+msgstr ""
+
+msgid "Standard-Station"
+msgstr ""
+
+msgid "Optionale Felder anzeigen"
+msgstr ""
+
+msgid "Umstand"
+msgstr ""
+
+msgid "Fangmethode"
+msgstr ""
+
+msgid "Lockmittel"
+msgstr ""
+
+msgid "Links"
+msgstr ""
+
+msgid "Rechts"
+msgstr ""
+
+msgid "Erstfang"
+msgstr ""
+
+msgid "Wiederfang"
+msgstr ""
+
+msgid "Nestling oder Nestflüchter"
+msgstr ""
+
+msgid "Fängling (Alter unbekannt)"
+msgstr ""
+
+msgid "Diesjährig"
+msgstr ""
+
+msgid "Nicht Diensjährig"
+msgstr ""
+
+msgid "Vorjährig"
+msgstr ""
+
+msgid "Nicht Vorjährig"
+msgstr ""
+
+msgid "Unbestimmt"
+msgstr ""
+
+msgid "Männlich"
+msgstr ""
+
+msgid "Weiblich"
+msgstr ""
+
+msgid "keine"
+msgstr ""
+
+msgid "bis zu 20 Federn"
+msgstr ""
+
+msgid "mehr als 20 Federn"
+msgstr ""
+
+msgid "Eben flügger Jungvogel"
+msgstr ""
+
+msgid "Weniger als 1/3 erneuert"
+msgstr ""
+
+msgid "Zwischen 1/3 und 2/2 erneuert"
+msgstr ""
+
+msgid "Mehr als 2/3 erneuert"
+msgstr ""
+
+msgid "Keine Handschwingen wachsen"
+msgstr ""
+
+msgid "Alle sind unvermausert"
+msgstr ""
+
+msgid "Mindestens eine mausert"
+msgstr ""
+
+msgid "Alle vermausert"
+msgstr ""
+
+msgid "Ein Teil ist vermausert"
+msgstr ""
+
+msgid "0"
+msgstr ""
+
+msgid "1"
+msgstr ""
+
+msgid "2"
+msgstr ""
+
+msgid "3"
+msgstr ""
+
+msgid "Art"
+msgstr ""
+
+msgid "Ringnummer"
+msgstr ""
+
+msgid "Station"
+msgstr ""
+
+msgid "Projekt"
+msgstr ""
+
+msgid "Netznr."
+msgstr ""
+
+msgid "Netzfach"
+msgstr ""
+
+msgid "Flugrichtung"
+msgstr ""
+
+msgid "Federl. (mm)"
+msgstr ""
+
+msgid "Flügell. (mm)"
+msgstr ""
+
+msgid "Tarsus. (mm)"
+msgstr ""
+
+msgid "Kerbe F2 (mm)"
+msgstr ""
+
+msgid "Innenfuß (mm)"
+msgstr ""
+
+msgid "Gewicht (g)"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Muskelklasse"
+msgstr ""
+
+msgid "Alter"
+msgstr ""
+
+msgid "Geschlecht"
+msgstr ""
+
+msgid "Kleingef. Int"
+msgstr ""
+
+msgid "Kleingef. Forts."
+msgstr ""
+
+msgid "Handschwinge"
+msgstr ""
+
+msgid "Milben"
+msgstr ""
+
+msgid "Hungerstreifen"
+msgstr ""
+
+msgid "Brutfleck"
+msgstr ""
+
+msgid "CPL+"
+msgstr ""
+
+msgid "Datum"
+msgstr ""
+
+msgid "Bemerkungen"
+msgstr ""
+
+msgid "List Name"
+msgstr ""
+
+msgid "Active for Autocomplete"
+msgstr ""
+
+msgid "Die Station muss zur Organisation des Projekts gehören."
+msgstr ""
+
+msgid "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
+msgstr ""
+
+msgid "Nachricht"
+msgstr "Message"
+
+msgid "Wir melden uns unter dieser Adresse, sobald ein Zugang frei wird."
+msgstr "We'll get in touch at this address as soon as access opens up."
+
+msgid "Die Beringungs-Organisation, die du gründen möchtest (optional)."
+msgstr "The ringing organisation you'd like to found (optional)."
+
+msgid "Worum geht es? Erzähl uns kurz von deinem Vorhaben (optional)."
+msgstr "What's it about? Tell us briefly about your plans (optional)."
+
+msgid "Organisation / Stelle"
+msgstr "Organisation / body"
+
+msgid "Funktion / Rolle"
+msgstr "Role / position"
+
+msgid "Ungefähre Anzahl Beringer"
+msgstr "Approximate number of ringers"
+
+msgid "An diese Adresse melden wir uns, um ein Gespräch zu vereinbaren."
+msgstr "We'll get in touch at this address to arrange a conversation."
+
+msgid "Die zentrale Stelle, für die du anfragst (z. B. eine Vogelwarte)."
+msgstr "The central body you're enquiring for (e.g. a ringing centre)."
+
+msgid "Deine Funktion in der Organisation (z. B. wissenschaftliche Leitung)."
+msgstr "Your role in the organisation (e.g. scientific lead)."
+
+msgid "Für wie viele Beringer sprichst du ungefähr? (optional)"
+msgstr "Roughly how many ringers do you speak for? (optional)"
+
+msgid "Worum geht es? Erzähl uns kurz von eurem Vorhaben (optional)."
+msgstr "What's it about? Tell us briefly about your plans (optional)."
+
+msgid "Name der Organisation"
+msgstr ""
+
+msgid "Passwort"
+msgstr ""
+
+msgid "Passwort bestätigen"
+msgstr ""
+
+msgid "Die Passwörter stimmen nicht überein."
+msgstr ""
+
+msgid "Sprache"
+msgstr "Language"
+
+msgid "Gespräch vereinbaren"
+msgstr "Arrange a conversation"
+
+msgid "Für Organisationen &amp; Vogelwarten"
+msgstr "For organisations &amp; ringing centres"
+
+msgid ""
+"BirdDoc kann eine ganze Beringungs-Landschaft tragen — DSGVO-konform, in "
+"Österreich gehostet, ohne Lock-in. Erzähl uns kurz von eurer Stelle, und wir "
+"melden uns für ein Gespräch. Es entstehen keine Kosten und du gehst keine "
+"Verpflichtung ein."
+msgstr "BirdDoc can carry a whole ringing landscape — GDPR-compliant, hosted in Austria, with no lock-in. Tell us briefly about your body and we'll get in touch for a conversation. There is no cost and no obligation."
+
+msgid "Hauptnavigation"
+msgstr "Main navigation"
+
+msgid "Funktionen"
+msgstr "Features"
+
+msgid "Für Organisationen"
+msgstr "For organisations"
+
+msgid "Preise"
+msgstr "Pricing"
+
+msgid "Anmelden"
+msgstr "Sign in"
+
+msgid "Feldjournal · Beringung"
+msgstr "Field journal · Bird ringing"
+
+msgid "Schluss mit Papier und Excel"
+msgstr "Done with paper and Excel"
+
+msgid ""
+"BirdDoc ist die Feld-Dokumentation für die Beringung — ein sauberer "
+"Datensatz pro gefangenem und beringtem Vogel, statt loser Zettel und "
+"verstreuter Tabellen."
+msgstr "BirdDoc is the field documentation for bird ringing — one clean record per captured and ringed bird, instead of loose notes and scattered spreadsheets."
+
+msgid "Für Beringer"
+msgstr "For ringers"
+
+msgid "Ringserie — fortlaufende Ringnummern"
+msgstr "Ring series — consecutive ring numbers"
+
+msgid "Nächste Nummer: letzte verbrauchte + 1"
+msgstr "Next number: last consumed + 1"
+
+msgid "Für wen ist BirdDoc?"
+msgstr "Who is BirdDoc for?"
+
+msgid ""
+"Du beringst selbst und willst Papier und Excel hinter dir lassen? BirdDoc "
+"bringt deine Fänge in eine saubere Fang-Karte."
+msgstr "You ring birds yourself and want to leave paper and Excel behind? BirdDoc turns your captures into one clean capture card."
+
+msgid "Für Beringer ansehen"
+msgstr "See it for ringers"
+
+msgid ""
+"Du entscheidest für eine ganze Beringungs-Landschaft? Eine schemaweite "
+"Einführung — DSGVO-konform, in Österreich gehostet, ohne Lock-in."
+msgstr "Deciding for a whole ringing landscape? A scheme-wide rollout — GDPR-compliant, hosted in Austria, with no lock-in."
+
+msgid "Für Organisationen ansehen"
+msgstr "See it for organisations"
+
+msgid "Vom Zettel zur Fang-Karte"
+msgstr "From the notepad to the capture card"
+
+msgid ""
+"Heute hältst du jeden Fang auf Papier fest und überträgst ihn später mühsam "
+"in Excel — fehleranfällig, doppelt erfasst und schwer zu durchsuchen."
+msgstr "Today you record every capture on paper and later transcribe it laboriously into Excel — error-prone, entered twice and hard to search."
+
+msgid "Eine saubere Fang-Karte"
+msgstr "One clean capture card"
+
+msgid ""
+"Alle Felder eines Fangs an einem Ort — ein Datensatz pro Vogel, statt loser "
+"Zettel."
+msgstr "Every field of a capture in one place — one record per bird, instead of loose notes."
+
+msgid "Intelligente Ringnummerierung"
+msgstr "Smart ring numbering"
+
+msgid ""
+"Die nächste Ringnummer der Serie wird automatisch vorgeschlagen — kein "
+"Abzählen, kein Vertippen."
+msgstr "The next ring number in the series is suggested automatically — no counting off, no typos."
+
+msgid "IWM-Export auf Knopfdruck"
+msgstr "IWM export at the push of a button"
+
+msgid ""
+"Die Meldung an die Vogelwarte als fertiger IWM-Export — ohne Handarbeit."
+msgstr "The report to the ringing centre as a ready-made IWM export — no manual work."
+
+msgid ""
+"BirdDoc ist in geschlossener Beta und während der Beta <strong>kostenlos</"
+"strong>. Trag dich in die Warteliste ein — wir melden uns, sobald ein "
+"Zugangscode frei wird."
+msgstr "BirdDoc is in closed beta and <strong>free</strong> during the beta. Join the waiting list — we'll get in touch as soon as an access code opens up."
+
+msgid "Zugang anfragen"
+msgstr "Request access"
+
+msgid "Schemaweit einführen — jede Gruppe bleibt für sich"
+msgstr "Roll out scheme-wide — every group stays on its own"
+
+msgid ""
+"BirdDoc lässt sich über eine ganze Beringungs-Landschaft ausrollen — und "
+"jede Gruppe behält dabei ihren eigenen, privaten Arbeitsbereich. Es gibt "
+"keine schemaweite Zentrale, die in alle Fänge sieht: Organisationen sehen "
+"die Daten der jeweils anderen nie."
+msgstr "BirdDoc can be rolled out across a whole ringing landscape — and every group keeps its own private workspace. There is no scheme-wide central authority that can see into every capture: organisations never see one another's data."
+
+msgid "Datenhoheit"
+msgstr "Data sovereignty"
+
+msgid ""
+"Alle Beringungsdaten liegen in Österreich bzw. der EU und werden DSGVO-"
+"konform verarbeitet. Die Organisation bleibt <strong>Verantwortliche</"
+"strong> im Sinne der DSGVO — BirdDoc ist ausschließlich "
+"<strong>Auftragsverarbeiter</strong>."
+msgstr "All ringing data is held in Austria or the EU and processed in line with the GDPR. The organisation remains the <strong>controller</strong> (Verantwortliche) under the GDPR — BirdDoc is solely the <strong>processor</strong> (Auftragsverarbeiter)."
+
+msgid "Kein Lock-in"
+msgstr "No lock-in"
+
+msgid ""
+"Jede Gruppe besitzt ihre Daten und kann sie jederzeit exportieren — als IWM- "
+"oder EURING-Datei. Eine Einführung von BirdDoc ist damit jederzeit umkehrbar."
+msgstr "Every group owns its data and can export it at any time — as an IWM or EURING file. Adopting BirdDoc is therefore reversible at any time."
+
+msgid "Kontinuität — ehrlich beantwortet"
+msgstr "Continuity — answered honestly"
+
+msgid ""
+"BirdDoc wird von einem <strong>Einzelunternehmen</strong> betrieben, von "
+"einer einzelnen Person. Statt dieses Risiko zu verstecken, beantworten wir "
+"es offen: Weil deine Daten dir gehören und jederzeit exportierbar sind, "
+"bleibst du unabhängig davon, wer BirdDoc betreibt."
+msgstr "BirdDoc is run by a <strong>sole proprietorship</strong> (Einzelunternehmen) — a single person. Instead of hiding that risk, we answer it openly: because your data belongs to you and can be exported at any time, you stay independent of whoever runs BirdDoc."
+
+msgid "Im Feld bewährt"
+msgstr "Proven in the field"
+
+msgid ""
+"BirdDoc dokumentiert bereits echte Beringung — entstanden als "
+"<strong>Masterarbeit</strong> und im täglichen Feldeinsatz erprobt."
+msgstr "BirdDoc already documents real ringing work — born as a <strong>master's thesis</strong> (Masterarbeit) and proven in daily field use."
+
+msgid ""
+"Für interessierte Gruppen ist ein begleiteter <strong>Beta-Pilot</strong> "
+"möglich — ohne festen Zeitplan."
+msgstr "For interested groups, a guided <strong>beta pilot</strong> is possible — with no fixed timeline."
+
+msgid "Gespräch anfragen"
+msgstr "Request a conversation"
+
+msgid "Schon einen Zugangscode? Organisation gründen"
+msgstr "Already have an access code? Found your organisation"
+
+msgid ""
+"<strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben in "
+"Österreich bzw. der EU — DSGVO-konform, ohne Drittanbieter-Tracking."
+msgstr "<strong>Hosted in Austria.</strong> All ringing data stays in Austria or the EU — GDPR-compliant, with no third-party tracking."
+
+msgid "Jetzt"
+msgstr "Now"
+
+msgid "Während der öffentlichen Beta <strong>kostenlos</strong>."
+msgstr "<strong>Free</strong> during the public beta."
+
+msgid "Ab 1.0"
+msgstr "From 1.0"
+
+msgid "Eine Lizenz <strong>pro Organisation</strong> — nie pro Kopf."
+msgstr "One licence <strong>per organisation</strong> — never per head."
+
+msgid ""
+"Wer während der Beta gründet, behält <strong>dauerhaft</strong> einen "
+"<strong>Vorzugspreis</strong> — auch nach 1.0."
+msgstr "Anyone who founds during the beta keeps a <strong>preferential price</strong> <strong>permanently</strong> — even after 1.0."
+
+msgid "Warteliste · Beringung"
+msgstr "Waiting list · Bird ringing"
+
+msgid ""
+"BirdDoc ist in geschlossener Beta. Trag dich in die Warteliste ein und wir "
+"melden uns, sobald ein Zugangscode frei wird. Es entstehen keine Kosten und "
+"du gehst keine Verpflichtung ein."
+msgstr "BirdDoc is in closed beta. Join the waiting list and we'll get in touch as soon as an access code opens up. There is no cost and no obligation."
+
+msgid "Die beiden Passwörter stimmen nicht überein."
+msgstr ""
+
+msgid "Dieser Zugangscode ist ungültig oder wurde bereits verwendet."
+msgstr ""
+
+msgid "Für diese E-Mail-Adresse gibt es bereits ein Konto."
+msgstr ""

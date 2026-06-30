@@ -19,11 +19,27 @@ class WartelisteForm(forms.ModelForm):
     email is required; the Organisation name and the note give the operator
     context but stay optional, so leaving a lead costs the visitor a single field.
     The lead type defaults to ``beringer`` on the model, so this funnel is
-    unchanged by the typed extension (issue #103)."""
+    unchanged by the typed extension (issue #103).
+
+    Its labels/help texts are translatable (``gettext_lazy``) so the form renders
+    English under ``/en/`` (issue #107); the model keeps its plain German
+    verbose names for the German-only admin."""
 
     class Meta:
         model = Warteliste
         fields = ["email", "organisation_name", "message"]
+        labels = {
+            "email": _("E-Mail"),
+            "organisation_name": _("Organisation"),
+            "message": _("Nachricht"),
+        }
+        help_texts = {
+            "email": _("Wir melden uns unter dieser Adresse, sobald ein Zugang frei wird."),
+            "organisation_name": _(
+                "Die Beringungs-Organisation, die du gründen möchtest (optional)."
+            ),
+            "message": _("Worum geht es? Erzähl uns kurz von deinem Vorhaben (optional)."),
+        }
 
 
 class GespraechForm(forms.ModelForm):
@@ -37,12 +53,23 @@ class GespraechForm(forms.ModelForm):
     class Meta:
         model = Warteliste
         fields = ["email", "organisation_name", "contact_role", "approx_beringer_count", "message"]
-        labels = {"organisation_name": _("Organisation / Stelle")}
+        labels = {
+            "email": _("E-Mail"),
+            "organisation_name": _("Organisation / Stelle"),
+            "contact_role": _("Funktion / Rolle"),
+            "approx_beringer_count": _("Ungefähre Anzahl Beringer"),
+            "message": _("Nachricht"),
+        }
         help_texts = {
             "email": _("An diese Adresse melden wir uns, um ein Gespräch zu vereinbaren."),
             "organisation_name": _(
                 "Die zentrale Stelle, für die du anfragst (z. B. eine Vogelwarte)."
             ),
+            "contact_role": _(
+                "Deine Funktion in der Organisation (z. B. wissenschaftliche Leitung)."
+            ),
+            "approx_beringer_count": _("Für wie viele Beringer sprichst du ungefähr? (optional)"),
+            "message": _("Worum geht es? Erzähl uns kurz von eurem Vorhaben (optional)."),
         }
 
     def save(self, commit=True):

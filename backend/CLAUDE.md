@@ -32,7 +32,17 @@ uv run pytest
 # Lint / format
 uv run ruff check .
 uv run ruff format .
+
+# Translations (bilingual marketing surface — issue #107, ADR 0009)
+# German is the source language; only English needs msgstrs. After changing a
+# translatable string, regenerate and recompile, then COMMIT the .mo (there is
+# no compilemessages step in CI or the Docker build, so the compiled catalog
+# must ship in the repo — see backend/.gitignore).
+uv run python manage.py makemessages -l en -l de --no-location
+uv run python manage.py compilemessages -l en -l de
 ```
+
+`LANGUAGE_CODE = "de"` (the app is `de-AT`), with `i18n_patterns(prefix_default_language=False)`: the apex renders German with no prefix and no geo-routing, English under `/en/`. Only the marketing home + the two lead forms are translated; the legal pages and the auth flows stay German under any prefix (their templates carry no `{% translate %}` and `GermanAuthFormMixin` forces the German catalog).
 
 Tests live in `birds/tests/` (one `test_*.py` per area), driven through the DRF HTTP API with shared fixtures in `birds/tests/conftest.py`. Lint config (`ruff`) and pytest config are in `pyproject.toml`.
 

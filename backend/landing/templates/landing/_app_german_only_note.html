@@ -1,0 +1,11 @@
+{% load i18n %}
+{% comment %}
+The one honest line the English marketing/lead surface carries (issue #107): the
+app itself is currently German-only. It only ever appears under /en/, so the
+text is plain English — there is nothing to translate. On the German surface it
+renders nothing.
+{% endcomment %}
+{% get_current_language as CUR_LANG %}
+{% if CUR_LANG == 'en' %}
+    <p class="app-lang-note" role="note">Please note: the BirdDoc app itself is currently available in German only. This page and the sign-up are in English; the product is not (yet).</p>
+{% endif %}

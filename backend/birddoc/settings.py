@@ -43,6 +43,10 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    # LocaleMiddleware activates the request language from the URL prefix added by
+    # i18n_patterns (the marketing surface is bilingual DE/EN — issue #107, ADR
+    # 0009). It must sit after SessionMiddleware and before CommonMiddleware.
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -80,7 +84,17 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-LANGUAGE_CODE = "en-us"
+# German is the default language: the marketing apex (birddoc.at/) renders
+# German with no language prefix and no geo-routing, English lives under /en/
+# (issue #107, ADR 0009). The app is de-AT, so a German default also keeps the
+# Django admin and DRF in German — the surface the operator works in.
+LANGUAGE_CODE = "de"
+LANGUAGES = [
+    ("de", "Deutsch"),
+    ("en", "English"),
+]
+# Project translation catalogs live here (German source strings → English).
+LOCALE_PATHS = [BASE_DIR / "locale"]
 # Anchor the capture-time round trip to Vienna: naive wall-clock input is
 # interpreted as Europe/Vienna and server-side renderers emit Vienna localtime
 # (issue #60). zoneinfo handles DST, so summer/winter offsets stay correct.
