@@ -9,6 +9,9 @@ stores an access-request lead.
 
 from django import forms
 from django.contrib.auth.password_validation import validate_password
+from django.urls import reverse
+from django.utils.html import format_html
+from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
 from .models import Warteliste
@@ -90,6 +93,31 @@ class RegistrationForm(forms.Form):
     code = forms.CharField(label=_("Zugangscode"), max_length=64)
     password1 = forms.CharField(label=_("Passwort"), widget=forms.PasswordInput)
     password2 = forms.CharField(label=_("Passwort bestätigen"), widget=forms.PasswordInput)
+    # Founding an Organisation requires affirmative, recorded acceptance of the
+    # AGB + DPA — the Organisation is the controller, BirdDoc the processor (PRD
+    # #68 story 51, issue #78). A required BooleanField rejects an unchecked box.
+    accept_agb = forms.BooleanField(
+        required=True,
+        error_messages={
+            "required": _(
+                "Bitte akzeptiere die AGB und die Vereinbarung zur "
+                "Auftragsverarbeitung (DPA), um eine Organisation zu gründen."
+            )
+        },
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # The label links to the AGB page (which carries the DPA appendix at
+        # #dpa). Built with format_html so the anchor renders clickable through
+        # {{ form.as_p }} on the German-only registration page.
+        self.fields["accept_agb"].label = format_html(
+            gettext(
+                'Ich akzeptiere die <a href="{}" target="_blank" rel="noopener">AGB '
+                "und die Vereinbarung zur Auftragsverarbeitung (DPA)</a>."
+            ),
+            reverse("landing:agb"),
+        )
 
     def clean_password2(self):
         password1 = self.cleaned_data.get("password1")

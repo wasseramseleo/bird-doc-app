@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-30 01:59+0200\n"
+"POT-Creation-Date: 2026-06-30 09:02+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -154,6 +154,9 @@ msgid "Seat-Limit"
 msgstr ""
 
 msgid "Beta-Kohorte"
+msgstr ""
+
+msgid "AGB/DPA akzeptiert am"
 msgstr ""
 
 msgid "Admin"
@@ -531,6 +534,16 @@ msgstr ""
 msgid "Passwort bestätigen"
 msgstr ""
 
+msgid ""
+"Bitte akzeptiere die AGB und die Vereinbarung zur Auftragsverarbeitung "
+"(DPA), um eine Organisation zu gründen."
+msgstr ""
+
+msgid ""
+"Ich akzeptiere die <a href=\"{}\" target=\"_blank\" rel=\"noopener\">AGB und "
+"die Vereinbarung zur Auftragsverarbeitung (DPA)</a>."
+msgstr ""
+
 msgid "Die Passwörter stimmen nicht überein."
 msgstr ""
 
@@ -548,6 +561,17 @@ msgid ""
 "Österreich gehostet, ohne Lock-in. Erzähl uns kurz von eurer Stelle, und wir "
 "melden uns für ein Gespräch. Es entstehen keine Kosten und du gehst keine "
 "Verpflichtung ein."
+msgstr ""
+
+msgid ""
+"Schluss mit Papier und Excel: BirdDoc ist die Feld-Dokumentation für die "
+"Vogelberingung — ein sauberer Datensatz pro gefangenem und beringtem Vogel."
+msgstr ""
+
+msgid "BirdDoc — Feldjournal für die Vogelberingung"
+msgstr ""
+
+msgid "BirdDoc — Beispiel-Fang-Karte"
 msgstr ""
 
 msgid "Hauptnavigation"
@@ -740,13 +764,4 @@ msgid "Dieser Zugangscode ist ungültig oder wurde bereits verwendet."
 msgstr ""
 
 msgid "Für diese E-Mail-Adresse gibt es bereits ein Konto."
-msgstr ""
-
-msgid "Schluss mit Papier und Excel: BirdDoc ist die Feld-Dokumentation für die Vogelberingung — ein sauberer Datensatz pro gefangenem und beringtem Vogel."
-msgstr ""
-
-msgid "BirdDoc — Feldjournal für die Vogelberingung"
-msgstr ""
-
-msgid "BirdDoc — Beispiel-Fang-Karte"
 msgstr ""

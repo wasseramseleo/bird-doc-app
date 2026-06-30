@@ -64,31 +64,37 @@ Single Django app (`birds/`) with project config in `birddoc/`. All routes are u
 
 | Model | Role |
 |-------|------|
-| `DataEntry` | Core record — one row per captured bird |
-| `Ring` | Unique `(size, number)` pair; full Austrian size scheme (frontend surfaces `V T S X P`) |
-| `Species` | ~1M-row lookup table with recommended ring size |
-| `Scientist` | The Beringer; OneToOne with Django User; identified by `handle` (e.g. `MUS`) |
+| `DataEntry` | Core record — one row per captured bird; owned by an `Organization` (tenant — ADR 0005) |
+| `Ring` | Unique `(organisation, size, number)` — org-scoped (ADR 0006); full Austrian size scheme (frontend surfaces `V T S X P`) |
+| `Species` | ~1M-row lookup table with recommended ring size; **global** reference data, *not* tenant-scoped |
+| `Scientist` | The Beringer; account-independent (nullable User FK — ADR 0001), org-owned, identified by `handle` (e.g. `MUS`) |
 | `RingingStation` | `handle` as PK (e.g. `STAMT`), name, belongs to an `Organization` |
-| `Organization` | Ringing scheme/body; `handle` as PK |
+| `Organization` | The **tenant** (ADR 0005); `handle` as PK; carries `plan` / `seat_limit` / `beta_cohort` / `agb_accepted_at` |
 | `Project` | Named campaign scoped to one `Organization` and a set of `Scientist` |
 | `SpeciesList` | Per-user M2M to Species for filtering |
+| `Mitgliedschaft` | Account ↔ `Organization` membership with a `Rolle` (`Admin` / `Mitglied`) — the tenancy spine (ADR 0005) |
+| `Zugangscode` | Single-use, operator-issued code gating org founding (ADR 0005) |
+| `OrgEinladung` | Email invitation of a Mitglied into an Organisation, capped by the Seat-Limit (issue #83) |
+| `Warteliste` | Public lead — Beringer Warteliste / Organisation Gespräch, typed discriminator (issues #80, #103) |
 
 ### API Endpoints
 
-**The entire API requires authentication** — DRF defaults are `IsAuthenticated` + `SessionAuthentication` (`birddoc/settings.py`). There are no public endpoints; the "Access" column below describes the shape, not the auth level.
+**The entire API requires authentication** — DRF defaults are `IsAuthenticated` + `SessionAuthentication` (`birddoc/settings.py`). The one public endpoint is the server-rendered Org-Einladung accept view on the Landing app (issue #83); the "Access" column below describes the shape, not the auth level. **Every collection is org-scoped to the requester's Organisation(s)** (ADR 0005, issue #74): a cross-tenant detail fetch or write returns **404** (the row is absent from the scoped queryset), and `Admin`-only writes by a same-tenant Mitglied return **403** (issue #76). `Species` is the sole exception — global reference data.
 
 | Endpoint | Access | Notes |
 |----------|--------|-------|
-| `/data-entries/` | CRUD | Core capture records; filter by `?project`, or `?ring_size` + `?ring_number` |
-| `/species/` | Read + search | Narrowed to the user's active SpeciesList when one exists; ordered by per-project usage frequency (`?project`) |
-| `/rings/` | Read | All rings |
-| `/rings/next-number?size=<size>&project=<id>` | Read | "Last consumed + 1" for that size in the project (see below) |
-| `/ringing-stations/` | Read + search | Filterable by `organization` handle |
-| `/scientists/` | Read + **Create** | List/retrieve plus authenticated create — a Beringer can be added mid-session (ADR 0001); no edit/delete |
-| `/organizations/` | Read + search | |
-| `/projects/` | CRUD | Scoped to the requesting user's Beringer |
-| `/projects/{id}/export-iwm/` | Read | Streams the project's captures as an IWM `.xlsx` workbook |
+| `/data-entries/` | CRUD | Core capture records, **org-scoped** to the active Organisation; filter by `?project`, or `?ring_size` + `?ring_number` |
+| `/species/` | Read + search | **Global** (not tenant-scoped); narrowed to the user's active SpeciesList when one exists; ordered by per-project usage frequency (`?project`) |
+| `/rings/` | Read | Org-scoped to the active Organisation (ADR 0006) |
+| `/rings/next-number?size=<size>&project=<id>` | Read | "Last consumed + 1" for that size in the project, org-scoped (see below) |
+| `/ringing-stations/` | Read + search | Org-scoped; create/edit/delete **Admin-only** (issue #76) |
+| `/scientists/` | Read + **Create** | Org-scoped; authenticated create — a Beringer can be added mid-session (ADR 0001); no edit/delete |
+| `/organizations/` | Read + search | Scoped to the requester's Mitgliedschaften; edit **Admin-only** (issue #76) |
+| `/projects/` | CRUD | Scoped to the requesting user's Beringer (org-isolating); create/edit/delete + IWM export **Admin-only** (issue #76) |
+| `/projects/{id}/export-iwm/` | Read | **Admin-only**; streams the project's captures as an IWM `.xlsx` workbook |
 | `/species-lists/` | CRUD | Per-user species filter lists |
+| `/invitations/` | **Admin-only** CRUD | Org-Einladung — invite a Mitglied by email, capped by the Seat-Limit; mails a public accept link (issue #83) |
+| `/mitgliedschaften/` | **Admin-only** | Member management — list/retrieve/`PATCH` Rolle/remove; the last Admin is protected (issue #83) |
 
 ### Key Design Decisions
 

@@ -221,6 +221,14 @@ class Organization(models.Model):
     )
     seat_limit = models.PositiveIntegerField(default=5, verbose_name=_("Seat-Limit"))
     beta_cohort = models.BooleanField(default=False, verbose_name=_("Beta-Kohorte"))
+    # When the founder accepted the AGB + DPA at org founding (PRD #68 story 51,
+    # issue #78). The Organisation is the controller and BirdDoc the processor;
+    # acceptance is a required, recorded step of the gated founding flow, stamped
+    # in ``birds.registration.register_organisation``. Nullable for legacy rows
+    # founded before this gate (e.g. the cutover-migrated IWM Linz Organisation).
+    agb_accepted_at = models.DateTimeField(
+        null=True, blank=True, verbose_name=_("AGB/DPA akzeptiert am")
+    )
 
     def __str__(self):
         return f"{self.handle}"

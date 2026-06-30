@@ -96,10 +96,20 @@ export_as_csv.short_description = "Als CSV exportieren"
 
 @admin.register(Organization)
 class OrganizationAdmin(admin.ModelAdmin):
-    list_display = ("handle", "name", "country", "plan", "seat_limit", "beta_cohort")
+    list_display = (
+        "handle",
+        "name",
+        "country",
+        "plan",
+        "seat_limit",
+        "beta_cohort",
+        "agb_accepted_at",
+    )
     list_editable = ("plan", "seat_limit", "beta_cohort")
     list_filter = ("plan", "beta_cohort")
     search_fields = ("handle", "name")
+    # Recorded automatically at founding (issue #78) — shown but not editable.
+    readonly_fields = ("agb_accepted_at",)
     ordering = ("handle",)
 
 

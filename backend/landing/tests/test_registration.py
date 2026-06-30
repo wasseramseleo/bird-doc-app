@@ -41,6 +41,9 @@ def _form_data(**overrides):
         "last_name": "Reiter",
         "organisation_name": "IWM Linz",
         "code": "BETA-WELCOME-1",
+        # Founding requires accepting the AGB + DPA (issue #78); the checkbox is
+        # ticked on the happy path.
+        "accept_agb": "on",
     }
     data.update(overrides)
     return data
@@ -53,6 +56,15 @@ def test_registration_page_renders_unauthenticated(client, db):
     # Server-rendered on the shared public base, not the Angular SPA shell.
     assert "landing/base.html" in {t.name for t in response.templates}
     assert "app-root" not in response.content.decode()
+
+
+def test_registration_page_offers_the_agb_acceptance_with_a_link(client, db):
+    # Founding is a recorded acceptance of the AGB + DPA (issue #78): the page
+    # carries the acceptance checkbox and a link to the AGB (which holds the DPA).
+    response = client.get(reverse("landing:register"))
+    content = response.content.decode()
+    assert 'name="accept_agb"' in content
+    assert reverse("landing:agb") in content
 
 
 def test_valid_code_founds_organisation_and_sends_verification_mail(client, code, mailoutbox):
@@ -80,6 +92,28 @@ def test_new_organisation_defaults_to_beta_plan_in_the_beta_cohort(client, code)
     org = Organization.objects.get(name="IWM Linz")
     assert org.plan == Organization.Plan.BETA
     assert org.beta_cohort is True
+
+
+def test_founding_records_the_agb_dpa_acceptance_on_the_organisation(client, code):
+    # Acceptance is durably recorded on the controlling Organisation (issue #78).
+    client.post(reverse("landing:register"), _form_data())
+    org = Organization.objects.get(name="IWM Linz")
+    assert org.agb_accepted_at is not None
+
+
+def test_founding_is_rejected_when_the_agb_dpa_is_not_accepted(client, code, mailoutbox):
+    # Leaving the AGB + DPA box unchecked blocks founding entirely: the form is
+    # re-rendered and nothing is created (issue #78, PRD #68 story 51).
+    data = _form_data()
+    del data["accept_agb"]  # an unchecked checkbox is simply absent from the POST
+    response = client.post(reverse("landing:register"), data)
+    assert response.status_code == 200
+    assert not get_user_model().objects.filter(email="newcomer@example.org").exists()
+    assert not Organization.objects.filter(name="IWM Linz").exists()
+    # The single-use code is preserved for a later, valid attempt, and no mail left.
+    code.refresh_from_db()
+    assert code.is_used is False
+    assert mailoutbox == []
 
 
 def test_account_cannot_log_in_until_the_email_is_verified(client, code):

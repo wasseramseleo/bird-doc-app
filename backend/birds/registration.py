@@ -5,7 +5,8 @@ A newcomer founds a new Organisation only with a valid single-use Zugangscode.
 consumes the code and, in a single atomic transaction, creates the founder's
 ``User`` (inactive until email verification), the founder's Beringer
 (``Scientist``), the ``Organisation`` (``plan=beta`` with the durable
-``beta_cohort`` marker) and the founder's Admin ``Mitgliedschaft``. An invalid
+``beta_cohort`` marker, stamping the AGB/DPA acceptance the founder ticked on
+the form — issue #78) and the founder's Admin ``Mitgliedschaft``. An invalid
 or already-used code is rejected before anything is created, so a failed
 registration leaves no trace and one code can never found two Organisations.
 """
@@ -81,6 +82,10 @@ def register_organisation(*, code, email, password, first_name, last_name, organ
             handle=_unique_organization_handle(organisation_name),
             plan=Organization.Plan.BETA,
             beta_cohort=True,
+            # Reaching this door means the founder ticked the required AGB + DPA
+            # acceptance box on the registration form (issue #78, PRD #68 story
+            # 51); record when the controlling Organisation accepted them.
+            agb_accepted_at=timezone.now(),
         )
         Mitgliedschaft.objects.create(
             user=user,
