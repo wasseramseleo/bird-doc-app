@@ -78,10 +78,10 @@ _SETTINGS_ENV_KEYS = (
 _PROD_ENV = {
     "DJANGO_DEBUG": "false",
     "DJANGO_SECRET_KEY": "a-real-production-secret-aBc123-not-the-insecure-default",
-    "DJANGO_ALLOWED_HOSTS": "app.birddoc.at,birddoc.at",
-    "CORS_ALLOWED_ORIGINS": "https://app.birddoc.at,https://birddoc.at",
-    "CSRF_TRUSTED_ORIGINS": "https://app.birddoc.at,https://birddoc.at",
-    "DJANGO_SESSION_COOKIE_DOMAIN": "app.birddoc.at",
+    "DJANGO_ALLOWED_HOSTS": "app.birddoc.eu,birddoc.eu",
+    "CORS_ALLOWED_ORIGINS": "https://app.birddoc.eu,https://birddoc.eu",
+    "CSRF_TRUSTED_ORIGINS": "https://app.birddoc.eu,https://birddoc.eu",
+    "DJANGO_SESSION_COOKIE_DOMAIN": "app.birddoc.eu",
 }
 
 
@@ -124,17 +124,17 @@ def test_production_settings_reject_a_missing_secret_key(reload_settings):
 
 def test_production_hosts_cover_app_and_apex(reload_settings):
     settings = reload_settings(**_PROD_ENV)
-    for host in ("app.birddoc.at", "birddoc.at"):
+    for host in ("app.birddoc.eu", "birddoc.eu"):
         assert host in settings.ALLOWED_HOSTS
-    for origin in ("https://app.birddoc.at", "https://birddoc.at"):
+    for origin in ("https://app.birddoc.eu", "https://birddoc.eu"):
         assert origin in settings.CORS_ALLOWED_ORIGINS
         assert origin in settings.CSRF_TRUSTED_ORIGINS
 
 
 def test_production_shares_session_across_the_app_subdomain(reload_settings):
     settings = reload_settings(**_PROD_ENV)
-    # SPA and /admin both live on app.birddoc.at and share one session cookie.
-    assert settings.SESSION_COOKIE_DOMAIN == "app.birddoc.at"
+    # SPA and /admin both live on app.birddoc.eu and share one session cookie.
+    assert settings.SESSION_COOKIE_DOMAIN == "app.birddoc.eu"
     assert settings.SESSION_COOKIE_SECURE is True
     assert settings.CSRF_COOKIE_SECURE is True
 
@@ -153,10 +153,10 @@ def test_development_defaults_remain_working(reload_settings):
 
 def test_transactional_mail_leaves_from_the_birddoc_sender(reload_settings):
     # Every transactional mail (reset, later verification/invites) is from
-    # noreply@birddoc.at unless the environment overrides it.
+    # noreply@birddoc.eu unless the environment overrides it.
     settings = reload_settings(DJANGO_DEBUG="true")
-    assert settings.DEFAULT_FROM_EMAIL == "noreply@birddoc.at"
-    assert settings.SERVER_EMAIL == "noreply@birddoc.at"
+    assert settings.DEFAULT_FROM_EMAIL == "noreply@birddoc.eu"
+    assert settings.SERVER_EMAIL == "noreply@birddoc.eu"
 
 
 def test_production_email_uses_env_driven_smtp(reload_settings):

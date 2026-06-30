@@ -7,7 +7,7 @@ status: accepted
 ## Context
 
 #68 introduced the public landing as a server-rendered **Django app** (apex
-`birddoc.at`), kept distinct from the headless `/api` — the right home for the
+`birddoc.eu`), kept distinct from the headless `/api` — the right home for the
 unauthenticated flows it carries: Zugangscode registration, email verification,
 password reset and invite-accept all do server-side, transactional, token-bearing
 work, and #68 deliberately served them as plain web pages so they work without

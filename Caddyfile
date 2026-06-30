@@ -6,13 +6,13 @@
 # HTTP-01 challenge plus the automatic HTTP->HTTPS redirect, 443 serves traffic.
 {
 	# ACME account email — Let's Encrypt sends expiry/again-failure notices here.
-	email operator@birddoc.at
+	email operator@birddoc.eu
 }
 
 # Apex: the public, server-rendered Django landing (marketing + the Zugangscode
 # registration, email-verification, password-reset and Org-Einladung accept
 # flows). Same gunicorn as the API, routed here by Host (ADR 0009).
-birddoc.at {
+birddoc.eu {
 	encode gzip
 
 	# Brand assets + the landing's own CSS, collected into the shared volume.
@@ -28,7 +28,7 @@ birddoc.at {
 }
 
 # App subdomain: the Angular SPA at /, with the headless API and Django admin.
-app.birddoc.at {
+app.birddoc.eu {
 	encode gzip
 
 	# Django backend: API + admin (path NOT stripped).
@@ -51,11 +51,11 @@ app.birddoc.at {
 	}
 }
 
-# birddoc.at is canonical; the .eu hosts 301-redirect to their .at counterparts,
+# birddoc.eu is canonical; the .at hosts 301-redirect to their .eu counterparts,
 # preserving path + query ({uri}). `permanent` = HTTP 301.
-birddoc.eu {
-	redir https://birddoc.at{uri} permanent
+birddoc.at {
+	redir https://birddoc.eu{uri} permanent
 }
-app.birddoc.eu {
-	redir https://app.birddoc.at{uri} permanent
+app.birddoc.at {
+	redir https://app.birddoc.eu{uri} permanent
 }

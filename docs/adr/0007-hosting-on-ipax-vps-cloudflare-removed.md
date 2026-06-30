@@ -20,8 +20,8 @@ datacenter) is available with enough resources for both and a public IP.
 Move app + landing to the IPAX VPS:
 
 - DNS A records point **directly** at the VPS public IP. **Caddy** terminates TLS
-  via Let's Encrypt and reverse-proxies: apex `birddoc.at` → Django landing,
-  `app.birddoc.at` → Angular static for `/` and `/api`+`/admin` → Django
+  via Let's Encrypt and reverse-proxies: apex `birddoc.eu` → Django landing,
+  `app.birddoc.eu` → Angular static for `/` and `/api`+`/admin` → Django
   (gunicorn).
 - **Drop Cloudflare entirely** — no Tunnel, no CDN/WAF. At beta volume the edge
   cache, WAF and origin-IP hiding do not justify the extra moving part. Re-adding

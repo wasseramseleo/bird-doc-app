@@ -41,7 +41,7 @@ def test_request_for_known_email_sends_reset_mail(client, account, mailoutbox):
     assert len(mailoutbox) == 1
     message = mailoutbox[0]
     assert message.to == ["ringer@example.org"]
-    assert message.from_email == "noreply@birddoc.at"
+    assert message.from_email == "noreply@birddoc.eu"
 
 
 def test_following_link_sets_a_new_password_the_user_can_log_in_with(client, account, mailoutbox):

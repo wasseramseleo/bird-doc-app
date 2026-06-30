@@ -65,6 +65,6 @@ Brings up `db` (Postgres 16), `backend` (Django on `:8000`), and `frontend` (Ang
 
 ## Deployment
 
-`main` deploys automatically: GitHub Actions builds backend + frontend images, pushes them to GHCR, then SSHes into the **IPAX VPS** (Debian 13, public IP) and rolls out `docker-compose.prod.yml`. **Caddy** terminates TLS via Let's Encrypt and routes by host — apex `birddoc.at` → the Django landing, `app.birddoc.at` → the Angular SPA with `/api` + `/admin` → the backend, and `birddoc.eu` / `app.birddoc.eu` → 301 to the `.at` canonical hosts. Cloudflare and Tailscale are gone (ADR 0007).
+`main` deploys automatically: GitHub Actions builds backend + frontend images, pushes them to GHCR, then SSHes into the **IPAX VPS** (Debian 13, public IP) and rolls out `docker-compose.prod.yml`. **Caddy** terminates TLS via Let's Encrypt and routes by host — apex `birddoc.eu` → the Django landing, `app.birddoc.eu` → the Angular SPA with `/api` + `/admin` → the backend, and `birddoc.at` / `app.birddoc.at` → 301 to the `.eu` canonical hosts. Cloudflare and Tailscale are gone (ADR 0007).
 
 See [`docs/deploy.md`](docs/deploy.md) for the full runbook (VPS bootstrap, DNS, Brevo mail, backup/restore, cutover) and [`deploy/README.md`](deploy/README.md) for the required GitHub secrets.

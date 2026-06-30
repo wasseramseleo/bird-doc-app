@@ -95,7 +95,7 @@ jobs:
             DJANGO_APP_LOGIN_URL=${{ secrets.APP_LOGIN_URL }}
             DJANGO_OPERATOR_EMAIL=${{ secrets.OPERATOR_EMAIL }}
             DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-            DJANGO_DEFAULT_FROM_EMAIL=noreply@birddoc.at
+            DJANGO_DEFAULT_FROM_EMAIL=noreply@birddoc.eu
             DJANGO_EMAIL_HOST=smtp-relay.brevo.com
             DJANGO_EMAIL_PORT=587
             DJANGO_EMAIL_HOST_USER=${{ secrets.BREVO_SMTP_USER }}

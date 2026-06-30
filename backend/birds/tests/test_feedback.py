@@ -27,7 +27,7 @@ def test_authenticated_submission_emails_the_operator(auth_client, mailoutbox):
     assert len(mailoutbox) == 1
     message = mailoutbox[0]
     assert message.to == [settings.OPERATOR_EMAIL]
-    assert message.from_email == "noreply@birddoc.at"
+    assert message.from_email == "noreply@birddoc.eu"
 
 
 @pytest.mark.django_db
@@ -50,7 +50,7 @@ def test_operator_mail_carries_the_message_and_lets_the_operator_reply(mailoutbo
     assert "birder@example.org" in message.subject
     # ...and can reply straight to the submitter (mail still leaves from no-reply).
     assert message.reply_to == ["birder@example.org"]
-    assert message.from_email == "noreply@birddoc.at"
+    assert message.from_email == "noreply@birddoc.eu"
 
 
 @pytest.mark.django_db

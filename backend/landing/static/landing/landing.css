@@ -5,7 +5,7 @@
  * ink-brown accent, Lora + Inter), linked ahead of this file and shipped
  * byte-identical to the Angular app (ADR 0009). This file maps those --bd-*
  * tokens onto the landing's own semantic names and keeps the record-card
- * layout — one brand across birddoc.at and app.birddoc.at. */
+ * layout — one brand across birddoc.eu and app.birddoc.eu. */
 
 :root {
     --paper: var(--bd-paper);

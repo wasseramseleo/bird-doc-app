@@ -62,7 +62,7 @@ def test_submitting_emails_the_operator(client, db, mailoutbox, settings):
     assert len(mailoutbox) == 1
     message = mailoutbox[0]
     assert message.to == ["operator@example.test"]
-    assert message.from_email == "noreply@birddoc.at"
+    assert message.from_email == "noreply@birddoc.eu"
     # The operator can act on it without opening the admin: the lead's email and
     # the Organisation it names are in the body.
     assert "neue.beringerin@example.org" in message.body
@@ -214,7 +214,7 @@ def test_gespraech_post_emails_the_operator_with_the_context(client, db, mailout
     assert len(mailoutbox) == 1
     message = mailoutbox[0]
     assert message.to == ["operator@example.test"]
-    assert message.from_email == "noreply@birddoc.at"
+    assert message.from_email == "noreply@birddoc.eu"
     # The operator can triage from the inbox: the subject marks it an org lead...
     assert "Organisation" in message.subject
     # ...and the body carries the extra org context, not just the email.

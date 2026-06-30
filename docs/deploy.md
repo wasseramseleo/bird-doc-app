@@ -15,9 +15,9 @@ IPAX VPS (Debian 13, public IP)
   ├─ ufw firewall            (22 SSH, 80/443 HTTP/S)
   └─ docker compose stack    (/opt/bird-doc-app/docker-compose.prod.yml)
        ├─ caddy   → :80/:443  (terminates TLS via Let's Encrypt; public ingress)
-       │     ├─ birddoc.at        → backend (Django landing) + /static
-       │     ├─ app.birddoc.at    → / → frontend (SPA); /api,/admin → backend; /static
-       │     └─ birddoc.eu, app.birddoc.eu → 301 → .at canonical
+       │     ├─ birddoc.eu        → backend (Django landing) + /static
+       │     ├─ app.birddoc.eu    → / → frontend (SPA); /api,/admin → backend; /static
+       │     └─ birddoc.at, app.birddoc.at → 301 → .eu canonical
        ├─ frontend (nginx + Angular build)
        ├─ backend  (gunicorn; entrypoint runs migrate + collectstatic)
        └─ db       (postgres:16-alpine, data at /opt/bird-doc-app/pgdata)
@@ -57,12 +57,12 @@ Create A records (and AAAA if you have IPv6) at your DNS provider, pointing **di
 
 | Host | Type | Value | Purpose |
 |---|---|---|---|
-| `birddoc.at` | A | `<VPS_IP>` | Apex → Django landing |
-| `app.birddoc.at` | A | `<VPS_IP>` | App subdomain → SPA + `/api` + `/admin` |
-| `birddoc.eu` | A | `<VPS_IP>` | 301 → `birddoc.at` |
-| `app.birddoc.eu` | A | `<VPS_IP>` | 301 → `app.birddoc.at` |
+| `birddoc.eu` | A | `<VPS_IP>` | Apex → Django landing |
+| `app.birddoc.eu` | A | `<VPS_IP>` | App subdomain → SPA + `/api` + `/admin` |
+| `birddoc.at` | A | `<VPS_IP>` | 301 → `birddoc.eu` |
+| `app.birddoc.at` | A | `<VPS_IP>` | 301 → `app.birddoc.eu` |
 
-All four must resolve to the VPS before the first deploy, because Caddy obtains a Let's Encrypt certificate for **each** hostname on startup via the HTTP-01 challenge (port 80). The `.eu` hosts need certs too — they serve the 301 redirect over HTTPS.
+All four must resolve to the VPS before the first deploy, because Caddy obtains a Let's Encrypt certificate for **each** hostname on startup via the HTTP-01 challenge (port 80). The `.at` hosts need certs too — they serve the 301 redirect over HTTPS.
 
 > During cutover, leave the old DNS in place until the new box is proven (see [Cutover from the LXC](#cutover-from-the-lxc)). You can validate the VPS ahead of the DNS switch by adding `/etc/hosts` overrides on your workstation.
 
@@ -95,36 +95,36 @@ ssh -i ~/.ssh/birddoc_deploy deploy@<VPS_IP> 'docker version'
 
 ## Step 4 — Set up Brevo (transactional mail)
 
-Every transactional mail (email verification, password reset, Org-Einladung, Warteliste/feedback notifications) leaves from `noreply@birddoc.at` over the Brevo EU SMTP relay.
+Every transactional mail (email verification, password reset, Org-Einladung, Warteliste/feedback notifications) leaves from `noreply@birddoc.eu` over the Brevo EU SMTP relay.
 
-1. Create a **Brevo** account and add the sender domain `birddoc.at`.
+1. Create a **Brevo** account and add the sender domain `birddoc.eu`.
 2. Publish the DNS records Brevo generates so SPF, DKIM and DMARC pass:
    - **SPF** — add `include:spf.brevo.com` to (or create) the apex `TXT` SPF record.
    - **DKIM** — the two `CNAME`/`TXT` records Brevo shows for the domain key.
-   - **DMARC** — a `_dmarc.birddoc.at` `TXT` record, e.g. `v=DMARC1; p=quarantine; rua=mailto:postmaster@birddoc.at`.
+   - **DMARC** — a `_dmarc.birddoc.eu` `TXT` record, e.g. `v=DMARC1; p=quarantine; rua=mailto:postmaster@birddoc.eu`.
 3. Verify the domain in Brevo (it checks the records above) and create an **SMTP key** — its login + key become the `BREVO_SMTP_USER` / `BREVO_SMTP_PASSWORD` secrets in step 5.
 
-Confirm alignment after DNS propagates (e.g. `dig +short TXT birddoc.at`, `dig +short TXT _dmarc.birddoc.at`) and send a Brevo test mail to a Gmail/Outlook inbox — the headers should show `spf=pass`, `dkim=pass`, `dmarc=pass`.
+Confirm alignment after DNS propagates (e.g. `dig +short TXT birddoc.eu`, `dig +short TXT _dmarc.birddoc.eu`) and send a Brevo test mail to a Gmail/Outlook inbox — the headers should show `spf=pass`, `dkim=pass`, `dmarc=pass`.
 
 ## Step 5 — Add GitHub Actions secrets
 
 Repo → **Settings → Secrets and variables → Actions → New repository secret**. All of these are required by `.github/workflows/deploy.yml`.
 
-| Secret | Value / how to generate |
-|---|---|
-| `SSH_HOST` | VPS public IP or DNS name |
-| `SSH_USER` | `deploy` |
-| `SSH_PRIVATE_KEY` | Contents of `~/.ssh/birddoc_deploy` from step 3 |
-| `DJANGO_SECRET_KEY` | `openssl rand -hex 64` |
-| `DJANGO_ALLOWED_HOSTS` | `app.birddoc.at,birddoc.at` |
-| `POSTGRES_PASSWORD` | `openssl rand -base64 32` |
-| `CORS_ALLOWED_ORIGINS` | `https://app.birddoc.at,https://birddoc.at` |
-| `CSRF_TRUSTED_ORIGINS` | `https://app.birddoc.at,https://birddoc.at` |
-| `SESSION_COOKIE_DOMAIN` | `app.birddoc.at` (SPA + `/admin` share one session) |
-| `APP_LOGIN_URL` | `https://app.birddoc.at/login` |
-| `OPERATOR_EMAIL` | operator inbox (e.g. `zugang@birddoc.at`) |
-| `BREVO_SMTP_USER` | Brevo SMTP login from step 4 |
-| `BREVO_SMTP_PASSWORD` | Brevo SMTP key from step 4 |
+| Secret | Value / how to generate                             |
+|---|-----------------------------------------------------|
+| `SSH_HOST` | VPS public IP or DNS name                           |
+| `SSH_USER` | `deploy`                                            |
+| `SSH_PRIVATE_KEY` | Contents of `~/.ssh/birddoc_deploy` from step 3     |
+| `DJANGO_SECRET_KEY` | `openssl rand -hex 64`                              |
+| `DJANGO_ALLOWED_HOSTS` | `app.birddoc.eu,birddoc.eu`                         |
+| `POSTGRES_PASSWORD` | `openssl rand -base64 32`                           |
+| `CORS_ALLOWED_ORIGINS` | `https://app.birddoc.eu,https://birddoc.eu`         |
+| `CSRF_TRUSTED_ORIGINS` | `https://app.birddoc.eu,https://birddoc.eu`         |
+| `SESSION_COOKIE_DOMAIN` | `app.birddoc.eu` (SPA + `/admin` share one session) |
+| `APP_LOGIN_URL` | `https://app.birddoc.eu/login`                      |
+| `OPERATOR_EMAIL` | operator inbox (e.g. `contact@birddoc.eu`)          |
+| `BREVO_SMTP_USER` | Brevo SMTP login from step 4                        |
+| `BREVO_SMTP_PASSWORD` | Brevo SMTP key from step 4                          |
 
 `DATABASE_URL` is **constructed** by the workflow from `POSTGRES_PASSWORD` — don't set it as a secret. The Caddy hostnames are baked into the `Caddyfile`, so there is no `DOMAIN` secret.
 
@@ -154,10 +154,10 @@ docker compose -f docker-compose.prod.yml logs --tail 100 caddy
 Then from anywhere:
 
 ```bash
-curl -I  https://birddoc.at/                       # 200 — landing
-curl -I  https://app.birddoc.at/                    # 200/302 — SPA
-curl -sI https://birddoc.eu/     | grep -i location # -> https://birddoc.at/
-curl -sI https://app.birddoc.eu/ | grep -i location # -> https://app.birddoc.at/
+curl -I  https://birddoc.eu/                       # 200 — landing
+curl -I  https://app.birddoc.eu/                    # 200/302 — SPA
+curl -sI https://birddoc.at/     | grep -i location # -> https://birddoc.eu/
+curl -sI https://app.birddoc.at/ | grep -i location # -> https://app.birddoc.eu/
 ```
 
 Expected:
@@ -165,7 +165,7 @@ Expected:
 - All four services (`db`, `backend`, `frontend`, `caddy`) show `Up`/`healthy`.
 - Caddy log shows `certificate obtained successfully` for each hostname.
 - Backend log shows `Apply all migrations …` followed by `Booting worker`.
-- The `.eu` curls return `301` with the `.at` `Location`.
+- The `.at` curls return `301` with the `.eu` `Location`.
 
 ## Step 8 — Create the Django superuser (one-time)
 
@@ -176,7 +176,7 @@ docker compose -f /opt/bird-doc-app/docker-compose.prod.yml exec backend \
   python manage.py createsuperuser
 ```
 
-Admin UI: `https://app.birddoc.at/admin/`.
+Admin UI: `https://app.birddoc.eu/admin/`.
 
 ## Step 9 — Backup + tested restore (before go-public)
 

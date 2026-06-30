@@ -64,10 +64,10 @@ cat <<'EOF'
 Next steps (see docs/deploy.md for the full runbook):
 
 1. Point DNS A records straight at this VPS's public IP:
-     birddoc.at        A   <VPS_IP>
-     app.birddoc.at    A   <VPS_IP>
-     birddoc.eu        A   <VPS_IP>   (301 -> birddoc.at)
-     app.birddoc.eu    A   <VPS_IP>   (301 -> app.birddoc.at)
+     birddoc.eu        A   <VPS_IP>
+     app.birddoc.eu    A   <VPS_IP>
+     birddoc.at        A   <VPS_IP>   (301 -> birddoc.eu)
+     app.birddoc.at    A   <VPS_IP>   (301 -> app.birddoc.eu)
    Caddy obtains a Let's Encrypt certificate for each once DNS resolves here.
 
 2. Create the deploy SSH user (key-only) — its private key becomes the
@@ -83,13 +83,13 @@ Next steps (see docs/deploy.md for the full runbook):
      SSH_USER                  deploy (must be in the docker group, or root)
      SSH_PRIVATE_KEY           private key authorized on the deploy user
      DJANGO_SECRET_KEY         long random string (`openssl rand -hex 64`)
-     DJANGO_ALLOWED_HOSTS      app.birddoc.at,birddoc.at
+     DJANGO_ALLOWED_HOSTS      app.birddoc.eu,birddoc.eu
      POSTGRES_PASSWORD         database password
-     CORS_ALLOWED_ORIGINS      https://app.birddoc.at,https://birddoc.at
-     CSRF_TRUSTED_ORIGINS      https://app.birddoc.at,https://birddoc.at
-     SESSION_COOKIE_DOMAIN     app.birddoc.at
-     APP_LOGIN_URL             https://app.birddoc.at/login
-     OPERATOR_EMAIL            operator inbox (e.g. zugang@birddoc.at)
+     CORS_ALLOWED_ORIGINS      https://app.birddoc.eu,https://birddoc.eu
+     CSRF_TRUSTED_ORIGINS      https://app.birddoc.eu,https://birddoc.eu
+     SESSION_COOKIE_DOMAIN     app.birddoc.eu
+     APP_LOGIN_URL             https://app.birddoc.eu/login
+     OPERATOR_EMAIL            operator inbox (e.g. zugang@birddoc.eu)
      BREVO_SMTP_USER           Brevo SMTP login
      BREVO_SMTP_PASSWORD       Brevo SMTP key (never commit it)
 
@@ -97,9 +97,9 @@ Next steps (see docs/deploy.md for the full runbook):
    roll out docker-compose.prod.yml.
 
 5. Verify after first deploy:
-     curl -I https://birddoc.at/
-     curl -I https://app.birddoc.at/
-     curl -sI https://birddoc.eu/ | grep -i location   # -> https://birddoc.at/
+     curl -I https://birddoc.eu/
+     curl -I https://app.birddoc.eu/
+     curl -sI https://birddoc.at/ | grep -i location   # -> https://birddoc.eu/
      docker compose -f /opt/bird-doc-app/docker-compose.prod.yml logs caddy
 
 EOF

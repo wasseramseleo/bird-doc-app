@@ -40,7 +40,7 @@ urlpatterns += [
     path("og/fang-karte.svg", seo.FangKarteOgImageView.as_view(), name="og_fang_karte"),
 ]
 
-# Public, server-rendered landing served at the apex host (birddoc.at), kept
+# Public, server-rendered landing served at the apex host (birddoc.eu), kept
 # separate from the headless `/api` routes above (issue #71, ADR 0007). It is the
 # bilingual surface (issue #107): `prefix_default_language=False` serves German
 # at the apex with no prefix and no geo-routing, English under `/en/`. Legal and

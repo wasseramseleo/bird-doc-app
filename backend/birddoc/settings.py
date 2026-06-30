@@ -85,7 +85,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# German is the default language: the marketing apex (birddoc.at/) renders
+# German is the default language: the marketing apex (birddoc.eu/) renders
 # German with no language prefix and no geo-routing, English lives under /en/
 # (issue #107, ADR 0009). The app is de-AT, so a German default also keeps the
 # Django admin and DRF in German — the surface the operator works in.
@@ -172,7 +172,7 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
 # Scope the session cookie to the app subdomain so the Angular SPA and Django
-# /admin (both served from app.birddoc.at) share one session. Unset in dev so
+# /admin (both served from app.birddoc.eu) share one session. Unset in dev so
 # the cookie stays host-only and works on localhost.
 SESSION_COOKIE_DOMAIN = env("DJANGO_SESSION_COOKIE_DOMAIN", default=None)
 
@@ -181,20 +181,20 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Email: console in dev (verification/reset mails print to the log); production
 # points DJANGO_EMAIL_BACKEND at the SMTP backend and supplies the Brevo (EU)
-# SMTP credentials below. Every transactional mail leaves from noreply@birddoc.at
+# SMTP credentials below. Every transactional mail leaves from noreply@birddoc.eu
 # (issue #77).
 EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND",
     default="django.core.mail.backends.console.EmailBackend",
 )
-DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@birddoc.at")
+DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@birddoc.eu")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # The operator's inbox — distinct from DEFAULT_FROM_EMAIL (the no-reply sender).
 # Receives in-app feedback ("Feedback / Fehler melden", issue #81) and public
 # Warteliste access-request notifications ("Zugang anfragen", issue #80), so the
 # operator learns of demand for Zugangscodes without polling the admin.
-OPERATOR_EMAIL = env("DJANGO_OPERATOR_EMAIL", default="operator@birddoc.at")
+OPERATOR_EMAIL = env("DJANGO_OPERATOR_EMAIL", default="operator@birddoc.eu")
 
 # SMTP transport (Brevo EU relay). Only consulted when DJANGO_EMAIL_BACKEND points
 # at the SMTP backend; the dev console backend ignores these. Credentials come
@@ -206,7 +206,7 @@ EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=True)
 
 # Where the public Landing app points a newly-registered founder to sign in:
-# the Angular SPA login. The Landing app (apex, birddoc.at) and the SPA
-# (app.birddoc.at) are separate hosts, so this is an absolute URL. Dev defaults
-# to the local SPA; prod sets DJANGO_APP_LOGIN_URL to https://app.birddoc.at/login.
+# the Angular SPA login. The Landing app (apex, birddoc.eu) and the SPA
+# (app.birddoc.eu) are separate hosts, so this is an absolute URL. Dev defaults
+# to the local SPA; prod sets DJANGO_APP_LOGIN_URL to https://app.birddoc.eu/login.
 APP_LOGIN_URL = env("DJANGO_APP_LOGIN_URL", default="http://localhost:4200/login")

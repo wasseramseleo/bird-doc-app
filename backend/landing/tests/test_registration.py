@@ -71,7 +71,7 @@ def test_valid_code_founds_organisation_and_sends_verification_mail(client, code
     # One verification mail leaves the system, from the BirdDoc sender.
     assert len(mailoutbox) == 1
     assert mailoutbox[0].to == ["newcomer@example.org"]
-    assert mailoutbox[0].from_email == "noreply@birddoc.at"
+    assert mailoutbox[0].from_email == "noreply@birddoc.eu"
 
 
 def test_new_organisation_defaults_to_beta_plan_in_the_beta_cohort(client, code):

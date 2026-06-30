@@ -33,13 +33,13 @@ Hosted on an **IPAX VPS** (Debian 13, Austrian/EU data residency) with a public 
         │  ufw: 22 (SSH) · 80/443 (HTTP/S)                 │
         │                                                  │
         │  Caddy  :80/:443  (Let's Encrypt; public ingress)│
-        │   ├─ birddoc.at        ─┬─▶ /static/*  → /srv/staticfiles
+        │   ├─ birddoc.eu        ─┬─▶ /static/*  → /srv/staticfiles
         │   │   (apex, landing)   └─▶ /          → backend:8000  (Django landing)
         │   │                                                   (gunicorn, UID 1001)
-        │   ├─ app.birddoc.at    ─┬─▶ /api/*, /admin/*  → backend:8000
+        │   ├─ app.birddoc.eu    ─┬─▶ /api/*, /admin/*  → backend:8000
         │   │   (SPA + API)       ├─▶ /static/*         → /srv/staticfiles
         │   │                     └─▶ /                 → frontend:80  (nginx + Angular)
-        │   └─ birddoc.eu, app.birddoc.eu ─▶ 301 → .at canonical
+        │   └─ birddoc.at, app.birddoc.at ─▶ 301 → .eu canonical
         │                                          │
         │                                          ▼
         │                                Postgres 16 (host bind /opt/bird-doc-app/pgdata)
@@ -49,7 +49,7 @@ Hosted on an **IPAX VPS** (Debian 13, Austrian/EU data residency) with a public 
               GitHub Actions runner ──▶ scp compose+Caddyfile ──▶ docker compose pull && up -d
 ```
 
-- **Host-based routing.** Caddy splits by `Host`: the apex `birddoc.at` serves the server-rendered Django landing (ADR 0009); `app.birddoc.at` serves the Angular SPA at `/` with `/api` + `/admin` proxied to the same gunicorn. The landing and the API are one Django process, separated only by host + URL prefix. `birddoc.eu` and `app.birddoc.eu` 301-redirect to their `.at` counterparts (path + query preserved).
+- **Host-based routing.** Caddy splits by `Host`: the apex `birddoc.eu` serves the server-rendered Django landing (ADR 0009); `app.birddoc.eu` serves the Angular SPA at `/` with `/api` + `/admin` proxied to the same gunicorn. The landing and the API are one Django process, separated only by host + URL prefix. `birddoc.at` and `app.birddoc.at` 301-redirect to their `.eu` counterparts (path + query preserved).
 - **TLS is the VPS's responsibility.** Caddy obtains and renews a Let's Encrypt certificate per hostname over the HTTP-01 challenge, so ports 80 and 443 must stay publicly reachable. No edge cache or WAF (accepted at beta scale — ADR 0007).
 - **Deploy is public SSH.** `SSH_HOST` in GitHub secrets is the VPS IP/DNS; auth is key-only and the firewall (ufw) limits exposure to 22/80/443.
 - `staticfiles` is a named docker volume shared read-only into Caddy; it is seeded by `collectstatic` on every backend start.

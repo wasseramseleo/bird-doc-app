@@ -29,7 +29,7 @@ def test_admin_invites_colleague_by_email_sends_mail(auth_client, scientist, mai
     assert len(mailoutbox) == 1
     message = mailoutbox[0]
     assert message.to == ["kollege@example.org"]
-    assert message.from_email == "noreply@birddoc.at"
+    assert message.from_email == "noreply@birddoc.eu"
     # The mail carries the accept link the invitee follows on the public Landing.
     assert f"/einladung/{invitation.token}/" in message.body
 
