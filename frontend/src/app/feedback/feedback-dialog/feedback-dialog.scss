@@ -1,0 +1,9 @@
+.full-width {
+  width: 100%;
+}
+
+.feedback-dialog__intro {
+  margin: 0 0 1rem;
+  max-width: 32rem;
+  color: var(--mat-sys-on-surface-variant, rgba(0, 0, 0, 0.6));
+}

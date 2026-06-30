@@ -126,8 +126,12 @@ def test_create_creates_ring_when_missing(auth_client, species, scientist, ringi
 
 
 @pytest.mark.django_db
-def test_create_reuses_existing_ring(auth_client, species, scientist, ringing_station):
-    Ring.objects.create(number="400", size=Ring.RingSizes.V)
+def test_create_reuses_existing_ring(
+    auth_client, species, scientist, ringing_station, organization
+):
+    # Reuse is scoped to the recording Organisation (ADR 0006): a ring already
+    # owned by that org is reused rather than duplicated.
+    Ring.objects.create(number="400", size=Ring.RingSizes.V, organization=organization)
     response = auth_client.post(
         LIST_URL,
         _payload(species, scientist, ringing_station, ring_number="400"),
@@ -196,6 +200,47 @@ def test_create_ring_destroyed_nulls_bird_data_server_side(
 
 
 @pytest.mark.django_db
+def test_new_capture_attaches_to_active_organisation(
+    auth_client, species, scientist, ringing_station, organization
+):
+    """A newly recorded capture attaches to the requester's active Organisation
+    (ADR 0005, issue #69)."""
+    response = auth_client.post(
+        LIST_URL,
+        _payload(species, scientist, ringing_station, ring_number="700"),
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get(id=response.json()["id"])
+    assert entry.organization == organization
+
+
+@pytest.mark.django_db
+def test_create_rejected_when_account_has_no_active_organisation(
+    api_client, species, ringing_station
+):
+    """Without a Mitgliedschaft there is no active Organisation to attach to, so a
+    capture cannot be recorded."""
+    from django.contrib.auth.models import User
+
+    from birds.models import Scientist
+
+    orphan = User.objects.create_user(username="orphan", password="hunter2-very-strong")
+    Scientist.objects.create(user=orphan, handle="ORP")
+    api_client.force_authenticate(user=orphan)
+
+    response = api_client.post(
+        LIST_URL,
+        _payload(species, Scientist.objects.get(handle="ORP"), ringing_station, ring_number="701"),
+        format="json",
+    )
+
+    assert response.status_code == 403
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_update_switches_ring_and_cleans_orphan(
     auth_client, data_entry, species, scientist, ringing_station
 ):
@@ -244,12 +289,15 @@ def test_filter_by_project_returns_only_that_projects_entries(
 
 
 def _bulk_entries(n, *, species, ring, scientist, ringing_station, project=None):
+    # bulk_create bypasses Model.save(), so the org fallback never fires — set it
+    # explicitly (to the Station's org) to keep these captures in the tenant scope.
     DataEntry.objects.bulk_create(
         DataEntry(
             species=species,
             ring=ring,
             staff=scientist,
             ringing_station=ringing_station,
+            organization=ringing_station.organization,
             project=project,
             date_time=datetime(2026, 1, 1, tzinfo=UTC),
         )
@@ -355,6 +403,53 @@ def test_delete_removes_entry(auth_client, data_entry):
     response = auth_client.delete(_detail_url(data_entry.id))
     assert response.status_code == 204
     assert not DataEntry.objects.filter(id=data_entry.id).exists()
+
+
+@pytest.mark.django_db
+def test_list_shows_only_active_organisations_captures(auth_client, data_entry, data_entry_b):
+    """The capture list returns only the requester's Organisation's captures."""
+    response = auth_client.get(LIST_URL)
+
+    assert response.status_code == 200
+    ids = [row["id"] for row in response.json()["results"]]
+    assert str(data_entry.id) in ids
+    assert str(data_entry_b.id) not in ids
+
+
+@pytest.mark.django_db
+def test_cross_tenant_capture_detail_returns_404(auth_client, data_entry, data_entry_b):
+    """A cross-tenant detail fetch is a 404 (the row is invisible), not a 403."""
+    response = auth_client.get(_detail_url(data_entry_b.id))
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_cross_tenant_capture_write_is_rejected(auth_client, data_entry, data_entry_b):
+    """A cross-tenant write cannot touch another Organisation's capture."""
+    detail = _detail_url(data_entry_b.id)
+
+    patch = auth_client.patch(detail, {"comment": "hacked"}, format="json")
+    delete = auth_client.delete(detail)
+
+    assert patch.status_code == 404
+    assert delete.status_code == 404
+    data_entry_b.refresh_from_db()
+    assert data_entry_b.comment != "hacked"
+    assert DataEntry.objects.filter(id=data_entry_b.id).exists()
+
+
+@pytest.mark.django_db
+def test_two_tenant_isolation_has_no_leakage_either_direction(
+    auth_client, auth_client_b, data_entry, data_entry_b
+):
+    """Two complete tenants: a Mitglied of A sees only A's captures and a Mitglied
+    of B sees only B's — no A↔B leakage (ADR 0005, issue #69)."""
+    a_ids = [row["id"] for row in auth_client.get(LIST_URL).json()["results"]]
+    b_ids = [row["id"] for row in auth_client_b.get(LIST_URL).json()["results"]]
+
+    assert a_ids == [str(data_entry.id)]
+    assert b_ids == [str(data_entry_b.id)]
 
 
 @pytest.mark.django_db

@@ -1,0 +1,25 @@
+{% extends "landing/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Gespräch vereinbaren" %} — BirdDoc{% endblock %}
+
+{% comment %}
+A lead form is part of the bilingual surface (issue #107), so its header carries
+the DE/EN toggle. The toggle switches this page between German (apex) and English
+(/en/) without leaving it.
+{% endcomment %}
+{% block header_back %}
+    {% include "landing/_lang_toggle.html" %}
+{% endblock %}
+
+{% block content %}
+    <p class="eyebrow">{% translate "Für Organisationen &amp; Vogelwarten" %}</p>
+    <h1>{% translate "Gespräch vereinbaren" %}</h1>
+    <p>{% blocktranslate trimmed %}BirdDoc kann eine ganze Beringungs-Landschaft tragen — DSGVO-konform, in Österreich gehostet, ohne Lock-in. Erzähl uns kurz von eurer Stelle, und wir melden uns für ein Gespräch. Es entstehen keine Kosten und du gehst keine Verpflichtung ein.{% endblocktranslate %}</p>
+    {% include "landing/_app_german_only_note.html" %}
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="button">{% translate "Gespräch vereinbaren" %}</button>
+    </form>
+{% endblock %}

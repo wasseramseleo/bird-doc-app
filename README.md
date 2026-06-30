@@ -65,6 +65,6 @@ Brings up `db` (Postgres 16), `backend` (Django on `:8000`), and `frontend` (Ang
 
 ## Deployment
 
-`main` deploys automatically: GitHub Actions builds backend + frontend images, pushes them to GHCR, joins the tailnet, then SSHes into a Proxmox LXC container at home and rolls out `docker-compose.prod.yml`. Public traffic reaches the LXC through a Cloudflare Tunnel (`cloudflared` runs as a systemd service on the LXC); TLS terminates at Cloudflare and Caddy serves plain HTTP on `127.0.0.1:80` inside the LXC. The host publishes no public ports.
+`main` deploys automatically: GitHub Actions builds backend + frontend images, pushes them to GHCR, then SSHes into the **IPAX VPS** (Debian 13, public IP) and rolls out `docker-compose.prod.yml`. **Caddy** terminates TLS via Let's Encrypt and routes by host — apex `birddoc.eu` → the Django landing, `app.birddoc.eu` → the Angular SPA with `/api` + `/admin` → the backend, and `birddoc.at` / `app.birddoc.at` → 301 to the `.eu` canonical hosts. Cloudflare and Tailscale are gone (ADR 0007).
 
-See [`deploy/README.md`](deploy/README.md) for the one-time LXC bootstrap and the list of required GitHub secrets.
+See [`docs/deploy.md`](docs/deploy.md) for the full runbook (VPS bootstrap, DNS, Brevo mail, backup/restore, cutover) and [`deploy/README.md`](deploy/README.md) for the required GitHub secrets.

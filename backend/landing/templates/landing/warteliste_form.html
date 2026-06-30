@@ -1,0 +1,25 @@
+{% extends "landing/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Zugang anfragen" %} — BirdDoc{% endblock %}
+
+{% comment %}
+A lead form is part of the bilingual surface (issue #107), so its header carries
+the DE/EN toggle. The toggle switches this page between German (apex) and English
+(/en/) without leaving it.
+{% endcomment %}
+{% block header_back %}
+    {% include "landing/_lang_toggle.html" %}
+{% endblock %}
+
+{% block content %}
+    <p class="eyebrow">{% translate "Warteliste · Beringung" %}</p>
+    <h1>{% translate "Zugang anfragen" %}</h1>
+    <p>{% blocktranslate trimmed %}BirdDoc ist in geschlossener Beta. Trag dich in die Warteliste ein und wir melden uns, sobald ein Zugangscode frei wird. Es entstehen keine Kosten und du gehst keine Verpflichtung ein.{% endblocktranslate %}</p>
+    {% include "landing/_app_german_only_note.html" %}
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="button">{% translate "Zugang anfragen" %}</button>
+    </form>
+{% endblock %}

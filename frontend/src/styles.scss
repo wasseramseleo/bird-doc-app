@@ -6,30 +6,10 @@
 // custom components at https://material.angular.dev/guide/theming
 @use '@angular/material' as mat;
 
-:root {
-  // Surfaces
-  --bd-paper:        #F7F2E8;
-  --bd-paper-elev:   #FBF7EE;
-  --bd-paper-sunk:   #EFE9DC;
-
-  // Ink
-  --bd-ink:          #2B2A26;
-  --bd-ink-soft:     #6B655B;
-  --bd-ink-faint:    #A6A095;
-
-  // Accent (warm ink-brown drawn from the logo)
-  --bd-accent:       #8B5A3C;
-  --bd-accent-soft:  #D9C3B0;
-  --bd-accent-deep:  #6B4530;
-
-  // Line work
-  --bd-line:         #C9C0AE;
-
-  // Semantic
-  --bd-success:      #4F7A4A;
-  --bd-warning:      #B07A24;
-  --bd-error:        #A8412D;
-}
+// The brand layer — the --bd-* palette and the Lora/Inter font-family
+// declarations — lives in the canonical brand-tokens.css, loaded ahead of this
+// file (see angular.json) and shipped byte-identical to the Django landing
+// (ADR 0009). Reference the tokens via var(--bd-*) below.
 
 html {
   @include mat.theme((
@@ -75,11 +55,10 @@ body {
 /* You can add global styles to this file, and also import other style files */
 
 html, body { height: 100%; }
-body { margin: 0; font-family: 'Inter', "Helvetica Neue", sans-serif; }
+body { margin: 0; }
 
-// BR-2 Type scale
+// BR-2 Type scale (the 'Lora' display family comes from brand-tokens.css)
 h1, h2, h3 {
-  font-family: 'Lora', Georgia, serif;
   font-weight: 600;
   color: var(--bd-ink);
   margin: 0;

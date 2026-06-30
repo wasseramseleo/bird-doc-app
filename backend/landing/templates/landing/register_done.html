@@ -1,0 +1,11 @@
+{% extends "landing/base_destination.html" %}
+
+{% block title %}Fast geschafft — BirdDoc{% endblock %}
+
+{% block content %}
+    <h1>Bestätige deine E-Mail</h1>
+    <p>Deine Organisation wurde angelegt. Wir haben dir eine E-Mail mit einem
+        Bestätigungslink geschickt. Öffne den Link, um deine Adresse zu bestätigen
+        — danach kannst du dich anmelden.</p>
+    <p><a class="button" href="{{ app_login_url }}">Zur Anmeldung</a></p>
+{% endblock %}

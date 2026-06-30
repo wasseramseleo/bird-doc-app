@@ -1,0 +1,62 @@
+{% load static i18n %}
+{% get_current_language as LANGUAGE_CODE %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}BirdDoc{% endblock %}</title>
+    {% comment %}
+    SEO / Open-Graph / share tags (issue #108). The marketing home fills this
+    with its meta description + OG/Twitter card; other pages leave it empty.
+    {% endcomment %}
+    {% block head_meta %}{% endblock %}
+    {# Lora (display) + Inter (body) — loaded the same way the Angular app does. #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+    {# Canonical brand layer (ADR 0009), linked before landing.css so the --bd-* tokens are defined when it consumes them. #}
+    <link rel="stylesheet" href="{% static 'landing/brand-tokens.css' %}">
+    <link rel="stylesheet" href="{% static 'landing/landing.css' %}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <header class="site-header">
+        <div class="site-header__inner">
+            <a class="wordmark" href="/">
+                <img class="wordmark__mark"
+                     src="{% static 'landing/birddoc-logo.png' %}"
+                     width="28" height="28" alt="" aria-hidden="true">BirdDoc
+            </a>
+            {% comment %}
+            Destination pages (auth + legal) fill this with a back affordance —
+            the reduced header (ADR 0009, issue #102). The marketing home leaves
+            it empty and gets its full nav in a later slice.
+            {% endcomment %}
+            {% block header_back %}{% endblock %}
+        </div>
+    </header>
+    <main class="site-main">
+        {% comment %}
+        Destination + form pages live inside the single brand card (the default).
+        The marketing home (issue #104) overrides `main` wholesale to lay out its
+        open, multi-section IA instead of a single narrow form-card.
+        {% endcomment %}
+        {% block main %}
+        <div class="panel">
+            {% block content %}{% endblock %}
+        </div>
+        {% endblock %}
+    </main>
+    <footer class="site-footer">
+        <div class="site-footer__inner">
+            <nav class="site-footer__legal" aria-label="Rechtliches">
+                <a href="{% url 'landing:impressum' %}">Impressum</a>
+                <a href="{% url 'landing:datenschutz' %}">Datenschutz</a>
+                <a href="{% url 'landing:agb' %}">AGB &amp; DPA</a>
+            </nav>
+            <span class="site-footer__note">Feldjournal für die Vogelberingung ·
+                <span class="place">Österreich</span></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -32,10 +32,14 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    # Public ingress (ADR 0007 — no Cloudflare Tunnel). Caddy terminates TLS via
+    # Let's Encrypt: 80 carries the ACME HTTP-01 challenge + HTTP->HTTPS redirect,
+    # 443 serves traffic (tcp + udp for HTTP/3). Hostnames are baked into the
+    # Caddyfile, so no DOMAIN env is needed.
     ports:
-      - "127.0.0.1:80:80"
-    environment:
-      DOMAIN: ${DOMAIN}
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
     volumes:
       - /opt/bird-doc-app/Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/bird-doc-app/caddy_data:/data

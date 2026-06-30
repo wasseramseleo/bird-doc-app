@@ -4,16 +4,20 @@ import datetime
 from django.contrib import admin
 from django.http import HttpResponse
 from django.utils.timezone import localtime
+from django.utils.translation import gettext_lazy as _
 
 from .models import (
     DataEntry,
+    Mitgliedschaft,
     Organization,
+    OrgEinladung,
     Project,
     Ring,
     RingingStation,
     Scientist,
     Species,
     SpeciesList,
+    Zugangscode,
 )
 
 
@@ -92,8 +96,20 @@ export_as_csv.short_description = "Als CSV exportieren"
 
 @admin.register(Organization)
 class OrganizationAdmin(admin.ModelAdmin):
-    list_display = ("handle", "name", "country")
+    list_display = (
+        "handle",
+        "name",
+        "country",
+        "plan",
+        "seat_limit",
+        "beta_cohort",
+        "agb_accepted_at",
+    )
+    list_editable = ("plan", "seat_limit", "beta_cohort")
+    list_filter = ("plan", "beta_cohort")
     search_fields = ("handle", "name")
+    # Recorded automatically at founding (issue #78) — shown but not editable.
+    readonly_fields = ("agb_accepted_at",)
     ordering = ("handle",)
 
 
@@ -130,9 +146,44 @@ class ProjectAdmin(admin.ModelAdmin):
     filter_horizontal = ("scientists",)
 
 
+@admin.register(Zugangscode)
+class ZugangscodeAdmin(admin.ModelAdmin):
+    """Where the operator issues single-use codes that gate org founding (#79)."""
+
+    list_display = ("code", "note", "is_used", "used_at", "founded_organization", "created")
+    list_filter = ("used_at",)
+    search_fields = ("code", "note")
+    ordering = ("-created",)
+    readonly_fields = ("created", "used_at", "founded_organization")
+
+    @admin.display(boolean=True, description=_("Eingelöst"))
+    def is_used(self, obj):
+        return obj.is_used
+
+
+@admin.register(Mitgliedschaft)
+class MitgliedschaftAdmin(admin.ModelAdmin):
+    list_display = ("user", "organization", "rolle", "updated")
+    list_filter = ("organization", "rolle")
+    search_fields = ("user__username", "organization__handle", "organization__name")
+    ordering = ("organization", "user__username")
+    autocomplete_fields = ("user",)
+
+
+@admin.register(OrgEinladung)
+class OrgEinladungAdmin(admin.ModelAdmin):
+    list_display = ("email", "organization", "rolle", "invited_by", "accepted_at", "created")
+    list_filter = ("organization", "rolle")
+    search_fields = ("email", "organization__handle", "organization__name")
+    ordering = ("-created",)
+    readonly_fields = ("token", "accepted_at", "created", "updated")
+    autocomplete_fields = ("invited_by",)
+
+
 @admin.register(Scientist)
 class ScientistAdmin(admin.ModelAdmin):
-    list_display = ("handle",)
+    list_display = ("handle", "first_name", "last_name", "organization")
+    list_filter = ("organization",)
     search_fields = ("handle",)
     ordering = ("handle",)
 
@@ -154,9 +205,9 @@ class SpeciesAdmin(admin.ModelAdmin):
 
 @admin.register(Ring)
 class RingAdmin(admin.ModelAdmin):
-    list_display = ("size", "number")
+    list_display = ("size", "number", "organization")
     search_fields = ("number",)
-    list_filter = ("size",)
+    list_filter = ("size", "organization")
     ordering = (
         "size",
         "number",

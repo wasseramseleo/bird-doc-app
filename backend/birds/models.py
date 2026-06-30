@@ -1,3 +1,4 @@
+import secrets
 import uuid
 
 from django.contrib.auth.models import User
@@ -49,9 +50,22 @@ class Ring(models.Model):
     size = models.CharField(
         max_length=3, choices=RingSizes.choices, default=RingSizes.V, verbose_name=_("Ringgröße")
     )
+    # The owning Organisation — the tenant boundary (ADR 0006). Ring uniqueness is
+    # scoped to it, so two Organisations may each own the same (size, number): an
+    # Austrian V 0042 and a foreign V 0042 are different physical rings. Nullable
+    # only as a migration safety net for legacy rows that predate the field; the
+    # capture path always creates rings within the recording Organisation.
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.PROTECT,
+        related_name="rings",
+        null=True,
+        blank=True,
+        verbose_name=_("Organisation"),
+    )
 
     class Meta:
-        unique_together = ("size", "number")
+        unique_together = ("organization", "size", "number")
 
     def __str__(self):
         return f"{self.size} {self.number}"
@@ -103,6 +117,18 @@ class Scientist(models.Model):
     first_name = models.CharField(max_length=150, blank=True, verbose_name=_("Vorname"))
     last_name = models.CharField(max_length=150, blank=True, verbose_name=_("Nachname"))
     handle = models.CharField(unique=True, max_length=11, blank=True, verbose_name=_("Kürzel"))
+    # The Organisation that owns this Beringer (ADR 0005). Both Mitglieder and
+    # no-account Beringer are org-owned; only the reserved GELÖSCHT fallback — a
+    # global cross-tenant sink, not a real Beringer — stays org-less, so the
+    # field is nullable.
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.PROTECT,
+        related_name="scientists",
+        null=True,
+        blank=True,
+        verbose_name=_("Organisation"),
+    )
 
     @property
     def full_name(self):
@@ -170,15 +196,194 @@ def protect_fallback_beringer(sender, instance, **kwargs):
 
 
 class Organization(models.Model):
+    class Plan(models.TextChoices):
+        # The Organisation's licensing phase and unit of monetisation (pricing is
+        # per Organisation, never per head — ADR 0005). Only the free public-beta
+        # plan exists today; paid tiers arrive at 1.0.
+        BETA = "beta", _("Beta")
+
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     name = models.CharField(max_length=255, verbose_name=_("Name"))
     handle = models.CharField(
         primary_key=True, max_length=64, unique=True, verbose_name=_("Kürzel")
     )
     country = models.CharField(max_length=8, blank=True, verbose_name=_("Land"))
+    # Per-Organisation tenant/monetisation fields (ADR 0005). ``plan`` is the
+    # mutable licensing tier; ``seat_limit`` caps the number of Mitgliedschaften
+    # (each consumes one Mitgliedsplatz, no-account Beringer consume none);
+    # ``beta_cohort`` is a *durable* marker — separate from the mutable plan —
+    # entitling beta-era Organisations to a permanent preferential price at 1.0.
+    plan = models.CharField(
+        max_length=16,
+        choices=Plan.choices,
+        default=Plan.BETA,
+        verbose_name=_("Plan"),
+    )
+    seat_limit = models.PositiveIntegerField(default=5, verbose_name=_("Seat-Limit"))
+    beta_cohort = models.BooleanField(default=False, verbose_name=_("Beta-Kohorte"))
+    # When the founder accepted the AGB + DPA at org founding (PRD #68 story 51,
+    # issue #78). The Organisation is the controller and BirdDoc the processor;
+    # acceptance is a required, recorded step of the gated founding flow, stamped
+    # in ``birds.registration.register_organisation``. Nullable for legacy rows
+    # founded before this gate (e.g. the cutover-migrated IWM Linz Organisation).
+    agb_accepted_at = models.DateTimeField(
+        null=True, blank=True, verbose_name=_("AGB/DPA akzeptiert am")
+    )
 
     def __str__(self):
         return f"{self.handle}"
+
+
+class Mitgliedschaft(models.Model):
+    """A login account's membership in an Organisation, carrying a Rolle.
+
+    The tenancy spine (ADR 0005): a Mitgliedschaft links a Django ``User`` to an
+    ``Organisation`` and grants a ``Rolle`` there. Memberships are **per
+    Organisation** — multiple are allowed per account (a Beringer may ring for
+    more than one body), so the Rolle is per-org: Admin in one, plain Mitglied in
+    another. ``unique_together`` forbids only a *duplicate* membership in the same
+    Organisation. The org-switcher UI is deferred; while an account holds exactly
+    one Mitgliedschaft that is its implicit active Organisation
+    (``birds.tenancy.active_organization``).
+    """
+
+    class Rolle(models.TextChoices):
+        ADMIN = "admin", _("Admin")
+        MITGLIED = "mitglied", _("Mitglied")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="mitgliedschaften",
+        verbose_name=_("Konto"),
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="mitgliedschaften",
+        verbose_name=_("Organisation"),
+    )
+    rolle = models.CharField(
+        max_length=16,
+        choices=Rolle.choices,
+        default=Rolle.MITGLIED,
+        verbose_name=_("Rolle"),
+    )
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("user", "organization")
+        verbose_name = _("Mitgliedschaft")
+        verbose_name_plural = _("Mitgliedschaften")
+
+    def __str__(self):
+        return f"{self.user.username} @ {self.organization_id} ({self.rolle})"
+
+
+class Zugangscode(models.Model):
+    """A single-use invite code that gates the founding of an Organisation.
+
+    The only door through which a newcomer founds a new Organisation during the
+    beta (ADR 0005): the operator issues a code in the Django admin, the public
+    registration consumes it, and a consumed code can never found a second
+    Organisation. ``used_at`` is the single-use ledger — ``None`` while the code
+    is unused; stamped (together with ``founded_organization``) the moment it is
+    spent. See :func:`birds.registration.register_organisation`.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=64, unique=True, verbose_name=_("Zugangscode"))
+    note = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name=_("Notiz"),
+        help_text=_("Optionaler Vermerk des Betreibers (für wen / warum ausgestellt)."),
+    )
+    created = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True, verbose_name=_("Eingelöst am"))
+    founded_organization = models.ForeignKey(
+        Organization,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="founding_codes",
+        verbose_name=_("Gegründete Organisation"),
+    )
+
+    class Meta:
+        verbose_name = _("Zugangscode")
+        verbose_name_plural = _("Zugangscodes")
+
+    @property
+    def is_used(self):
+        """A code is spent once it has been stamped with a redemption time."""
+        return self.used_at is not None
+
+    def __str__(self):
+        return self.code
+
+
+def generate_invite_token():
+    """A high-entropy, URL-safe token that doubles as the secret in the accept
+    link — possession of the token (mailed only to the invitee's address) is the
+    proof that authorises joining the Organisation."""
+    return secrets.token_urlsafe(32)
+
+
+class OrgEinladung(models.Model):
+    """An Admin's invitation of a colleague into an already-admitted Organisation
+    as a Mitglied (the Org-Einladung — ADR 0005, issue #83).
+
+    Distinct from a Zugangscode: it grows a team *inside* one Organisation and is
+    **ungated** by the operator — but capped by the Organisation's Seat-Limit.
+    Each *pending* (un-accepted) Einladung reserves one Mitgliedsplatz, exactly as
+    a Mitgliedschaft consumes one; no-account Beringer consume none. Accepting it
+    on the public Landing creates the account (if new) and the Mitgliedschaft and
+    stamps ``accepted_at`` — see ``birds.invitations``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="invitations",
+        verbose_name=_("Organisation"),
+    )
+    email = models.EmailField(verbose_name=_("E-Mail"))
+    rolle = models.CharField(
+        max_length=16,
+        choices=Mitgliedschaft.Rolle.choices,
+        default=Mitgliedschaft.Rolle.MITGLIED,
+        verbose_name=_("Rolle"),
+    )
+    token = models.CharField(
+        max_length=64, unique=True, default=generate_invite_token, editable=False
+    )
+    invited_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_invitations",
+        verbose_name=_("Eingeladen von"),
+    )
+    accepted_at = models.DateTimeField(null=True, blank=True, verbose_name=_("Angenommen am"))
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Org-Einladung")
+        verbose_name_plural = _("Org-Einladungen")
+        ordering = ("-created",)
+
+    @property
+    def is_pending(self):
+        return self.accepted_at is None
+
+    def __str__(self):
+        return f"{self.email} → {self.organization_id} ({self.rolle})"
 
 
 class RingingStation(models.Model):
@@ -346,6 +551,19 @@ class DataEntry(models.Model):
         null=True,
         blank=True,
     )
+    # The owning Organisation — the tenant boundary (ADR 0005). The capture
+    # endpoint attaches it to the requester's active Organisation; ``save()``
+    # falls back to the Station's Organisation when it is left unset (admin/ORM
+    # paths), so every capture is org-owned. Nullable only as a migration safety
+    # net for legacy rows that predate the field.
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.PROTECT,
+        related_name="data_entries",
+        null=True,
+        blank=True,
+        verbose_name=_("Organisation"),
+    )
     net_location = models.PositiveIntegerField(verbose_name=_("Netznr."), null=True, blank=True)
     net_height = models.PositiveIntegerField(verbose_name=_("Netzfach"), null=True, blank=True)
     net_direction = models.CharField(
@@ -435,6 +653,15 @@ class DataEntry(models.Model):
     comment = models.CharField(
         max_length=2048, verbose_name=_("Bemerkungen"), null=True, blank=True
     )
+
+    def save(self, *args, **kwargs):
+        # Keep every capture org-owned: when the Organisation is not set
+        # explicitly (admin or ORM paths), inherit it from the Station, which is
+        # itself org-owned. The capture endpoint sets it to the active
+        # Organisation before saving, so this never overrides an explicit value.
+        if self.organization_id is None and self.ringing_station_id is not None:
+            self.organization_id = self.ringing_station.organization_id
+        super().save(*args, **kwargs)
 
 
 class SpeciesList(models.Model):

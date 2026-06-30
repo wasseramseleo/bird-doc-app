@@ -1,0 +1,15 @@
+{% extends "landing/base_destination.html" %}
+
+{% block title %}Registrieren — BirdDoc{% endblock %}
+
+{% block content %}
+    <h1>Organisation gründen</h1>
+    <p>Mit einem gültigen Zugangscode gründest du deine Organisation und wirst ihr
+        Administrator. Du erhältst anschließend eine E-Mail, um deine Adresse zu
+        bestätigen.</p>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="button">Organisation gründen</button>
+    </form>
+{% endblock %}

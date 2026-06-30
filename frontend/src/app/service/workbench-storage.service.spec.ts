@@ -62,6 +62,18 @@ describe('WorkbenchStorageService', () => {
     });
   });
 
+  describe('beta banner dismissal', () => {
+    it('reports the banner as not dismissed before anything is stored', () => {
+      expect(service.loadBetaBannerDismissed()).toBeFalse();
+    });
+
+    it('remembers the dismissal once saved', () => {
+      service.saveBetaBannerDismissed();
+
+      expect(service.loadBetaBannerDismissed()).toBeTrue();
+    });
+  });
+
   describe('last Beringer per Projekt', () => {
     it('round-trips the last Beringer for a Projekt', () => {
       const beringer = makeBeringer();

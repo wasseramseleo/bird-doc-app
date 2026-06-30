@@ -4,7 +4,9 @@ from rest_framework import serializers
 
 from .models import (
     DataEntry,
+    Mitgliedschaft,
     Organization,
+    OrgEinladung,
     Project,
     Ring,
     RingingStation,
@@ -12,6 +14,7 @@ from .models import (
     Species,
     SpeciesList,
 )
+from .tenancy import active_organization
 
 
 class SpeciesSerializer(serializers.ModelSerializer):
@@ -63,7 +66,10 @@ class ProjectSerializer(serializers.ModelSerializer):
     scientists = ScientistSerializer(many=True, read_only=True)
     default_station = RingingStationSerializer(read_only=True)
     organization_id = serializers.PrimaryKeyRelatedField(
-        queryset=Organization.objects.all(), source="organization", write_only=True
+        queryset=Organization.objects.all(),
+        source="organization",
+        write_only=True,
+        required=False,
     )
     scientist_ids = serializers.PrimaryKeyRelatedField(
         queryset=Scientist.objects.all(),
@@ -98,12 +104,27 @@ class ProjectSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created", "updated"]
 
+    def _effective_organization(self, attrs):
+        """The Projekt's owning Organisation, resolved server-authoritatively
+        (issue #74). On create it is the requester's active Organisation — never a
+        client-supplied ``organization_id``, which ``ProjectViewSet.perform_create``
+        overrides — so the default-Station org-match is checked against the org the
+        Projekt will actually belong to. On update it is the instance's existing
+        Organisation."""
+        if self.instance is not None:
+            return self.instance.organization
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is not None:
+            active = active_organization(user)
+            if active is not None:
+                return active
+        return attrs.get("organization")
+
     def validate(self, attrs):
         station = attrs.get("default_station")
         if station is not None:
-            organization = attrs.get("organization")
-            if organization is None and self.instance is not None:
-                organization = self.instance.organization
+            organization = self._effective_organization(attrs)
             if organization is not None and station.organization_id != organization.pk:
                 raise serializers.ValidationError(
                     {
@@ -219,10 +240,18 @@ class DataEntrySerializer(serializers.ModelSerializer):
         "hand_wing",
     )
 
-    def _get_or_create_ring(self, validated_data):
+    def _get_or_create_ring(self, validated_data, organization):
+        """Find or create the Ring *within the recording Organisation*.
+
+        Ring uniqueness is scoped to the Organisation (ADR 0006), so the lookup
+        is org-scoped too: recording a number another Organisation owns creates a
+        new Ring in the recording Organisation rather than reusing the other's.
+        """
         ring_number = validated_data.pop("ring_number")
         ring_size = validated_data.pop("ring_size")
-        ring, _ = Ring.objects.get_or_create(number=ring_number, size=ring_size)
+        ring, _ = Ring.objects.get_or_create(
+            number=ring_number, size=ring_size, organization=organization
+        )
         validated_data["ring"] = ring
         return ring
 
@@ -262,14 +291,18 @@ class DataEntrySerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        self._get_or_create_ring(validated_data)
+        # ``perform_create`` injects the active Organisation; the Ring is scoped
+        # to it (ADR 0006).
+        self._get_or_create_ring(validated_data, validated_data.get("organization"))
         self._null_bird_data_for_destroyed_ring(validated_data)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         with transaction.atomic():
             old_ring = instance.ring
-            new_ring = self._get_or_create_ring(validated_data)
+            new_ring = self._get_or_create_ring(
+                validated_data, validated_data.get("organization", instance.organization)
+            )
             self._null_bird_data_for_destroyed_ring(validated_data)
             updated_instance = super().update(instance, validated_data)
             if old_ring and old_ring != new_ring:
@@ -292,3 +325,39 @@ class SpeciesListSerializer(serializers.ModelSerializer):
         model = SpeciesList
         fields = ["id", "name", "is_active", "species", "species_ids", "updated"]
         read_only_fields = ["id", "updated"]
+
+
+class OrgEinladungSerializer(serializers.ModelSerializer):
+    """An Org-Einladung as seen by the inviting Admin (issue #83).
+
+    The Admin supplies only ``email`` and an optional ``rolle``; the Organisation,
+    inviter and secret token are set server-side. The token is **never** returned —
+    it is the accept-link secret and is mailed to the invitee alone.
+    """
+
+    class Meta:
+        model = OrgEinladung
+        fields = ["id", "email", "rolle", "accepted_at", "created"]
+        read_only_fields = ["id", "accepted_at", "created"]
+
+
+class MitgliedschaftSerializer(serializers.ModelSerializer):
+    """A Mitgliedschaft as managed by the Organisation's Admin (issue #83).
+
+    Only the ``rolle`` is writable (Admin ↔ Mitglied); the account it belongs to
+    is fixed. The account's identifying fields are surfaced read-only so the Admin
+    can recognise who they are removing or re-roling.
+    """
+
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+    handle = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Mitgliedschaft
+        fields = ["id", "username", "email", "handle", "rolle", "created"]
+        read_only_fields = ["id", "username", "email", "handle", "created"]
+
+    def get_handle(self, obj):
+        scientist = getattr(obj.user, "scientist", None)
+        return scientist.handle if scientist is not None else None

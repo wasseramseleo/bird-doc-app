@@ -68,8 +68,12 @@ coverage.xml
 .pytest_cache/
 cover/
 
-# Translations
+# Translations: ignore compiled catalogs in general, but COMMIT the project's
+# own locale/ catalogs. There is no compilemessages step in CI or the Docker
+# build, so the .mo must ship in the repo for the bilingual marketing surface to
+# work in CI and production (issue #107, ADR 0009).
 *.mo
+!locale/**/*.mo
 
 # Django stuff:
 

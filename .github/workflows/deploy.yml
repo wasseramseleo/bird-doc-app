@@ -61,11 +61,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-
+      # ADR 0007: the VPS has a public IP — deploy reaches it over public SSH
+      # (no Tailscale tunnel). SSH_HOST is the VPS IP/DNS; the firewall (ufw)
+      # allows 22/80/443.
       - name: Copy compose + Caddyfile to VPS
         uses: appleboy/scp-action@v1
         with:
@@ -86,7 +84,6 @@ jobs:
             cd /opt/bird-doc-app
 
             cat > .env <<EOF
-            DOMAIN=${{ secrets.DOMAIN }}
             DJANGO_SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}
             DJANGO_DEBUG=false
             DJANGO_ALLOWED_HOSTS=${{ secrets.DJANGO_ALLOWED_HOSTS }}
@@ -94,6 +91,16 @@ jobs:
             DATABASE_URL=postgres://birddoc:${{ secrets.POSTGRES_PASSWORD }}@db:5432/birddoc
             CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
             CSRF_TRUSTED_ORIGINS=${{ secrets.CSRF_TRUSTED_ORIGINS }}
+            DJANGO_SESSION_COOKIE_DOMAIN=${{ secrets.SESSION_COOKIE_DOMAIN }}
+            DJANGO_APP_LOGIN_URL=${{ secrets.APP_LOGIN_URL }}
+            DJANGO_OPERATOR_EMAIL=${{ secrets.OPERATOR_EMAIL }}
+            DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+            DJANGO_DEFAULT_FROM_EMAIL=noreply@birddoc.eu
+            DJANGO_EMAIL_HOST=smtp-relay.brevo.com
+            DJANGO_EMAIL_PORT=587
+            DJANGO_EMAIL_HOST_USER=${{ secrets.BREVO_SMTP_USER }}
+            DJANGO_EMAIL_HOST_PASSWORD=${{ secrets.BREVO_SMTP_PASSWORD }}
+            DJANGO_EMAIL_USE_TLS=true
             EOF
             chmod 600 .env
 

@@ -34,6 +34,7 @@
               }
             ],
             "styles": [
+              "src/brand-tokens.css",
               "src/styles.scss"
             ]
           },
@@ -99,6 +100,7 @@
               }
             ],
             "styles": [
+              "src/brand-tokens.css",
               "src/styles.scss"
             ]
           }

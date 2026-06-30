@@ -4,12 +4,15 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { OverlayContainer } from '@angular/cdk/overlay';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { of } from 'rxjs';
 
 import { NavBar } from './nav-bar';
 import { ProjectService } from '../service/project.service';
 import { AuthService } from '../service/auth.service';
 import { Project } from '../models/project.model';
 import { environment } from '../../environments/environment';
+import { FeedbackDialogComponent } from '../feedback/feedback-dialog/feedback-dialog';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -98,6 +101,16 @@ describe('NavBar', () => {
   it('should create', () => {
     const { fixture } = setup();
     expect(fixture.componentInstance).toBeTruthy();
+  });
+
+  it('shows a persistent "Beta" badge, even in the picker state with no active project', () => {
+    const { fixture, projectService } = setup();
+    expect(projectService.currentProject()).toBeNull();
+    fixture.detectChanges();
+
+    const badge = fixture.nativeElement.querySelector('.beta-badge') as HTMLElement;
+    expect(badge).withContext('Beta badge').not.toBeNull();
+    expect(badge.textContent).toContain('Beta');
   });
 
   it('shows the switcher trigger with the active project title', () => {
@@ -326,6 +339,33 @@ describe('NavBar', () => {
 
     const adminItem = items[adminIndex] as HTMLAnchorElement;
     expect(adminItem.getAttribute('href')).toBe(environment.adminUrl);
+  });
+
+  it('offers a persistent "Fehler melden" button even in the picker state', () => {
+    const { fixture, projectService } = setup();
+    expect(projectService.currentProject()).toBeNull();
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector('.feedback-button') as HTMLElement;
+    expect(button).withContext('persistent Fehler melden button').not.toBeNull();
+    expect(button.textContent).toContain('Fehler melden');
+  });
+
+  it('opens the feedback dialog when the "Fehler melden" button is clicked', () => {
+    const ctx = setup();
+    signIn(ctx, false);
+    ctx.fixture.detectChanges();
+
+    const dialog = ctx.fixture.debugElement.injector.get(MatDialog);
+    const open = spyOn(dialog, 'open').and.returnValue({
+      afterClosed: () => of(false),
+    } as MatDialogRef<unknown>);
+
+    const button = ctx.fixture.nativeElement.querySelector('.feedback-button') as HTMLButtonElement;
+    button.click();
+    ctx.fixture.detectChanges();
+
+    expect(open).toHaveBeenCalledWith(FeedbackDialogComponent, jasmine.any(Object));
   });
 
   it('never shows Administration for non-staff users', () => {

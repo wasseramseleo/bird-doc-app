@@ -1,0 +1,32 @@
+.beta-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 8px 16px;
+  background: var(--bd-paper-sunk);
+  border-bottom: 1px solid var(--bd-line);
+  color: var(--bd-ink);
+
+  &__icon {
+    flex: none;
+    color: var(--bd-accent);
+  }
+
+  &__text {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--bd-ink-soft);
+
+    strong {
+      font-weight: 600;
+      color: var(--bd-ink);
+    }
+  }
+
+  &__dismiss {
+    flex: none;
+    color: var(--bd-ink-soft);
+  }
+}

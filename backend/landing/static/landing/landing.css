@@ -1,0 +1,938 @@
+/* BirdDoc public landing — the apex pages on the app's shared brand layer.
+ *
+ * The palette and type families are NOT defined here: they come from the
+ * canonical brand-tokens.css (the warm cream paper, the ink, the warm
+ * ink-brown accent, Lora + Inter), linked ahead of this file and shipped
+ * byte-identical to the Angular app (ADR 0009). This file maps those --bd-*
+ * tokens onto the landing's own semantic names and keeps the record-card
+ * layout — one brand across birddoc.eu and app.birddoc.eu. */
+
+:root {
+    --paper: var(--bd-paper);
+    --card: var(--bd-paper-elev);
+    --ink: var(--bd-ink);
+    --muted: var(--bd-ink-soft);
+    --line: var(--bd-line);
+    --accent: var(--bd-accent);
+    --accent-strong: var(--bd-accent-deep);
+    --accent-tint: color-mix(in srgb, var(--bd-accent) 18%, transparent);
+    --danger: var(--bd-error);
+    --radius: 10px;
+    --measure: 34rem;
+    /* Body + headings come from brand-tokens.css (Inter / Lora). A monospace
+       face stays for the small field-record labels (eyebrows, tags). */
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--paper);
+    color: var(--ink);
+    font-size: 1rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Header — a slim band echoing the engraved edge of a ring */
+.site-header {
+    border-bottom: 1px solid var(--line);
+}
+
+.site-header__inner,
+.site-main,
+.site-footer__inner {
+    width: 100%;
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+}
+
+.site-header__inner {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: var(--ink);
+    /* The app's nav brand: Lora, mixed-case, 18px beside a 28px mark. */
+    font-family: 'Lora', Georgia, serif;
+    font-weight: 600;
+    font-size: 1.125rem;
+}
+
+.wordmark__mark {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: none;
+}
+
+.wordmark:hover {
+    color: var(--accent-strong);
+}
+
+/* Reduced header — the auth + legal destinations carry only the wordmark and a
+   quiet "back" link to the marketing home, in place of the full marketing nav
+   (issue #102). The marketing home leaves the slot empty. */
+.site-header__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    text-decoration: none;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.site-header__back:hover {
+    color: var(--accent-strong);
+}
+
+.site-header__back-arrow {
+    font-size: 1.05em;
+    line-height: 1;
+}
+
+/* Centred content column */
+.site-main {
+    flex: 1 0 auto;
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+}
+
+/* The field record card — signature brass top edge */
+.panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 2rem 1.75rem 2.25rem;
+    box-shadow:
+        0 1px 2px rgba(32, 39, 31, 0.04),
+        0 18px 40px -30px rgba(32, 39, 31, 0.45);
+}
+
+.panel h1 {
+    margin: 0 0 0.6rem;
+    font-size: 1.6rem;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.panel p {
+    margin: 0 0 1.2rem;
+    color: var(--muted);
+}
+
+.panel a {
+    color: var(--accent-strong);
+    text-underline-offset: 2px;
+}
+
+/* Eyebrow — a mono field-record label above the heading */
+.panel p.eyebrow {
+    margin-bottom: 0.6rem;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    color: var(--accent);
+}
+
+/* Forms (Django's {{ form.as_p }} output) */
+.panel form p {
+    margin: 0 0 1.15rem;
+}
+
+.panel label {
+    display: block;
+    margin-bottom: 0.35rem;
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.panel input[type="email"],
+.panel input[type="password"],
+.panel input[type="text"] {
+    width: 100%;
+    padding: 0.6rem 0.7rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.panel input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.helptext {
+    display: block;
+    margin-top: 0.4rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.helptext ul {
+    margin: 0.3rem 0 0;
+    padding-left: 1.1rem;
+}
+
+.button {
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent-strong);
+    border-radius: 8px;
+    padding: 0.65rem 1.25rem;
+    margin-top: 0.25rem;
+}
+
+.button:hover {
+    background: var(--accent-strong);
+}
+
+.button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.errorlist {
+    list-style: none;
+    margin: 0 0 0.6rem;
+    padding: 0;
+    color: var(--danger);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* ── Landing hero ─────────────────────────────────────────────────────── */
+
+/* Beta badge — a small brass pill riding alongside the wordmark heading */
+.badge {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 0.5rem;
+    padding: 0.12em 0.6em;
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 0.62em;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.badge--beta {
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent-strong);
+}
+
+.panel p.lead {
+    font-size: 1.08rem;
+    color: var(--ink);
+}
+
+/* Austria/EU hosting reassurance — a quiet bordered field-note */
+.hosting {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    margin: 1.5rem 0;
+    padding: 0.9rem 1rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+}
+
+.hosting__flag {
+    font-size: 1.25rem;
+    line-height: 1.4;
+}
+
+.hosting p {
+    margin: 0;
+    font-size: 0.92rem;
+}
+
+/* Price-teaser — three field-record rows, each tagged with a mono chip */
+.pricing {
+    margin-top: 1.75rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+}
+
+.pricing h2 {
+    margin: 0 0 0.9rem;
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
+}
+
+.price-teaser {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.7rem;
+}
+
+.price-teaser li {
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+.price-teaser strong {
+    color: var(--ink);
+}
+
+.price-teaser__tag {
+    display: inline-block;
+    min-width: 6.5rem;
+    margin-right: 0.6rem;
+    padding: 0.1em 0.55em;
+    border-radius: 6px;
+    background: var(--accent-tint);
+    color: var(--accent-strong);
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+/* The fork band — the Beringer and Organisation columns, side by side. Both are
+   always in the DOM (issue #104); the grid collapses to one column on mobile. */
+.fork {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 2.5rem 0;
+}
+
+@media (max-width: 38rem) {
+    .fork {
+        grid-template-columns: 1fr;
+    }
+}
+
+.fork__col {
+    padding: 1.25rem 1.3rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--radius);
+}
+
+.fork__title {
+    margin: 0 0 0.5rem;
+    font-size: 1.15rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.fork__col p {
+    margin: 0 0 0.7rem;
+    font-size: 0.95rem;
+    color: var(--muted);
+}
+
+.fork__col p:last-child {
+    margin-bottom: 0;
+}
+
+.fork__more {
+    color: var(--accent-strong);
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    text-underline-offset: 2px;
+}
+
+.fork__more:hover {
+    text-decoration: underline;
+}
+
+/* ── Legal pages ──────────────────────────────────────────────────────── */
+
+/* The draft banner — a clearly-marked "not yet reviewed" note */
+.legal-draft {
+    margin: 0 0 1.5rem;
+    padding: 0.85rem 1rem;
+    background: #fbf3e6;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    color: var(--accent-strong);
+    font-size: 0.86rem;
+}
+
+.legal-draft strong {
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.panel h2 {
+    margin: 1.6rem 0 0.5rem;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.panel ul {
+    margin: 0 0 1.2rem;
+    padding-left: 1.2rem;
+    color: var(--muted);
+}
+
+.panel li {
+    margin-bottom: 0.4rem;
+}
+
+.legal-rule {
+    margin: 2rem 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+}
+
+.legal-back {
+    margin-top: 1.75rem;
+    font-size: 0.9rem;
+}
+
+/* Footer — a quiet field note */
+.site-footer {
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.site-footer__inner {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.site-footer__legal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+}
+
+.site-footer__legal a {
+    color: var(--muted);
+    text-decoration: none;
+    text-underline-offset: 2px;
+}
+
+.site-footer__legal a:hover {
+    color: var(--accent-strong);
+    text-decoration: underline;
+}
+
+.site-footer .place {
+    font-family: var(--mono);
+    letter-spacing: 0.08em;
+}
+
+@media (max-width: 30rem) {
+    .panel {
+        padding: 1.5rem 1.25rem 1.75rem;
+    }
+
+    .site-main {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Marketing home (issue #104)
+
+   The dual-track marketing home breaks out of the narrow single-card form
+   column the destination/auth/legal pages share: it widens the brand measure
+   and lays out an open, multi-section IA (top nav, hero thesis, fork band,
+   audience sections, price teaser) directly on the brand tokens — not
+   reinvented. The accessibility floor the brand carries holds: visible
+   keyboard focus, a sensible DOM reading order, responsive to mobile.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.page--marketing {
+    /* Widen the shared header/main/footer measure for the marketing surface. */
+    --measure: 62rem;
+}
+
+/* A visible focus ring on every interactive element, not just form fields —
+   the keyboard-accessibility floor for the marketing nav + in-page links. */
+.page--marketing a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/* ── Top nav ──────────────────────────────────────────────────────────── */
+
+.site-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 1.4rem;
+    font-size: 0.92rem;
+}
+
+.site-nav__link {
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.site-nav__link:hover {
+    color: var(--accent-strong);
+}
+
+.site-nav__link--login {
+    color: var(--accent-strong);
+    font-weight: 600;
+}
+
+/* DE/EN toggle slot — a quiet mono chip until the i18n slice wires it up. */
+.lang-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+}
+
+.lang-toggle__current {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.lang-toggle__sep,
+.lang-toggle__other {
+    color: var(--muted);
+}
+
+@media (max-width: 40rem) {
+    /* Stack the nav under the wordmark on small screens. */
+    .page--marketing .site-header__inner {
+        flex-wrap: wrap;
+    }
+
+    .site-nav {
+        width: 100%;
+    }
+}
+
+/* ── Shared section rhythm ────────────────────────────────────────────── */
+
+.page--marketing .eyebrow {
+    margin: 0 0 0.5rem;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    color: var(--accent);
+}
+
+.page--marketing .lead {
+    color: var(--ink);
+    font-size: 1.1rem;
+    line-height: 1.55;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+
+.hero {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    align-items: center;
+    gap: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.hero__thesis {
+    margin: 0.2rem 0 0.9rem;
+    font-size: clamp(2rem, 4.5vw, 2.9rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+}
+
+.hero__copy .lead {
+    max-width: 34rem;
+}
+
+.hero__ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.4rem;
+}
+
+/* The artifact slot — the positioning frame the Fang-Karte sits in. */
+.hero__artifact {
+    display: flex;
+    justify-content: center;
+}
+
+@media (max-width: 46rem) {
+    .hero {
+        grid-template-columns: 1fr;
+        gap: 1.75rem;
+    }
+}
+
+/* ── Fang-Karte — the hero's signature record (issue #106) ────────────────
+   A static, no-JS field-record card: one captured bird. It shares the brand's
+   brass top edge and field-record voice; ring numbers and biometrics are set
+   in the tabular-nums data voice (.data) so the figures line up like a ledger. */
+
+/* The data voice — Inter tabular figures for ring numbers + biometrics. */
+.data {
+    font-family: 'Inter', 'Helvetica Neue', sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: 0.01em;
+}
+
+.fang-karte {
+    width: 100%;
+    max-width: 22rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 1.4rem 1.5rem 1.5rem;
+    box-shadow:
+        0 1px 2px rgba(32, 39, 31, 0.04),
+        0 18px 40px -30px rgba(32, 39, 31, 0.45);
+}
+
+.fang-karte__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.7rem;
+}
+
+.fang-karte__head .eyebrow {
+    margin: 0;
+}
+
+.fang-karte__ring {
+    padding: 0.18em 0.6em;
+    border-radius: 6px;
+    background: var(--accent-tint);
+    color: var(--accent-strong);
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.fang-karte__species {
+    margin: 0;
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.fang-karte__sci {
+    margin: 0.1rem 0 0;
+    font-style: italic;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+.fang-karte__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.75rem 1rem;
+    margin: 1.1rem 0 0;
+    padding: 1.1rem 0 0;
+    border-top: 1px solid var(--line);
+}
+
+.fang-karte__cell {
+    margin: 0;
+}
+
+.fang-karte__cell dt {
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.6rem;
+    color: var(--muted);
+}
+
+.fang-karte__cell dd {
+    margin: 0.15rem 0 0;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--ink);
+}
+
+.fang-karte__foot {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--line);
+}
+
+.fang-karte__station {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.fang-karte__beringer {
+    font-family: var(--mono);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    font-size: 0.85rem;
+    color: var(--accent-strong);
+}
+
+/* ── Ringserie number thread (issue #106) ────────────────────────────────
+   A run of consumed ring numbers (last-consumed + 1) threading the page as an
+   honest structural marker. Set in the tabular-nums data voice. */
+.ringserie {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.55rem 0.7rem;
+    margin: 0.5rem 0 0;
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+.ringserie__num {
+    color: var(--ink);
+    font-weight: 500;
+}
+
+.ringserie__sep {
+    color: var(--accent-soft);
+}
+
+.ringserie__next {
+    color: var(--accent-strong);
+    font-weight: 600;
+}
+
+/* The page's SINGLE motion: a gentle load reveal of the number thread. It lives
+   entirely inside a (prefers-reduced-motion: no-preference) guard, so under
+   `reduce` no animation is ever declared and the thread simply renders in its
+   final, fully-visible state — fully suppressed, no JS. */
+@media (prefers-reduced-motion: no-preference) {
+    @keyframes ringserie-reveal {
+        from {
+            opacity: 0;
+            transform: translateY(0.6rem);
+        }
+
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+
+    .ringserie--reveal {
+        animation: ringserie-reveal 900ms ease-out both;
+    }
+}
+
+/* ── Audience sections (Für Beringer; Für Organisationen placeholder) ──── */
+
+.audience {
+    margin: 2.75rem 0;
+    padding-top: 2.25rem;
+    border-top: 1px solid var(--line);
+}
+
+.audience__title {
+    margin: 0 0 0.8rem;
+    font-size: 1.55rem;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.audience__pain {
+    max-width: 38rem;
+    color: var(--muted);
+    font-size: 1.02rem;
+}
+
+.audience__beta {
+    max-width: 38rem;
+    color: var(--ink);
+}
+
+.audience__beta strong {
+    color: var(--ink);
+}
+
+.audience__org-ctas {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+}
+
+.audience__founder {
+    color: var(--accent-strong);
+    font-size: 0.92rem;
+    text-underline-offset: 2px;
+}
+
+/* The relief — the three concrete capabilities, as field-record cards. */
+.relief {
+    list-style: none;
+    margin: 1.5rem 0 1.75rem;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 46rem) {
+    .relief {
+        grid-template-columns: 1fr;
+    }
+}
+
+.relief__item {
+    padding: 1.1rem 1.2rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+}
+
+.relief__title {
+    margin: 0 0 0.4rem;
+    font-size: 1.02rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.relief__item p {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--muted);
+}
+
+/* The org trust beats — data sovereignty, no lock-in, the honest solo-operator
+   continuity answer, and the master's-thesis credibility signal (issue #105) —
+   as a 2×2 grid of field-record cards, sharing the relief card's brass edge. */
+.org-trust {
+    list-style: none;
+    margin: 1.5rem 0 1.75rem;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 46rem) {
+    .org-trust {
+        grid-template-columns: 1fr;
+    }
+}
+
+.org-trust__item {
+    padding: 1.1rem 1.2rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+}
+
+.org-trust__title {
+    margin: 0 0 0.4rem;
+    font-size: 1.02rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.org-trust__item p {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--muted);
+}
+
+/* The light beta-pilot mention that sits between the beats and the Gespräch CTA. */
+.audience__pilot {
+    max-width: 38rem;
+    color: var(--ink);
+    font-size: 0.96rem;
+}
+
+/* ── Pricing heading on the marketing home ────────────────────────────── */
+
+.pricing__title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 0.9rem;
+    font-size: 1.3rem;
+    letter-spacing: -0.01em;
+}
+
+.pricing__title .badge {
+    margin-left: 0;
+}
+
+/* ── Ghost button — the secondary, lower-emphasis action ──────────────── */
+
+.button--ghost {
+    color: var(--accent-strong);
+    background: transparent;
+    border-color: var(--accent-soft);
+}
+
+.button--ghost:hover {
+    color: #fff;
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+}

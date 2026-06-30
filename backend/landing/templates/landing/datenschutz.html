@@ -1,0 +1,76 @@
+{% extends "landing/base_destination.html" %}
+
+{% block title %}Datenschutzerklärung · BirdDoc{% endblock %}
+
+{% block content %}
+    {% include "landing/_legal_draft_notice.html" %}
+
+    <p class="eyebrow">Rechtliches</p>
+    <h1>Datenschutzerklärung</h1>
+    <p>
+        Diese Erklärung informiert über die Verarbeitung personenbezogener Daten
+        bei der Nutzung von BirdDoc gemäß Datenschutz-Grundverordnung (DSGVO).
+    </p>
+
+    <h2>Verantwortlicher</h2>
+    <p>
+        Verantwortlicher im Sinne der DSGVO ist der Betreiber laut
+        <a href="{% url 'landing:impressum' %}">Impressum</a>. Für die in einer
+        Organisation erfassten Beringungsdaten ist die jeweilige Organisation
+        Verantwortliche; BirdDoc verarbeitet diese Daten als Auftragsverarbeiter
+        (siehe <a href="{% url 'landing:agb' %}">AGB &amp; Auftragsverarbeitung</a>).
+    </p>
+
+    <h2>Welche Daten verarbeitet werden</h2>
+    <ul>
+        <li>
+            <strong>Kontodaten</strong> — E-Mail-Adresse und Passwort-Hash zur
+            Anmeldung, Name und Kürzel der Beringerin/des Beringers.
+        </li>
+        <li>
+            <strong>Beringungsdaten</strong> — die fachlichen Felddaten je
+            gefangenem Vogel (Ring, Art, Maße, Station, Datum), erfasst innerhalb
+            einer Organisation.
+        </li>
+        <li>
+            <strong>Technische Daten</strong> — Server-Logs (IP-Adresse,
+            Zeitpunkt) zur Bereitstellung und Absicherung des Dienstes.
+        </li>
+    </ul>
+
+    <h2>Hosting in Österreich</h2>
+    <p>
+        BirdDoc wird bei der <strong>IPAX OG</strong> in einem Rechenzentrum in
+        <strong>Österreich</strong> betrieben. Die Daten verbleiben damit in
+        Österreich bzw. der EU. IPAX handelt als <strong>Auftragsverarbeiter</strong>
+        nach Art. 28 DSGVO.
+    </p>
+
+    <h2>Eingesetzte Auftragsverarbeiter</h2>
+    <ul>
+        <li>
+            <strong>IPAX OG</strong> (Österreich) — Hosting und Serverbetrieb.
+        </li>
+        <li>
+            <strong>Brevo</strong> (Sendinblue GmbH) — Versand transaktionaler
+            E-Mails (z.&nbsp;B. Passwort-Zurücksetzen, Bestätigungen).
+        </li>
+    </ul>
+
+    <h2>Cookies und Tracking</h2>
+    <p>
+        BirdDoc setzt <strong>keine Tracking-Cookies und keine Dienste von
+        Drittanbietern zur Analyse</strong> ein. Verwendet werden ausschließlich
+        technisch notwendige Cookies (Anmelde-Session, CSRF-Schutz). Ein
+        Cookie-Banner ist daher nicht erforderlich.
+    </p>
+
+    <h2>Ihre Rechte</h2>
+    <p>
+        Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung,
+        Datenübertragbarkeit und Widerspruch sowie ein Beschwerderecht bei der
+        Datenschutzbehörde. Kontakt: [PLATZHALTER: Datenschutz-Kontakt-E-Mail].
+    </p>
+
+    <p class="legal-back"><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
+{% endblock %}
