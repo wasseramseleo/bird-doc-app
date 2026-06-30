@@ -6,6 +6,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}BirdDoc{% endblock %}</title>
+    {% comment %}
+    SEO / Open-Graph / share tags (issue #108). The marketing home fills this
+    with its meta description + OG/Twitter card; other pages leave it empty.
+    {% endcomment %}
+    {% block head_meta %}{% endblock %}
     {# Lora (display) + Inter (body) — loaded the same way the Angular app does. #}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

@@ -741,3 +741,12 @@ msgstr ""
 
 msgid "Für diese E-Mail-Adresse gibt es bereits ein Konto."
 msgstr ""
+
+msgid "Schluss mit Papier und Excel: BirdDoc ist die Feld-Dokumentation für die Vogelberingung — ein sauberer Datensatz pro gefangenem und beringtem Vogel."
+msgstr ""
+
+msgid "BirdDoc — Feldjournal für die Vogelberingung"
+msgstr ""
+
+msgid "BirdDoc — Beispiel-Fang-Karte"
+msgstr ""

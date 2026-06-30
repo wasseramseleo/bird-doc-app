@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+{% comment %}
+The Open-Graph / share image (issue #108): a rendering of the hero Fang-Karte
+drawn from the SAME `FANG_KARTE` specimen the home page uses, so the shared link
+previews with the product's own credible capture card and can never drift from
+the hero. Hand-authored SVG over the brand tokens (ADR 0009) — the --bd-* values
+are inlined as hex because an external stylesheet does not travel with the image.
+Sized 1200×630, the canonical Open-Graph ratio. The card's field labels stay
+German: it is an honest preview of the German app itself (ADR 0009).
+{% endcomment %}
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="BirdDoc — Beispiel-Fang-Karte">
+  <defs>
+    <style>
+      .serif { font-family: 'Lora', Georgia, 'Times New Roman', serif; }
+      .sans  { font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+      .data  { font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif; font-variant-numeric: tabular-nums; }
+    </style>
+  </defs>
+
+  <!-- Paper surface + warm accent top rule. -->
+  <rect width="1200" height="630" fill="#F7F2E8"/>
+  <rect width="1200" height="8" fill="#8B5A3C"/>
+
+  <!-- Left column: the brand thesis. -->
+  <g>
+    <circle cx="78" cy="104" r="14" fill="none" stroke="#8B5A3C" stroke-width="3"/>
+    <text x="104" y="116" class="serif" font-size="44" font-weight="600" fill="#2B2A26">BirdDoc</text>
+    <text x="72" y="186" class="sans" font-size="20" letter-spacing="2" fill="#6B655B">FELDJOURNAL · BERINGUNG</text>
+    <text x="70" y="268" class="serif" font-size="58" font-weight="600" fill="#2B2A26">Schluss mit</text>
+    <text x="70" y="332" class="serif" font-size="58" font-weight="600" fill="#2B2A26">Papier und Excel</text>
+    <text x="72" y="392" class="sans" font-size="24" fill="#6B655B">Ein sauberer Datensatz pro gefangenem Vogel.</text>
+
+    <!-- The Ringserie number thread — the same consumed run that threads the home. -->
+    <text x="72" y="470" class="data" font-size="26" fill="#8B5A3C" letter-spacing="1">{% for number in fang_karte.ringserie %}{{ number }}{% if not forloop.last %}  ·  {% endif %}{% endfor %}  ·  {{ fang_karte.next_number }}</text>
+
+    <!-- Beta badge. -->
+    <rect x="72" y="510" width="92" height="40" rx="20" fill="#EFE9DC" stroke="#C9C0AE"/>
+    <text x="118" y="536" class="sans" font-size="20" font-weight="600" fill="#6B4530" text-anchor="middle">Beta</text>
+    <text x="184" y="536" class="sans" font-size="20" fill="#6B655B">Gehostet in Österreich · DSGVO-konform</text>
+  </g>
+
+  <!-- Right column: the Fang-Karte card. -->
+  <g>
+    <rect x="700" y="86" width="440" height="458" rx="16" fill="#FBF7EE" stroke="#C9C0AE"/>
+    <rect x="700" y="86" width="440" height="6" rx="3" fill="#8B5A3C"/>
+
+    <text x="730" y="146" class="sans" font-size="18" letter-spacing="2" fill="#A6A095">FANG-KARTE</text>
+    <text x="1110" y="146" class="data" font-size="22" font-weight="600" fill="#8B5A3C" text-anchor="end">{{ fang_karte.ring_size }} · {{ fang_karte.ring_number }}</text>
+
+    <text x="730" y="206" class="serif" font-size="42" font-weight="600" fill="#2B2A26">{{ fang_karte.common_name_de }}</text>
+    <text x="730" y="240" class="serif" font-size="22" font-style="italic" fill="#6B655B">{{ fang_karte.scientific_name }}</text>
+
+    <line x1="730" y1="268" x2="1110" y2="268" stroke="#C9C0AE"/>
+
+    <!-- Biometrics + classification grid (label over value), three columns. -->
+    <g>
+      <text x="730" y="312" class="sans" font-size="17" fill="#A6A095">Flügel</text>
+      <text x="730" y="342" class="data" font-size="26" fill="#2B2A26">{{ fang_karte.wing_mm }} mm</text>
+      <text x="860" y="312" class="sans" font-size="17" fill="#A6A095">Gewicht</text>
+      <text x="860" y="342" class="data" font-size="26" fill="#2B2A26">{{ fang_karte.weight_g }} g</text>
+      <text x="1010" y="312" class="sans" font-size="17" fill="#A6A095">Fett</text>
+      <text x="1010" y="342" class="data" font-size="26" fill="#2B2A26">{{ fang_karte.fat }}</text>
+
+      <text x="730" y="392" class="sans" font-size="17" fill="#A6A095">Alter</text>
+      <text x="730" y="422" class="sans" font-size="24" fill="#2B2A26">{{ fang_karte.age }}</text>
+      <text x="860" y="392" class="sans" font-size="17" fill="#A6A095">Geschlecht</text>
+      <text x="860" y="422" class="sans" font-size="24" fill="#2B2A26">{{ fang_karte.sex }}</text>
+      <text x="1010" y="392" class="sans" font-size="17" fill="#A6A095">Datum</text>
+      <text x="1010" y="422" class="data" font-size="24" fill="#2B2A26">{{ fang_karte.datum }}</text>
+    </g>
+
+    <line x1="730" y1="466" x2="1110" y2="466" stroke="#C9C0AE"/>
+    <text x="730" y="508" class="sans" font-size="22" fill="#6B655B">{{ fang_karte.station }}</text>
+    <rect x="1040" y="486" width="70" height="34" rx="17" fill="#EFE9DC" stroke="#C9C0AE"/>
+    <text x="1075" y="509" class="sans" font-size="20" font-weight="600" fill="#6B4530" text-anchor="middle">{{ fang_karte.kuerzel }}</text>
+  </g>
+</svg>

@@ -4,6 +4,36 @@
 {% block body_class %}page--marketing{% endblock %}
 
 {% comment %}
+SEO + Open-Graph share baseline (issue #108): a shared BirdDoc link previews
+with a title, a description and the hero Fang-Karte as the share image, so it
+reads credibly in chat and on social. The image is a server-rendered SVG of the
+same FANG_KARTE specimen (ADR 0009). The copy is translatable like the rest of
+the bilingual marketing surface (issue #107); og:image/og:url are absolute,
+built in the view.
+{% endcomment %}
+{% block head_meta %}
+    {% blocktranslate trimmed asvar meta_description %}Schluss mit Papier und Excel: BirdDoc ist die Feld-Dokumentation für die Vogelberingung — ein sauberer Datensatz pro gefangenem und beringtem Vogel.{% endblocktranslate %}
+    {% translate "BirdDoc — Feldjournal für die Vogelberingung" as og_title %}
+    <meta name="description" content="{{ meta_description }}">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="BirdDoc">
+    <meta property="og:title" content="{{ og_title }}">
+    <meta property="og:description" content="{{ meta_description }}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:image" content="{{ og_image_url }}">
+    <meta property="og:image:type" content="image/svg+xml">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="{% translate 'BirdDoc — Beispiel-Fang-Karte' %}">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ og_title }}">
+    <meta name="twitter:description" content="{{ meta_description }}">
+    <meta name="twitter:image" content="{{ og_image_url }}">
+{% endblock %}
+
+{% comment %}
 The marketing home's full top nav fills the header slot beside the wordmark
 (issue #104): in-page anchors to the IA sections, an *Anmelden* action that
 links OUT to the SPA login (login stays in the SPA — ADR 0008), and the DE/EN

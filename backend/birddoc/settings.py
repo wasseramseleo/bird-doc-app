@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "corsheaders",
     "django.contrib.staticfiles",
+    "django.contrib.sitemaps",
     "rest_framework",
     "birds",
     "landing",

@@ -70,6 +70,11 @@ class HomeView(TemplateView):
             **super().get_context_data(**kwargs),
             "app_login_url": settings.APP_LOGIN_URL,
             "fang_karte": FANG_KARTE,
+            # Absolute URLs for the Open-Graph card (issue #108): social scrapers
+            # need scheme + host, not a relative path. The share image is the
+            # Fang-Karte rendering, served language-independently at the root.
+            "og_image_url": self.request.build_absolute_uri(reverse("og_fang_karte")),
+            "canonical_url": self.request.build_absolute_uri(self.request.path),
         }
 
 

@@ -17,7 +17,10 @@ Including another URLconf
 
 from django.conf.urls.i18n import i18n_patterns
 from django.contrib import admin
+from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
+
+from landing import seo
 
 # The headless API and the Django admin are not part of the bilingual surface —
 # they carry no language prefix.
@@ -26,6 +29,15 @@ urlpatterns = [
     path("api/auth/", include("birds.auth_urls")),
     path("api/feedback/", include("birds.feedback_urls")),
     path("admin/", admin.site.urls),
+]
+
+# Crawler & share-baseline files (issue #108): served at the apex root, OUTSIDE
+# i18n_patterns, so each lives at exactly one canonical URL with no language
+# prefix — `/robots.txt`, `/sitemap.xml` and the Fang-Karte Open-Graph image.
+urlpatterns += [
+    path("robots.txt", seo.RobotsTxtView.as_view(), name="robots"),
+    path("sitemap.xml", sitemap, {"sitemaps": seo.SITEMAPS}, name="sitemap"),
+    path("og/fang-karte.svg", seo.FangKarteOgImageView.as_view(), name="og_fang_karte"),
 ]
 
 # Public, server-rendered landing served at the apex host (birddoc.at), kept
