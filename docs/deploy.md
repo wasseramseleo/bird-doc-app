@@ -83,7 +83,13 @@ sudo install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
 # paste ~/.ssh/birddoc_deploy.pub into:
 sudo -u deploy tee /home/deploy/.ssh/authorized_keys < birddoc_deploy.pub
 sudo chmod 600 /home/deploy/.ssh/authorized_keys
+# the deploy step scps the compose file + Caddyfile and writes .env into
+# /opt/bird-doc-app, so the deploy user must own that directory (pgdata stays
+# root-owned at 700 — postgres manages it):
+sudo chown deploy:deploy /opt/bird-doc-app
 ```
+
+> If you ran `bootstrap.sh` **before** creating the `deploy` user, `/opt/bird-doc-app` is still root-owned and the first deploy fails with `tar: ...: Cannot open: Permission denied`. The `chown` above fixes it; re-running `bootstrap.sh` does the same (it's idempotent and chowns the dir once the user exists).
 
 Harden public SSH: in `/etc/ssh/sshd_config` set `PasswordAuthentication no` and `PermitRootLogin no`, then `systemctl reload ssh`. Key-only auth plus the ufw rule from step 1 is the whole exposure surface.
 

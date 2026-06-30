@@ -16,6 +16,8 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 APP_DIR=/opt/bird-doc-app
+# The deploy workflow connects as this SSH user; it must own ${APP_DIR}.
+DEPLOY_USER="${DEPLOY_USER:-deploy}"
 
 echo ">> Installing Docker Engine + compose plugin"
 if ! command -v docker >/dev/null 2>&1; then
@@ -57,6 +59,19 @@ echo ">> Creating ${APP_DIR} directory tree"
 mkdir -p "${APP_DIR}"/{pgdata,caddy_data,caddy_config}
 chmod 700 "${APP_DIR}/pgdata"
 
+# The deploy workflow scps docker-compose.prod.yml + Caddyfile and writes .env
+# into ${APP_DIR} as the deploy SSH user. That user must own the directory, or
+# the scp untar fails with "tar: ...: Cannot open: Permission denied". pgdata
+# stays root-owned at mode 700 — the postgres container manages its contents.
+if id -u "${DEPLOY_USER}" >/dev/null 2>&1; then
+  echo ">> Granting '${DEPLOY_USER}' ownership of ${APP_DIR}"
+  chown "${DEPLOY_USER}:${DEPLOY_USER}" "${APP_DIR}"
+else
+  echo ">> NOTE: user '${DEPLOY_USER}' does not exist yet. After you create it"
+  echo "   (docs/deploy.md step 3) run, or re-run this script:"
+  echo "     chown ${DEPLOY_USER}:${DEPLOY_USER} ${APP_DIR}"
+fi
+
 cat <<'EOF'
 
 >> Bootstrap complete.
@@ -76,6 +91,9 @@ Next steps (see docs/deploy.md for the full runbook):
      usermod -aG docker deploy
      install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
      # install the deploy public key into /home/deploy/.ssh/authorized_keys
+     # let the deploy user own the app dir (scp target + .env), then re-run this
+     # script (idempotent) or just:
+     chown deploy:deploy /opt/bird-doc-app
 
 3. Add the following secrets in GitHub -> Settings -> Secrets and variables ->
    Actions:
