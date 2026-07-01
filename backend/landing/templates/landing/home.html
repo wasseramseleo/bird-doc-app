@@ -1,5 +1,5 @@
 {% extends "landing/base.html" %}
-{% load i18n %}
+{% load static i18n %}
 
 {% block body_class %}page--marketing{% endblock %}
 
@@ -34,6 +34,15 @@ built in the view.
 {% endblock %}
 
 {% comment %}
+The landing's single light JavaScript file (issue #141): vanilla, dependency-
+free, served from the landing's own statics. It only *enhances* — without it
+the nav above renders fully expanded and the page works unchanged.
+{% endcomment %}
+{% block scripts %}
+    <script src="{% static 'landing/nav.js' %}" defer></script>
+{% endblock %}
+
+{% comment %}
 The marketing home's full top nav fills the header slot beside the wordmark
 (issue #104): in-page anchors to the IA sections, an *Anmelden* action that
 links OUT to the SPA login (login stays in the SPA — ADR 0008), and the DE/EN
@@ -41,10 +50,21 @@ toggle (issue #107). The marketing home and the two lead forms are the bilingual
 surface; the toggle switches between German (apex, no prefix) and English (/en/).
 {% endcomment %}
 {% block header_back %}
+    {% comment %}
+    At narrow viewports the section links collapse behind a toggle (issue #141)
+    as a progressive enhancement carried by the landing's single vanilla JS
+    file: the sections group ships fully expanded (no hidden attribute) so the
+    no-JS page works unchanged. Anmelden and the DE/EN toggle sit OUTSIDE the
+    collapsible group and stay directly visible at every viewport width.
+    {% endcomment %}
     <nav class="site-nav" aria-label="{% translate 'Hauptnavigation' %}">
-        <a class="site-nav__link" href="#funktionen">{% translate "Funktionen" %}</a>
-        <a class="site-nav__link" href="#organisationen">{% translate "Für Organisationen" %}</a>
-        <a class="site-nav__link" href="#preise">{% translate "Preise" %}</a>
+        <button class="site-nav__toggle" type="button" hidden
+                aria-expanded="false" aria-controls="site-nav-sections">{% translate "Menü" %}</button>
+        <div class="site-nav__sections" id="site-nav-sections">
+            <a class="site-nav__link" href="#funktionen">{% translate "Funktionen" %}</a>
+            <a class="site-nav__link" href="#organisationen">{% translate "Für Organisationen" %}</a>
+            <a class="site-nav__link" href="#preise">{% translate "Preise" %}</a>
+        </div>
         <a class="site-nav__link site-nav__link--login" href="{{ app_login_url }}">{% translate "Anmelden" %}</a>
         {% include "landing/_lang_toggle.html" %}
     </nav>

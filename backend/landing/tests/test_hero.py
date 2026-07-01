@@ -95,10 +95,14 @@ def test_card_ring_size_is_valid_for_that_species(client):
     assert FANG_KARTE.ring_size in content
 
 
-def test_home_carries_no_javascript(client):
-    # The card carries no JS; the page ships no script at all.
+def test_home_ships_only_the_landings_own_first_party_script(client):
+    # The card itself carries no JS. Since issue #141 the page ships the
+    # landing's single light JavaScript file — the progressive nav-toggle
+    # enhancement, served from the landing's own statics — and nothing else:
+    # no third-party script, no inline script (test_nav_toggle pins the rest).
     content = client.get("/").content.decode()
-    assert "<script" not in content.lower()
+    assert content.lower().count("<script") == 1
+    assert 'src="/static/landing/nav.js"' in content
 
 
 def test_the_only_motion_is_the_thread_reveal_and_it_is_reduced_motion_aware():

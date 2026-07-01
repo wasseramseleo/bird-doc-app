@@ -58,5 +58,11 @@
                 <span class="place">Österreich</span></span>
         </div>
     </footer>
+    {% comment %}
+    The landing's single light JavaScript file (issue #141): the marketing home
+    fills this with its first-party nav-toggle enhancement; every other public
+    page ships script-free.
+    {% endcomment %}
+    {% block scripts %}{% endblock %}
 </body>
 </html>

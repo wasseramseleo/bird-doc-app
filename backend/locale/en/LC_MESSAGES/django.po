@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-01 13:59+0200\n"
+"POT-Creation-Date: 2026-07-01 23:32+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -220,6 +220,9 @@ msgid "Breitengrad"
 msgstr ""
 
 msgid "Längengrad"
+msgstr ""
+
+msgid "Aktiv"
 msgstr ""
 
 msgid "unbekannt"
@@ -483,6 +486,18 @@ msgstr ""
 msgid "Active for Autocomplete"
 msgstr ""
 
+msgid "Ein Name ist erforderlich."
+msgstr ""
+
+msgid "Eine Ortskodierung ist erforderlich."
+msgstr ""
+
+msgid "Ein Breitengrad ist erforderlich."
+msgstr ""
+
+msgid "Ein Längengrad ist erforderlich."
+msgstr ""
+
 msgid "Die Station muss zur Organisation des Projekts gehören."
 msgstr ""
 
@@ -586,6 +601,9 @@ msgstr "BirdDoc: example capture card"
 
 msgid "Hauptnavigation"
 msgstr "Main navigation"
+
+msgid "Menü"
+msgstr "Menu"
 
 msgid "Funktionen"
 msgstr "Features"
@@ -799,10 +817,10 @@ msgid ""
 "es offen: Weil deine Daten dir gehören und jederzeit exportierbar sind, "
 "bleibst du unabhängig davon, wer BirdDoc betreibt."
 msgstr ""
-"BirdDoc is run by a <strong>sole proprietorship</strong> (Einzelunternehmen), "
-"a single person. Instead of hiding that risk, we answer it openly: because "
-"your data belongs to you and can be exported at any time, you stay "
-"independent of whoever runs BirdDoc."
+"BirdDoc is run by a <strong>sole proprietorship</strong> "
+"(Einzelunternehmen), a single person. Instead of hiding that risk, we answer "
+"it openly: because your data belongs to you and can be exported at any time, "
+"you stay independent of whoever runs BirdDoc."
 
 msgid "An der Station bewährt"
 msgstr "Proven at the ringing station"
@@ -872,4 +890,3 @@ msgstr ""
 
 msgid "Für diese E-Mail-Adresse gibt es bereits ein Konto."
 msgstr ""
-
