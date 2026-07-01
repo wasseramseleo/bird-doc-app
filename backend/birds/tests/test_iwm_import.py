@@ -23,7 +23,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils.timezone import localtime, make_aware
 
-from birds.models import DataEntry, Ring
+from birds.models import DataEntry, Project, Ring
 
 PROJECTS_URL = "/api/birds/projects/"
 
@@ -516,3 +516,111 @@ def test_two_identical_rows_in_one_file_import_once(
     assert body["created"] == 1
     assert body["duplicatesSkipped"] == 1
     assert DataEntry.objects.count() == 1
+
+
+# --- Projekt-method precedence & non-blocking warnings (issue #124) ------------
+# Fangmethode/Lockmittel/Umstand are Projekt properties (ADR 0002), never stored
+# per capture. The selected Projekt's values govern; the file's columns are
+# informational and drive the warnings channel, which is distinct from the
+# blocking errors channel and never stops the import.
+
+
+@pytest.mark.django_db
+def test_homogeneous_file_disagreeing_with_set_method_warns_but_imports(
+    auth_client, scientist, ringing_station, project, species
+):
+    # The Projekt's Fangmethode is set (default "M" — Japannetz). A homogeneous
+    # file whose Fangmethode says "H" disagrees: a non-blocking warning is raised,
+    # the Projekt value governs, and the import still proceeds.
+    assert project.capture_method == Project.CaptureMethod.MIST_NET
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, Fangmethode="H")],
+        headers=[*HEADERS, "Fangmethode"],
+    )
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+
+    assert preview["importable"] == 1
+    assert preview["errors"] == []  # the mismatch is a warning, never an error
+    assert len(preview["warnings"]) == 1
+    warning = preview["warnings"][0]
+    assert warning["row"] == 2
+    assert "Fangmethode" in warning["reason"]
+
+    # Non-blocking: commit imports the row and leaves the Projekt value untouched.
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert result["created"] == 1
+    project.refresh_from_db()
+    assert project.capture_method == Project.CaptureMethod.MIST_NET
+
+
+@pytest.mark.django_db
+def test_unset_projekt_method_is_adopted_from_homogeneous_file(
+    auth_client, scientist, ringing_station, project, species
+):
+    # The Projekt's Lockmittel is unset; a homogeneous file supplies "A" (Futter).
+    # There is no conflict — so no warning — and the file's value is adopted onto
+    # the Projekt. Adoption is a write, so it happens only on commit.
+    project.lure = ""
+    project.save(update_fields=["lure"])
+    content = _workbook(
+        [
+            _valid_row(species, scientist, ringing_station, Lockmittel="A"),
+            _valid_row(species, scientist, ringing_station, Ringnummer="V00702", Lockmittel="A"),
+        ],
+        headers=[*HEADERS, "Lockmittel"],
+    )
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+    assert preview["warnings"] == []  # adoption is not a conflict
+    project.refresh_from_db()
+    assert project.lure == ""  # dry-run adopts nothing
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert result["created"] == 2
+    project.refresh_from_db()
+    assert project.lure == "A"
+
+
+@pytest.mark.django_db
+def test_heterogeneous_file_warns_and_stores_no_per_row_method(
+    auth_client, scientist, ringing_station, project, species
+):
+    # The file's Fangmethode differs across rows ("H" then "M"). The model cannot
+    # store a per-capture method, so this is a non-blocking warning; both rows
+    # still import. The Projekt is left unset to prove a heterogeneous file adopts
+    # nothing (it warns instead of guessing which value governs).
+    project.capture_method = ""
+    project.save(update_fields=["capture_method"])
+    content = _workbook(
+        [
+            _valid_row(species, scientist, ringing_station, Fangmethode="H"),
+            _valid_row(species, scientist, ringing_station, Ringnummer="V00703", Fangmethode="M"),
+        ],
+        headers=[*HEADERS, "Fangmethode"],
+    )
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+    assert preview["importable"] == 2
+    assert preview["errors"] == []
+    assert len(preview["warnings"]) == 1
+    warning = preview["warnings"][0]
+    assert warning["row"] == 3  # the row where the value diverges
+    assert "Fangmethode" in warning["reason"]
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert result["created"] == 2
+    project.refresh_from_db()
+    assert project.capture_method == ""  # heterogeneous file adopts nothing
