@@ -35,6 +35,9 @@ INSTALLED_APPS = [
     "corsheaders",
     "django.contrib.staticfiles",
     "django.contrib.sitemaps",
+    # intcomma renders the landing stats row's figures with locale-aware digit
+    # grouping: 3.412 at the German apex, 3,412 under /en/ (issue #140).
+    "django.contrib.humanize",
     "rest_framework",
     "birds",
     "landing",

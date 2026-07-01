@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-01 23:57+0200\n"
+"POT-Creation-Date: 2026-07-02 00:00+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -562,6 +562,15 @@ msgstr ""
 msgid "Die Passwörter stimmen nicht überein."
 msgstr ""
 
+msgid "Fänge"
+msgstr "Captures"
+
+msgid "Arten"
+msgstr "Species"
+
+msgid "Projekte"
+msgstr "Projects"
+
 msgid "Sprache"
 msgstr "Language"
 
@@ -853,6 +862,9 @@ msgid ""
 msgstr ""
 "BirdDoc already documents real ringing work: born as a <strong>master's "
 "thesis</strong> (Masterarbeit), proven in daily station work."
+
+msgid "Zahlen aus dem Stationsbetrieb"
+msgstr "Figures from station operations"
 
 msgid ""
 "Für interessierte Gruppen ist ein begleiteter <strong>Beta-Pilot</strong> "
