@@ -53,7 +53,12 @@ def test_login_with_valid_credentials_returns_payload(api_client, user, scientis
     )
     assert response.status_code == 200
     body = response.json()
-    assert body == {"username": "alice", "handle": "ALC", "is_staff": False}
+    assert body == {
+        "username": "alice",
+        "handle": "ALC",
+        "is_staff": False,
+        "active_organization_rolle": "admin",
+    }
 
 
 @pytest.mark.django_db
@@ -101,10 +106,39 @@ def test_me_unauthenticated_returns_401(api_client):
 def test_me_authenticated_returns_payload(auth_client, scientist):
     response = auth_client.get(ME_URL)
     assert response.status_code == 200
-    assert response.json() == {"username": "alice", "handle": "ALC", "is_staff": False}
+    assert response.json() == {
+        "username": "alice",
+        "handle": "ALC",
+        "is_staff": False,
+        "active_organization_rolle": "admin",
+    }
 
 
 @pytest.mark.django_db
 def test_me_sets_csrf_cookie(api_client):
     response = api_client.get(ME_URL)
     assert "csrftoken" in response.cookies
+
+
+@pytest.mark.django_db
+def test_me_reports_active_organization_rolle_admin(auth_client, scientist):
+    # Alice's single Mitgliedschaft in tenant A is Admin, so her active
+    # Organisation's Rolle resolves to "admin".
+    response = auth_client.get(ME_URL)
+    assert response.status_code == 200
+    assert response.json()["active_organization_rolle"] == "admin"
+
+
+@pytest.mark.django_db
+def test_me_reports_active_organization_rolle_mitglied(mitglied_client, mitglied_scientist):
+    response = mitglied_client.get(ME_URL)
+    assert response.status_code == 200
+    assert response.json()["active_organization_rolle"] == "mitglied"
+
+
+@pytest.mark.django_db
+def test_me_reports_null_rolle_without_unambiguous_active_organisation(auth_client, user):
+    # No Mitgliedschaft ⇒ no unambiguous active Organisation ⇒ null Rolle.
+    response = auth_client.get(ME_URL)
+    assert response.status_code == 200
+    assert response.json()["active_organization_rolle"] is None
