@@ -83,8 +83,16 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             <p class="lead">{% blocktranslate trimmed %}BirdDoc ist das Stationsjournal für die Beringung: ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten Tabellen.{% endblocktranslate %}
                 <span class="badge badge--beta">Beta</span></p>
             {% include "landing/_app_german_only_note.html" %}
+            {% comment %}
+            Hero CTAs (issue #138): the primary action is the Warteliste — a
+            Beringer convinced by the hero can act on it right here instead of
+            scrolling screens down. The secondary ghost button forks the other
+            audience to the Für-Organisationen section; a "Für Beringer" anchor
+            is deliberately absent — the page's default reading flow IS the
+            Beringer path.
+            {% endcomment %}
             <p class="hero__ctas">
-                <a class="button" href="#fuer-beringer">{% translate "Für Beringer" %}</a>
+                <a class="button" href="{% url 'landing:warteliste' %}">{% translate "Zugang anfragen" %}</a>
                 <a class="button button--ghost" href="#organisationen">{% translate "Für Organisationen" %}</a>
             </p>
         </div>
@@ -134,10 +142,14 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     The Ringserie number thread (issue #106): a run of CONSUMED ring numbers
     (last-consumed + 1) threading the page as an honest structural marker. Set in
     tabular-nums (the data voice). The numbers themselves are data, not copy.
+    Its caption (issue #138) names what the thread is — consumed ring numbers
+    from station operation, next number = last consumed + 1 — so the thread
+    reads as evidence, not decoration.
     {% endcomment %}
     <p class="ringserie ringserie--reveal data" aria-label="{% translate 'Ringserie: fortlaufende Ringnummern' %}">
         {% for number in fang_karte.ringserie %}<span class="ringserie__num">{{ number }}</span>{% if not forloop.last %}<span class="ringserie__sep" aria-hidden="true">·</span>{% endif %}{% endfor %}<span class="ringserie__sep" aria-hidden="true">·</span><span class="ringserie__next" title="{% translate 'Nächste Nummer: letzte verbrauchte + 1' %}">{{ fang_karte.next_number }}</span>
     </p>
+    <p class="ringserie__caption">{% translate "Ringserie: fortlaufend verbrauchte Ringnummern aus dem Stationsbetrieb; die nächste Nummer ist die letzte verbrauchte + 1." %}</p>
 
     {% comment %}
     The fork band — both audience columns rendered server-side at once (SEO;
