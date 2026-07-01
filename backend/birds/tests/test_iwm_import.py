@@ -16,6 +16,7 @@ here.
 """
 
 from datetime import date, datetime, time
+from decimal import Decimal
 from io import BytesIO
 
 import openpyxl
@@ -23,7 +24,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils.timezone import localtime, make_aware
 
-from birds.models import DataEntry, Project, Ring
+from birds.models import DataEntry, Project, Ring, RingingStation, Scientist
 
 PROJECTS_URL = "/api/birds/projects/"
 
@@ -42,6 +43,7 @@ HEADERS = [
     "Ort",
     "Region",
     "Land",
+    "Geo-Koordinaten",
     "Bemerkungen",
     "BeringerIn",
 ]
@@ -408,33 +410,190 @@ def test_file_at_the_cap_previews_and_commits_normally(
     assert DataEntry.objects.count() == 2
 
 
+# --- Auto-create unfamiliar Beringer & Stationen, surfaced in the preview -----
+# (issue #121). Replaces the spine's temporary "unknown Beringer/Station is an
+# error" behaviour: an unfamiliar Kürzel becomes a no-account Beringer (ADR 0001)
+# and an unfamiliar Ort a new Station, each surfaced in ``toCreate`` for the
+# Admin to approve, created only on commit, and attached to the referencing rows.
+
+
 @pytest.mark.django_db
-def test_unfamiliar_beringer_and_station_are_blocking_errors_this_slice(
+def test_dry_run_lists_unfamiliar_beringer_and_station_in_to_create(
     auth_client, scientist, ringing_station, project, species
 ):
-    # Scope note (issue #120): auto-create of unfamiliar Beringer/Stationen is a
-    # later slice; here they are blocking errors so nothing is silently created.
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                BeringerIn="XZY",
+                Ort="Feldstation Nord",
+                Ortskodierung="FN01",
+                Region="Niederösterreich",
+                Land="Austria",
+            ),
+        ]
+    )
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+
+    # The row is importable — the unfamiliar Kürzel and Ort are surfaced for the
+    # Admin to approve, not rejected as errors.
+    assert preview["importable"] == 1
+    assert preview["errors"] == []
+    assert preview["toCreate"]["beringer"] == ["XZY"]
+    assert preview["toCreate"]["stationen"] == ["Feldstation Nord"]
+    # A dry-run writes nothing — not the capture, and not the entities either.
+    assert DataEntry.objects.count() == 0
+    assert not Scientist.objects.filter(handle="XZY").exists()
+    assert not RingingStation.objects.filter(place_code="FN01").exists()
+
+
+@pytest.mark.django_db
+def test_commit_auto_creates_beringer_and_station_and_attaches_them(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                BeringerIn="XZY",
+                Ort="Feldstation Nord",
+                Ortskodierung="FN01",
+                Region="Niederösterreich",
+                Land="Austria",
+            ),
+        ]
+    )
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+
+    assert result["created"] == 1
+    assert result["createdBeringer"] == ["XZY"]
+    assert result["createdStationen"] == ["Feldstation Nord"]
+
+    # The unfamiliar Kürzel is now a no-account Beringer scoped to the Org (ADR 0001).
+    beringer = Scientist.objects.get(handle="XZY")
+    assert beringer.organization == organization
+    assert beringer.user is None
+
+    # The unfamiliar Ort is now a Station scoped to the Org, built from the sheet.
+    station = RingingStation.objects.get(place_code="FN01")
+    assert station.organization == organization
+    assert station.name == "Feldstation Nord"
+    assert station.region == "Niederösterreich"
+    assert station.country == "Austria"
+
+    # …and the imported capture is attached to both auto-created entities.
+    entry = DataEntry.objects.get()
+    assert entry.staff == beringer
+    assert entry.ringing_station == station
+
+
+@pytest.mark.django_db
+def test_repeated_unfamiliar_beringer_is_created_once_and_shared(
+    auth_client, scientist, ringing_station, project, species
+):
+    # Two rows naming the same unfamiliar Kürzel: it is surfaced once, created
+    # once, and both captures share the one Beringer (no duplicate junk records).
     rows = [
-        _valid_row(species, scientist, ringing_station, BeringerIn="XYZ"),  # row 2
-        _valid_row(
-            species,
-            scientist,
-            ringing_station,
-            Ringnummer="V00999",
-            Ort="Nirgendwo",
-            Ortskodierung="ZZ99",
-        ),  # row 3
+        _valid_row(species, scientist, ringing_station, Ringnummer="V00601", BeringerIn="QQ"),
+        _valid_row(species, scientist, ringing_station, Ringnummer="V00602", BeringerIn="QQ"),
     ]
     content = _workbook(rows)
 
     preview = auth_client.post(
         _import_url(project), {"file": _upload(content)}, format="multipart"
     ).json()
+    assert preview["toCreate"]["beringer"] == ["QQ"]
 
-    assert preview["importable"] == 0
-    reasons = {e["row"]: e["reason"] for e in preview["errors"]}
-    assert "Beringer" in reasons[2]
-    assert "Station" in reasons[3]
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert result["created"] == 2
+    assert result["createdBeringer"] == ["QQ"]
+
+    assert Scientist.objects.filter(handle="QQ").count() == 1
+    beringer = Scientist.objects.get(handle="QQ")
+    assert DataEntry.objects.filter(staff=beringer).count() == 2
+
+
+@pytest.mark.django_db
+def test_commit_auto_created_station_parses_geo_koordinaten(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    # An unfamiliar Ort carrying a "lat, lon" Geo-Koordinaten cell: the parsed
+    # decimal coordinates land on the auto-created Station (issue #121 AC).
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                Ort="Feldstation Süd",
+                Ortskodierung="FS02",
+                Region="Steiermark",
+                Land="Austria",
+                **{"Geo-Koordinaten": "47.123456, 15.654321"},
+            ),
+        ]
+    )
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+
+    assert result["created"] == 1
+    assert result["createdStationen"] == ["Feldstation Süd"]
+
+    station = RingingStation.objects.get(place_code="FS02")
+    assert station.latitude == Decimal("47.123456")
+    assert station.longitude == Decimal("15.654321")
+
+    # …and the capture is attached to the coordinate-carrying Station.
+    entry = DataEntry.objects.get()
+    assert entry.ringing_station == station
+
+
+@pytest.mark.django_db
+def test_cross_org_kuerzel_collision_is_a_row_error_not_a_crash(
+    auth_client, scientist, ringing_station, project, species, scientist_b
+):
+    # Bruno's Kürzel "BRU" is owned by tenant B. It is unfamiliar to tenant A
+    # (the familiarity map is org-scoped) but Scientist.handle is globally unique,
+    # so auto-creating it would violate the constraint. Instead of crashing the
+    # whole atomic import (HTTP 500, rollback), the row is a blocking error — the
+    # same on the dry-run preview and on commit.
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, BeringerIn=scientist_b.handle)]
+    )
+
+    preview = auth_client.post(_import_url(project), {"file": _upload(content)}, format="multipart")
+    assert preview.status_code == 200, preview.content
+    preview_body = preview.json()
+    assert preview_body["importable"] == 0
+    assert [e["row"] for e in preview_body["errors"]] == [2]
+    assert scientist_b.handle in preview_body["errors"][0]["reason"]
+    # The colliding Kürzel is not offered for creation.
+    assert preview_body["toCreate"]["beringer"] == []
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+    assert result.status_code == 200, result.content
+    result_body = result.json()
+    assert result_body["created"] == 0
+    assert [e["row"] for e in result_body["errors"]] == [2]
+    # No capture created, and tenant B's Beringer is untouched.
+    assert DataEntry.objects.count() == 0
+    assert Scientist.objects.filter(handle=scientist_b.handle).count() == 1
 
 
 # --- Duplicate detection & recapture (issue #122) -----------------------------
