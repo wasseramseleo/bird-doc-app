@@ -2,18 +2,22 @@
 #
 # setup-worktrees.sh — create isolated git worktrees for parallel issue work.
 #
-# Each issue <n> becomes its own worktree (sibling dir ../bda-<n>) on its own
+# Each issue <n> becomes its own worktree (../bda-worktrees/bda-<n>) on its own
 # branch (issue-<n>), based on a shared base branch (default: feedback-impl).
-# The frontend node_modules is symlinked from the main checkout so you don't
-# reinstall per worktree (none of these issues change package.json). Run one
-# Claude Code instance per worktree — git worktrees give each agent its own
-# working copy, so they never touch the same file on disk.
+# All worktrees live together under one dedicated root (../bda-worktrees) rather
+# than scattered as repo siblings, so a single entry in
+# permissions.additionalDirectories grants agents file access to every worktree.
+# The frontend node_modules and backend .venv are symlinked from the main
+# checkout so you don't reinstall per worktree (none of these issues change
+# package.json / pyproject). Run one Claude Code instance per worktree — git
+# worktrees give each agent its own working copy, so they never touch the same
+# file on disk.
 #
 set -euo pipefail
 
 DEFAULT_ISSUES=(22 23 24 25 26 27 28 29)
 BASE_BRANCH="feedback-impl"
-PREFIX="bda"            # worktree dir prefix -> ../bda-22
+PREFIX="bda"            # worktree dir prefix -> ../bda-worktrees/bda-22
 ACTION="create"
 
 usage() {
@@ -28,9 +32,9 @@ Usage:
   ./setup-worktrees.sh --list          list current worktrees
 
 Each issue <n> becomes:
-  worktree dir : ../bda-<n>   (sibling of the repo)
+  worktree dir : ../bda-worktrees/bda-<n>   (under one dedicated root)
   branch       : issue-<n>    (based on the base branch, default feedback-impl)
-The frontend node_modules is symlinked from the main checkout.
+The frontend node_modules and backend .venv are symlinked from the main checkout.
 EOF
 }
 
@@ -38,6 +42,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
   echo "error: not inside a git repository" >&2; exit 1
 }
 PARENT_DIR="$(dirname "$REPO_ROOT")"
+WORKTREE_ROOT="$PARENT_DIR/bda-worktrees"   # one grantable root for all worktrees
 
 issues=()
 while [[ $# -gt 0 ]]; do
@@ -57,9 +62,11 @@ if [[ "$ACTION" == "list" ]]; then
   exit 0
 fi
 
+[[ "$ACTION" == "create" ]] && mkdir -p "$WORKTREE_ROOT"
+
 for n in "${issues[@]}"; do
   branch="issue-$n"
-  wt="$PARENT_DIR/$PREFIX-$n"
+  wt="$WORKTREE_ROOT/$PREFIX-$n"
 
   if [[ "$ACTION" == "remove" ]]; then
     if git -C "$REPO_ROOT" worktree list --porcelain | grep -qF "worktree $wt"; then
@@ -93,6 +100,12 @@ for n in "${issues[@]}"; do
     echo "  linked frontend/node_modules"
   fi
 
+  # share backend virtualenv (no issue changes pyproject; tests only read it)
+  if [[ -d "$REPO_ROOT/backend/.venv" && ! -e "$wt/backend/.venv" ]]; then
+    ln -s "$REPO_ROOT/backend/.venv" "$wt/backend/.venv"
+    echo "  linked backend/.venv"
+  fi
+
   echo "ready #$n -> $wt (branch $branch)"
 done
 
@@ -100,13 +113,16 @@ if [[ "$ACTION" == "create" ]]; then
   cat <<EOF
 
 Next:
-  cd $PARENT_DIR/$PREFIX-<n>
+  cd $WORKTREE_ROOT/$PREFIX-<n>
   claude
   > implement GitHub issue #<n>; follow its acceptance criteria, run the tests, open a PR against $BASE_BRANCH
 
-Backend issues (#22 #27 #29): activate your existing virtualenv, cd into the
-worktree's backend/, run pytest. With Postgres, give parallel backend runs a
-distinct test DB to avoid collisions.
+Backend issues (#22 #27 #29): the worktree's backend/.venv is symlinked to the
+main checkout, so run tests read-only against it — e.g. 'cd backend &&
+.venv/bin/python -m pytest' (avoid concurrent 'uv sync' on the shared venv).
+Give parallel backend runs a distinct test DB — unset DATABASE_URL for the
+worktree-local SQLite default, or name a per-issue Postgres DB — to avoid
+collisions.
 
 Cleanup once a branch is merged:
   ./setup-worktrees.sh --remove <n> [<n> ...]
