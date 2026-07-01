@@ -34,6 +34,23 @@
         <p class="import-dialog__importable" data-testid="importable">
           <strong>{{ p.importable }}</strong> Fänge werden importiert.
         </p>
+        @if (p.toCreate.beringer.length > 0 || p.toCreate.stationen.length > 0) {
+          <div class="import-dialog__to-create" data-testid="preview-to-create">
+            <p class="import-dialog__to-create-title">Diese werden neu angelegt — bitte prüfen:</p>
+            @if (p.toCreate.beringer.length > 0) {
+              <p class="import-dialog__to-create-group">
+                <strong>Beringer:innen ({{ p.toCreate.beringer.length }}):</strong>
+                {{ p.toCreate.beringer.join(', ') }}
+              </p>
+            }
+            @if (p.toCreate.stationen.length > 0) {
+              <p class="import-dialog__to-create-group">
+                <strong>Stationen ({{ p.toCreate.stationen.length }}):</strong>
+                {{ p.toCreate.stationen.join(', ') }}
+              </p>
+            }
+          </div>
+        }
         @if (p.errors.length > 0) {
           <p class="import-dialog__errors-title">{{ p.errors.length }} Zeile(n) mit Fehlern
             (werden übersprungen):</p>
@@ -52,6 +69,18 @@
           <mat-icon>check_circle</mat-icon>
           <strong>{{ r.created }}</strong> Fänge importiert.
         </p>
+        @if (r.createdBeringer.length > 0) {
+          <p class="import-dialog__created" data-testid="result-created-beringer">
+            {{ r.createdBeringer.length }} Beringer:in(nen) neu angelegt:
+            {{ r.createdBeringer.join(', ') }}
+          </p>
+        }
+        @if (r.createdStationen.length > 0) {
+          <p class="import-dialog__created" data-testid="result-created-stationen">
+            {{ r.createdStationen.length }} Station(en) neu angelegt:
+            {{ r.createdStationen.join(', ') }}
+          </p>
+        }
         @if (r.errors.length > 0) {
           <p class="import-dialog__errors-title">{{ r.errors.length }} Zeile(n) übersprungen.</p>
         }

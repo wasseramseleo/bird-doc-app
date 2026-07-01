@@ -47,6 +47,21 @@
   font-weight: 600;
 }
 
+.import-dialog__to-create {
+  border-left: 3px solid #1565c0;
+  padding-left: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.import-dialog__to-create-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.import-dialog__to-create-group {
+  margin: 0.25rem 0;
+}
+
 .import-dialog__result {
   display: flex;
   align-items: center;
@@ -56,4 +71,9 @@
   mat-icon {
     color: #2e7d32;
   }
+}
+
+.import-dialog__created {
+  color: rgba(0, 0, 0, 0.7);
+  margin: 0.25rem 0;
 }

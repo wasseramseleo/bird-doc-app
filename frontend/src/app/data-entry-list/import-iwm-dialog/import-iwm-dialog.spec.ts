@@ -84,6 +84,28 @@ describe('ImportIwmDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalledWith(true);
   });
 
+  it('renders the Beringer and Stationen that will be auto-created in the preview', () => {
+    // The Admin must approve every creation knowingly (issue #121): the preview
+    // lists each unfamiliar Kürzel and Station name before the confirm button.
+    api.importIwmDryRun.and.returnValue(
+      of({
+        ...preview,
+        toCreate: {beringer: ['XZY', 'QQ'], stationen: ['Feldstation Nord']},
+      }),
+    );
+
+    selectFile();
+
+    expect(component.phase()).toBe('preview');
+    const toCreate = fixture.nativeElement.querySelector(
+      '[data-testid="preview-to-create"]',
+    ) as HTMLElement;
+    expect(toCreate).not.toBeNull();
+    expect(toCreate.textContent).toContain('XZY');
+    expect(toCreate.textContent).toContain('QQ');
+    expect(toCreate.textContent).toContain('Feldstation Nord');
+  });
+
   it('cancelling after the preview writes nothing and closes with false', () => {
     api.importIwmDryRun.and.returnValue(of(preview));
 

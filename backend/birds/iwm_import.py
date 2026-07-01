@@ -12,19 +12,28 @@ Two phases on one upload (ADR 0013): a **dry-run** parses, validates and returns
 an ``ImportPreview`` while writing nothing; a **commit** atomically creates the
 importable captures, skips the blocking-error rows, and returns an
 ``ImportResult``. The report shapes are fixed by the PRD; fields this slice does
-not yet populate (``duplicates``, ``warnings``, ``toCreate``, ``cap``) are
-present but empty/zero.
+not yet populate (``duplicates``, ``warnings``, ``cap``) are present but
+empty/zero.
+
+Unfamiliar Beringer and Stationen are auto-created rather than rejected (issue
+#121). An unfamiliar Kürzel (resolved within the Organisation) becomes a
+no-account Beringer (ADR 0001); an unfamiliar Ort (resolved by Ortskodierung /
+name) becomes a Station built from the sheet's name / Ortskodierung / Region /
+Land / coordinates. Every such creation is surfaced in the preview's
+``toCreate`` for the Admin to approve, created only on commit (nothing on
+dry-run), reported in ``ImportResult.{createdBeringer, createdStationen}``, and
+attached to the captures that referenced it.
 
 Scope of this slice: core columns only (species, ring size+number, Beringer
 Kürzel, Station, Datum+Uhrzeit, Ringstatus, Geschlecht, Alter). An unknown
-species, a missing required field (no ring number / no date), and — for now — an
-unfamiliar Beringer or Station are blocking errors. Duplicate detection, the row
-cap, warnings/method precedence, Sonderarten and full biometric fidelity arrive
-in later slices.
+species and a missing required field (no ring number / no date) are blocking
+errors. Duplicate detection, the row cap, warnings/method precedence,
+Sonderarten and full biometric fidelity arrive in later slices.
 """
 
 import re
 from datetime import date, datetime, time
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 import openpyxl
@@ -33,6 +42,7 @@ from django.utils.timezone import make_aware
 
 from .capture_service import CaptureValidationError, create_capture
 from .models import DataEntry, Ring, RingingStation, Scientist, Species
+from .station_handle import derive_station_handle
 
 SHEET_NAME = "Fangdaten"
 
@@ -81,8 +91,9 @@ class IwmStructureError(Exception):
 
 def build_import_preview(content, project):
     """Dry-run: parse + validate ``content`` against ``project`` and return an
-    ``ImportPreview``. Writes nothing."""
-    rows = _analyze(content, project)
+    ``ImportPreview``. Writes nothing — the unfamiliar Beringer and Stationen it
+    would create are listed in ``toCreate`` but not yet created."""
+    rows, resolver = _analyze(content, project, create=False)
     importable = [r for r in rows if r.error is None]
     errors = [{"row": r.row, "reason": r.error} for r in rows if r.error is not None]
     return {
@@ -90,7 +101,10 @@ def build_import_preview(content, project):
         "duplicates": 0,
         "errors": errors,
         "warnings": [],
-        "toCreate": {"beringer": [], "stationen": []},
+        "toCreate": {
+            "beringer": resolver.created_beringer,
+            "stationen": resolver.created_stationen,
+        },
         "cap": {"limit": ROW_CAP, "exceeded": len(rows) > ROW_CAP},
     }
 
@@ -99,8 +113,10 @@ def build_import_preview(content, project):
 def commit_import(content, project):
     """Commit: create every importable capture atomically, skipping blocking-error
     rows, and return an ``ImportResult``. All-or-nothing — an unexpected failure
-    rolls the whole import back."""
-    rows = _analyze(content, project)
+    rolls the whole import back. Unfamiliar Beringer and Stationen are created as
+    part of the same transaction and reported in ``createdBeringer`` /
+    ``createdStationen``."""
+    rows, resolver = _analyze(content, project, create=True)
     created = 0
     errors = []
     for resolved in rows:
@@ -116,8 +132,8 @@ def commit_import(content, project):
         "created": created,
         "duplicatesSkipped": 0,
         "errors": errors,
-        "createdBeringer": [],
-        "createdStationen": [],
+        "createdBeringer": resolver.created_beringer,
+        "createdStationen": resolver.created_stationen,
     }
 
 
@@ -136,18 +152,36 @@ class _ResolvedRow:
 class _Resolver:
     """Org-scoped entity lookups, built once per import so row resolution does not
     re-query. Beringer and Stationen are small (org-scoped); species is looked up
-    lazily and cached because the global table is huge."""
+    lazily and cached because the global table is huge.
 
-    def __init__(self, project):
+    An unfamiliar Beringer (by Kürzel) or Station (by Ortskodierung / name) is
+    *auto-created* rather than rejected (issue #121). ``create`` decides whether a
+    resolution actually writes: a dry-run (``create=False``) only records what it
+    *would* create in ``created_beringer`` / ``created_stationen``; a commit
+    (``create=True``) creates the entity once and caches it so every referencing
+    row shares it. Either way each unfamiliar entity is surfaced exactly once, in
+    first-seen order.
+    """
+
+    def __init__(self, project, *, create):
         self.project = project
-        org = project.organization
+        self.org = project.organization
+        self.create = create
         self.beringer = {
-            s.handle: s for s in Scientist.objects.filter(organization=org) if s.handle
+            s.handle: s for s in Scientist.objects.filter(organization=self.org) if s.handle
         }
-        stations = list(RingingStation.objects.filter(organization=org))
+        stations = list(RingingStation.objects.filter(organization=self.org))
         self.station_by_code = {s.place_code: s for s in stations if s.place_code}
         self.station_by_name = {s.name: s for s in stations if s.name}
         self._species_cache = {}
+        # Auto-creations surfaced in the preview / result (first-seen order,
+        # deduplicated): the Kürzel of new Beringer and the names of new Stationen.
+        self.created_beringer = []
+        self.created_stationen = []
+        # Per-import caches so a repeated unfamiliar reference resolves to the one
+        # entity (a shared object on commit; ``None`` placeholder on dry-run).
+        self._new_beringer = {}
+        self._new_station = {}
 
     def species(self, common_name_de):
         if common_name_de not in self._species_cache:
@@ -156,24 +190,82 @@ class _Resolver:
             ).first()
         return self._species_cache[common_name_de]
 
-    def station(self, place_code, name):
+    def beringer_for(self, kuerzel):
+        """Resolve a Kürzel to its Beringer, auto-creating an unfamiliar one.
+
+        A familiar Kürzel resolves to the existing org Beringer. An unfamiliar one
+        is recorded in ``created_beringer`` (once) and, on commit, created as a
+        no-account Beringer scoped to the Organisation (ADR 0001); on a dry-run
+        nothing is written and ``None`` stands in as a placeholder."""
+        existing = self.beringer.get(kuerzel)
+        if existing is not None:
+            return existing
+        if kuerzel not in self._new_beringer:
+            self.created_beringer.append(kuerzel)
+            self._new_beringer[kuerzel] = (
+                Scientist.objects.create(handle=kuerzel, organization=self.org)
+                if self.create
+                else None
+            )
+        return self._new_beringer[kuerzel]
+
+    def station_for(self, descriptors):
+        """Resolve a Station by Ortskodierung / name, auto-creating an unfamiliar
+        one from the sheet's descriptors.
+
+        A Station is familiar when its Ortskodierung, or failing that its name,
+        matches an existing org Station. An unfamiliar one is recorded in
+        ``created_stationen`` (once, by name) and, on commit, created scoped to the
+        Organisation from the sheet's name / Ortskodierung / Region / Land /
+        coordinates; on a dry-run nothing is written."""
+        place_code = descriptors["place_code"]
+        name = descriptors["name"]
         if place_code and place_code in self.station_by_code:
             return self.station_by_code[place_code]
         if name and name in self.station_by_name:
             return self.station_by_name[name]
-        return None
+        key = place_code or name
+        if key not in self._new_station:
+            self.created_stationen.append(name or place_code)
+            self._new_station[key] = self._create_station(descriptors) if self.create else None
+        return self._new_station[key]
+
+    def _create_station(self, descriptors):
+        name = descriptors["name"] or descriptors["place_code"]
+        handle = derive_station_handle(
+            self.org, name, taken=lambda h: RingingStation.objects.filter(handle=h).exists()
+        )
+        station = RingingStation.objects.create(
+            handle=handle,
+            name=name,
+            organization=self.org,
+            place_code=descriptors["place_code"] or "",
+            region=descriptors["region"] or "",
+            country=descriptors["country"] or "",
+            latitude=descriptors["latitude"],
+            longitude=descriptors["longitude"],
+        )
+        # Later rows naming the same site resolve to this new Station too.
+        if station.place_code:
+            self.station_by_code[station.place_code] = station
+        self.station_by_name[station.name] = station
+        return station
 
 
-def _analyze(content, project):
+def _analyze(content, project, *, create):
     """Parse the workbook and resolve every data row. Raises ``IwmStructureError``
-    for a structurally-wrong file; otherwise returns a ``_ResolvedRow`` per data
-    row (never partial — a bad row becomes an error, not an exception)."""
+    for a structurally-wrong file; otherwise returns ``(rows, resolver)`` — a
+    ``_ResolvedRow`` per data row (never partial — a bad row becomes an error, not
+    an exception) plus the ``_Resolver`` that carries the auto-created Beringer /
+    Stationen. ``create`` decides whether unfamiliar entities are actually written
+    (commit) or only recorded for the preview (dry-run)."""
     header_index, data_rows = _read_fangdaten(content)
-    resolver = _Resolver(project)
-    return [
+    resolver = _Resolver(project, create=create)
+    rows = [
         _resolve_row(values, header_index, row_num, project, resolver)
         for row_num, values in data_rows
     ]
+    return rows, resolver
 
 
 def _read_fangdaten(content):
@@ -247,13 +339,26 @@ def _resolve_row(values, header_index, row_num, project, resolver):
     kuerzel = text("BeringerIn")
     if not kuerzel:
         return _ResolvedRow(row_num, error="Beringer:in fehlt.")
-    staff = resolver.beringer.get(kuerzel)
-    if staff is None:
-        return _ResolvedRow(row_num, error=f"Unbekannte:r Beringer:in: {kuerzel!r}.")
+    # An unfamiliar Kürzel is auto-created as a no-account Beringer (issue #121).
+    staff = resolver.beringer_for(kuerzel)
 
-    station = resolver.station(text("Ortskodierung"), text("Ort"))
-    if station is None:
-        return _ResolvedRow(row_num, error="Unbekannte Station.")
+    place_code = text("Ortskodierung")
+    name = text("Ort")
+    if not place_code and not name:
+        return _ResolvedRow(row_num, error="Ort bzw. Ortskodierung fehlt.")
+    # An unfamiliar Station is auto-created from the sheet's descriptors (issue
+    # #121); coordinates are parsed from the export's "lat, lon" Geo-Koordinaten.
+    latitude, longitude = _parse_coordinates(text("Geo-Koordinaten"))
+    station = resolver.station_for(
+        {
+            "place_code": place_code,
+            "name": name,
+            "region": text("Region"),
+            "country": text("Land"),
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+    )
 
     kwargs = {
         "species": species,
@@ -343,3 +448,19 @@ def _parse_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _parse_coordinates(value):
+    """Split the export's ``"lat, lon"`` Geo-Koordinaten (decimal degrees) into
+    ``(latitude, longitude)`` as ``Decimal``. Returns ``(None, None)`` when the
+    cell is blank or unparseable — coordinates are optional on an auto-created
+    Station (issue #121)."""
+    if not value:
+        return None, None
+    parts = value.split(",")
+    if len(parts) != 2:
+        return None, None
+    try:
+        return Decimal(parts[0].strip()), Decimal(parts[1].strip())
+    except (InvalidOperation, ValueError):
+        return None, None
