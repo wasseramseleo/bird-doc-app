@@ -11,6 +11,7 @@ import {RingingStation, RingingStationCreatePayload} from '../models/ringing-sta
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
+import {ImportPreview, ImportResult} from '../models/iwm-import.model';
 import {environment} from '../../environments/environment';
 
 @Injectable({
@@ -160,5 +161,23 @@ export class ApiService {
       responseType: 'blob',
       observe: 'response',
     });
+  }
+
+  // IWM import (ADR 0013). Both phases POST the same multipart upload to the
+  // project's import route; the auth interceptor adds withCredentials + the CSRF
+  // header for these unsafe requests. The dry-run omits the commit flag so the
+  // backend writes nothing and returns a preview; the commit sets it and creates
+  // the importable captures.
+  importIwmDryRun(projectId: string, file: File): Observable<ImportPreview> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<ImportPreview>(`${this.apiUrl}/projects/${projectId}/import-iwm/`, form);
+  }
+
+  importIwmCommit(projectId: string, file: File): Observable<ImportResult> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('commit', 'true');
+    return this.http.post<ImportResult>(`${this.apiUrl}/projects/${projectId}/import-iwm/`, form);
   }
 }

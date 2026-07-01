@@ -1,0 +1,59 @@
+.import-dialog {
+  min-width: 22rem;
+  max-width: 32rem;
+}
+
+.import-dialog__project {
+  color: rgba(0, 0, 0, 0.6);
+  margin-top: 0;
+}
+
+.import-dialog__state {
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0;
+}
+
+.import-dialog__error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #b00020;
+  margin-bottom: 0.75rem;
+}
+
+.import-dialog__file {
+  display: inline-block;
+  cursor: pointer;
+}
+
+.import-dialog__filename {
+  color: rgba(0, 0, 0, 0.6);
+  font-style: italic;
+}
+
+.import-dialog__importable {
+  font-size: 1.1rem;
+}
+
+.import-dialog__errors {
+  max-height: 12rem;
+  overflow-y: auto;
+  padding-left: 1.25rem;
+  color: #b00020;
+}
+
+.import-dialog__errors-title {
+  font-weight: 600;
+}
+
+.import-dialog__result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+
+  mat-icon {
+    color: #2e7d32;
+  }
+}

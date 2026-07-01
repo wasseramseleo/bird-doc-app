@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from .accounts import normalize_email
 from .invitations import account_for_email, seats_available
 from .iwm_export import build_iwm_workbook
+from .iwm_import import IwmStructureError, build_import_preview, commit_import
 from .models import (
     FALLBACK_BERINGER_HANDLE,
     DataEntry,
@@ -438,9 +439,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
     search_fields = ["title"]
 
     def get_permissions(self):
-        # The IWM export is a privileged Admin-only operation even though it is a
-        # GET, so it cannot ride the read exemption of ``IsOrgAdminOrReadOnly``.
-        if self.action == "export_iwm":
+        # The IWM export/import are privileged Admin-only operations: the export
+        # despite being a GET, the import as a bulk write (ADR 0013). Neither may
+        # ride the read exemption of ``IsOrgAdminOrReadOnly``.
+        if self.action in ("export_iwm", "import_iwm"):
             return [IsAuthenticated(), IsOrgAdmin()]
         return super().get_permissions()
 
@@ -479,6 +481,29 @@ class ProjectViewSet(viewsets.ModelViewSet):
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+    @action(detail=True, methods=["post"], url_path="import-iwm")
+    def import_iwm(self, request, pk=None):
+        """Admin-only IWM import into this Projekt (ADR 0013, mirrors export-iwm).
+
+        One multipart upload, two phases on the same file: without ``commit`` a
+        dry-run returns an ``ImportPreview`` and writes nothing; with
+        ``commit=true`` it atomically creates the importable captures and returns
+        an ``ImportResult``. A structurally-wrong file fast-fails with a clear
+        message (400). Captures land in this Projekt's Organisation
+        server-authoritatively — a client cannot plant them in another tenant."""
+        project = self.get_object()
+        upload = request.FILES.get("file")
+        if upload is None:
+            raise ValidationError({"file": "Es wurde keine Datei hochgeladen."})
+        content = upload.read()
+        commit = str(request.data.get("commit", "")).strip().lower() in ("true", "1", "yes", "on")
+        try:
+            if commit:
+                return Response(commit_import(content, project))
+            return Response(build_import_preview(content, project))
+        except IwmStructureError as exc:
+            raise ValidationError({"file": str(exc)}) from exc
 
 
 class OrgEinladungViewSet(

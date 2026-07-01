@@ -10,11 +10,16 @@ import {MatInputModule} from '@angular/material/input';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {MatDialog} from '@angular/material/dialog';
 import {debounceTime, distinctUntilChanged} from 'rxjs/operators';
 
 import {ApiService} from '../service/api.service';
 import {ProjectService} from '../service/project.service';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
+import {
+  ImportIwmDialogComponent,
+  ImportIwmDialogData,
+} from './import-iwm-dialog/import-iwm-dialog';
 
 @Component({
   selector: 'app-data-entry-list',
@@ -38,6 +43,7 @@ export class DataEntryListComponent implements OnInit {
   private readonly projectService = inject(ProjectService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly dialog = inject(MatDialog);
 
   readonly currentProject = this.projectService.currentProject;
 
@@ -106,6 +112,29 @@ export class DataEntryListComponent implements OnInit {
 
   newEntry(): void {
     this.router.navigateByUrl('/data-entry');
+  }
+
+  // Import lives where the Admin already looks at a Projekt's captures. It is
+  // gated on a selected Projekt (imported captures need an unambiguous Projekt to
+  // land in); Admin-only is enforced server-side, mirroring the IWM export — the
+  // frontend has no Rolle signal today. The dialog resolves to true once a commit
+  // wrote captures, so we refresh the list; a cancel resolves false and writes
+  // nothing.
+  openImport(): void {
+    const project = this.currentProject();
+    if (!project) {
+      return;
+    }
+    const ref = this.dialog.open<ImportIwmDialogComponent, ImportIwmDialogData, boolean>(
+      ImportIwmDialogComponent,
+      {data: {projectId: project.id, projectTitle: project.title}},
+    );
+    ref.afterClosed().subscribe((committed) => {
+      if (committed) {
+        this.pageIndex.set(0);
+        this.loadEntries();
+      }
+    });
   }
 
   private loadEntries(): void {

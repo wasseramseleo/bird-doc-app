@@ -1,0 +1,84 @@
+<h2 mat-dialog-title>IWM-Import</h2>
+
+<mat-dialog-content class="import-dialog">
+  <p class="import-dialog__project">Projekt: {{ data.projectTitle }}</p>
+
+  @if (errorMessage(); as message) {
+    <div class="import-dialog__error" role="alert">
+      <mat-icon>error_outline</mat-icon>
+      <span>{{ message }}</span>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="import-dialog__state">
+      <mat-spinner diameter="32"></mat-spinner>
+    </div>
+  }
+
+  @switch (phase()) {
+    @case ('select') {
+      <p>Wähle eine IWM-<code>Datenmeldung</code> (Blatt „Fangdaten“). Es wird zunächst nur eine
+        Vorschau erzeugt — es wird noch nichts gespeichert.</p>
+      <label class="import-dialog__file">
+        <span mat-stroked-button color="primary">Datei wählen</span>
+        <input type="file" accept=".xlsx" (change)="onFileSelected($event)" hidden />
+      </label>
+      @if (fileName(); as name) {
+        <p class="import-dialog__filename">{{ name }}</p>
+      }
+    }
+
+    @case ('preview') {
+      @if (preview(); as p) {
+        <p class="import-dialog__importable" data-testid="importable">
+          <strong>{{ p.importable }}</strong> Fänge werden importiert.
+        </p>
+        @if (p.errors.length > 0) {
+          <p class="import-dialog__errors-title">{{ p.errors.length }} Zeile(n) mit Fehlern
+            (werden übersprungen):</p>
+          <ul class="import-dialog__errors" data-testid="preview-errors">
+            @for (err of p.errors; track err.row) {
+              <li>Zeile {{ err.row }}: {{ err.reason }}</li>
+            }
+          </ul>
+        }
+      }
+    }
+
+    @case ('result') {
+      @if (result(); as r) {
+        <p class="import-dialog__result" data-testid="result">
+          <mat-icon>check_circle</mat-icon>
+          <strong>{{ r.created }}</strong> Fänge importiert.
+        </p>
+        @if (r.errors.length > 0) {
+          <p class="import-dialog__errors-title">{{ r.errors.length }} Zeile(n) übersprungen.</p>
+        }
+      }
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  @switch (phase()) {
+    @case ('select') {
+      <button mat-button type="button" (click)="cancel()">Abbrechen</button>
+    }
+    @case ('preview') {
+      <button mat-button type="button" (click)="cancel()">Abbrechen</button>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        [disabled]="loading() || (preview()?.importable ?? 0) === 0"
+        (click)="confirmImport()"
+      >
+        Import bestätigen
+      </button>
+    }
+    @case ('result') {
+      <button mat-flat-button color="primary" type="button" (click)="finish()">Fertig</button>
+    }
+  }
+</mat-dialog-actions>
