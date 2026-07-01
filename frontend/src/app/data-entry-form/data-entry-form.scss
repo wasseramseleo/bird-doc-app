@@ -78,6 +78,26 @@
     margin-bottom: 1rem;
   }
 
+  // #115: a determined-sex contradiction (both Männchen and Weibchen in the
+  // ring history) is a data-quality warning the Beringer must notice at a glance.
+  .sex-contradiction {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 1rem;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background-color: var(--bd-warning-soft, rgba(216, 67, 21, 0.1));
+    border: 1px solid var(--bd-warning, #d84315);
+    color: var(--bd-warning-deep, #b53a12);
+    font-size: 0.85rem;
+    font-weight: 500;
+
+    mat-icon {
+      flex: none;
+    }
+  }
+
   table {
     width: 100%;
   }

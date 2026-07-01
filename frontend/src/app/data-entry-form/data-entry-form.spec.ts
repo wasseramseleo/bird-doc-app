@@ -223,7 +223,7 @@ describe('DataEntryFormComponent', () => {
   });
 
   describe('recapture history table (Bisherige Fänge)', () => {
-    it('shows the recapture column set and drops the Station column', () => {
+    it('shows the recapture column set with Alter/Geschlecht, dropping Station/Fett/Muskel', () => {
       expect(component.displayedHistoryColumns).toEqual([
         'date_time',
         'species',
@@ -233,26 +233,24 @@ describe('DataEntryFormComponent', () => {
         'feather_span',
         'wing_span',
         'weight_gram',
-        'fat_deposit',
-        'muscle_class',
+        'age_class',
+        'sex',
         'actions',
       ]);
       expect(component.displayedHistoryColumns).not.toContain('ringing_station');
+      expect(component.displayedHistoryColumns).not.toContain('fat_deposit');
+      expect(component.displayedHistoryColumns).not.toContain('muscle_class');
     });
 
-    it('shows Fett and Muskel columns with their class codes', () => {
+    it('shows Alter and Geschlecht headers, dropping Fett and Muskel', () => {
       component.recaptureHistory.set([
         {
           date_time: '2024-05-01T08:30:00Z',
           species: { common_name_de: 'Kohlmeise' },
           bird_status: BirdStatus.ReCatch,
           staff: { full_name: 'Filip Reiter', handle: 'FRE' },
-          tarsus: 19,
-          feather_span: 54,
-          wing_span: 73,
-          weight_gram: 18,
-          fat_deposit: 3,
-          muscle_class: 2,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Male,
         } as unknown as DataEntry,
       ]);
       fixture.detectChanges();
@@ -260,15 +258,85 @@ describe('DataEntryFormComponent', () => {
       const headers = Array.from(
         fixture.nativeElement.querySelectorAll('th[mat-header-cell]'),
       ).map((th) => (th as HTMLElement).textContent!.trim());
-      expect(headers).toContain('Fett');
-      expect(headers).toContain('Muskel');
+      expect(headers).toContain('Alter');
+      expect(headers).toContain('Geschlecht');
+      expect(headers).not.toContain('Fett');
+      expect(headers).not.toContain('Muskel');
+    });
+
+    it('renders Alter and Geschlecht as readable labels, never the raw code', () => {
+      component.recaptureHistory.set([
+        {
+          date_time: '2024-05-01T08:30:00Z',
+          species: { common_name_de: 'Kohlmeise' },
+          bird_status: BirdStatus.ReCatch,
+          staff: { full_name: 'Filip Reiter', handle: 'FRE' },
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Male,
+        } as unknown as DataEntry,
+      ]);
+      fixture.detectChanges();
 
       const cellText = (column: string) =>
         (
           fixture.nativeElement.querySelector(`td.mat-column-${column}`) as HTMLElement
         ).textContent!.trim();
-      expect(cellText('fat_deposit')).toBe('3');
-      expect(cellText('muscle_class')).toBe('2');
+      expect(cellText('age_class')).toContain('Diesjährig');
+      expect(cellText('sex')).toContain('Männlich');
+    });
+
+    const historyRow = (overrides: Partial<DataEntry>): DataEntry =>
+      ({
+        date_time: '2024-05-01T08:30:00Z',
+        species: { common_name_de: 'Kohlmeise' },
+        bird_status: BirdStatus.ReCatch,
+        staff: { full_name: 'Filip Reiter', handle: 'FRE' },
+        age_class: AgeClass.Unknown,
+        sex: Sex.Unknown,
+        ...overrides,
+      }) as unknown as DataEntry;
+
+    const contradictionFlag = () =>
+      fixture.nativeElement.querySelector('.sex-contradiction') as HTMLElement | null;
+
+    it('flags a determined Männchen ↔ Weibchen contradiction across the history', () => {
+      component.recaptureHistory.set([
+        historyRow({ sex: Sex.Male }),
+        historyRow({ sex: Sex.Female }),
+      ]);
+      fixture.detectChanges();
+
+      expect(contradictionFlag()).not.toBeNull();
+    });
+
+    it('does not flag when only the age class differs but the sexes agree', () => {
+      component.recaptureHistory.set([
+        historyRow({ sex: Sex.Female, age_class: AgeClass.ThisYear }),
+        historyRow({ sex: Sex.Female, age_class: AgeClass.NotThisYear }),
+      ]);
+      fixture.detectChanges();
+
+      expect(contradictionFlag()).toBeNull();
+    });
+
+    it('does not flag an Unbekannt → determined progression', () => {
+      component.recaptureHistory.set([
+        historyRow({ sex: Sex.Unknown }),
+        historyRow({ sex: Sex.Male }),
+      ]);
+      fixture.detectChanges();
+
+      expect(contradictionFlag()).toBeNull();
+    });
+
+    it('does not flag a single determined sex repeated across catches', () => {
+      component.recaptureHistory.set([
+        historyRow({ sex: Sex.Male }),
+        historyRow({ sex: Sex.Male }),
+      ]);
+      fixture.detectChanges();
+
+      expect(contradictionFlag()).toBeNull();
     });
 
     it('renders Beringer (Kürzel), Tarsus and Federlänge for a Wiederfang row', () => {
