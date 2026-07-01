@@ -762,6 +762,15 @@ body {
     font-weight: 600;
 }
 
+/* The thread's caption (issue #138): one quiet line naming what the numbers
+   are — consumed ring numbers from station operation; next = last consumed + 1
+   — so the thread reads as evidence, not decoration. */
+.ringserie__caption {
+    margin: 0.45rem 0 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
 /* The page's SINGLE motion: a gentle load reveal of the number thread. It lives
    entirely inside a (prefers-reduced-motion: no-preference) guard, so under
    `reduce` no animation is ever declared and the thread simply renders in its

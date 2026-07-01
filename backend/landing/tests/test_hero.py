@@ -16,6 +16,48 @@ from landing.fang_karte import FANG_KARTE
 LANDING_CSS = Path(__file__).resolve().parent.parent / "static" / "landing" / "landing.css"
 
 
+def _hero_ctas(content):
+    # The hero's CTA row — the <p class="hero__ctas"> block only, so the
+    # assertions read the hero's own buttons, not CTAs further down the page.
+    start = content.index("hero__ctas")
+    return content[start : content.index("</p>", start)]
+
+
+def test_hero_primary_cta_resolves_to_the_warteliste_route(client):
+    # A Beringer convinced by the hero can act on it right there: the primary
+    # hero CTA is "Zugang anfragen", wired to the Warteliste route (issue #138)
+    # — on the German apex...
+    from django.urls import reverse
+
+    de_ctas = _hero_ctas(client.get("/").content.decode())
+    assert reverse("landing:warteliste") in de_ctas
+    assert "Zugang anfragen" in de_ctas
+    # ...and under /en/, where the same CTA renders translated and the route
+    # carries the language prefix.
+    en_ctas = _hero_ctas(client.get("/en/").content.decode())
+    assert "/en/zugang-anfragen/" in en_ctas
+    assert "Request access" in en_ctas
+
+
+def test_hero_secondary_cta_anchors_to_the_fuer_organisationen_section(client):
+    # The second audience keeps its fork: a secondary ghost button anchoring
+    # down to the Für-Organisationen section (issue #138).
+    ctas = _hero_ctas(client.get("/").content.decode())
+    assert 'href="#organisationen"' in ctas
+    assert "button--ghost" in ctas
+
+
+def test_the_fuer_beringer_hero_anchor_is_gone(client):
+    # The "Für Beringer" hero anchor is dropped (issue #138): the page's default
+    # reading flow IS the Beringer path, so the hero needs no anchor to it. The
+    # section itself stays, reachable by simply reading on (and via the fork band).
+    content = client.get("/").content.decode()
+    ctas = _hero_ctas(content)
+    assert "#fuer-beringer" not in ctas
+    assert "Für Beringer" not in ctas
+    assert 'id="fuer-beringer"' in content
+
+
 def test_hero_renders_a_static_fang_karte_with_the_real_species(client):
     # The hero placeholder is replaced by the page's signature: a static
     # Fang-Karte for a real Artenliste species.
@@ -60,6 +102,26 @@ def test_ringserie_run_is_a_real_consumed_sequence_not_decorative(client):
     # The next suggestion is last-consumed + 1, same width.
     assert int(FANG_KARTE.next_number) == int(FANG_KARTE.ring_number) + 1
     assert len(FANG_KARTE.next_number) == len(FANG_KARTE.ring_number)
+
+
+def test_ringserie_thread_carries_a_caption_naming_the_consumed_numbers(client):
+    # The number thread names what it is (issue #138): fortlaufend verbrauchte
+    # Ringnummern aus dem Stationsbetrieb, and the next-number rule — the next
+    # number is the last consumed + 1 (CONTEXT.md: Ringserie). Decoration
+    # becomes evidence.
+    content = client.get("/").content.decode()
+    assert "ringserie__caption" in content
+    assert "verbrauchte Ringnummern aus dem Stationsbetrieb" in content
+    assert "die nächste Nummer ist die letzte verbrauchte + 1" in content
+
+
+def test_ringserie_caption_is_translated_under_en(client):
+    # The caption is marketing copy on the bilingual surface (issue #107), so it
+    # flips with the language like the rest of the page.
+    en = client.get("/en/").content.decode()
+    assert "ringserie__caption" in en
+    assert "the next number is the last consumed + 1" in en
+    assert "die nächste Nummer ist die letzte verbrauchte + 1" not in en
 
 
 def test_ringserie_numbers_are_set_in_the_tabular_nums_data_voice():
