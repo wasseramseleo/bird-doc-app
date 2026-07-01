@@ -81,15 +81,16 @@ class IwmStructureError(Exception):
 
 def build_import_preview(content, project):
     """Dry-run: parse + validate ``content`` against ``project`` and return an
-    ``ImportPreview``. Writes nothing."""
-    rows = _analyze(content, project)
+    ``ImportPreview``. Writes nothing — including the Projekt-method adoption,
+    which is deferred to commit."""
+    rows, warnings, _adoptions = _analyze(content, project)
     importable = [r for r in rows if r.error is None]
     errors = [{"row": r.row, "reason": r.error} for r in rows if r.error is not None]
     return {
         "importable": len(importable),
         "duplicates": 0,
         "errors": errors,
-        "warnings": [],
+        "warnings": warnings,
         "toCreate": {"beringer": [], "stationen": []},
         "cap": {"limit": ROW_CAP, "exceeded": len(rows) > ROW_CAP},
     }
@@ -100,7 +101,7 @@ def commit_import(content, project):
     """Commit: create every importable capture atomically, skipping blocking-error
     rows, and return an ``ImportResult``. All-or-nothing — an unexpected failure
     rolls the whole import back."""
-    rows = _analyze(content, project)
+    rows, _warnings, adoptions = _analyze(content, project)
     created = 0
     errors = []
     for resolved in rows:
@@ -112,6 +113,7 @@ def commit_import(content, project):
             created += 1
         except CaptureValidationError as exc:
             errors.append({"row": resolved.row, "reason": str(exc.message)})
+    _adopt_context(project, adoptions)
     return {
         "created": created,
         "duplicatesSkipped": 0,
@@ -165,15 +167,102 @@ class _Resolver:
 
 
 def _analyze(content, project):
-    """Parse the workbook and resolve every data row. Raises ``IwmStructureError``
-    for a structurally-wrong file; otherwise returns a ``_ResolvedRow`` per data
-    row (never partial — a bad row becomes an error, not an exception)."""
+    """Parse the workbook, resolve every data row, and reconcile the Projekt-scoped
+    context columns.
+
+    Returns ``(rows, warnings, adoptions)``: a ``_ResolvedRow`` per data row (never
+    partial — a bad row becomes an error, not an exception), the non-blocking
+    context warnings (Projekt-method mismatch / heterogeneous file), and the
+    ``{field: value}`` adoptions to write onto the Projekt on commit. Raises
+    ``IwmStructureError`` for a structurally-wrong file."""
     header_index, data_rows = _read_fangdaten(content)
     resolver = _Resolver(project)
-    return [
+    rows = [
         _resolve_row(values, header_index, row_num, project, resolver)
         for row_num, values in data_rows
     ]
+    warnings, adoptions = _reconcile_context(data_rows, header_index, project)
+    return rows, warnings, adoptions
+
+
+# Fangmethode/Lockmittel/Umstand are Projekt properties (ADR 0002), never stored
+# per capture. Each entry maps the file's Fangdaten column to the Projekt field it
+# governs and the German label used in warnings.
+_CONTEXT_COLUMNS = (
+    ("Fangmethode", "capture_method", "Fangmethode"),
+    ("Lockmittel", "lure", "Lockmittel"),
+    ("Umstand", "circumstance", "Umstand"),
+)
+
+
+def _reconcile_context(data_rows, header_index, project):
+    """Reconcile the file's Projekt-scoped context columns against the Projekt.
+
+    The Projekt's value is authoritative and never overwritten when already set;
+    the file's column is informational (ADR 0002). Per context column:
+
+    * a **homogeneous** file value that differs from a **set** Projekt value → a
+      non-blocking warning (the Projekt governs);
+    * a homogeneous file value while the Projekt value is **unset** → adopt the
+      file's value onto the Projekt (applied on commit);
+    * a **heterogeneous** file (differing values across rows) → a warning, since
+      the model cannot store a per-capture method.
+
+    Returns ``(warnings, adoptions)``."""
+    warnings = []
+    adoptions = {}
+    for column, field, label in _CONTEXT_COLUMNS:
+        if column not in header_index:
+            continue
+        seen = [
+            (row_num, value)
+            for row_num, values in data_rows
+            if (value := _clean(_cell(values, header_index, column))) is not None
+        ]
+        if not seen:
+            continue  # the file says nothing about this column
+        distinct = {value for _, value in seen}
+        if len(distinct) > 1:
+            first_value = seen[0][1]
+            divergent_row = next(row_num for row_num, value in seen if value != first_value)
+            warnings.append(
+                {
+                    "row": divergent_row,
+                    "reason": (
+                        f"{label}: uneinheitliche Werte in der Datei "
+                        f"({', '.join(sorted(distinct))}). Die Methode ist eine "
+                        "Projekt-Eigenschaft und kann nicht pro Fang gespeichert "
+                        "werden; der Projektwert bleibt maßgeblich."
+                    ),
+                }
+            )
+            continue
+        row_num, file_value = seen[0]
+        project_value = (getattr(project, field) or "").strip()
+        if not project_value:
+            adoptions[field] = file_value
+        elif project_value != file_value:
+            warnings.append(
+                {
+                    "row": row_num,
+                    "reason": (
+                        f"{label}: Der Dateiwert „{file_value}“ weicht vom "
+                        f"Projektwert „{project_value}“ ab; der Projektwert bleibt "
+                        "maßgeblich."
+                    ),
+                }
+            )
+    return warnings, adoptions
+
+
+def _adopt_context(project, adoptions):
+    """Write the adopted context values onto the Projekt (commit only). No-op when
+    there is nothing to adopt, so a plain import never touches the Projekt row."""
+    if not adoptions:
+        return
+    for field, value in adoptions.items():
+        setattr(project, field, value)
+    project.save(update_fields=list(adoptions))
 
 
 def _read_fangdaten(content):
