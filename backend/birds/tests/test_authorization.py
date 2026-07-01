@@ -197,15 +197,181 @@ def test_mitglied_can_quick_add_no_account_beringer(mitglied_client, mitglied_sc
 # --- Station management: Admin-only, scoped to the actor's own Organisation ---
 
 
+def _station_payload(name="Neue Station", **overrides):
+    """A valid create payload: name + place_code + latitude + longitude (the
+    serializer-required fields). ``handle`` is server-owned and never sent."""
+    payload = {
+        "name": name,
+        "place_code": "AU03",
+        "latitude": "48.295892",
+        "longitude": "14.276697",
+    }
+    payload.update(overrides)
+    return payload
+
+
 @pytest.mark.django_db
-def test_mitglied_cannot_create_station(mitglied_client, mitglied_scientist, organization):
-    response = mitglied_client.post(
+def test_admin_create_station_derives_handle_and_defaults_country(
+    auth_client, scientist, organization
+):
+    response = auth_client.post(STATIONS_URL, _station_payload(), format="json")
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    # Handle is server-owned (never client-supplied) and returned as the record id.
+    assert body["handle"]
+    station = RingingStation.objects.get(handle=body["handle"])
+    assert station.name == "Neue Station"
+    assert station.organization_id == organization.handle
+    assert station.place_code == "AU03"
+    assert str(station.latitude) == "48.295892"
+    assert str(station.longitude) == "14.276697"
+    assert station.is_active is True
+    # Country defaults to the creating Organisation's country when omitted.
+    assert station.country == organization.country == "DE"
+
+
+@pytest.mark.django_db
+def test_admin_create_station_keeps_explicit_country_and_region(
+    auth_client, scientist, organization
+):
+    response = auth_client.post(
         STATIONS_URL,
-        {"handle": "NOSTN", "name": "X", "organization_id": organization.handle},
+        _station_payload(country="Austria", region="Oberösterreich"),
         format="json",
     )
+
+    assert response.status_code == 201, response.json()
+    station = RingingStation.objects.get(handle=response.json()["handle"])
+    assert station.country == "Austria"
+    assert station.region == "Oberösterreich"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("missing", ["name", "place_code", "latitude", "longitude"])
+def test_admin_create_station_requires_core_fields_with_german_message(
+    auth_client, scientist, missing
+):
+    payload = _station_payload()
+    payload.pop(missing)
+
+    response = auth_client.post(STATIONS_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert missing in response.json()
+    # The error is a clear German (non-English) message.
+    message = " ".join(response.json()[missing])
+    assert "erforderlich" in message.lower()
+
+
+@pytest.mark.django_db
+def test_admin_create_station_derives_distinct_handles_for_same_name(
+    auth_client, scientist, organization
+):
+    first = auth_client.post(STATIONS_URL, _station_payload(name="Auwald"), format="json")
+    second = auth_client.post(STATIONS_URL, _station_payload(name="Auwald"), format="json")
+
+    assert first.status_code == 201 and second.status_code == 201
+    assert first.json()["handle"] != second.json()["handle"]
+
+
+@pytest.mark.django_db
+def test_admin_create_station_ignores_client_supplied_handle(
+    auth_client, scientist, organization
+):
+    response = auth_client.post(
+        STATIONS_URL, _station_payload(handle="CLIENTPICKED"), format="json"
+    )
+
+    assert response.status_code == 201, response.json()
+    assert response.json()["handle"] != "CLIENTPICKED"
+    assert not RingingStation.objects.filter(handle="CLIENTPICKED").exists()
+
+
+@pytest.mark.django_db
+def test_admin_create_station_forced_into_own_org_despite_foreign_org_id(
+    auth_client, scientist, organization, organization_b
+):
+    response = auth_client.post(
+        STATIONS_URL,
+        _station_payload(organization_id=organization_b.handle),
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    station = RingingStation.objects.get(handle=response.json()["handle"])
+    assert station.organization_id == organization.handle
+
+
+def _list_handles(response):
+    """Handles in a (paginated) Station list response, order-independent."""
+    body = response.json()
+    results = body["results"] if isinstance(body, dict) else body
+    return {row["handle"] for row in results}
+
+
+@pytest.mark.django_db
+def test_archiving_hides_station_from_default_list_but_include_archived_shows_it(
+    auth_client, scientist, ringing_station
+):
+    detail = f"{STATIONS_URL}{ringing_station.handle}/"
+
+    assert ringing_station.handle in _list_handles(auth_client.get(STATIONS_URL))
+
+    archive = auth_client.patch(detail, {"is_active": False}, format="json")
+    assert archive.status_code == 200, archive.json()
+    ringing_station.refresh_from_db()
+    assert ringing_station.is_active is False
+
+    # Hidden from the default list/picker …
+    assert ringing_station.handle not in _list_handles(auth_client.get(STATIONS_URL))
+    # … but visible when the management list opts in with include_archived=true.
+    assert ringing_station.handle in _list_handles(
+        auth_client.get(f"{STATIONS_URL}?include_archived=true")
+    )
+
+
+@pytest.mark.django_db
+def test_unarchiving_restores_station_to_default_list(auth_client, scientist, ringing_station):
+    detail = f"{STATIONS_URL}{ringing_station.handle}/"
+    auth_client.patch(detail, {"is_active": False}, format="json")
+    assert ringing_station.handle not in _list_handles(auth_client.get(STATIONS_URL))
+
+    restore = auth_client.patch(detail, {"is_active": True}, format="json")
+    assert restore.status_code == 200, restore.json()
+    assert ringing_station.handle in _list_handles(auth_client.get(STATIONS_URL))
+
+
+@pytest.mark.django_db
+def test_archiving_preserves_existing_captures(auth_client, scientist, ringing_station, data_entry):
+    detail = f"{STATIONS_URL}{ringing_station.handle}/"
+    archive = auth_client.patch(detail, {"is_active": False}, format="json")
+
+    assert archive.status_code == 200, archive.json()
+    # The Station and its capture both survive archiving.
+    assert RingingStation.objects.filter(handle=ringing_station.handle).exists()
+    assert DataEntry.objects.filter(pk=data_entry.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_refused_with_captures_returns_409_german(
+    auth_client, scientist, ringing_station, data_entry
+):
+    response = auth_client.delete(f"{STATIONS_URL}{ringing_station.handle}/")
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert "Fänge" in detail and "archiv" in detail.lower()
+    # The captures are never orphaned — the Station stays.
+    assert RingingStation.objects.filter(handle=ringing_station.handle).exists()
+    assert DataEntry.objects.filter(pk=data_entry.pk).exists()
+
+
+@pytest.mark.django_db
+def test_mitglied_cannot_create_station(mitglied_client, mitglied_scientist, organization):
+    response = mitglied_client.post(STATIONS_URL, _station_payload(), format="json")
     assert response.status_code == 403
-    assert not RingingStation.objects.filter(handle="NOSTN").exists()
+    assert not RingingStation.objects.exists()
 
 
 @pytest.mark.django_db
@@ -221,32 +387,19 @@ def test_mitglied_cannot_edit_or_delete_station(
 
 @pytest.mark.django_db
 def test_admin_can_create_edit_and_delete_station(auth_client, scientist, organization):
-    create = auth_client.post(
-        STATIONS_URL,
-        {"handle": "NEWSTN", "name": "Neue Station", "organization_id": organization.handle},
-        format="json",
-    )
+    create = auth_client.post(STATIONS_URL, _station_payload(), format="json")
     assert create.status_code == 201, create.json()
+    handle = create.json()["handle"]
 
-    detail = f"{STATIONS_URL}NEWSTN/"
+    detail = f"{STATIONS_URL}{handle}/"
     edit = auth_client.patch(detail, {"name": "Umbenannt"}, format="json")
     assert edit.status_code == 200, edit.json()
-    assert RingingStation.objects.get(handle="NEWSTN").name == "Umbenannt"
+    assert RingingStation.objects.get(handle=handle).name == "Umbenannt"
 
+    # No captures reference this Station, so a hard delete is allowed.
     delete = auth_client.delete(detail)
     assert delete.status_code == 204
-    assert not RingingStation.objects.filter(handle="NEWSTN").exists()
-
-
-@pytest.mark.django_db
-def test_admin_cannot_create_station_in_another_tenant(auth_client, scientist, organization_b):
-    response = auth_client.post(
-        STATIONS_URL,
-        {"handle": "XORG", "name": "X", "organization_id": organization_b.handle},
-        format="json",
-    )
-    assert response.status_code == 403
-    assert not RingingStation.objects.filter(handle="XORG").exists()
+    assert not RingingStation.objects.filter(handle=handle).exists()
 
 
 @pytest.mark.django_db
