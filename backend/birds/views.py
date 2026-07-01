@@ -3,6 +3,7 @@ import datetime
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.db.models import Count, Q
+from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse
 from django.urls import reverse
 from rest_framework import filters, mixins, status, viewsets
@@ -60,6 +61,14 @@ SEAT_LIMIT_MESSAGE = (
 LAST_ADMIN_MESSAGE = (
     "Die Organisation braucht mindestens eine:n Administrator:in. "
     "Ernenne zuerst eine andere Person zur Administratorin oder zum Administrator."
+)
+
+
+# Shown when a hard-delete is refused because captures reference the Station. The
+# FK is PROTECT (captures are never orphaned), so the fix is to archive instead.
+STATION_HAS_CAPTURES_MESSAGE = (
+    "Diese Station kann nicht gelöscht werden, weil ihr Fänge zugeordnet sind. "
+    "Archiviere die Station stattdessen."
 )
 
 
@@ -297,7 +306,13 @@ class RingingStationViewSet(viewsets.ModelViewSet):
         Stationen, so a cross-tenant detail fetch is a 404 (the row is absent),
         not a 403. No active Organisation ⇒ empty list (mirrors the capture
         endpoint). The optional ``?organization=<handle>`` filter is preserved but
-        can only narrow within the already-scoped set."""
+        can only narrow within the already-scoped set.
+
+        The default **list** returns only active Stationen (the picker; issue
+        #117); ``?include_archived=true`` widens it to active + archived for the
+        management list. Detail routes (retrieve/update/destroy) are never
+        is_active-filtered so an archived Station stays reachable by handle for
+        un-archiving and deletion."""
         organization = active_organization(self.request.user)
         if organization is None:
             return RingingStation.objects.none()
@@ -306,6 +321,8 @@ class RingingStationViewSet(viewsets.ModelViewSet):
             .filter(organization=organization)
             .order_by("name")
         )
+        if self.action == "list" and self.request.query_params.get("include_archived") != "true":
+            queryset = queryset.filter(is_active=True)
         handle = self.request.query_params.get("organization")
         if handle:
             queryset = queryset.filter(organization__handle=handle)
@@ -322,11 +339,27 @@ class RingingStationViewSet(viewsets.ModelViewSet):
         self._reject_foreign_organization(target)
         serializer.save()
 
+    def destroy(self, request, *args, **kwargs):
+        """Hard-delete only when no capture references the Station.
+
+        The ``DataEntry.ringing_station`` FK is PROTECT (captures are never
+        orphaned), so a Station with Fänge cannot be deleted — the delete is
+        refused with 409 and a hint to archive instead (issue #117). A Station
+        with no captures deletes normally (204)."""
+        instance = self.get_object()
+        try:
+            instance.delete()
+        except ProtectedError:
+            return Response(
+                {"detail": STATION_HAS_CAPTURES_MESSAGE},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def _reject_foreign_organization(self, organization):
         # A Station write must stay inside the Admin's own Organisation. (The
         # IsOrgAdminOrReadOnly object check already blocks editing a *foreign*
-        # Station; this also blocks creating one in — or moving one to — another
-        # tenant.)
+        # Station; this also blocks moving one to another tenant on update.)
         if organization != active_organization(self.request.user):
             raise PermissionDenied(OTHER_ORG_MESSAGE)
 
