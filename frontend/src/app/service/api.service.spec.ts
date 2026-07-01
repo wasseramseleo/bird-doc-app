@@ -115,6 +115,81 @@ describe('ApiService', () => {
     expect(result).toEqual(response);
   });
 
+  it('getRingingStations requests archived + active via include_archived=true when asked', () => {
+    service.getRingingStations(undefined, undefined, true).subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'GET' && r.url.endsWith('/birds/ringing-stations/'),
+    );
+    expect(req.request.params.get('include_archived')).toBe('true');
+    req.flush({ count: 0, next: null, previous: null, results: [] });
+  });
+
+  it('getRingingStations omits include_archived by default (active only)', () => {
+    service.getRingingStations(undefined, 'ORG').subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'GET' && r.url.endsWith('/birds/ringing-stations/'),
+    );
+    expect(req.request.params.has('include_archived')).toBeFalse();
+    expect(req.request.params.get('organization')).toBe('ORG');
+    req.flush({ count: 0, next: null, previous: null, results: [] });
+  });
+
+  it('createRingingStation POSTs the payload without a handle', () => {
+    service
+      .createRingingStation({
+        name: 'Teichwiese',
+        place_code: 'AT-TW',
+        latitude: '48.1',
+        longitude: '16.3',
+        region: 'Wien',
+      })
+      .subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'POST' && r.url.endsWith('/birds/ringing-stations/'),
+    );
+    expect(req.request.body).toEqual({
+      name: 'Teichwiese',
+      place_code: 'AT-TW',
+      latitude: '48.1',
+      longitude: '16.3',
+      region: 'Wien',
+    });
+    expect('handle' in (req.request.body as object)).toBeFalse();
+    req.flush({});
+  });
+
+  it('updateRingingStation PATCHes the handle route with the changed fields', () => {
+    service.updateRingingStation('teichwiese', { name: 'Neu' }).subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'PATCH' && r.url.endsWith('/birds/ringing-stations/teichwiese/'),
+    );
+    expect(req.request.body).toEqual({ name: 'Neu' });
+    req.flush({});
+  });
+
+  it('setRingingStationActive archives via PATCH {is_active:false}', () => {
+    service.setRingingStationActive('teichwiese', false).subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'PATCH' && r.url.endsWith('/birds/ringing-stations/teichwiese/'),
+    );
+    expect(req.request.body).toEqual({ is_active: false });
+    req.flush({});
+  });
+
+  it('deleteRingingStation issues DELETE on the handle route', () => {
+    service.deleteRingingStation('teichwiese').subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'DELETE' && r.url.endsWith('/birds/ringing-stations/teichwiese/'),
+    );
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
   it('sends feedback via POST /api/feedback/ with the message (not under /birds)', () => {
     service.sendFeedback('Die Ringgröße lässt sich nicht speichern.').subscribe();
 

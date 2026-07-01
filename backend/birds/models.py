@@ -405,6 +405,10 @@ class RingingStation(models.Model):
     longitude = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True, verbose_name=_("Längengrad")
     )
+    # Archiving flag (issue #117). A Station is never hard-deleted while captures
+    # reference it (the FK is PROTECT); archiving hides it from the default
+    # list/picker while keeping its captures intact and exportable. Reversible.
+    is_active = models.BooleanField(default=True, verbose_name=_("Aktiv"))
 
     def __str__(self):
         return f"{self.handle}"

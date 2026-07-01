@@ -8,6 +8,8 @@ import pytest
 from birds.iwm_export import SHEET_NAME, build_iwm_workbook
 from birds.models import DataEntry, Ring, RingingStation
 
+STATIONS_URL = "/api/birds/ringing-stations/"
+
 
 def _read_all_rows(content):
     """Return a list of {header: value} dicts, one per data row, in sheet order."""
@@ -110,6 +112,43 @@ def test_export_geo_coordinates_as_lat_lon_with_dot_separator(species, scientist
 
     row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
 
+    assert row["Geo-Koordinaten"] == "48.295892, 14.276697"
+
+
+@pytest.mark.django_db
+def test_export_populates_geography_for_station_created_through_api(
+    auth_client, scientist, organization, species
+):
+    # A Station created through the org-admin API with the required geo fields
+    # carries them all the way into the IWM export (issues #114/#118).
+    create = auth_client.post(
+        STATIONS_URL,
+        {
+            "name": "Auwald Süd",
+            "region": "Oberösterreich",
+            "place_code": "AU03",
+            "latitude": "48.295892",
+            "longitude": "14.276697",
+            "country": "Austria",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.json()
+    station = RingingStation.objects.get(handle=create.json()["handle"])
+
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="750", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=station,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Land"] == "Austria"
+    assert row["Region"] == "Oberösterreich"
+    assert row["Ortskodierung"] == "AU03"
     assert row["Geo-Koordinaten"] == "48.295892, 14.276697"
 
 

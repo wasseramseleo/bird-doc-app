@@ -204,6 +204,9 @@ body {
     font: inherit;
     font-weight: 600;
     letter-spacing: 0.03em;
+    /* Button-like anchors (`a.button`) must never wear the link underline —
+       they read as buttons, not text links. */
+    text-decoration: none;
     color: #fff;
     background: var(--accent);
     border: 1px solid var(--accent-strong);
@@ -935,4 +938,98 @@ body {
     color: #fff;
     background: var(--accent-strong);
     border-color: var(--accent-strong);
+}
+
+/* ── Excel-vs-BirdDoc comparison (issue #116) ─────────────────────────────
+   A small, factual contrast of where the four common capture-log errors creep
+   in (transcription, miscount, format, inconsistency) and how direct entry at
+   the Ringtisch removes each. Deliberately non-disparaging: Excel is a general
+   tool, and these are the costs of keeping a ringing log by hand, not a fault
+   in the software. Built on the brand's field-record cards. */
+.compare {
+    margin: 2.75rem 0;
+    padding-top: 2.25rem;
+    border-top: 1px solid var(--line);
+}
+
+.compare__title {
+    margin: 0 0 0.8rem;
+    font-size: 1.55rem;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.compare__lead {
+    max-width: 38rem;
+    color: var(--muted);
+    font-size: 1.02rem;
+}
+
+.compare__grid {
+    list-style: none;
+    margin: 1.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+}
+
+/* Each row: the error kind, then the by-hand cost and the BirdDoc answer,
+   side by side. The grid collapses to a single stacked column on mobile. */
+.compare__row {
+    display: grid;
+    grid-template-columns: 9rem 1fr 1fr;
+    gap: 0.6rem 1.25rem;
+    align-items: baseline;
+    padding: 1.1rem 1.2rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+}
+
+.compare__kind {
+    margin: 0;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.68rem;
+    color: var(--accent);
+}
+
+.compare__excel,
+.compare__birddoc {
+    margin: 0;
+    font-size: 0.92rem;
+}
+
+.compare__excel {
+    color: var(--muted);
+}
+
+.compare__birddoc {
+    color: var(--ink);
+}
+
+/* The quiet mono chip naming each side, so a scanning reader keeps the two
+   columns straight even where they wrap on a narrow screen. */
+.compare__tag {
+    display: inline-block;
+    margin-right: 0.45rem;
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.compare__birddoc .compare__tag {
+    color: var(--accent-strong);
+}
+
+@media (max-width: 46rem) {
+    .compare__row {
+        grid-template-columns: 1fr;
+    }
 }

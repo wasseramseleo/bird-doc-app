@@ -15,3 +15,7 @@ Canonical triage roles map to identically-named labels (`needs-triage`, `needs-i
 ### Domain docs
 
 Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### GitHub Rules
+
+- Never add "Authored by Claude code" in any form to Issues or PRs. 

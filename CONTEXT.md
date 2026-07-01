@@ -46,8 +46,16 @@ The reserved fallback Beringer (Kürzel `GELÖSCHT`) that adopts a deleted Berin
 _Avoid_: Deleted user (English), anonymous Beringer, null Beringer
 
 **Station**:
-The ringing site where a capture happens (e.g. "Linz, Botanischer Garten"). Belongs to one Organisation.
+The ringing site where a capture happens (e.g. "Linz, Botanischer Garten"). Belongs to one Organisation and is managed by that Organisation's Admin (in-app, not only in the Django admin). Carries the geographic data the IWM export reads off each capture — **Ortskodierung**, Land, Region and coordinates — held on the Station, not the capture, so every capture at a site inherits one consistent location. Its identifying handle is internal and machine-derived — never the Ortskodierung, never shown to users. A Station is either **aktiv** or **archiviert**.
 _Avoid_: Location, site
+
+**Ortskodierung**:
+The ringing authority's official place code for a Station (e.g. "AU03"), emitted in the IWM export. A domain-facing property of the Station, distinct from the Station's internal handle — which is machine-derived and never exported.
+_Avoid_: Place code (English), Station-ID, handle
+
+**Archivierte Station**:
+A Station retired from use but preserved. Archiving hides it from the capture picker so no new capture can be filed there, while keeping it attached to its historical captures and their IWM export. Distinct from deletion: a Station that owns captures is never deleted — that would orphan them, the same principle as the Gelöschter Nutzer fallback for Beringer — it is archived instead. A Station with **no** captures may be hard-deleted outright. See ADR 0011.
+_Avoid_: Deleted station, inactive site, disabled station
 
 **Organisation**:
 A **local** ringing body/group — the level that owns data (e.g. IWM Linz). Also the **tenant** — the unit of data ownership and isolation: members of one Organisation see each other's captures; members of different Organisations never see each other's data. Every capture, Station and Projekt belongs to exactly one Organisation. A **national ringing authority** (e.g. the Österreichische Vogelwarte) is **not** an Organisation: it sits *above* the tenant layer as an external scheme/endorser, and the model holds **no** parent-of-Organisations entity — addressing such a body is a positioning/sales concern, not a modelled tier.
@@ -96,3 +104,7 @@ _Avoid_: Bait, decoy
 **Umstand**:
 The circumstance under which a bird was caught, recorded as an IWM code (e.g. 25 = caught by humans for a scientific project). A property of the Projekt. Distinct from _Zustand_ (the bird's condition, a separate IWM field).
 _Avoid_: Reason, condition
+
+**Referenzprojekt**:
+The de-identified demo tenant — realised as a real **Organisation** (currently _BirdDoc Demo_, handle `BDDEMO`) holding one **Projekt** of plausible-but-non-real captures — used to onboard new users, generate marketing visualisations, and test features. Seeded from a real IWM export whose every reality-linking field (Beringer, Station, Ringnummer, capture year) is transformed so no row matches a real capture and the source dataset cannot be recognised or reconstructed: the demo captures are explicitly **not Fangdaten**. It is an ordinary tenant with no schema marker — real Mitglieder never see it (they hold no Mitgliedschaft in it), and code that must single it out does so by its known handle. See ADR 0012.
+_Avoid_: Testprojekt, Sandbox, Beispieldaten, Demoprojekt (English: demo project — say Referenzprojekt)

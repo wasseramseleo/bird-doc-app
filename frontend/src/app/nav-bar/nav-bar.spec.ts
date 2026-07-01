@@ -66,11 +66,16 @@ function activate(
   ctx.fixture.detectChanges();
 }
 
-function signIn(ctx: ReturnType<typeof setup>, isStaff: boolean): void {
+function signIn(
+  ctx: ReturnType<typeof setup>,
+  isStaff: boolean,
+  rolle: 'admin' | 'mitglied' | null = null,
+): void {
   TestBed.inject(AuthService).currentUser.set({
     username: 'fre',
     handle: 'FRE',
     isStaff,
+    rolle,
   });
 }
 
@@ -366,6 +371,42 @@ describe('NavBar', () => {
     ctx.fixture.detectChanges();
 
     expect(open).toHaveBeenCalledWith(FeedbackDialogComponent, jasmine.any(Object));
+  });
+
+  it('shows "Stationen verwalten" in the user menu for an org admin, linking to /stationen', () => {
+    const ctx = setup();
+    signIn(ctx, false, 'admin');
+    activate(ctx, makeProject());
+
+    const items = openUserMenu(ctx);
+    const stationItem = items.find((i) => (i.textContent ?? '').includes('Stationen verwalten')) as
+      | HTMLAnchorElement
+      | undefined;
+
+    expect(stationItem).withContext('Stationen verwalten present for admin').toBeTruthy();
+    expect(stationItem!.getAttribute('href')).toBe('/stationen');
+  });
+
+  it('never shows "Stationen verwalten" for a plain Mitglied', () => {
+    const ctx = setup();
+    signIn(ctx, false, 'mitglied');
+    activate(ctx, makeProject());
+
+    const labels = openUserMenu(ctx).map((i) => i.textContent ?? '');
+    expect(labels.some((t) => t.includes('Stationen verwalten')))
+      .withContext('no Stationen verwalten for Mitglied')
+      .toBeFalse();
+  });
+
+  it('never shows "Stationen verwalten" when there is no active-organization Rolle', () => {
+    const ctx = setup();
+    signIn(ctx, true, null);
+    activate(ctx, makeProject());
+
+    const labels = openUserMenu(ctx).map((i) => i.textContent ?? '');
+    expect(labels.some((t) => t.includes('Stationen verwalten')))
+      .withContext('no Stationen verwalten without an admin Rolle')
+      .toBeFalse();
   });
 
   it('never shows Administration for non-staff users', () => {

@@ -1,11 +1,11 @@
 {% extends "landing/base_destination.html" %}
 
-{% block title %}{% if valid %}E-Mail bestätigt{% else %}Link ungültig{% endif %} — BirdDoc{% endblock %}
+{% block title %}{% if valid %}E-Mail bestätigt{% else %}Link ungültig{% endif %} · BirdDoc{% endblock %}
 
 {% block content %}
     {% if valid %}
         <h1>E-Mail bestätigt</h1>
-        <p>Danke — deine Adresse ist bestätigt und dein Konto ist jetzt aktiv. Du
+        <p>Danke! Deine Adresse ist bestätigt und dein Konto ist jetzt aktiv. Du
             kannst dich mit deiner E-Mail-Adresse und deinem Passwort anmelden.</p>
         <p><a class="button" href="{{ app_login_url }}">Zur Anmeldung</a></p>
     {% else %}

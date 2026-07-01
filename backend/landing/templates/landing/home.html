@@ -12,8 +12,8 @@ the bilingual marketing surface (issue #107); og:image/og:url are absolute,
 built in the view.
 {% endcomment %}
 {% block head_meta %}
-    {% blocktranslate trimmed asvar meta_description %}Schluss mit Papier und Excel: BirdDoc ist die Feld-Dokumentation für die Vogelberingung — ein sauberer Datensatz pro gefangenem und beringtem Vogel.{% endblocktranslate %}
-    {% translate "BirdDoc — Feldjournal für die Vogelberingung" as og_title %}
+    {% blocktranslate trimmed asvar meta_description %}Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal für die Vogelberingung. Ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst, während der Vogel in der Hand ist.{% endblocktranslate %}
+    {% translate "BirdDoc: Stationsjournal für die Vogelberingung" as og_title %}
     <meta name="description" content="{{ meta_description }}">
 
     <meta property="og:type" content="website">
@@ -25,7 +25,7 @@ built in the view.
     <meta property="og:image:type" content="image/svg+xml">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="{% translate 'BirdDoc — Beispiel-Fang-Karte' %}">
+    <meta property="og:image:alt" content="{% translate 'BirdDoc: Beispiel-Fang-Karte' %}">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ og_title }}">
@@ -58,9 +58,9 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     {% endcomment %}
     <section class="hero" id="top">
         <div class="hero__copy">
-            <p class="eyebrow">{% translate "Feldjournal · Beringung" %}</p>
+            <p class="eyebrow">{% translate "Stationsjournal · Beringung" %}</p>
             <h1 class="hero__thesis">{% translate "Schluss mit Papier und Excel" %}</h1>
-            <p class="lead">{% blocktranslate trimmed %}BirdDoc ist die Feld-Dokumentation für die Beringung — ein sauberer Datensatz pro gefangenem und beringtem Vogel, statt loser Zettel und verstreuter Tabellen.{% endblocktranslate %}
+            <p class="lead">{% blocktranslate trimmed %}BirdDoc ist das Stationsjournal für die Beringung: ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten Tabellen.{% endblocktranslate %}
                 <span class="badge badge--beta">Beta</span></p>
             {% include "landing/_app_german_only_note.html" %}
             <p class="hero__ctas">
@@ -115,7 +115,7 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     (last-consumed + 1) threading the page as an honest structural marker. Set in
     tabular-nums (the data voice). The numbers themselves are data, not copy.
     {% endcomment %}
-    <p class="ringserie ringserie--reveal data" aria-label="{% translate 'Ringserie — fortlaufende Ringnummern' %}">
+    <p class="ringserie ringserie--reveal data" aria-label="{% translate 'Ringserie: fortlaufende Ringnummern' %}">
         {% for number in fang_karte.ringserie %}<span class="ringserie__num">{{ number }}</span>{% if not forloop.last %}<span class="ringserie__sep" aria-hidden="true">·</span>{% endif %}{% endfor %}<span class="ringserie__sep" aria-hidden="true">·</span><span class="ringserie__next" title="{% translate 'Nächste Nummer: letzte verbrauchte + 1' %}">{{ fang_karte.next_number }}</span>
     </p>
 
@@ -132,7 +132,7 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
         </section>
         <section class="fork__col">
             <h2 class="fork__title">{% translate "Für Organisationen &amp; Vogelwarten" %}</h2>
-            <p>{% blocktranslate trimmed %}Du entscheidest für eine ganze Beringungs-Landschaft? Eine schemaweite Einführung — DSGVO-konform, in Österreich gehostet, ohne Lock-in.{% endblocktranslate %}</p>
+            <p>{% blocktranslate trimmed %}Du entscheidest für eine ganze Beringungs-Landschaft? Eine schemaweite Einführung: DSGVO-konform, in Österreich gehostet, ohne Lock-in.{% endblocktranslate %}</p>
             <p><a class="fork__more" href="#organisationen">{% translate "Für Organisationen ansehen" %}</a></p>
         </section>
     </div>
@@ -146,25 +146,60 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     <section class="audience" id="fuer-beringer" aria-labelledby="audience-beringer-title">
         <p class="eyebrow">{% translate "Für Beringer" %}</p>
         <h2 id="audience-beringer-title" class="audience__title">{% translate "Vom Zettel zur Fang-Karte" %}</h2>
-        <p class="audience__pain">{% blocktranslate trimmed %}Heute hältst du jeden Fang auf Papier fest und überträgst ihn später mühsam in Excel — fehleranfällig, doppelt erfasst und schwer zu durchsuchen.{% endblocktranslate %}</p>
+        <p class="audience__pain">{% blocktranslate trimmed %}Heute notierst du jeden Fang am Ringtisch auf Papier und überträgst ihn später mühsam in Excel. Das ist fehleranfällig, doppelt erfasst und schwer zu durchsuchen.{% endblocktranslate %}</p>
 
         <ul class="relief" id="funktionen">
             <li class="relief__item">
                 <h3 class="relief__title">{% translate "Eine saubere Fang-Karte" %}</h3>
-                <p>{% blocktranslate trimmed %}Alle Felder eines Fangs an einem Ort — ein Datensatz pro Vogel, statt loser Zettel.{% endblocktranslate %}</p>
+                <p>{% blocktranslate trimmed %}Alle Angaben eines Fangs an einem Ort, direkt am Ringtisch erfasst: ein Datensatz pro Vogel statt loser Zettel.{% endblocktranslate %}</p>
             </li>
             <li class="relief__item">
                 <h3 class="relief__title">{% translate "Intelligente Ringnummerierung" %}</h3>
-                <p>{% blocktranslate trimmed %}Die nächste Ringnummer der Serie wird automatisch vorgeschlagen — kein Abzählen, kein Vertippen.{% endblocktranslate %}</p>
+                <p>{% blocktranslate trimmed %}Die nächste Ringnummer der Serie wird automatisch vorgeschlagen: kein Abzählen, kein Vertippen.{% endblocktranslate %}</p>
             </li>
             <li class="relief__item">
                 <h3 class="relief__title">{% translate "IWM-Export auf Knopfdruck" %}</h3>
-                <p>{% blocktranslate trimmed %}Die Meldung an die Vogelwarte als fertiger IWM-Export — ohne Handarbeit.{% endblocktranslate %}</p>
+                <p>{% blocktranslate trimmed %}Die Meldung an die Vogelwarte als fertiger IWM-Export, ohne Handarbeit.{% endblocktranslate %}</p>
             </li>
         </ul>
 
-        <p class="audience__beta">{% blocktranslate trimmed %}BirdDoc ist in geschlossener Beta und während der Beta <strong>kostenlos</strong>. Trag dich in die Warteliste ein — wir melden uns, sobald ein Zugangscode frei wird.{% endblocktranslate %}</p>
+        <p class="audience__beta">{% blocktranslate trimmed %}BirdDoc ist in geschlossener Beta und während der Beta <strong>kostenlos</strong>. Trag dich in die Warteliste ein und wir melden uns, sobald ein Zugangscode frei wird.{% endblocktranslate %}</p>
         <p><a class="button" href="{% url 'landing:warteliste' %}">{% translate "Zugang anfragen" %}</a></p>
+    </section>
+
+    {% comment %}
+    The Excel-vs-BirdDoc comparison (issue #116, ADR 0014): a small, factual and
+    deliberately non-disparaging contrast of the four error types that a by-hand
+    ringing log invites (transcription, miscount, format, inconsistency) against
+    direct entry at the Ringtisch. It reinforces the Excel-alternative USP the
+    station reframe sets up. Built on the brand's field-record cards.
+    {% endcomment %}
+    <section class="compare" id="excel-vergleich" aria-labelledby="compare-title">
+        <p class="eyebrow">{% translate "Excel und BirdDoc" %}</p>
+        <h2 id="compare-title" class="compare__title">{% translate "Weniger Fehler bei der Erfassung" %}</h2>
+        <p class="compare__lead">{% blocktranslate trimmed %}Eine Tabelle ist schnell angelegt, doch bei der Beringung sammeln sich mit der Zeit typische Fehler. BirdDoc setzt genau dort an, weil die Erfassung zum Ringtisch passt.{% endblocktranslate %}</p>
+        <ul class="compare__grid">
+            <li class="compare__row">
+                <p class="compare__kind">{% translate "Übertragung" %}</p>
+                <p class="compare__excel"><span class="compare__tag">{% translate "In Excel" %}</span>{% blocktranslate trimmed %}Jeder Wert wird von den Notizen abgetippt, ein zweites Mal.{% endblocktranslate %}</p>
+                <p class="compare__birddoc"><span class="compare__tag">{% translate "In BirdDoc" %}</span>{% blocktranslate trimmed %}Direkt am Ringtisch erfasst, ohne zweite Eingabe.{% endblocktranslate %}</p>
+            </li>
+            <li class="compare__row">
+                <p class="compare__kind">{% translate "Zählen" %}</p>
+                <p class="compare__excel"><span class="compare__tag">{% translate "In Excel" %}</span>{% blocktranslate trimmed %}Ringnummern werden von Hand weitergezählt.{% endblocktranslate %}</p>
+                <p class="compare__birddoc"><span class="compare__tag">{% translate "In BirdDoc" %}</span>{% blocktranslate trimmed %}Die nächste Nummer der Serie wird vorgeschlagen.{% endblocktranslate %}</p>
+            </li>
+            <li class="compare__row">
+                <p class="compare__kind">{% translate "Format" %}</p>
+                <p class="compare__excel"><span class="compare__tag">{% translate "In Excel" %}</span>{% blocktranslate trimmed %}Datum, Maße und Codes je nach Zelle unterschiedlich geschrieben.{% endblocktranslate %}</p>
+                <p class="compare__birddoc"><span class="compare__tag">{% translate "In BirdDoc" %}</span>{% blocktranslate trimmed %}Feste Felder mit einheitlichem Format.{% endblocktranslate %}</p>
+            </li>
+            <li class="compare__row">
+                <p class="compare__kind">{% translate "Einheitlichkeit" %}</p>
+                <p class="compare__excel"><span class="compare__tag">{% translate "In Excel" %}</span>{% blocktranslate trimmed %}Jede Tabelle wächst mit der Zeit anders.{% endblocktranslate %}</p>
+                <p class="compare__birddoc"><span class="compare__tag">{% translate "In BirdDoc" %}</span>{% blocktranslate trimmed %}Ein Schema für alle Fänge, sauber als IWM-Datei exportierbar.{% endblocktranslate %}</p>
+            </li>
+        </ul>
     </section>
 
     {% comment %}
@@ -177,29 +212,29 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     <section class="audience audience--org" id="organisationen"
              aria-labelledby="audience-org-title">
         <p class="eyebrow">{% translate "Für Organisationen &amp; Vogelwarten" %}</p>
-        <h2 id="audience-org-title" class="audience__title">{% translate "Schemaweit einführen — jede Gruppe bleibt für sich" %}</h2>
-        <p class="audience__pain">{% blocktranslate trimmed %}BirdDoc lässt sich über eine ganze Beringungs-Landschaft ausrollen — und jede Gruppe behält dabei ihren eigenen, privaten Arbeitsbereich. Es gibt keine schemaweite Zentrale, die in alle Fänge sieht: Organisationen sehen die Daten der jeweils anderen nie.{% endblocktranslate %}</p>
+        <h2 id="audience-org-title" class="audience__title">{% translate "Schemaweit einführen – jede Gruppe bleibt für sich" %}</h2>
+        <p class="audience__pain">{% blocktranslate trimmed %}BirdDoc lässt sich über eine ganze Beringungs-Landschaft ausrollen, und jede Gruppe behält dabei ihren eigenen, privaten Arbeitsbereich. Es gibt keine schemaweite Zentrale, die in alle Fänge sieht: Organisationen sehen die Daten der jeweils anderen nie.{% endblocktranslate %}</p>
 
         <ul class="org-trust">
             <li class="org-trust__item">
                 <h3 class="org-trust__title">{% translate "Datenhoheit" %}</h3>
-                <p>{% blocktranslate trimmed %}Alle Beringungsdaten liegen in Österreich bzw. der EU und werden DSGVO-konform verarbeitet. Die Organisation bleibt <strong>Verantwortliche</strong> im Sinne der DSGVO — BirdDoc ist ausschließlich <strong>Auftragsverarbeiter</strong>.{% endblocktranslate %}</p>
+                <p>{% blocktranslate trimmed %}Alle Beringungsdaten liegen in Österreich bzw. der EU und werden DSGVO-konform verarbeitet. Die Organisation bleibt <strong>Verantwortliche</strong> im Sinne der DSGVO, BirdDoc ist ausschließlich <strong>Auftragsverarbeiter</strong>.{% endblocktranslate %}</p>
             </li>
             <li class="org-trust__item">
                 <h3 class="org-trust__title">{% translate "Kein Lock-in" %}</h3>
-                <p>{% blocktranslate trimmed %}Jede Gruppe besitzt ihre Daten und kann sie jederzeit exportieren — als IWM- oder EURING-Datei. Eine Einführung von BirdDoc ist damit jederzeit umkehrbar.{% endblocktranslate %}</p>
+                <p>{% blocktranslate trimmed %}Jede Gruppe besitzt ihre Daten und kann sie jederzeit exportieren, als IWM- oder EURING-Datei. Eine Einführung von BirdDoc ist damit jederzeit umkehrbar.{% endblocktranslate %}</p>
             </li>
             <li class="org-trust__item">
-                <h3 class="org-trust__title">{% translate "Kontinuität — ehrlich beantwortet" %}</h3>
+                <h3 class="org-trust__title">{% translate "Kontinuität – ehrlich beantwortet" %}</h3>
                 <p>{% blocktranslate trimmed %}BirdDoc wird von einem <strong>Einzelunternehmen</strong> betrieben, von einer einzelnen Person. Statt dieses Risiko zu verstecken, beantworten wir es offen: Weil deine Daten dir gehören und jederzeit exportierbar sind, bleibst du unabhängig davon, wer BirdDoc betreibt.{% endblocktranslate %}</p>
             </li>
             <li class="org-trust__item">
-                <h3 class="org-trust__title">{% translate "Im Feld bewährt" %}</h3>
-                <p>{% blocktranslate trimmed %}BirdDoc dokumentiert bereits echte Beringung — entstanden als <strong>Masterarbeit</strong> und im täglichen Feldeinsatz erprobt.{% endblocktranslate %}</p>
+                <h3 class="org-trust__title">{% translate "An der Station bewährt" %}</h3>
+                <p>{% blocktranslate trimmed %}BirdDoc dokumentiert bereits echte Beringung: entstanden als <strong>Masterarbeit</strong>, im täglichen Stationsbetrieb erprobt.{% endblocktranslate %}</p>
             </li>
         </ul>
 
-        <p class="audience__pilot">{% blocktranslate trimmed %}Für interessierte Gruppen ist ein begleiteter <strong>Beta-Pilot</strong> möglich — ohne festen Zeitplan.{% endblocktranslate %}</p>
+        <p class="audience__pilot">{% blocktranslate trimmed %}Für interessierte Gruppen ist ein begleiteter <strong>Beta-Pilot</strong> möglich, ohne festen Zeitplan.{% endblocktranslate %}</p>
 
         <p class="audience__org-ctas">
             <a class="button" href="{% url 'landing:gespraech' %}">{% translate "Gespräch anfragen" %}</a>
@@ -209,7 +244,7 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
 
     <section class="hosting" aria-label="Hosting">
         <span class="hosting__flag" aria-hidden="true">🇦🇹</span>
-        <p>{% blocktranslate trimmed %}<strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben in Österreich bzw. der EU — DSGVO-konform, ohne Drittanbieter-Tracking.{% endblocktranslate %}</p>
+        <p>{% blocktranslate trimmed %}<strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben in Österreich bzw. der EU, DSGVO-konform und ohne Drittanbieter-Tracking.{% endblocktranslate %}</p>
     </section>
 
     {% comment %}
@@ -225,11 +260,11 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             </li>
             <li>
                 <span class="price-teaser__tag">{% translate "Ab 1.0" %}</span>
-                {% blocktranslate trimmed %}Eine Lizenz <strong>pro Organisation</strong> — nie pro Kopf.{% endblocktranslate %}
+                {% blocktranslate trimmed %}Eine Lizenz <strong>pro Organisation</strong> – nie pro Kopf.{% endblocktranslate %}
             </li>
             <li>
                 <span class="price-teaser__tag">{% translate "Beta-Kohorte" %}</span>
-                {% blocktranslate trimmed %}Wer während der Beta gründet, behält <strong>dauerhaft</strong> einen <strong>Vorzugspreis</strong> — auch nach 1.0.{% endblocktranslate %}
+                {% blocktranslate trimmed %}Wer während der Beta gründet, behält <strong>dauerhaft</strong> einen <strong>Vorzugspreis</strong>, auch nach 1.0.{% endblocktranslate %}
             </li>
         </ul>
     </section>
