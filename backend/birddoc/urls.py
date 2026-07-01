@@ -31,10 +31,12 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 ]
 
-# Crawler & share-baseline files (issue #108): served at the apex root, OUTSIDE
-# i18n_patterns, so each lives at exactly one canonical URL with no language
-# prefix — `/robots.txt`, `/sitemap.xml` and the Fang-Karte Open-Graph image.
+# Crawler & share-baseline files (issue #108) plus the favicon (issue #137):
+# served at the apex root, OUTSIDE i18n_patterns, so each lives at exactly one
+# canonical URL with no language prefix — `/favicon.ico`, `/robots.txt`,
+# `/sitemap.xml` and the Fang-Karte Open-Graph image.
 urlpatterns += [
+    path("favicon.ico", seo.FaviconView.as_view(), name="favicon"),
     path("robots.txt", seo.RobotsTxtView.as_view(), name="robots"),
     path("sitemap.xml", sitemap, {"sitemaps": seo.SITEMAPS}, name="sitemap"),
     path("og/fang-karte.svg", seo.FangKarteOgImageView.as_view(), name="og_fang_karte"),

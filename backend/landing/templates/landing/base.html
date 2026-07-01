@@ -11,6 +11,8 @@
     with its meta description + OG/Twitter card; other pages leave it empty.
     {% endcomment %}
     {% block head_meta %}{% endblock %}
+    {# Favicon — derived from the BirdDoc brand asset, self-hosted at the apex root (issue #137). #}
+    <link rel="icon" href="{% url 'favicon' %}" type="image/x-icon" sizes="48x48 32x32 16x16">
     {# Lora (display) + Inter (body) — loaded the same way the Angular app does. #}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

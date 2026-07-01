@@ -9,7 +9,10 @@ so the shared link previews with the product's own credible capture card.
 """
 
 from django.contrib.sitemaps import Sitemap
+from django.contrib.staticfiles import finders
+from django.http import FileResponse, Http404
 from django.urls import reverse
+from django.views import View
 from django.views.generic import TemplateView
 
 from .fang_karte import FANG_KARTE
@@ -59,6 +62,22 @@ class RobotsTxtView(TemplateView):
             **super().get_context_data(**kwargs),
             "sitemap_url": self.request.build_absolute_uri(reverse("sitemap")),
         }
+
+
+class FaviconView(View):
+    """Serve /favicon.ico from the landing's own static assets (issue #137).
+
+    The icon is derived from the existing BirdDoc brand asset and shipped in
+    ``landing/static/landing/`` — self-hosted, no third-party request. Serving
+    it through a view at the apex root (rather than only a ``/static/…`` link)
+    gives it one canonical, prefix-free URL and keeps the classic blind
+    ``/favicon.ico`` probe from 404ing."""
+
+    def get(self, request):
+        path = finders.find("landing/favicon.ico")
+        if path is None:  # pragma: no cover — the asset ships in the repo
+            raise Http404("favicon.ico is not in the landing static assets")
+        return FileResponse(open(path, "rb"), content_type="image/x-icon")
 
 
 class FangKarteOgImageView(TemplateView):
