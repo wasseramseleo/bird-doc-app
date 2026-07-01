@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-01 13:59+0200\n"
+"POT-Creation-Date: 2026-07-01 23:36+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -220,6 +220,9 @@ msgid "Breitengrad"
 msgstr ""
 
 msgid "Längengrad"
+msgstr ""
+
+msgid "Aktiv"
 msgstr ""
 
 msgid "unbekannt"
@@ -483,6 +486,18 @@ msgstr ""
 msgid "Active for Autocomplete"
 msgstr ""
 
+msgid "Ein Name ist erforderlich."
+msgstr ""
+
+msgid "Eine Ortskodierung ist erforderlich."
+msgstr ""
+
+msgid "Ein Breitengrad ist erforderlich."
+msgstr ""
+
+msgid "Ein Längengrad ist erforderlich."
+msgstr ""
+
 msgid "Die Station muss zur Organisation des Projekts gehören."
 msgstr ""
 
@@ -671,6 +686,18 @@ msgid ""
 msgstr ""
 
 msgid "Zugang anfragen"
+msgstr ""
+
+msgid "Ein Blick in BirdDoc"
+msgstr ""
+
+msgid "Das Formular am Ringtisch"
+msgstr ""
+
+msgid ""
+"Genau dieses Formular füllst du am Ringtisch aus, während der Vogel in der "
+"Hand ist. Aus jedem ausgefüllten Formular wird eine saubere Fang-Karte wie "
+"oben: ohne Zettel, ohne Übertragen."
 msgstr ""
 
 msgid "Excel und BirdDoc"

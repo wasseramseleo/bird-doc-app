@@ -1033,3 +1033,101 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ── Product proof — the Fang-Karten-Formular at the Ringtisch (issue #139) ──
+   The app's real German data-entry form as server-rendered, inert markup: no
+   image pipeline, crisp at any size, themable from the brand tokens. Fields
+   mimic the app's outlined inputs — a floating mono label notched into the
+   field border — and the values are the frozen Referenzprojekt-shaped
+   specimen. Ring numbers and biometrics ride the tabular-nums data voice. */
+
+.formular-proof {
+    margin: 2.75rem 0;
+    padding-top: 2.25rem;
+    border-top: 1px solid var(--line);
+}
+
+.formular-proof__title {
+    margin: 0 0 0.8rem;
+    font-size: 1.55rem;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+
+.formular-proof__lead {
+    max-width: 38rem;
+    color: var(--muted);
+    font-size: 1.02rem;
+}
+
+/* The form sheet itself — the same field-record card family as the hero's
+   Fang-Karte (brass top edge), just wider: a form, not a card. */
+.formular {
+    max-width: 42rem;
+    margin-top: 1.5rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 1.3rem 1.5rem 1.5rem;
+    box-shadow:
+        0 1px 2px rgba(32, 39, 31, 0.04),
+        0 18px 40px -30px rgba(32, 39, 31, 0.45);
+}
+
+.formular__head {
+    margin-bottom: 1.1rem;
+}
+
+.formular__head .eyebrow {
+    margin: 0;
+}
+
+.formular__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem 1rem;
+}
+
+/* One outlined field: the label sits notched into the top border, the way the
+   app's outlined inputs float their labels. */
+.formular__field {
+    position: relative;
+    margin: 0;
+    padding: 0.8rem 0.75rem 0.55rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.formular__field--wide {
+    grid-column: 1 / -1;
+}
+
+.formular__label {
+    position: absolute;
+    top: -0.5rem;
+    left: 0.55rem;
+    padding: 0 0.3rem;
+    background: var(--card);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.58rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.formular__value {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--ink);
+}
+
+@media (max-width: 46rem) {
+    .formular__grid {
+        grid-template-columns: 1fr;
+    }
+}

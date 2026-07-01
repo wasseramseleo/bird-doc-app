@@ -20,6 +20,7 @@ from birds.invitations import accept_invitation, account_for_email
 from birds.models import OrgEinladung
 from birds.registration import InvalidZugangscodeError, register_organisation
 
+from .fang_formular import FANG_FORMULAR
 from .fang_karte import FANG_KARTE
 from .forms import GespraechForm, RegistrationForm, WartelisteForm
 from .models import Warteliste
@@ -70,6 +71,7 @@ class HomeView(TemplateView):
             **super().get_context_data(**kwargs),
             "app_login_url": settings.APP_LOGIN_URL,
             "fang_karte": FANG_KARTE,
+            "fang_formular": FANG_FORMULAR,
             # Absolute URLs for the Open-Graph card (issue #108): social scrapers
             # need scheme + host, not a relative path. The share image is the
             # Fang-Karte rendering, served language-independently at the root.
