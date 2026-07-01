@@ -286,9 +286,7 @@ def test_admin_create_station_derives_distinct_handles_for_same_name(
 
 
 @pytest.mark.django_db
-def test_admin_create_station_ignores_client_supplied_handle(
-    auth_client, scientist, organization
-):
+def test_admin_create_station_ignores_client_supplied_handle(auth_client, scientist, organization):
     response = auth_client.post(
         STATIONS_URL, _station_payload(handle="CLIENTPICKED"), format="json"
     )

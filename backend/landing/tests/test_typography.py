@@ -5,13 +5,15 @@ Two render-seam guards protect the Austrian-German house style
 
 * the rendered **German** output carries no English em-dash ``—`` (U+2014) — a
   break is written as a spaced en-dash ``–`` or restructured away; and
-* the translation catalogs still compile, since there is no compile step in
-  CI/Docker and the committed ``.mo`` files are what ship.
+* the committed ``.mo`` catalogs load, since there is no compile step in
+  CI/Docker (the runner has no gettext) and the committed ``.mo`` files are what
+  ship.
 """
 
-from io import StringIO
+import gettext
+from pathlib import Path
 
-from django.core.management import call_command
+from django.conf import settings
 
 # The full set of German-rendered public pages. The apex home, the German-only
 # legal + auth pages, and the two lead forms at their German (apex) URL. A bad
@@ -44,9 +46,14 @@ def test_no_em_dash_survives_in_rendered_german_pages(client, db):
         assert EM_DASH not in content, f"em-dash rendered on {path}"
 
 
-def test_translation_catalogs_compile(db):
-    # There is no compile step in CI/Docker, so the committed .mo files are what
-    # ships. Guard that both catalogs still compile without error.
-    out, err = StringIO(), StringIO()
-    call_command("compilemessages", locale=["en", "de"], stdout=out, stderr=err)
-    assert "error" not in err.getvalue().lower()
+def test_committed_mo_catalogs_load():
+    # There is no compile step in CI/Docker (the runner has no gettext), so the
+    # committed .mo files are what ships. Guard that each one exists and loads as
+    # a valid GNU catalog — via Python's gettext, so no external tools are needed
+    # and a malformed/corrupt committed catalog is caught.
+    locale_dir = Path(settings.LOCALE_PATHS[0])
+    for lang in ("en", "de"):
+        mo_path = locale_dir / lang / "LC_MESSAGES" / "django.mo"
+        assert mo_path.exists(), f"missing compiled catalog: {mo_path}"
+        with mo_path.open("rb") as handle:
+            gettext.GNUTranslations(handle)  # raises on a malformed .mo
