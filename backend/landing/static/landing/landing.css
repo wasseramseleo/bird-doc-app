@@ -559,6 +559,84 @@ body {
     }
 }
 
+/* ── Mobile nav toggle — progressive enhancement (issue #141) ──────────────
+   The server renders the full nav plus a hidden Menü button; nav.js (the
+   landing's single first-party JS file) marks the nav enhanced and reveals
+   the button. Every collapse rule below is keyed on that enhanced marker, so
+   without JS nothing ever collapses: the nav renders fully expanded and the
+   page works unchanged. Anmelden and the DE/EN toggle sit outside the
+   collapsible group and stay directly visible at every viewport width. */
+
+.site-nav__sections {
+    /* In the expanded nav the group is a transparent wrapper: its links flow
+       in the nav's own flex row exactly as before. */
+    display: contents;
+}
+
+.site-nav__toggle {
+    /* Never shown at wide viewports, even once JS removes [hidden]. */
+    display: none;
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    /* A comfortable tap target (≥44px). */
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+}
+
+.site-nav__toggle:hover {
+    color: var(--accent-strong);
+    border-color: var(--accent);
+}
+
+.page--marketing .site-nav__toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+@media (max-width: 40rem) {
+    /* Only an ENHANCED nav collapses: the toggle appears and the section
+       links fold away until it is opened. */
+    .site-nav--enhanced .site-nav__toggle {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .site-nav--enhanced .site-nav__toggle[hidden] {
+        /* Belt and braces: before the script runs, the button stays gone. */
+        display: none;
+    }
+
+    .site-nav--enhanced .site-nav__sections {
+        display: none;
+    }
+
+    /* The opened panel: a full-width row of its own below Anmelden + DE/EN
+       (order pushes it past them), stacked links with comfortable tap
+       targets. */
+    .site-nav--enhanced.site-nav--open .site-nav__sections {
+        display: flex;
+        flex-direction: column;
+        order: 10;
+        width: 100%;
+        margin-top: 0.35rem;
+        border-top: 1px solid var(--line);
+    }
+
+    .site-nav--enhanced.site-nav--open .site-nav__sections .site-nav__link {
+        display: flex;
+        align-items: center;
+        min-height: 2.75rem;
+        padding: 0.35rem 0.25rem;
+    }
+}
+
 /* ── Shared section rhythm ────────────────────────────────────────────── */
 
 .page--marketing .eyebrow {
