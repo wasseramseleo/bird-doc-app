@@ -149,6 +149,18 @@ class _ResolvedRow:
         self.error = error
 
 
+class _RowError(Exception):
+    """A per-row resolution failure raised from inside the resolver — an
+    auto-create blocked by a constraint (e.g. a Kürzel already owned by another
+    Organisation, ``Scientist.handle`` being globally unique). Caught in
+    ``_resolve_row`` and turned into a blocking ``_ResolvedRow`` error so one bad
+    row never aborts the whole atomic import."""
+
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__(reason)
+
+
 class _Resolver:
     """Org-scoped entity lookups, built once per import so row resolution does not
     re-query. Beringer and Stationen are small (org-scoped); species is looked up
@@ -196,11 +208,23 @@ class _Resolver:
         A familiar Kürzel resolves to the existing org Beringer. An unfamiliar one
         is recorded in ``created_beringer`` (once) and, on commit, created as a
         no-account Beringer scoped to the Organisation (ADR 0001); on a dry-run
-        nothing is written and ``None`` stands in as a placeholder."""
+        nothing is written and ``None`` stands in as a placeholder.
+
+        The familiarity map is org-scoped, but ``Scientist.handle`` is *globally*
+        unique (models.py): a Kürzel already owned by a Beringer in another
+        Organisation is unfamiliar here yet cannot be auto-created without
+        violating that constraint. Rather than let the ``IntegrityError`` abort
+        the whole atomic import (HTTP 500), such a row is a blocking error
+        (``_RowError``) — the same for a dry-run preview and a commit."""
         existing = self.beringer.get(kuerzel)
         if existing is not None:
             return existing
         if kuerzel not in self._new_beringer:
+            if Scientist.objects.filter(handle=kuerzel).exists():
+                raise _RowError(
+                    f"Beringer:in-Kürzel {kuerzel!r} ist bereits in einer anderen "
+                    "Organisation vergeben und kann nicht angelegt werden."
+                )
             self.created_beringer.append(kuerzel)
             self._new_beringer[kuerzel] = (
                 Scientist.objects.create(handle=kuerzel, organization=self.org)
@@ -339,26 +363,30 @@ def _resolve_row(values, header_index, row_num, project, resolver):
     kuerzel = text("BeringerIn")
     if not kuerzel:
         return _ResolvedRow(row_num, error="Beringer:in fehlt.")
-    # An unfamiliar Kürzel is auto-created as a no-account Beringer (issue #121).
-    staff = resolver.beringer_for(kuerzel)
 
     place_code = text("Ortskodierung")
     name = text("Ort")
     if not place_code and not name:
         return _ResolvedRow(row_num, error="Ort bzw. Ortskodierung fehlt.")
-    # An unfamiliar Station is auto-created from the sheet's descriptors (issue
-    # #121); coordinates are parsed from the export's "lat, lon" Geo-Koordinaten.
+    # An unfamiliar Kürzel / Ort is auto-created (issue #121); coordinates for a
+    # new Station are parsed from the export's "lat, lon" Geo-Koordinaten. An
+    # auto-create blocked by a constraint (e.g. a Kürzel already owned by another
+    # Organisation) is a blocking row error, never a crash of the whole import.
     latitude, longitude = _parse_coordinates(text("Geo-Koordinaten"))
-    station = resolver.station_for(
-        {
-            "place_code": place_code,
-            "name": name,
-            "region": text("Region"),
-            "country": text("Land"),
-            "latitude": latitude,
-            "longitude": longitude,
-        }
-    )
+    try:
+        staff = resolver.beringer_for(kuerzel)
+        station = resolver.station_for(
+            {
+                "place_code": place_code,
+                "name": name,
+                "region": text("Region"),
+                "country": text("Land"),
+                "latitude": latitude,
+                "longitude": longitude,
+            }
+        )
+    except _RowError as exc:
+        return _ResolvedRow(row_num, error=exc.reason)
 
     kwargs = {
         "species": species,

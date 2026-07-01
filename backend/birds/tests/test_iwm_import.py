@@ -16,6 +16,7 @@ here.
 """
 
 from datetime import date, time
+from decimal import Decimal
 from io import BytesIO
 
 import openpyxl
@@ -42,6 +43,7 @@ HEADERS = [
     "Ort",
     "Region",
     "Land",
+    "Geo-Koordinaten",
     "Bemerkungen",
     "BeringerIn",
 ]
@@ -440,3 +442,74 @@ def test_repeated_unfamiliar_beringer_is_created_once_and_shared(
     assert Scientist.objects.filter(handle="QQ").count() == 1
     beringer = Scientist.objects.get(handle="QQ")
     assert DataEntry.objects.filter(staff=beringer).count() == 2
+
+
+@pytest.mark.django_db
+def test_commit_auto_created_station_parses_geo_koordinaten(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    # An unfamiliar Ort carrying a "lat, lon" Geo-Koordinaten cell: the parsed
+    # decimal coordinates land on the auto-created Station (issue #121 AC).
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                Ort="Feldstation Süd",
+                Ortskodierung="FS02",
+                Region="Steiermark",
+                Land="Austria",
+                **{"Geo-Koordinaten": "47.123456, 15.654321"},
+            ),
+        ]
+    )
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+
+    assert result["created"] == 1
+    assert result["createdStationen"] == ["Feldstation Süd"]
+
+    station = RingingStation.objects.get(place_code="FS02")
+    assert station.latitude == Decimal("47.123456")
+    assert station.longitude == Decimal("15.654321")
+
+    # …and the capture is attached to the coordinate-carrying Station.
+    entry = DataEntry.objects.get()
+    assert entry.ringing_station == station
+
+
+@pytest.mark.django_db
+def test_cross_org_kuerzel_collision_is_a_row_error_not_a_crash(
+    auth_client, scientist, ringing_station, project, species, scientist_b
+):
+    # Bruno's Kürzel "BRU" is owned by tenant B. It is unfamiliar to tenant A
+    # (the familiarity map is org-scoped) but Scientist.handle is globally unique,
+    # so auto-creating it would violate the constraint. Instead of crashing the
+    # whole atomic import (HTTP 500, rollback), the row is a blocking error — the
+    # same on the dry-run preview and on commit.
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, BeringerIn=scientist_b.handle)]
+    )
+
+    preview = auth_client.post(_import_url(project), {"file": _upload(content)}, format="multipart")
+    assert preview.status_code == 200, preview.content
+    preview_body = preview.json()
+    assert preview_body["importable"] == 0
+    assert [e["row"] for e in preview_body["errors"]] == [2]
+    assert scientist_b.handle in preview_body["errors"][0]["reason"]
+    # The colliding Kürzel is not offered for creation.
+    assert preview_body["toCreate"]["beringer"] == []
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+    assert result.status_code == 200, result.content
+    result_body = result.json()
+    assert result_body["created"] == 0
+    assert [e["row"] for e in result_body["errors"]] == [2]
+    # No capture created, and tenant B's Beringer is untouched.
+    assert DataEntry.objects.count() == 0
+    assert Scientist.objects.filter(handle=scientist_b.handle).count() == 1
