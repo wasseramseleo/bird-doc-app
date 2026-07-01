@@ -327,6 +327,87 @@ def test_missing_ring_number_and_missing_date_are_blocking_errors(
     assert "Datum" in reasons[3]
 
 
+# --- Row cap: oversized files rejected with guidance (issue #125) -------------
+
+
+@pytest.mark.django_db
+def test_over_cap_file_is_rejected_at_preview_with_cap_signalled(
+    monkeypatch, auth_client, scientist, ringing_station, project, species
+):
+    # A very large history must be split or bulk-loaded, never silently
+    # partial-imported or truncated (ADR 0013). With the cap lowered to 2 a
+    # 3-row file is over the cap: preview rejects it, signals the cap and writes
+    # nothing.
+    monkeypatch.setattr("birds.iwm_import.ROW_CAP", 2)
+    rows = [
+        _valid_row(species, scientist, ringing_station, Ringnummer=f"V{600 + i:05d}")
+        for i in range(3)
+    ]
+    content = _workbook(rows)
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    )
+
+    assert response.status_code == 400, response.content
+    body = response.json()
+    assert body["cap"] == {"limit": 2, "exceeded": True}
+    # The message points the Admin to the split / management-command path.
+    message = str(body["file"])
+    assert "aufteilen" in message
+    assert "Management-Kommando" in message
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_over_cap_file_is_rejected_on_commit_and_writes_nothing(
+    monkeypatch, auth_client, scientist, ringing_station, project, species
+):
+    # Skipping the preview and committing an over-cap file straight away must
+    # also be refused — the cap is enforced on both phases, nothing is written.
+    monkeypatch.setattr("birds.iwm_import.ROW_CAP", 2)
+    rows = [
+        _valid_row(species, scientist, ringing_station, Ringnummer=f"V{700 + i:05d}")
+        for i in range(3)
+    ]
+    content = _workbook(rows)
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["cap"] == {"limit": 2, "exceeded": True}
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_file_at_the_cap_previews_and_commits_normally(
+    monkeypatch, auth_client, scientist, ringing_station, project, species
+):
+    # A file exactly at the cap is fine: it previews with the cap reported but
+    # not exceeded, and commits every row.
+    monkeypatch.setattr("birds.iwm_import.ROW_CAP", 2)
+    rows = [
+        _valid_row(species, scientist, ringing_station, Ringnummer=f"V{800 + i:05d}")
+        for i in range(2)
+    ]
+    content = _workbook(rows)
+
+    preview = auth_client.post(_import_url(project), {"file": _upload(content)}, format="multipart")
+    assert preview.status_code == 200, preview.content
+    assert preview.json()["cap"] == {"limit": 2, "exceeded": False}
+    assert preview.json()["importable"] == 2
+    assert DataEntry.objects.count() == 0
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+    assert result.status_code == 200, result.content
+    assert result.json()["created"] == 2
+    assert DataEntry.objects.count() == 2
+
+
 @pytest.mark.django_db
 def test_unfamiliar_beringer_and_station_are_blocking_errors_this_slice(
     auth_client, scientist, ringing_station, project, species
