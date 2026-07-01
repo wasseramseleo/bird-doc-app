@@ -3,5 +3,12 @@
     "frontend-design@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "playwright@claude-plugins-official": true
+  },
+  "worktree": {
+    "symlinkDirectories": [
+      "frontend/node_modules",
+      "backend/.venv"
+    ],
+    "baseRef": "head"
   }
 }
