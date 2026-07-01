@@ -1,5 +1,12 @@
 {% extends "landing/base_destination.html" %}
 
+{% comment %}
+The legal pages read at the marketing home's wider measure (issue #116), not in
+the narrow auth form-column: `page--marketing` widens the shared header/main/
+footer measure so the Datenschutzerklärung renders at the same width as the home.
+{% endcomment %}
+{% block body_class %}page--marketing{% endblock %}
+
 {% block title %}Datenschutzerklärung · BirdDoc{% endblock %}
 
 {% block content %}
@@ -24,16 +31,16 @@
     <h2>Welche Daten verarbeitet werden</h2>
     <ul>
         <li>
-            <strong>Kontodaten</strong> — E-Mail-Adresse und Passwort-Hash zur
+            <strong>Kontodaten:</strong> E-Mail-Adresse und Passwort-Hash zur
             Anmeldung, Name und Kürzel der Beringerin/des Beringers.
         </li>
         <li>
-            <strong>Beringungsdaten</strong> — die fachlichen Felddaten je
+            <strong>Beringungsdaten:</strong> die fachlichen Felddaten je
             gefangenem Vogel (Ring, Art, Maße, Station, Datum), erfasst innerhalb
             einer Organisation.
         </li>
         <li>
-            <strong>Technische Daten</strong> — Server-Logs (IP-Adresse,
+            <strong>Technische Daten:</strong> Server-Logs (IP-Adresse,
             Zeitpunkt) zur Bereitstellung und Absicherung des Dienstes.
         </li>
     </ul>
@@ -49,10 +56,10 @@
     <h2>Eingesetzte Auftragsverarbeiter</h2>
     <ul>
         <li>
-            <strong>IPAX OG</strong> (Österreich) — Hosting und Serverbetrieb.
+            <strong>IPAX OG</strong> (Österreich): Hosting und Serverbetrieb.
         </li>
         <li>
-            <strong>Brevo</strong> (Sendinblue GmbH) — Versand transaktionaler
+            <strong>Brevo</strong> (Sendinblue GmbH): Versand transaktionaler
             E-Mails (z.&nbsp;B. Passwort-Zurücksetzen, Bestätigungen).
         </li>
     </ul>

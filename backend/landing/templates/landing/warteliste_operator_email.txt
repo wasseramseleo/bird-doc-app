@@ -2,16 +2,16 @@
 
 Typ:          {{ lead.get_lead_type_display }}
 E-Mail:       {{ lead.email }}
-Organisation: {{ lead.organisation_name|default:"—" }}
-{% if lead.lead_type == "organisation" %}Funktion:     {{ lead.contact_role|default:"—" }}
-Anzahl Beringer (ca.): {{ lead.approx_beringer_count|default:"—" }}
+Organisation: {{ lead.organisation_name|default:"–" }}
+{% if lead.lead_type == "organisation" %}Funktion:     {{ lead.contact_role|default:"–" }}
+Anzahl Beringer (ca.): {{ lead.approx_beringer_count|default:"–" }}
 {% endif %}Angefragt am: {{ lead.created }}
 
 Nachricht:
-{{ lead.message|default:"—" }}
+{{ lead.message|default:"–" }}
 
 Im Django-Admin prüfen{% if lead.lead_type == "beringer" %} und ggf. einen Zugangscode ausstellen{% endif %}:
 {{ protocol }}://{{ domain }}{{ admin_url }}
 
-— BirdDoc
+– BirdDoc
 {% endautoescape %}

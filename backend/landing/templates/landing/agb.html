@@ -1,5 +1,13 @@
 {% extends "landing/base_destination.html" %}
 
+{% comment %}
+The legal pages read at the marketing home's wider measure (issue #116), not in
+the narrow auth form-column: `page--marketing` widens the shared header/main/
+footer measure so the AGB & DPA render at the same width as the sibling legal
+pages and the home.
+{% endcomment %}
+{% block body_class %}page--marketing{% endblock %}
+
 {% block title %}AGB &amp; Auftragsverarbeitung · BirdDoc{% endblock %}
 
 {% block content %}
