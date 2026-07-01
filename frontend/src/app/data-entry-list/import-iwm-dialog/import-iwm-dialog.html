@@ -51,6 +51,12 @@
             }
           </div>
         }
+        @if (p.duplicates > 0) {
+          <p class="import-dialog__duplicates" data-testid="duplicates">
+            <strong>{{ p.duplicates }}</strong> Fänge sind bereits vorhanden und werden
+            übersprungen.
+          </p>
+        }
         @if (p.errors.length > 0) {
           <p class="import-dialog__errors-title">{{ p.errors.length }} Zeile(n) mit Fehlern
             (werden übersprungen):</p>
@@ -79,6 +85,11 @@
           <p class="import-dialog__created" data-testid="result-created-stationen">
             {{ r.createdStationen.length }} Station(en) neu angelegt:
             {{ r.createdStationen.join(', ') }}
+          </p>
+        }
+        @if (r.duplicatesSkipped > 0) {
+          <p class="import-dialog__duplicates" data-testid="result-duplicates">
+            <strong>{{ r.duplicatesSkipped }}</strong> bereits vorhandene Fänge übersprungen.
           </p>
         }
         @if (r.errors.length > 0) {

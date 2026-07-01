@@ -106,6 +106,26 @@ describe('ImportIwmDialogComponent', () => {
     expect(toCreate.textContent).toContain('Feldstation Nord');
   });
 
+  it('surfaces the duplicates count in the preview and the result', () => {
+    const withDupes: ImportPreview = {...preview, importable: 2, duplicates: 3};
+    const resultWithDupes: ImportResult = {...result, created: 2, duplicatesSkipped: 3};
+    api.importIwmDryRun.and.returnValue(of(withDupes));
+    api.importIwmCommit.and.returnValue(of(resultWithDupes));
+
+    selectFile();
+    const dupEl = fixture.nativeElement.querySelector('[data-testid="duplicates"]') as HTMLElement;
+    expect(dupEl).toBeTruthy();
+    expect(dupEl.textContent).toContain('3');
+
+    component.confirmImport();
+    fixture.detectChanges();
+    const resultDupEl = fixture.nativeElement.querySelector(
+      '[data-testid="result-duplicates"]',
+    ) as HTMLElement;
+    expect(resultDupEl).toBeTruthy();
+    expect(resultDupEl.textContent).toContain('3');
+  });
+
   it('cancelling after the preview writes nothing and closes with false', () => {
     api.importIwmDryRun.and.returnValue(of(preview));
 
@@ -116,6 +136,31 @@ describe('ImportIwmDialogComponent', () => {
 
     expect(api.importIwmCommit).not.toHaveBeenCalled();
     expect(dialogRef.close).toHaveBeenCalledWith(false);
+  });
+
+  it('surfaces the over-cap rejection message and does not commit', () => {
+    // An over-cap file is rejected on preview (issue #125): the backend returns
+    // the cap-guidance message, which the dialog surfaces so the Admin knows to
+    // split the file or ask an operator — nothing is committed.
+    api.importIwmDryRun.and.returnValue(
+      throwError(() => ({
+        error: {
+          file:
+            'Die Datei enthält 6000 Datenzeilen und überschreitet die Obergrenze von ' +
+            '5000 Zeilen pro Import. Bitte die Datei in kleinere Dateien aufteilen oder ' +
+            'eine:n Operator:in bitten, den Bulk-Load per Management-Kommando auszuführen.',
+          cap: {limit: 5000, exceeded: true},
+        },
+      })),
+    );
+
+    selectFile();
+
+    expect(component.phase()).toBe('select');
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('aufteilen');
+    expect(text).toContain('Management-Kommando');
+    expect(api.importIwmCommit).not.toHaveBeenCalled();
   });
 
   it('surfaces a structural fast-fail message and stays on the select step', () => {
