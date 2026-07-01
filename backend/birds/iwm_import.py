@@ -26,10 +26,21 @@ Land / coordinates. Every such creation is surfaced in the preview's
 dry-run), reported in ``ImportResult.{createdBeringer, createdStationen}``, and
 attached to the captures that referenced it.
 
-Scope of this slice: core columns only (species, ring size+number, Beringer
-Kürzel, Station, Datum+Uhrzeit, Ringstatus, Geschlecht, Alter). An unknown
-species and a missing required field (no ring number / no date) are blocking
-errors. Sonderarten and full biometric fidelity arrive in later slices.
+Beyond the spine columns (species, ring size+number, Beringer Kürzel, Station,
+Datum+Uhrzeit, Ringstatus, Geschlecht, Alter) the importer ingests — added in
+issue #123 — the Sonderarten and the authentic category codes. The Sonderart
+names resolve to their Sonderart rows (*Ring Vernichtet* imports with all bird
+data nulled by ``create_capture``, *Aves ignota* enforces its mandatory Bemerkung
+as a blocking error via ``validate_capture``, ADR 0004), and the text category
+codes (Fett/Muskel/Intensität/Handschwingen and the Netz number) are read into
+their fields; ``Zusatzmarkierung="ZZ"`` (no additional marking) rides along
+without a model field to land in. Ring numbers import as-is so historical Ring
+identities are preserved (ADR 0006).
+
+An unknown species, a missing required field (no ring number / no date) and a
+blank Aves-ignota Bemerkung are blocking errors, as is a cross-Organisation
+Kürzel collision (``_RowError``). Duplicate detection, the row cap and
+Projekt-method warnings are enforced as described above.
 """
 
 import re
@@ -41,7 +52,7 @@ import openpyxl
 from django.db import transaction
 from django.utils.timezone import make_aware
 
-from .capture_service import CaptureValidationError, create_capture
+from .capture_service import CaptureValidationError, create_capture, validate_capture
 from .models import DataEntry, Ring, RingingStation, Scientist, Species
 from .station_handle import derive_station_handle
 
@@ -566,7 +577,22 @@ def _resolve_row(values, header_index, row_num, project, resolver):
         "bird_status": _RINGSTATUS.get((text("Ringstatus") or "").upper()),
         "sex": _GESCHLECHT.get((text("Geschlecht") or "").upper()),
         "age_class": _parse_int(_cell(values, header_index, "Alter")),
+        # Authentic IWM category codes carried as text in the sheet (issue #123).
+        # Zusatzmarkierung="ZZ" means "no additional marking" — the model has no
+        # field for it, so it is deliberately not read here.
+        "fat_deposit": _parse_int(_cell(values, header_index, "Fett")),
+        "muscle_class": _parse_int(_cell(values, header_index, "Muskel")),
+        "small_feather_int": _parse_int(_cell(values, header_index, "Intensität")),
+        "hand_wing": _parse_int(_cell(values, header_index, "Handschwingen")),
+        "net_location": _parse_int(_cell(values, header_index, "Netz")),
     }
+    # Run the shared creation invariants now (e.g. the *Aves ignota* mandatory
+    # Bemerkung — ADR 0004) so the dry-run preview reports exactly the blocking
+    # errors a commit would raise, instead of surfacing them only at commit time.
+    try:
+        validate_capture(kwargs["species"], kwargs["comment"])
+    except CaptureValidationError as exc:
+        return _ResolvedRow(row_num, error=str(exc.message))
     return _ResolvedRow(row_num, kwargs=kwargs)
 
 
