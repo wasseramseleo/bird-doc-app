@@ -3,6 +3,7 @@ import {DataEntryFormComponent} from './data-entry-form/data-entry-form';
 import {HomeComponent} from './home/home';
 import {authGuard} from './core/guards/auth.guard';
 import {guestGuard} from './core/guards/guest.guard';
+import {orgAdminGuard} from './core/guards/org-admin.guard';
 
 export const routes: Routes = [
   {
@@ -19,5 +20,10 @@ export const routes: Routes = [
   },
   {path: 'data-entry', component: DataEntryFormComponent, canActivate: [authGuard]},
   {path: 'data-entry/:id', component: DataEntryFormComponent, canActivate: [authGuard]},
+  {
+    path: 'stationen',
+    loadComponent: () => import('./stationen/stationen').then((m) => m.StationenComponent),
+    canActivate: [authGuard, orgAdminGuard],
+  },
   {path: '**', redirectTo: ''},
 ];

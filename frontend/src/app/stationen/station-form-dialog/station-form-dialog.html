@@ -1,0 +1,52 @@
+<h2 mat-dialog-title>{{ isEdit ? 'Station bearbeiten' : 'Neue Station' }}</h2>
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <mat-dialog-content>
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Name</mat-label>
+      <input matInput formControlName="name" autocomplete="off" />
+      @if (form.controls.name.hasError('required')) {
+        <mat-error>Name ist erforderlich.</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Ortskodierung</mat-label>
+      <input matInput formControlName="place_code" autocomplete="off" />
+      @if (form.controls.place_code.hasError('required')) {
+        <mat-error>Ortskodierung ist erforderlich.</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Land (optional)</mat-label>
+      <input matInput formControlName="country" autocomplete="off" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Region (optional)</mat-label>
+      <input matInput formControlName="region" autocomplete="off" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Breitengrad</mat-label>
+      <input matInput formControlName="latitude" inputmode="decimal" autocomplete="off" />
+      @if (form.controls.latitude.hasError('required')) {
+        <mat-error>Breitengrad ist erforderlich.</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Längengrad</mat-label>
+      <input matInput formControlName="longitude" inputmode="decimal" autocomplete="off" />
+      @if (form.controls.longitude.hasError('required')) {
+        <mat-error>Längengrad ist erforderlich.</mat-error>
+      }
+    </mat-form-field>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" (click)="cancel()">Abbrechen</button>
+    <button mat-flat-button color="primary" type="submit">
+      {{ isEdit ? 'Speichern' : 'Anlegen' }}
+    </button>
+  </mat-dialog-actions>
+</form>

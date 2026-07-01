@@ -62,6 +62,10 @@ export class NavBar {
 
   readonly isStaff = computed(() => this.auth.currentUser()?.isStaff ?? false);
 
+  // Managing Stationen is an Organisation-Admin power (ADR 0005), distinct from
+  // the staff-only Django Administration link above it.
+  readonly isOrgAdmin = computed(() => this.auth.currentUser()?.rolle === 'admin');
+
   // The active route path (without query/fragment), kept fresh on navigation.
   private readonly currentPath = toSignal(
     this.router.events.pipe(

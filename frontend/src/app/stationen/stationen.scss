@@ -1,0 +1,96 @@
+.stationen {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+.stationen__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stationen__title h1 {
+  margin: 0 0 0.25rem;
+}
+
+.stationen__subhead {
+  margin: 0;
+  color: var(--bd-ink-muted, #5a5a5a);
+  max-width: 36rem;
+}
+
+.stationen__empty {
+  color: var(--bd-ink-muted, #5a5a5a);
+}
+
+.stationen__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.station-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--bd-line, #e0ddd5);
+  border-radius: 10px;
+  background: var(--bd-paper, #fff);
+}
+
+.station-card--archived {
+  opacity: 0.65;
+}
+
+.station-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.station-card__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.station-card__name {
+  font-weight: 600;
+}
+
+.station-card__status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+}
+
+.station-card__status--active {
+  background: color-mix(in srgb, var(--bd-accent, #2e7d5b) 15%, transparent);
+  color: var(--bd-accent-strong, #1f5a40);
+}
+
+.station-card__status--archived {
+  background: color-mix(in srgb, #6b7280 18%, transparent);
+  color: #4b5563;
+}
+
+.station-card__meta,
+.station-card__coords {
+  font-size: 0.85rem;
+  color: var(--bd-ink-muted, #5a5a5a);
+}
+
+.station-card__actions {
+  display: flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}

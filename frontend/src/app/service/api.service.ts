@@ -7,7 +7,7 @@ import {DataEntry} from '../models/data-entry.model';
 import {Species} from '../models/species.model';
 import {RingSize} from '../models/ring.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
-import {RingingStation} from '../models/ringing-station.model';
+import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
@@ -76,7 +76,11 @@ export class ApiService {
     return this.http.get<{ next_number: string | null }>(`${this.apiUrl}/rings/next-number/`, {params});
   }
 
-  getRingingStations(searchTerm?: string, organizationHandle?: string): Observable<PaginatedApiResponse<RingingStation>> {
+  getRingingStations(
+    searchTerm?: string,
+    organizationHandle?: string,
+    includeArchived?: boolean,
+  ): Observable<PaginatedApiResponse<RingingStation>> {
     let params = new HttpParams();
     if (searchTerm) {
       params = params.set('search', searchTerm);
@@ -84,7 +88,37 @@ export class ApiService {
     if (organizationHandle) {
       params = params.set('organization', organizationHandle);
     }
+    // The management view opts into archived Stationen; the capture picker never
+    // does, so the default request stays active-only (the backend default).
+    if (includeArchived) {
+      params = params.set('include_archived', 'true');
+    }
     return this.http.get<PaginatedApiResponse<RingingStation>>(`${this.apiUrl}/ringing-stations/`, {params});
+  }
+
+  createRingingStation(payload: RingingStationCreatePayload): Observable<RingingStation> {
+    // The handle and organization are server-owned; the client never sends them.
+    return this.http.post<RingingStation>(`${this.apiUrl}/ringing-stations/`, payload);
+  }
+
+  updateRingingStation(
+    handle: string,
+    payload: Partial<RingingStationCreatePayload>,
+  ): Observable<RingingStation> {
+    return this.http.patch<RingingStation>(`${this.apiUrl}/ringing-stations/${handle}/`, payload);
+  }
+
+  // Archiving/un-archiving is a reversible flip of the active flag (ADR 0011).
+  setRingingStationActive(handle: string, isActive: boolean): Observable<RingingStation> {
+    return this.http.patch<RingingStation>(`${this.apiUrl}/ringing-stations/${handle}/`, {
+      is_active: isActive,
+    });
+  }
+
+  // Hard delete is permitted only when the Station owns no Fänge; otherwise the
+  // backend refuses with 409 and the caller offers archiving instead.
+  deleteRingingStation(handle: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/ringing-stations/${handle}/`);
   }
 
   getScientists(searchTerm?: string): Observable<PaginatedApiResponse<Scientist>> {

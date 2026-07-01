@@ -3,16 +3,20 @@ import {HttpClient} from '@angular/common/http';
 import {catchError, map, Observable, of, tap} from 'rxjs';
 import {environment} from '../../environments/environment';
 
+export type OrganizationRolle = 'admin' | 'mitglied' | null;
+
 export interface AuthUser {
   username: string;
   handle: string | null;
   isStaff: boolean;
+  rolle: OrganizationRolle;
 }
 
 interface AuthUserDto {
   username: string;
   handle: string | null;
   is_staff: boolean;
+  active_organization_rolle: OrganizationRolle;
 }
 
 @Injectable({providedIn: 'root'})
@@ -53,5 +57,6 @@ function toAuthUser(dto: AuthUserDto): AuthUser {
     username: dto.username,
     handle: dto.handle,
     isStaff: dto.is_staff,
+    rolle: dto.active_organization_rolle,
   };
 }

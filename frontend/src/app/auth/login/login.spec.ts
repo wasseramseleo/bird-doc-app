@@ -41,7 +41,7 @@ describe('LoginComponent', () => {
   it('submits the entered email through the unchanged login flow', () => {
     const { fixture, component, auth, router } = setup();
     const login = spyOn(auth, 'login').and.returnValue(
-      of({ username: 'birder@example.com', handle: null, isStaff: false }),
+      of({ username: 'birder@example.com', handle: null, isStaff: false, rolle: null }),
     );
     spyOn(router, 'navigateByUrl').and.stub();
     fixture.detectChanges();

@@ -73,6 +73,18 @@
     <mat-icon>arrow_drop_down</mat-icon>
   </button>
   <mat-menu #userMenu="matMenu">
+    @if (isOrgAdmin()) {
+      <a
+        mat-menu-item
+        class="manage-stations"
+        aria-label="Stationen verwalten"
+        routerLink="/stationen"
+      >
+        <mat-icon>place</mat-icon>
+        <span>Stationen verwalten</span>
+      </a>
+      <mat-divider></mat-divider>
+    }
     @if (isStaff()) {
       <a
         mat-menu-item

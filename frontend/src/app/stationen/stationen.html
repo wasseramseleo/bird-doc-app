@@ -1,0 +1,83 @@
+<section class="stationen">
+  <header class="stationen__header">
+    <div class="stationen__title">
+      <h1>Stationen verwalten</h1>
+      <p class="stationen__subhead">
+        Lege Beringungsstationen deiner Organisation an, bearbeite ihre Angaben, archiviere
+        oder lösche sie.
+      </p>
+    </div>
+    <button mat-flat-button color="primary" (click)="openCreateDialog()">
+      <mat-icon>add</mat-icon>
+      Neue Station
+    </button>
+  </header>
+
+  @if (loading()) {
+    <mat-spinner diameter="32"></mat-spinner>
+  } @else if (sortedStations().length === 0) {
+    <div class="stationen__empty">
+      <p>Es sind noch keine Stationen angelegt. Lege eine neue Station an.</p>
+    </div>
+  } @else {
+    <div class="stationen__list">
+      @for (station of sortedStations(); track station.handle) {
+        <div class="station-card" [class.station-card--archived]="isArchived(station)">
+          <div class="station-card__main">
+            <div class="station-card__heading">
+              <span class="station-card__name">{{ station.name }}</span>
+              @if (isArchived(station)) {
+                <span class="station-card__status station-card__status--archived">Archiviert</span>
+              } @else {
+                <span class="station-card__status station-card__status--active">Aktiv</span>
+              }
+            </div>
+            <span class="station-card__meta">
+              {{ station.place_code }}@if (station.region) {, {{ station.region }}}@if (station.country) {, {{ station.country }}}
+            </span>
+            @if (station.latitude && station.longitude) {
+              <span class="station-card__coords">{{ station.latitude }}, {{ station.longitude }}</span>
+            }
+          </div>
+          <div class="station-card__actions">
+            <button
+              mat-icon-button
+              type="button"
+              aria-label="Station bearbeiten"
+              title="Bearbeiten"
+              (click)="openEditDialog(station)">
+              <mat-icon>edit</mat-icon>
+            </button>
+            @if (isArchived(station)) {
+              <button
+                mat-icon-button
+                type="button"
+                aria-label="Station reaktivieren"
+                title="Reaktivieren"
+                (click)="unarchive(station)">
+                <mat-icon>unarchive</mat-icon>
+              </button>
+            } @else {
+              <button
+                mat-icon-button
+                type="button"
+                aria-label="Station archivieren"
+                title="Archivieren"
+                (click)="archive(station)">
+                <mat-icon>archive</mat-icon>
+              </button>
+            }
+            <button
+              mat-icon-button
+              type="button"
+              aria-label="Station löschen"
+              title="Löschen"
+              (click)="remove(station)">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</section>
