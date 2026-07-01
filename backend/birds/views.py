@@ -312,8 +312,10 @@ class RingingStationViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        self._reject_foreign_organization(serializer.validated_data.get("organization"))
-        serializer.save()
+        # The Station lands in the actor's active Organisation, server-authoritative
+        # (issue #117, mirrors ProjectViewSet): a client-supplied ``organization_id``
+        # can never plant it in another tenant.
+        serializer.save(organization=_require_active_organization(self.request.user))
 
     def perform_update(self, serializer):
         target = serializer.validated_data.get("organization", serializer.instance.organization)

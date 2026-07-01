@@ -14,6 +14,7 @@ from .models import (
     Species,
     SpeciesList,
 )
+from .station_handle import derive_station_handle
 from .tenancy import active_organization
 
 
@@ -43,14 +44,72 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
 
 class RingingStationSerializer(serializers.ModelSerializer):
+    # The handle is server-owned (issue #118): derived on create from the
+    # Organisation + name and returned as the record id, but never settable.
+    handle = serializers.CharField(read_only=True)
     organization = OrganizationSerializer(read_only=True)
+    # Client-supplied ``organization_id`` is optional and, on create, overridden
+    # by the actor's active Organisation in ``perform_create`` (issue #117).
     organization_id = serializers.PrimaryKeyRelatedField(
-        queryset=Organization.objects.all(), source="organization", write_only=True
+        queryset=Organization.objects.all(),
+        source="organization",
+        write_only=True,
+        required=False,
     )
+    # Required at the serializer layer with clear German messages, even though the
+    # model keeps these blank-able for admin/ORM paths.
+    name = serializers.CharField(
+        error_messages={
+            "required": _("Ein Name ist erforderlich."),
+            "blank": _("Ein Name ist erforderlich."),
+        }
+    )
+    place_code = serializers.CharField(
+        error_messages={
+            "required": _("Eine Ortskodierung ist erforderlich."),
+            "blank": _("Eine Ortskodierung ist erforderlich."),
+        }
+    )
+    latitude = serializers.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        error_messages={"required": _("Ein Breitengrad ist erforderlich.")},
+    )
+    longitude = serializers.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        error_messages={"required": _("Ein Längengrad ist erforderlich.")},
+    )
+    region = serializers.CharField(required=False, allow_blank=True)
+    # Optional in the payload; defaults to the creating Organisation's country
+    # when omitted or blank (handled in ``create``).
+    country = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = RingingStation
-        fields = ["handle", "name", "organization", "organization_id"]
+        fields = [
+            "handle",
+            "name",
+            "organization",
+            "organization_id",
+            "country",
+            "region",
+            "place_code",
+            "latitude",
+            "longitude",
+            "is_active",
+        ]
+
+    def create(self, validated_data):
+        organization = validated_data["organization"]
+        if not validated_data.get("country"):
+            validated_data["country"] = organization.country
+        validated_data["handle"] = derive_station_handle(
+            organization,
+            validated_data["name"],
+            taken=lambda handle: RingingStation.objects.filter(handle=handle).exists(),
+        )
+        return super().create(validated_data)
 
 
 class ScientistSerializer(serializers.ModelSerializer):
