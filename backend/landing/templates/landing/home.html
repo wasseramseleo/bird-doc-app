@@ -200,6 +200,88 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     </section>
 
     {% comment %}
+    The product-proof section (issue #139): the page never showed the actual
+    product, so this shows the app's real German data-entry form as it stands
+    at the Ringtisch — server-rendered markup styled to read as the app's form
+    (no screenshot pipeline, no JS), narratively linked to the hero: the form
+    at the Ringtisch becomes the clean Fang-Karte record. The form's labels
+    stay honestly German even under /en/ — like the hero card, it is a preview
+    of the German app itself (the app-is-German-only note sets that
+    expectation); the surrounding narrative copy translates. Its content is a
+    frozen Referenzprojekt-shaped specimen (ADR 0012): plausible, non-real
+    ringing data, never real Fangdaten.
+    {% endcomment %}
+    <section class="formular-proof" id="fang-formular" aria-labelledby="fang-formular-title">
+        <p class="eyebrow">{% translate "Ein Blick in BirdDoc" %}</p>
+        <h2 id="fang-formular-title" class="formular-proof__title">{% translate "Das Formular am Ringtisch" %}</h2>
+        <p class="formular-proof__lead">{% blocktranslate trimmed %}Genau dieses Formular füllst du am Ringtisch aus, während der Vogel in der Hand ist. Aus jedem ausgefüllten Formular wird eine saubere Fang-Karte wie oben: ohne Zettel, ohne Übertragen.{% endblocktranslate %}</p>
+
+        <article class="formular" aria-label="Beispiel-Beringungseintrag">
+            <header class="formular__head">
+                <p class="eyebrow">Neuer Beringungseintrag</p>
+            </header>
+            <div class="formular__grid">
+                <p class="formular__field formular__field--wide">
+                    <span class="formular__label">Projekt</span>
+                    <span class="formular__value">{{ fang_formular.projekt }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Station</span>
+                    <span class="formular__value">{{ fang_formular.station }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Beringer</span>
+                    <span class="formular__value">{{ fang_formular.beringer_first }} {{ fang_formular.beringer_last }} ({{ fang_formular.kuerzel }})</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Datum und Uhrzeit</span>
+                    <span class="formular__value data">{{ fang_formular.datum }}, {{ fang_formular.uhrzeit }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Art</span>
+                    <span class="formular__value">{{ fang_formular.common_name_de }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Status</span>
+                    <span class="formular__value">{{ fang_formular.status }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Ringgröße</span>
+                    <span class="formular__value data">{{ fang_formular.ring_size }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Ringnummer</span>
+                    <span class="formular__value data">{{ fang_formular.ring_number }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Alter</span>
+                    <span class="formular__value">{{ fang_formular.age }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Geschlecht</span>
+                    <span class="formular__value">{{ fang_formular.sex }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Fett</span>
+                    <span class="formular__value data">{{ fang_formular.fat }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Muskelklasse</span>
+                    <span class="formular__value data">{{ fang_formular.muscle }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Flügellänge (mm)</span>
+                    <span class="formular__value data">{{ fang_formular.wing_mm }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Gewicht (g)</span>
+                    <span class="formular__value data">{{ fang_formular.weight_g }}</span>
+                </p>
+            </div>
+        </article>
+    </section>
+
+    {% comment %}
     The Excel-vs-BirdDoc comparison (issue #116, ADR 0014): a small, factual and
     deliberately non-disparaging contrast of the four error types that a by-hand
     ringing log invites (transcription, miscount, format, inconsistency) against
