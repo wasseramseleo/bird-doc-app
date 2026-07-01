@@ -84,11 +84,23 @@ def build_import_preview(content, project):
     ``ImportPreview``. Writes nothing — including the Projekt-method adoption,
     which is deferred to commit."""
     rows, warnings, _adoptions = _analyze(content, project)
-    importable = [r for r in rows if r.error is None]
-    errors = [{"row": r.row, "reason": r.error} for r in rows if r.error is not None]
+    seen = _existing_keys(project)
+    importable = 0
+    duplicates = 0
+    errors = []
+    for resolved in rows:
+        if resolved.error is not None:
+            errors.append({"row": resolved.row, "reason": resolved.error})
+            continue
+        key = _capture_key(resolved.kwargs)
+        if key in seen:
+            duplicates += 1
+        else:
+            seen.add(key)
+            importable += 1
     return {
-        "importable": len(importable),
-        "duplicates": 0,
+        "importable": importable,
+        "duplicates": duplicates,
         "errors": errors,
         "warnings": warnings,
         "toCreate": {"beringer": [], "stationen": []},
@@ -99,27 +111,62 @@ def build_import_preview(content, project):
 @transaction.atomic
 def commit_import(content, project):
     """Commit: create every importable capture atomically, skipping blocking-error
-    rows, and return an ``ImportResult``. All-or-nothing — an unexpected failure
-    rolls the whole import back."""
+    rows and duplicates, and return an ``ImportResult``. All-or-nothing — an
+    unexpected failure rolls the whole import back.
+
+    A row whose capture key already exists in the Organisation (or was already
+    imported earlier in this same file) is skipped as a duplicate and counted,
+    never re-inserted — so re-importing a corrected file cannot double the data
+    (issue #122)."""
     rows, _warnings, adoptions = _analyze(content, project)
+    seen = _existing_keys(project)
     created = 0
+    duplicates_skipped = 0
     errors = []
     for resolved in rows:
         if resolved.error is not None:
             errors.append({"row": resolved.row, "reason": resolved.error})
             continue
+        key = _capture_key(resolved.kwargs)
+        if key in seen:
+            duplicates_skipped += 1
+            continue
         try:
             create_capture(**resolved.kwargs)
+            seen.add(key)
             created += 1
         except CaptureValidationError as exc:
             errors.append({"row": resolved.row, "reason": str(exc.message)})
     _adopt_context(project, adoptions)
     return {
         "created": created,
-        "duplicatesSkipped": 0,
+        "duplicatesSkipped": duplicates_skipped,
         "errors": errors,
         "createdBeringer": [],
         "createdStationen": [],
+    }
+
+
+def _capture_key(kwargs):
+    """The duplicate-detection key of a resolved row: ring size + number and the
+    exact capture datetime (issue #122). An Erstfang and its later Wiederfang
+    share the ring but differ by datetime, so their keys differ and both import."""
+    return (kwargs["ring_size"], kwargs["ring_number"], kwargs["date_time"])
+
+
+def _existing_keys(project):
+    """The set of capture keys already present in the Projekt's Organisation.
+
+    Built once per import (pre-resolved lookup — ADR 0013) so row classification
+    does not re-query. A resolved row whose key is in this set already exists and
+    is skipped as a duplicate. Datetimes come back timezone-aware; an aware
+    datetime hashes and compares by its UTC instant, so a row whose Datum+Uhrzeit
+    the importer localises to the same wall clock matches its stored capture."""
+    return {
+        (size, number, date_time)
+        for size, number, date_time in DataEntry.objects.filter(
+            organization=project.organization
+        ).values_list("ring__size", "ring__number", "date_time")
     }
 
 

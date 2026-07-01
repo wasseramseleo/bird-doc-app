@@ -84,6 +84,26 @@ describe('ImportIwmDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalledWith(true);
   });
 
+  it('surfaces the duplicates count in the preview and the result', () => {
+    const withDupes: ImportPreview = {...preview, importable: 2, duplicates: 3};
+    const resultWithDupes: ImportResult = {...result, created: 2, duplicatesSkipped: 3};
+    api.importIwmDryRun.and.returnValue(of(withDupes));
+    api.importIwmCommit.and.returnValue(of(resultWithDupes));
+
+    selectFile();
+    const dupEl = fixture.nativeElement.querySelector('[data-testid="duplicates"]') as HTMLElement;
+    expect(dupEl).toBeTruthy();
+    expect(dupEl.textContent).toContain('3');
+
+    component.confirmImport();
+    fixture.detectChanges();
+    const resultDupEl = fixture.nativeElement.querySelector(
+      '[data-testid="result-duplicates"]',
+    ) as HTMLElement;
+    expect(resultDupEl).toBeTruthy();
+    expect(resultDupEl.textContent).toContain('3');
+  });
+
   it('cancelling after the preview writes nothing and closes with false', () => {
     api.importIwmDryRun.and.returnValue(of(preview));
 
