@@ -6,10 +6,21 @@
         <p class="entry-list__subhead">{{ project.title }}</p>
       }
     </div>
-    <button mat-flat-button color="primary" (click)="newEntry()">
-      <mat-icon>add</mat-icon>
-      Neuer Eintrag
-    </button>
+    <div class="entry-list__actions">
+      <button
+        mat-stroked-button
+        color="primary"
+        [disabled]="!currentProject()"
+        (click)="openImport()"
+      >
+        <mat-icon>upload_file</mat-icon>
+        Import
+      </button>
+      <button mat-flat-button color="primary" (click)="newEntry()">
+        <mat-icon>add</mat-icon>
+        Neuer Eintrag
+      </button>
+    </div>
   </header>
 
   <mat-form-field appearance="outline" class="entry-list__search">
