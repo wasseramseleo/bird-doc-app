@@ -16,6 +16,7 @@ import {
   SmallFeatherIntMoult,
 } from '../../models/data-entry.model';
 import {environment} from '../../../environments/environment';
+import {getAgeClassLabel, getSexLabel} from '../data-entry-labels';
 
 @Component({
   selector: 'app-data-entry-detail-dialog',
@@ -32,25 +33,14 @@ export class DataEntryDetailDialogComponent {
     return status === BirdStatus.FirstCatch ? 'Erstfang' : 'Wiederfang';
   }
 
+  // #115: the Alter/Geschlecht labels are shared with the "Bisherige Fänge"
+  // summary in the capture form via data-entry-labels — one source of truth.
   getAgeClassLabel(value: AgeClass | null): string {
-    const map: Record<number, string> = {
-      [AgeClass.Nest]: '1 – Nestling',
-      [AgeClass.Unknown]: '2 – Fängling (unbekannt)',
-      [AgeClass.ThisYear]: '3 – Diesjährig',
-      [AgeClass.NotThisYear]: '4 – Nicht Diesjährig',
-      [AgeClass.LastYear]: '5 – Vorjährig',
-      [AgeClass.NotLastYear]: '6 – Nicht Vorjährig',
-    };
-    return value !== null && value !== undefined ? (map[value] ?? String(value)) : '—';
+    return getAgeClassLabel(value);
   }
 
   getSexLabel(value: Sex | null): string {
-    const map: Record<number, string> = {
-      [Sex.Unknown]: '0 – Unbekannt',
-      [Sex.Male]: '1 – Männlich',
-      [Sex.Female]: '2 – Weiblich',
-    };
-    return value !== null && value !== undefined ? (map[value] ?? String(value)) : '—';
+    return getSexLabel(value);
   }
 
   getDirectionLabel(value: Direction | null): string {

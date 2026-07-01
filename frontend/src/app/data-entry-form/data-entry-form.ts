@@ -58,6 +58,7 @@ import {
 } from './beringer-create-dialog/beringer-create-dialog';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {selectedOptionValidator} from '../shared/validators/selected-option.validator';
+import {getAgeClassLabel, getSexLabel} from './data-entry-labels';
 
 @Component({
   selector: 'app-data-entry-form',
@@ -127,9 +128,29 @@ export class DataEntryFormComponent implements OnInit {
   readonly recaptureHistory = signal<DataEntry[]>([]);
   readonly displayedHistoryColumns: string[] = [
     'date_time', 'species', 'bird_status', 'staff', 'tarsus', 'feather_span', 'wing_span', 'weight_gram',
-    'fat_deposit', 'muscle_class', 'actions'
+    'age_class', 'sex', 'actions'
   ];
   readonly BirdStatus = BirdStatus;
+
+  // #115: a determined-sex contradiction across the recapture history. Only
+  // determined sexes (Männchen/Weibchen) count towards the set; Unbekannt is
+  // excluded, so an Unbekannt → determined progression is not a contradiction.
+  // A history that carries BOTH Männchen and Weibchen cannot describe one ringed
+  // bird, so it is flagged. Age class never participates.
+  readonly hasSexContradiction = computed(() => {
+    const determinedSexes = new Set(
+      this.recaptureHistory()
+        .map((entry) => entry.sex)
+        .filter((sex) => sex === Sex.Male || sex === Sex.Female),
+    );
+    return determinedSexes.size >= 2;
+  });
+
+  // #115: the "Bisherige Fänge" summary shows Alter/Geschlecht as readable
+  // German labels, not the raw coded integers. The maps are shared with the
+  // detail dialog via data-entry-labels.
+  readonly getAgeClassLabel = getAgeClassLabel;
+  readonly getSexLabel = getSexLabel;
 
   // Form Definition
   entryForm = this.fb.group({

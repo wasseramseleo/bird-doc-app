@@ -10,6 +10,12 @@
       @if (recaptureHistory().length > 0) {
     <div class="recapture-section">
       <h3>Bisherige Fänge ({{ recaptureHistory().length }})</h3>
+      @if (hasSexContradiction()) {
+        <div class="sex-contradiction" role="alert">
+          <mat-icon aria-hidden="true">warning</mat-icon>
+          <span>Widersprüchliche Geschlechtsangaben in der Fanggeschichte (Männchen und Weibchen).</span>
+        </div>
+      }
       <table mat-table [dataSource]="recaptureHistory()" class="mat-elevation-z2">
 
         <ng-container matColumnDef="date_time">
@@ -58,14 +64,14 @@
           <td mat-cell *matCellDef="let element">{{ (element.weight_gram | number:'1.1-1') ?? '—' }}</td>
         </ng-container>
 
-        <ng-container matColumnDef="fat_deposit">
-          <th mat-header-cell *matHeaderCellDef>Fett</th>
-          <td mat-cell *matCellDef="let element">{{ element.fat_deposit ?? '—' }}</td>
+        <ng-container matColumnDef="age_class">
+          <th mat-header-cell *matHeaderCellDef>Alter</th>
+          <td mat-cell *matCellDef="let element">{{ getAgeClassLabel(element.age_class) }}</td>
         </ng-container>
 
-        <ng-container matColumnDef="muscle_class">
-          <th mat-header-cell *matHeaderCellDef>Muskel</th>
-          <td mat-cell *matCellDef="let element">{{ element.muscle_class ?? '—' }}</td>
+        <ng-container matColumnDef="sex">
+          <th mat-header-cell *matHeaderCellDef>Geschlecht</th>
+          <td mat-cell *matCellDef="let element">{{ getSexLabel(element.sex) }}</td>
         </ng-container>
 
         <ng-container matColumnDef="actions" stickyEnd>
