@@ -904,6 +904,37 @@ body {
     color: var(--muted);
 }
 
+/* ── The quiet stats row substantiating "An der Station bewährt" (issue #140) ──
+   Three hand-maintained production figures set in the tabular-nums data voice —
+   understated evidence sitting right under the trust beats, not a banner. The
+   markup keeps the accessible dt→dd order; the figure is presented above its
+   label by reversing the column visually only. */
+.org-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 2.75rem;
+    margin: 0 0 1.75rem;
+    padding: 0.9rem 1.2rem;
+    border-left: 3px solid var(--line);
+}
+
+.org-stats__item {
+    display: flex;
+    flex-direction: column-reverse;
+}
+
+.org-stats__label {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.org-stats__value {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
 /* The light beta-pilot mention that sits between the beats and the Gespräch CTA. */
 .audience__pilot {
     max-width: 38rem;

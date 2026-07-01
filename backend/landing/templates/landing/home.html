@@ -1,5 +1,5 @@
 {% extends "landing/base.html" %}
-{% load i18n %}
+{% load i18n humanize %}
 
 {% block body_class %}page--marketing{% endblock %}
 
@@ -233,6 +233,22 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
                 <p>{% blocktranslate trimmed %}BirdDoc dokumentiert bereits echte Beringung: entstanden als <strong>Masterarbeit</strong>, im täglichen Stationsbetrieb erprobt.{% endblocktranslate %}</p>
             </li>
         </ul>
+
+        {% comment %}
+        The quiet stats row substantiating "An der Station bewährt" (issue #140):
+        three hand-maintained, operator-confirmed production figures from
+        landing/stats.py — constants, never live-queried across tenants. A <dl>
+        pairs each figure with its accessible label; the figures are set in the
+        page's tabular-nums data voice, digit grouping following the locale.
+        {% endcomment %}
+        <dl class="org-stats" aria-label="{% translate 'Zahlen aus dem Stationsbetrieb' %}">
+            {% for stat in station_stats %}
+                <div class="org-stats__item">
+                    <dt class="org-stats__label">{{ stat.label }}</dt>
+                    <dd class="org-stats__value data">{{ stat.value|intcomma }}</dd>
+                </div>
+            {% endfor %}
+        </dl>
 
         <p class="audience__pilot">{% blocktranslate trimmed %}Für interessierte Gruppen ist ein begleiteter <strong>Beta-Pilot</strong> möglich, ohne festen Zeitplan.{% endblocktranslate %}</p>
 
