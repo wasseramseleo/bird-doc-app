@@ -3,12 +3,12 @@
 The Open-Graph / share image (issue #108): a rendering of the hero Fang-Karte
 drawn from the SAME `FANG_KARTE` specimen the home page uses, so the shared link
 previews with the product's own credible capture card and can never drift from
-the hero. Hand-authored SVG over the brand tokens (ADR 0009) — the --bd-* values
+the hero. Hand-authored SVG over the brand tokens (ADR 0009): the --bd-* values
 are inlined as hex because an external stylesheet does not travel with the image.
 Sized 1200×630, the canonical Open-Graph ratio. The card's field labels stay
 German: it is an honest preview of the German app itself (ADR 0009).
 {% endcomment %}
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="BirdDoc — Beispiel-Fang-Karte">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="BirdDoc: Beispiel-Fang-Karte">
   <defs>
     <style>
       .serif { font-family: 'Lora', Georgia, 'Times New Roman', serif; }
@@ -25,12 +25,12 @@ German: it is an honest preview of the German app itself (ADR 0009).
   <g>
     <circle cx="78" cy="104" r="14" fill="none" stroke="#8B5A3C" stroke-width="3"/>
     <text x="104" y="116" class="serif" font-size="44" font-weight="600" fill="#2B2A26">BirdDoc</text>
-    <text x="72" y="186" class="sans" font-size="20" letter-spacing="2" fill="#6B655B">FELDJOURNAL · BERINGUNG</text>
+    <text x="72" y="186" class="sans" font-size="20" letter-spacing="2" fill="#6B655B">STATIONSJOURNAL · BERINGUNG</text>
     <text x="70" y="268" class="serif" font-size="58" font-weight="600" fill="#2B2A26">Schluss mit</text>
     <text x="70" y="332" class="serif" font-size="58" font-weight="600" fill="#2B2A26">Papier und Excel</text>
     <text x="72" y="392" class="sans" font-size="24" fill="#6B655B">Ein sauberer Datensatz pro gefangenem Vogel.</text>
 
-    <!-- The Ringserie number thread — the same consumed run that threads the home. -->
+    <!-- The Ringserie number thread, the same consumed run that threads the home. -->
     <text x="72" y="470" class="data" font-size="26" fill="#8B5A3C" letter-spacing="1">{% for number in fang_karte.ringserie %}{{ number }}{% if not forloop.last %}  ·  {% endif %}{% endfor %}  ·  {{ fang_karte.next_number }}</text>
 
     <!-- Beta badge. -->

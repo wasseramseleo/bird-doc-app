@@ -107,3 +107,13 @@ def test_datenschutz_renders_on_the_shared_public_base(client):
     template_names = {t.name for t in response.templates}
     assert "landing/base.html" in template_names
     assert "app-root" not in response.content.decode()
+
+
+# The two most-read legal pages adopt the homepage's wider measure so they read
+# at the same width/formatting as the marketing home rather than in the narrow
+# form column (issue #116). The `page--marketing` body class is what carries the
+# wider `--measure` on the shared header/main/footer.
+def test_datenschutz_and_impressum_render_at_the_marketing_width(client):
+    for slug in ("datenschutz", "impressum"):
+        content = client.get(reverse(f"landing:{slug}")).content.decode()
+        assert "page--marketing" in content, f"{slug} did not adopt the marketing width"
