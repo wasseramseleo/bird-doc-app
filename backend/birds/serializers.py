@@ -2,6 +2,12 @@ from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from .capture_service import (
+    BIRD_DATA_FIELDS,
+    CaptureValidationError,
+    create_capture,
+    get_or_create_ring,
+)
 from .models import (
     DataEntry,
     Mitgliedschaft,
@@ -278,40 +284,16 @@ class DataEntrySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created", "updated"]
 
-    # Fields that describe a bird. A destroyed ring carries none of them, so
-    # they are forced null for a 'ring_destroyed' Sonderart regardless of client
-    # input.
-    BIRD_DATA_FIELDS = (
-        "age_class",
-        "sex",
-        "bird_status",
-        "net_location",
-        "net_height",
-        "net_direction",
-        "feather_span",
-        "wing_span",
-        "tarsus",
-        "notch_f2",
-        "inner_foot",
-        "weight_gram",
-        "fat_deposit",
-        "muscle_class",
-        "small_feather_int",
-        "small_feather_app",
-        "hand_wing",
-    )
-
     def _get_or_create_ring(self, validated_data, organization):
-        """Find or create the Ring *within the recording Organisation*.
+        """Pop the ring identity from the payload and resolve the org-scoped Ring
+        (ADR 0006), storing it back on ``validated_data`` for the update path.
 
-        Ring uniqueness is scoped to the Organisation (ADR 0006), so the lookup
-        is org-scoped too: recording a number another Organisation owns creates a
-        new Ring in the recording Organisation rather than reusing the other's.
-        """
-        ring_number = validated_data.pop("ring_number")
-        ring_size = validated_data.pop("ring_size")
-        ring, _ = Ring.objects.get_or_create(
-            number=ring_number, size=ring_size, organization=organization
+        Delegates the get-or-create itself to the shared capture service so the
+        update path uses exactly the same org-scoped lookup as ``create``."""
+        ring = get_or_create_ring(
+            number=validated_data.pop("ring_number"),
+            size=validated_data.pop("ring_size"),
+            organization=organization,
         )
         validated_data["ring"] = ring
         return ring
@@ -323,7 +305,7 @@ class DataEntrySerializer(serializers.ModelSerializer):
         required."""
         species = validated_data.get("species")
         if species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED:
-            for field in self.BIRD_DATA_FIELDS:
+            for field in BIRD_DATA_FIELDS:
                 validated_data[field] = None
 
     def validate(self, attrs):
@@ -352,11 +334,18 @@ class DataEntrySerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        # ``perform_create`` injects the active Organisation; the Ring is scoped
-        # to it (ADR 0006).
-        self._get_or_create_ring(validated_data, validated_data.get("organization"))
-        self._null_bird_data_for_destroyed_ring(validated_data)
-        return super().create(validated_data)
+        # One code path for capture creation: delegate to the shared service so a
+        # capture entered through the form and one created by the IWM importer
+        # obey exactly the same invariants — org-scoped Ring (ADR 0006), Sonderart
+        # bird-data null-out and the Aves-ignota Bemerkung (ADR 0004). Issue #119.
+        # ``perform_create`` has injected the active Organisation. The Aves-ignota
+        # Bemerkung is normally rejected earlier in ``validate`` (an ``is_valid``
+        # field error); translating the service's error here keeps a clean 400
+        # contract for any create that reaches the service directly.
+        try:
+            return create_capture(**validated_data)
+        except CaptureValidationError as exc:
+            raise serializers.ValidationError({exc.field: exc.message}) from exc
 
     def update(self, instance, validated_data):
         with transaction.atomic():
