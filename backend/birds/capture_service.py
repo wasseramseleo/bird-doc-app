@@ -97,7 +97,7 @@ def create_capture(
     * for a *Ring Vernichtet* Sonderart every bird-data field is forced null,
       whatever the caller sent (ADR 0004).
     """
-    _validate_aves_ignota(species, comment)
+    validate_capture(species, comment)
 
     fields = dict(bird_data)
     if species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED:
@@ -117,6 +117,16 @@ def create_capture(
         comment=comment,
         **fields,
     )
+
+
+def validate_capture(species, comment):
+    """Check a resolved capture's creation invariants without writing anything.
+
+    Shared by ``create_capture`` (run before the write) and the IWM importer's
+    dry-run, so a preview predicts exactly the ``CaptureValidationError`` a commit
+    would raise. Raises ``CaptureValidationError`` on the first violation.
+    """
+    _validate_aves_ignota(species, comment)
 
 
 def _validate_aves_ignota(species, comment):
