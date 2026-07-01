@@ -15,15 +15,15 @@ cap arrive in later slices; unfamiliar Beringer/Stationen are blocking errors
 here.
 """
 
-from datetime import date, time
+from datetime import date, datetime, time
 from io import BytesIO
 
 import openpyxl
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.utils.timezone import localtime
+from django.utils.timezone import localtime, make_aware
 
-from birds.models import DataEntry
+from birds.models import DataEntry, Ring
 
 PROJECTS_URL = "/api/birds/projects/"
 
@@ -354,3 +354,165 @@ def test_unfamiliar_beringer_and_station_are_blocking_errors_this_slice(
     reasons = {e["row"]: e["reason"] for e in preview["errors"]}
     assert "Beringer" in reasons[2]
     assert "Station" in reasons[3]
+
+
+# --- Duplicate detection & recapture (issue #122) -----------------------------
+# A row is a duplicate when a capture already exists in the Organisation with the
+# same capture key = (ring size + number, date + time). Duplicates are skipped
+# (never re-inserted) and counted; an Erstfang and its later Wiederfang share a
+# ring but differ by datetime, so both import; re-importing an already-loaded
+# file recognises every row as a duplicate, making fix-a-few-and-re-import safe.
+
+
+def _seed_capture(
+    species,
+    scientist,
+    ringing_station,
+    project,
+    organization,
+    *,
+    size="V",
+    number="00604",
+    when=datetime(2026, 6, 30, 8, 15),
+):
+    """An existing capture in tenant A whose capture key (ring size+number,
+    Datum+Uhrzeit) a matching import row must recognise as a duplicate. Its
+    datetime is stored the way the importer combines Datum+Uhrzeit — the sheet's
+    Vienna wall clock — so the round-trip key matches exactly."""
+    ring = Ring.objects.create(size=size, number=number, organization=organization)
+    return DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        organization=organization,
+        date_time=make_aware(when),
+    )
+
+
+@pytest.mark.django_db
+def test_duplicate_row_by_capture_key_is_reported_and_writes_nothing(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    # A capture with this exact ring (V00604) and datetime already exists.
+    _seed_capture(species, scientist, ringing_station, project, organization)
+    content = _workbook([_valid_row(species, scientist, ringing_station)])
+
+    body = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+
+    assert body["importable"] == 0
+    assert body["duplicates"] == 1
+    assert body["errors"] == []
+    # The dry-run wrote nothing — still just the one pre-existing capture.
+    assert DataEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_commit_skips_duplicate_and_reports_duplicates_skipped(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    _seed_capture(species, scientist, ringing_station, project, organization)
+    content = _workbook([_valid_row(species, scientist, ringing_station)])
+
+    body = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+
+    assert body["created"] == 0
+    assert body["duplicatesSkipped"] == 1
+    assert body["errors"] == []
+    # The duplicate was skipped, not re-inserted — no doubling.
+    assert DataEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_erstfang_and_later_wiederfang_both_import(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    # Same ring (V00604), different datetime: the Erstfang and its later
+    # Wiederfang have distinct capture keys, so neither is a duplicate of the
+    # other and both import — recapture history preserved.
+    rows = [
+        _valid_row(
+            species,
+            scientist,
+            ringing_station,
+            Ringstatus="E",
+            Datum=date(2026, 6, 30),
+            Uhrzeit=time(8, 15),
+        ),
+        _valid_row(
+            species,
+            scientist,
+            ringing_station,
+            Ringstatus="W",
+            Datum=date(2026, 7, 15),
+            Uhrzeit=time(9, 0),
+        ),
+    ]
+    content = _workbook(rows)
+
+    body = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+
+    assert body["created"] == 2
+    assert body["duplicatesSkipped"] == 0
+    assert DataEntry.objects.count() == 2
+    ring = Ring.objects.get(size="V", number="00604", organization=organization)
+    assert DataEntry.objects.filter(ring=ring).count() == 2
+
+
+@pytest.mark.django_db
+def test_reimporting_the_same_file_skips_every_row_as_duplicate(
+    auth_client, scientist, ringing_station, project, species
+):
+    # Two distinct captures (different rings). Fix-a-few-and-re-import safety:
+    # the second run must recognise every row as already loaded and add nothing.
+    rows = [
+        _valid_row(species, scientist, ringing_station, Ringnummer="V00604"),
+        _valid_row(species, scientist, ringing_station, Ringnummer="V00701"),
+    ]
+    content = _workbook(rows)
+
+    first = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert first["created"] == 2
+    assert DataEntry.objects.count() == 2
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+    assert preview["importable"] == 0
+    assert preview["duplicates"] == 2
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert result["created"] == 0
+    assert result["duplicatesSkipped"] == 2
+    # No doubling — still exactly the two original captures.
+    assert DataEntry.objects.count() == 2
+
+
+@pytest.mark.django_db
+def test_two_identical_rows_in_one_file_import_once(
+    auth_client, scientist, ringing_station, project, species
+):
+    # Two rows with the same capture key within a single upload: the first
+    # imports, the second is recognised as a duplicate of it — one file never
+    # doubles its own data.
+    row = _valid_row(species, scientist, ringing_station)
+    content = _workbook([dict(row), dict(row)])
+
+    body = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+
+    assert body["created"] == 1
+    assert body["duplicatesSkipped"] == 1
+    assert DataEntry.objects.count() == 1
