@@ -59,16 +59,18 @@ class RingingStationSerializer(serializers.ModelSerializer):
     # Required at the serializer layer with clear German messages, even though the
     # model keeps these blank-able for admin/ORM paths.
     name = serializers.CharField(
+        max_length=255,
         error_messages={
             "required": _("Ein Name ist erforderlich."),
             "blank": _("Ein Name ist erforderlich."),
-        }
+        },
     )
     place_code = serializers.CharField(
+        max_length=16,
         error_messages={
             "required": _("Eine Ortskodierung ist erforderlich."),
             "blank": _("Eine Ortskodierung ist erforderlich."),
-        }
+        },
     )
     latitude = serializers.DecimalField(
         max_digits=9,
@@ -80,10 +82,10 @@ class RingingStationSerializer(serializers.ModelSerializer):
         decimal_places=6,
         error_messages={"required": _("Ein Längengrad ist erforderlich.")},
     )
-    region = serializers.CharField(required=False, allow_blank=True)
+    region = serializers.CharField(max_length=128, required=False, allow_blank=True)
     # Optional in the payload; defaults to the creating Organisation's country
     # when omitted or blank (handled in ``create``).
-    country = serializers.CharField(required=False, allow_blank=True)
+    country = serializers.CharField(max_length=64, required=False, allow_blank=True)
 
     class Meta:
         model = RingingStation

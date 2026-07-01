@@ -265,6 +265,16 @@ def test_admin_create_station_requires_core_fields_with_german_message(
 
 
 @pytest.mark.django_db
+def test_admin_create_station_rejects_overlong_name(auth_client, scientist):
+    # The serializer must keep the model's max_length guard so an oversized value
+    # is a 400, not a database error on save.
+    response = auth_client.post(STATIONS_URL, _station_payload(name="A" * 300), format="json")
+
+    assert response.status_code == 400
+    assert "name" in response.json()
+
+
+@pytest.mark.django_db
 def test_admin_create_station_derives_distinct_handles_for_same_name(
     auth_client, scientist, organization
 ):
