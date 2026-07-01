@@ -158,7 +158,7 @@ def build_import_preview(content, project):
 
 
 @transaction.atomic
-def commit_import(content, project):
+def commit_import(content, project, *, enforce_cap=True):
     """Commit: create every importable capture atomically, skipping blocking-error
     rows and duplicates, and return an ``ImportResult``. All-or-nothing — an
     unexpected failure rolls the whole import back.
@@ -168,8 +168,17 @@ def commit_import(content, project):
     never re-inserted — so re-importing a corrected file cannot double the data
     (issue #122). Unfamiliar Beringer and Stationen are created as part of the
     same transaction and reported in ``createdBeringer`` / ``createdStationen``
-    (issue #121)."""
-    rows, _warnings, adoptions, resolver = _analyze(content, project, create=True)
+    (issue #121).
+
+    ``enforce_cap`` is the one knob separating the two callers (ADR 0013). The
+    ``import-iwm`` API leaves it ``True`` so an oversized synchronous upload is
+    rejected with guidance (issue #125); the ``seed_demo_org`` management command
+    sets it ``False`` to run the same parse → validate → create path for an
+    ops-assisted over-cap backfill (a demo seed or a multi-year one-time history)
+    without a background worker."""
+    rows, _warnings, adoptions, resolver = _analyze(
+        content, project, create=True, enforce_cap=enforce_cap
+    )
     seen = _existing_keys(project)
     created = 0
     duplicates_skipped = 0
@@ -360,7 +369,7 @@ class _Resolver:
         return station
 
 
-def _analyze(content, project, *, create):
+def _analyze(content, project, *, create, enforce_cap=True):
     """Parse the workbook, resolve every data row, and reconcile the Projekt-scoped
     context columns.
 
@@ -371,11 +380,13 @@ def _analyze(content, project, *, create):
     ``_Resolver`` that carries the auto-created Beringer / Stationen. ``create``
     decides whether unfamiliar entities are actually written (commit) or only
     recorded for the preview (dry-run). Raises ``IwmStructureError`` for a
-    structurally-wrong file and ``IwmRowCapExceeded`` for an over-cap one — both
-    before any row is resolved, so nothing is written and both preview and commit
-    reject cleanly (issue #125)."""
+    structurally-wrong file and — when ``enforce_cap`` (the default, the API path)
+    — ``IwmRowCapExceeded`` for an over-cap one, both before any row is resolved so
+    nothing is written and both preview and commit reject cleanly (issue #125).
+    The management command imports over-cap backfills with ``enforce_cap=False``
+    (ADR 0013)."""
     header_index, data_rows = _read_fangdaten(content)
-    if len(data_rows) > ROW_CAP:
+    if enforce_cap and len(data_rows) > ROW_CAP:
         raise IwmRowCapExceeded(len(data_rows), ROW_CAP)
     resolver = _Resolver(project, create=create)
     rows = [
