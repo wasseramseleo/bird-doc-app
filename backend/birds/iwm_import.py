@@ -11,16 +11,18 @@ form-entered ones (ADR 0006 org-scoped rings, ADR 0004 Sonderart rules).
 Two phases on one upload (ADR 0013): a **dry-run** parses, validates and returns
 an ``ImportPreview`` while writing nothing; a **commit** atomically creates the
 importable captures, skips the blocking-error rows, and returns an
-``ImportResult``. The report shapes are fixed by the PRD; fields this slice does
-not yet populate (``duplicates``, ``warnings``, ``toCreate``, ``cap``) are
-present but empty/zero.
+``ImportResult``. The report shapes are fixed by the PRD. Duplicate detection now
+populates ``duplicates``/``duplicatesSkipped`` (issue #122) and the Projekt-method
+reconciliation now populates ``warnings`` (issue #124); ``toCreate`` (unfamiliar
+Beringer/Stationen) is the field this slice still leaves empty. The ``cap`` is
+enforced: an upload whose data-row count exceeds ``ROW_CAP`` is rejected on both
+phases (issue #125).
 
 Scope of this slice: core columns only (species, ring size+number, Beringer
 Kürzel, Station, Datum+Uhrzeit, Ringstatus, Geschlecht, Alter). An unknown
 species, a missing required field (no ring number / no date), and — for now — an
-unfamiliar Beringer or Station are blocking errors. Duplicate detection, the row
-cap, warnings/method precedence, Sonderarten and full biometric fidelity arrive
-in later slices.
+unfamiliar Beringer or Station are blocking errors. Sonderarten and full biometric
+fidelity arrive in later slices.
 """
 
 import re
@@ -52,9 +54,11 @@ REQUIRED_HEADERS = frozenset(
     }
 )
 
-# A starting row cap (tune by measurement — ADR 0013). The preview reports it;
-# enforcement/rejection of over-cap files is a later slice, so the shape is fixed
-# without changing behaviour here.
+# A single tunable row cap (a starting number — tune by measurement, ADR 0013).
+# It bounds one synchronous upload: the preview reports it as ``cap`` and a file
+# whose data-row count exceeds it is rejected on both preview and commit (issue
+# #125) with guidance to split the file or bulk-load via the management command —
+# never a silent partial import or truncation.
 ROW_CAP = 5000
 
 _VALID_RING_SIZES = frozenset(Ring.RingSizes.values)
@@ -77,6 +81,27 @@ class IwmStructureError(Exception):
     """The upload is not a readable ``Datenmeldung`` — wrong file, no ``Fangdaten``
     sheet, or missing required headers. Raised before any row is processed so the
     caller can fast-fail with a clear message (HTTP 400)."""
+
+
+class IwmRowCapExceeded(Exception):
+    """The upload has more data rows than the import cap allows (ADR 0013, issue
+    #125). A very large history must be split or bulk-loaded via the management
+    command, never silently partial-imported or truncated. Raised before any row
+    is resolved or written so both preview and commit reject it cleanly — the
+    caller turns it into an HTTP 400 that signals the cap and points the Admin to
+    the split / management-command path."""
+
+    def __init__(self, count, limit):
+        self.count = count
+        self.limit = limit
+        self.message = (
+            f"Die Datei enthält {count} Datenzeilen und überschreitet die Obergrenze "
+            f"von {limit} Zeilen pro Import. Bitte die Datei in kleinere Dateien "
+            "aufteilen oder eine:n Operator:in bitten, den Bulk-Load per "
+            "Management-Kommando auszuführen — es wurde nichts importiert und nichts "
+            "abgeschnitten."
+        )
+        super().__init__(self.message)
 
 
 def build_import_preview(content, project):
@@ -221,8 +246,12 @@ def _analyze(content, project):
     partial — a bad row becomes an error, not an exception), the non-blocking
     context warnings (Projekt-method mismatch / heterogeneous file), and the
     ``{field: value}`` adoptions to write onto the Projekt on commit. Raises
-    ``IwmStructureError`` for a structurally-wrong file."""
+    ``IwmStructureError`` for a structurally-wrong file and ``IwmRowCapExceeded``
+    for an over-cap one — both before any row is resolved, so nothing is written
+    and both preview and commit reject cleanly (issue #125)."""
     header_index, data_rows = _read_fangdaten(content)
+    if len(data_rows) > ROW_CAP:
+        raise IwmRowCapExceeded(len(data_rows), ROW_CAP)
     resolver = _Resolver(project)
     rows = [
         _resolve_row(values, header_index, row_num, project, resolver)

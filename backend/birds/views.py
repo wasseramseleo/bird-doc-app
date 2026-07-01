@@ -16,7 +16,12 @@ from rest_framework.response import Response
 from .accounts import normalize_email
 from .invitations import account_for_email, seats_available
 from .iwm_export import build_iwm_workbook
-from .iwm_import import IwmStructureError, build_import_preview, commit_import
+from .iwm_import import (
+    IwmRowCapExceeded,
+    IwmStructureError,
+    build_import_preview,
+    commit_import,
+)
 from .models import (
     FALLBACK_BERINGER_HANDLE,
     DataEntry,
@@ -490,8 +495,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
         dry-run returns an ``ImportPreview`` and writes nothing; with
         ``commit=true`` it atomically creates the importable captures and returns
         an ``ImportResult``. A structurally-wrong file fast-fails with a clear
-        message (400). Captures land in this Projekt's Organisation
-        server-authoritatively — a client cannot plant them in another tenant."""
+        message (400). An over-cap file is likewise rejected (400) on both phases
+        with the cap signalled and guidance to split it or use the management
+        command (ADR 0013, issue #125) — nothing written, nothing truncated.
+        Captures land in this Projekt's Organisation server-authoritatively — a
+        client cannot plant them in another tenant."""
         project = self.get_object()
         upload = request.FILES.get("file")
         if upload is None:
@@ -502,6 +510,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
             if commit:
                 return Response(commit_import(content, project))
             return Response(build_import_preview(content, project))
+        except IwmRowCapExceeded as exc:
+            return Response(
+                {"file": exc.message, "cap": {"limit": exc.limit, "exceeded": True}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except IwmStructureError as exc:
             raise ValidationError({"file": str(exc)}) from exc
 
