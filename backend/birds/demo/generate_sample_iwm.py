@@ -31,19 +31,45 @@ import openpyxl
 
 # Authentic IWM "Fangdaten" header row, in template column order (1..32).
 HEADERS = [
-    "Ring", "Ringnummer", "Ringstatus", "Zusatzmarkierung", "Art", "Fangmethode",
-    "Lockmittel", "Geschlecht", "Alter", "Datum", "Uhrzeit", "Ortskodierung",
-    "Geo-Koordinaten", "Zustand", "Umstand", "Flügellänge", "Teilfederlänge",
-    "Gewicht", "Tarsus", "Fett", "Muskel", "Intensität", "Fortschritt",
-    "Handschwingen", "Brutfleck", "Kloake", "Netz", "Ort", "Region", "Land",
-    "Bemerkungen", "BeringerIn",
+    "Ring",
+    "Ringnummer",
+    "Ringstatus",
+    "Zusatzmarkierung",
+    "Art",
+    "Fangmethode",
+    "Lockmittel",
+    "Geschlecht",
+    "Alter",
+    "Datum",
+    "Uhrzeit",
+    "Ortskodierung",
+    "Geo-Koordinaten",
+    "Zustand",
+    "Umstand",
+    "Flügellänge",
+    "Teilfederlänge",
+    "Gewicht",
+    "Tarsus",
+    "Fett",
+    "Muskel",
+    "Intensität",
+    "Fortschritt",
+    "Handschwingen",
+    "Brutfleck",
+    "Kloake",
+    "Netz",
+    "Ort",
+    "Region",
+    "Land",
+    "Bemerkungen",
+    "BeringerIn",
 ]
 
 SCHEME_CODE = "AUW"
-FANGMETHODE = "M"   # Japannetz
-LOCKMITTEL = "N"    # sicher kein Lockmittel
-UMSTAND = "20"      # wissenschaftliche Beringung (as in the template examples)
-ZUSTAND = "8"       # lebend, unverletzt freigelassen
+FANGMETHODE = "M"  # Japannetz
+LOCKMITTEL = "N"  # sicher kein Lockmittel
+UMSTAND = "20"  # wissenschaftliche Beringung (as in the template examples)
+ZUSTAND = "8"  # lebend, unverletzt freigelassen
 REGION = "Burgenland"
 LAND = "Austria"
 
@@ -72,12 +98,72 @@ RING_BASE = {"V": 18000, "S": 5400, "T": 2100, "X": 31000, "P": 900}
 # species: de, sci, size, wing(lo,hi), weight(lo,hi), tarsus(lo,hi), freq,
 # dimorphic, season affinity ('both'|'summer'|'autumn').
 SPECIES = [
-    ("Teichrohrsänger", "Acrocephalus scirpaceus", "V", (62, 69), (10.5, 14.5), (21, 24), 22, False, "both"),
-    ("Schilfrohrsänger", "Acrocephalus schoenobaenus", "V", (62, 69), (10.0, 14.0), (20, 23), 16, False, "both"),
-    ("Sumpfrohrsänger", "Acrocephalus palustris", "V", (62, 69), (10.5, 14.0), (21, 24), 8, False, "both"),
-    ("Drosselrohrsänger", "Acrocephalus arundinaceus", "S", (90, 101), (25, 35), (32, 37), 3, False, "summer"),
-    ("Mariskensänger", "Acrocephalus melanopogon", "V", (53, 60), (9.5, 12.5), (20, 23), 2, False, "both"),
-    ("Rohrschwirl", "Locustella luscinioides", "V", (66, 73), (13, 18), (22, 25), 4, False, "summer"),
+    (
+        "Teichrohrsänger",
+        "Acrocephalus scirpaceus",
+        "V",
+        (62, 69),
+        (10.5, 14.5),
+        (21, 24),
+        22,
+        False,
+        "both",
+    ),
+    (
+        "Schilfrohrsänger",
+        "Acrocephalus schoenobaenus",
+        "V",
+        (62, 69),
+        (10.0, 14.0),
+        (20, 23),
+        16,
+        False,
+        "both",
+    ),
+    (
+        "Sumpfrohrsänger",
+        "Acrocephalus palustris",
+        "V",
+        (62, 69),
+        (10.5, 14.0),
+        (21, 24),
+        8,
+        False,
+        "both",
+    ),
+    (
+        "Drosselrohrsänger",
+        "Acrocephalus arundinaceus",
+        "S",
+        (90, 101),
+        (25, 35),
+        (32, 37),
+        3,
+        False,
+        "summer",
+    ),
+    (
+        "Mariskensänger",
+        "Acrocephalus melanopogon",
+        "V",
+        (53, 60),
+        (9.5, 12.5),
+        (20, 23),
+        2,
+        False,
+        "both",
+    ),
+    (
+        "Rohrschwirl",
+        "Locustella luscinioides",
+        "V",
+        (66, 73),
+        (13, 18),
+        (22, 25),
+        4,
+        False,
+        "summer",
+    ),
     ("Feldschwirl", "Locustella naevia", "X", (60, 67), (11, 15), (20, 23), 2, False, "autumn"),
     ("Mönchsgrasmücke", "Sylvia atricapilla", "V", (70, 78), (15, 22), (19, 22), 14, True, "both"),
     ("Gartengrasmücke", "Sylvia borin", "V", (76, 83), (15, 22), (19, 22), 5, False, "autumn"),
@@ -103,9 +189,20 @@ SPECIES = [
 ]
 
 BEMERKUNGEN_POOL = [
-    "", "", "", "", "", "", "", "",  # mostly blank
-    "Zecken am Kopf", "leichte Handschwingenmauser", "Schwanz frisch vermausert",
-    "Lausfliege", "Gefieder stark abgenutzt", "Fettdepot deutlich sichtbar",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",  # mostly blank
+    "Zecken am Kopf",
+    "leichte Handschwingenmauser",
+    "Schwanz frisch vermausert",
+    "Lausfliege",
+    "Gefieder stark abgenutzt",
+    "Fettdepot deutlich sichtbar",
 ]
 
 
@@ -199,11 +296,19 @@ def build_rows(rng, n_erstfang, n_wiederfang):
     def base_ctx(d, station):
         name, code, lat, lon, nets = station
         return {
-            "Ring": SCHEME_CODE, "Zusatzmarkierung": "ZZ", "Fangmethode": FANGMETHODE,
-            "Lockmittel": LOCKMITTEL, "Umstand": UMSTAND, "Zustand": ZUSTAND,
+            "Ring": SCHEME_CODE,
+            "Zusatzmarkierung": "ZZ",
+            "Fangmethode": FANGMETHODE,
+            "Lockmittel": LOCKMITTEL,
+            "Umstand": UMSTAND,
+            "Zustand": ZUSTAND,
             "Datum": dt.datetime(d.year, d.month, d.day),
-            "Ortskodierung": code, "Geo-Koordinaten": f"{lat:.6f}, {lon:.6f}",
-            "Netz": str(rng.randint(1, nets)), "Ort": name, "Region": REGION, "Land": LAND,
+            "Ortskodierung": code,
+            "Geo-Koordinaten": f"{lat:.6f}, {lon:.6f}",
+            "Netz": str(rng.randint(1, nets)),
+            "Ort": name,
+            "Region": REGION,
+            "Land": LAND,
         }
 
     # --- Erstfänge ---
@@ -219,11 +324,18 @@ def build_rows(rng, n_erstfang, n_wiederfang):
         age = _age(rng, season)
         sex = _sex(rng, dim)
         row = base_ctx(d, station)
-        row.update({
-            "Ringnummer": ringnr, "Ringstatus": "E", "Art": de,
-            "Geschlecht": sex, "Alter": age, "Uhrzeit": _pick_time(rng, de),
-            "Bemerkungen": rng.choice(BEMERKUNGEN_POOL) or None, "BeringerIn": ringer[1],
-        })
+        row.update(
+            {
+                "Ringnummer": ringnr,
+                "Ringstatus": "E",
+                "Art": de,
+                "Geschlecht": sex,
+                "Alter": age,
+                "Uhrzeit": _pick_time(rng, de),
+                "Bemerkungen": rng.choice(BEMERKUNGEN_POOL) or None,
+                "BeringerIn": ringer[1],
+            }
+        )
         row.update(_measure(rng, sp, age, sex, season))
         rows.append(row)
         ringed.append({"ringnr": ringnr, "size": size, "sp": sp, "sex": sex, "date": d})
@@ -244,11 +356,18 @@ def build_rows(rng, n_erstfang, n_wiederfang):
         # An older bird: if recaught a season later it is at least vorjährig.
         age = 4 if d.year == bird["date"].year else rng.choice([5, 6])
         row = base_ctx(d, station)
-        row.update({
-            "Ringnummer": bird["ringnr"], "Ringstatus": "W", "Art": de,
-            "Geschlecht": bird["sex"], "Alter": age, "Uhrzeit": _pick_time(rng, de),
-            "Bemerkungen": "Wiederfang", "BeringerIn": ringer[1],
-        })
+        row.update(
+            {
+                "Ringnummer": bird["ringnr"],
+                "Ringstatus": "W",
+                "Art": de,
+                "Geschlecht": bird["sex"],
+                "Alter": age,
+                "Uhrzeit": _pick_time(rng, de),
+                "Bemerkungen": "Wiederfang",
+                "BeringerIn": ringer[1],
+            }
+        )
         row.update(_measure(rng, sp, age, bird["sex"], season))
         row["Fortschritt"] = None  # not a diesjährig bird any more
         rows.append(row)
@@ -258,39 +377,70 @@ def build_rows(rng, n_erstfang, n_wiederfang):
     st = STATIONS[0]
     r = base_ctx(d, st)
     rings["V"] += 1
-    r.update({
-        "Ringnummer": f"V{str(rings['V']).zfill(5)}", "Ringstatus": "E",
-        "Art": "Art nicht in der Liste (Aves ignota)", "Geschlecht": "U", "Alter": 3,
-        "Uhrzeit": dt.time(7, 20), "Flügellänge": 66, "Gewicht": 12.4, "Tarsus": 22.5,
-        "Fett": "2", "Muskel": "2", "Intensität": "1", "Handschwingen": "1",
-        "Bemerkungen": "Unbestimmter Acrocephalus, Verdacht Buschrohrsänger; Fotos und Vermessung an Vogelwarte übermittelt",
-        "BeringerIn": "JGR",
-    })
+    r.update(
+        {
+            "Ringnummer": f"V{str(rings['V']).zfill(5)}",
+            "Ringstatus": "E",
+            "Art": "Art nicht in der Liste (Aves ignota)",
+            "Geschlecht": "U",
+            "Alter": 3,
+            "Uhrzeit": dt.time(7, 20),
+            "Flügellänge": 66,
+            "Gewicht": 12.4,
+            "Tarsus": 22.5,
+            "Fett": "2",
+            "Muskel": "2",
+            "Intensität": "1",
+            "Handschwingen": "1",
+            "Bemerkungen": (
+                "Unbestimmter Acrocephalus, Verdacht Buschrohrsänger; "
+                "Fotos und Vermessung an Vogelwarte übermittelt"
+            ),
+            "BeringerIn": "JGR",
+        }
+    )
     rows.append(r)
 
     d = dt.date(2023, 9, 3)
     r = base_ctx(d, STATIONS[1])
     rings["X"] += 1
-    r.update({
-        "Ringnummer": f"X{str(rings['X']).zfill(5)}", "Ringstatus": "E",
-        "Art": "Art nicht in der Liste (Aves ignota)", "Geschlecht": "U", "Alter": 3,
-        "Uhrzeit": dt.time(8, 5), "Flügellänge": 61, "Gewicht": 8.2, "Tarsus": 19.8,
-        "Fett": "3", "Muskel": "2", "Intensität": "1", "Handschwingen": "1",
-        "Bemerkungen": "Kleiner Laubsänger, Bestimmung unsicher; Rufaufnahme gesichert",
-        "BeringerIn": "MWA",
-    })
+    r.update(
+        {
+            "Ringnummer": f"X{str(rings['X']).zfill(5)}",
+            "Ringstatus": "E",
+            "Art": "Art nicht in der Liste (Aves ignota)",
+            "Geschlecht": "U",
+            "Alter": 3,
+            "Uhrzeit": dt.time(8, 5),
+            "Flügellänge": 61,
+            "Gewicht": 8.2,
+            "Tarsus": 19.8,
+            "Fett": "3",
+            "Muskel": "2",
+            "Intensität": "1",
+            "Handschwingen": "1",
+            "Bemerkungen": "Kleiner Laubsänger, Bestimmung unsicher; Rufaufnahme gesichert",
+            "BeringerIn": "MWA",
+        }
+    )
     rows.append(r)
 
     # Ring Vernichtet: a ring taken out of service — no bird data.
     d = dt.date(2024, 8, 28)
     r = base_ctx(d, STATIONS[2])
     rings["V"] += 1
-    r.update({
-        "Ringnummer": f"V{str(rings['V']).zfill(5)}", "Ringstatus": None,
-        "Art": "Ring Vernichtet", "Geschlecht": None, "Alter": None,
-        "Uhrzeit": dt.time(6, 40),
-        "Bemerkungen": "Ring beim Anlegen deformiert, vernichtet", "BeringerIn": "SBA",
-    })
+    r.update(
+        {
+            "Ringnummer": f"V{str(rings['V']).zfill(5)}",
+            "Ringstatus": None,
+            "Art": "Ring Vernichtet",
+            "Geschlecht": None,
+            "Alter": None,
+            "Uhrzeit": dt.time(6, 40),
+            "Bemerkungen": "Ring beim Anlegen deformiert, vernichtet",
+            "BeringerIn": "SBA",
+        }
+    )
     rows.append(r)
 
     rows.sort(key=lambda x: (x["Datum"], x.get("Uhrzeit") or dt.time(0, 0)))
@@ -316,8 +466,9 @@ def write_workbook(rows, out_path: Path):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("-o", "--out", type=Path,
-                   default=Path(__file__).with_name("sample_iwm_illmitz.xlsx"))
+    p.add_argument(
+        "-o", "--out", type=Path, default=Path(__file__).with_name("sample_iwm_illmitz.xlsx")
+    )
     p.add_argument("--erstfaenge", type=int, default=300)
     p.add_argument("--wiederfaenge", type=int, default=40)
     p.add_argument("--seed", type=int, default=42)
@@ -326,13 +477,19 @@ def main():
     rows = build_rows(rng, a.erstfaenge, a.wiederfaenge)
     write_workbook(rows, a.out)
     n_w = sum(1 for r in rows if r["Ringstatus"] == "W")
-    n_son = sum(1 for r in rows if r["Art"] in ("Ring Vernichtet", "Art nicht in der Liste (Aves ignota)"))
+    n_son = sum(
+        1 for r in rows if r["Art"] in ("Ring Vernichtet", "Art nicht in der Liste (Aves ignota)")
+    )
     print(f"Wrote {len(rows)} rows to {a.out}")
     print(f"  Erstfänge: {len(rows) - n_w - n_son} · Wiederfänge: {n_w} · Sonderarten: {n_son}")
     arts = {}
     for r in rows:
         arts[r["Art"]] = arts.get(r["Art"], 0) + 1
-    print("  Arten:", ", ".join(f"{k}×{v}" for k, v in sorted(arts.items(), key=lambda x: -x[1])[:8]), "…")
+    print(
+        "  Arten:",
+        ", ".join(f"{k}×{v}" for k, v in sorted(arts.items(), key=lambda x: -x[1])[:8]),
+        "…",
+    )
 
 
 if __name__ == "__main__":
