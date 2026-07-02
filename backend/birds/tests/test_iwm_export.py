@@ -4,9 +4,11 @@ from io import BytesIO
 
 import openpyxl
 import pytest
+from django.utils.timezone import make_aware
 
 from birds.iwm_export import SHEET_NAME, build_iwm_workbook
-from birds.models import DataEntry, Ring, RingingStation
+from birds.iwm_import import commit_import
+from birds.models import DataEntry, Project, Ring, RingingStation
 
 STATIONS_URL = "/api/birds/ringing-stations/"
 
@@ -56,6 +58,30 @@ def test_export_emits_vienna_localtime_for_datum_and_uhrzeit(species, scientist,
 
     assert row["Datum"] == datetime(2026, 7, 1, 0, 0)
     assert row["Uhrzeit"] == time(1, 0)
+
+
+@pytest.mark.django_db
+def test_export_emits_geschlecht_as_authentic_letters(species, scientist, ringing_station):
+    # The authentic Datenmeldung carries Geschlecht as letters U/M/W, not the
+    # integers our model stores (0/1/2) — this is what the importer reads back.
+    for number, sex, code in (
+        ("610", DataEntry.Sex.UNKNOWN, "U"),
+        ("611", DataEntry.Sex.MALE, "M"),
+        ("612", DataEntry.Sex.FEMALE, "W"),
+    ):
+        DataEntry.objects.all().delete()
+        DataEntry.objects.create(
+            species=species,
+            ring=Ring.objects.create(number=number, size=Ring.RingSizes.V),
+            staff=scientist,
+            ringing_station=ringing_station,
+            sex=sex,
+            date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+        )
+
+        row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+        assert row["Geschlecht"] == code
 
 
 @pytest.mark.django_db
@@ -221,8 +247,51 @@ def test_deferred_columns_remain_blank(species, scientist, ringing_station, proj
 
     row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
 
-    for column in ("Zusatzmarkierung", "Zustand", "Brutfleck", "Kloake"):
+    for column in ("Zustand", "Brutfleck", "Kloake"):
         assert row[column] is None
+
+
+@pytest.mark.django_db
+def test_export_emits_category_codes_as_text(species, scientist, ringing_station):
+    # The authentic Datenmeldung carries the category fields as text codes, not
+    # the raw integers our model stores — so export and import round-trip.
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="920", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        fat_deposit=4,
+        muscle_class=2,
+        small_feather_int=1,
+        hand_wing=3,
+        net_location=7,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Fett"] == "4"
+    assert row["Muskel"] == "2"
+    assert row["Intensität"] == "1"
+    assert row["Handschwingen"] == "3"
+    assert row["Netz"] == "7"
+
+
+@pytest.mark.django_db
+def test_export_emits_zusatzmarkierung_zz(species, scientist, ringing_station):
+    # Every authentic Datenmeldung row carries Zusatzmarkierung="ZZ" (no
+    # additional marking), which the importer reads back as a no-op.
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="910", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Zusatzmarkierung"] == "ZZ"
 
 
 @pytest.mark.django_db
@@ -249,3 +318,108 @@ def test_sentinel_entry_exports_art_and_blank_bird_columns(
     assert row["Alter"] is None
     assert row["Geschlecht"] is None
     assert row["Bemerkungen"] == "Produktionsfehler"
+
+
+# --- Export ↔ import round-trip (issue #126) ----------------------------------
+# The export now emits the same authentic codes the importer reads, so the two
+# are inverses: a Projekt's captures exported to a Datenmeldung and re-imported
+# reconstruct equivalent captures. Reuse of the ``build_iwm_workbook`` seam plus
+# the importer's ``commit_import`` proves the whole loop, end to end.
+
+# The capture fields the export writes and the importer reads back — the ones a
+# faithful round-trip must preserve.
+_ROUND_TRIP_FIELDS = (
+    "species_id",
+    "staff_id",
+    "ringing_station_id",
+    "comment",
+    "sex",
+    "age_class",
+    "bird_status",
+    "fat_deposit",
+    "muscle_class",
+    "small_feather_int",
+    "hand_wing",
+    "net_location",
+)
+
+
+@pytest.mark.django_db
+def test_export_import_round_trip_reconstructs_equivalent_captures(
+    species, scientist, ringing_station, project, organization
+):
+    ringing_station.place_code = "AU03"
+    ringing_station.region = "Oberösterreich"
+    ringing_station.country = "Austria"
+    ringing_station.save()
+
+    def _seed(number, **fields):
+        ring, _ = Ring.objects.get_or_create(
+            number=number, size=Ring.RingSizes.V, organization=organization
+        )
+        return DataEntry.objects.create(
+            species=species,
+            ring=ring,
+            staff=scientist,
+            ringing_station=ringing_station,
+            project=project,
+            organization=organization,
+            **fields,
+        )
+
+    # An Erstfang carrying every round-tripping field, and its later Wiederfang
+    # on the same ring (a distinct capture, not a duplicate).
+    _seed(
+        "00604",
+        date_time=make_aware(datetime(2026, 6, 30, 8, 15)),
+        bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+        sex=DataEntry.Sex.MALE,
+        age_class=3,
+        fat_deposit=4,
+        muscle_class=2,
+        small_feather_int=1,
+        hand_wing=3,
+        net_location=7,
+        comment="Zecken am Kopf",
+    )
+    _seed(
+        "00604",
+        date_time=make_aware(datetime(2026, 7, 15, 9, 0)),
+        bird_status=DataEntry.BirdStatus.RE_CATCH,
+        sex=DataEntry.Sex.FEMALE,
+        age_class=5,
+    )
+
+    content = build_iwm_workbook(DataEntry.objects.filter(project=project).order_by("date_time"))
+
+    # Snapshot the source captures keyed by their capture key, then remove them so
+    # the re-import is not skipped as a duplicate of the very data it round-trips.
+    source = {
+        (e.ring.size, e.ring.number, e.date_time): {f: getattr(e, f) for f in _ROUND_TRIP_FIELDS}
+        for e in DataEntry.objects.filter(project=project)
+    }
+    DataEntry.objects.filter(project=project).delete()
+
+    # A fresh Projekt in the same Organisation, so the exported Beringer Kürzel
+    # and Station code resolve to the very same entities (no auto-creation).
+    fresh_project = Project.objects.create(title="Round-Trip", organization=organization)
+    result = commit_import(content, fresh_project)
+
+    assert result["created"] == 2
+    assert result["errors"] == []
+    # The Beringer and Station already exist in the Organisation — reused, not
+    # re-created — so the exported identities re-resolve exactly.
+    assert result["createdBeringer"] == []
+    assert result["createdStationen"] == []
+
+    clones = {
+        (e.ring.size, e.ring.number, e.date_time): e
+        for e in DataEntry.objects.filter(project=fresh_project)
+    }
+    assert set(clones) == set(source)
+    for key, want in source.items():
+        got = clones[key]
+        for field in _ROUND_TRIP_FIELDS:
+            assert getattr(got, field) == want[field], field
+        # Round-tripped into the fresh Projekt's Organisation (ADR 0005).
+        assert got.organization == organization
