@@ -1,7 +1,13 @@
 {% extends "landing/base.html" %}
 {% load static i18n humanize %}
 
-{% block body_class %}page--marketing{% endblock %}
+{% comment %}
+`page--marketing` carries the shared marketing surface (wide measure, top nav);
+`page--home` additionally marks THIS page as the banded long-scroll (issue
+#142) — the legal pages reuse `page--marketing` for the measure but keep the
+default centred main, so the full-bleed treatment must key on `page--home`.
+{% endcomment %}
+{% block body_class %}page--marketing page--home{% endblock %}
 
 {% comment %}
 SEO + Open-Graph share baseline (issue #108): a shared BirdDoc link previews
@@ -71,6 +77,15 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
 {% endblock %}
 
 {% block main %}
+    {% comment %}
+    Page rhythm (issue #142): the sections sit inside full-bleed background
+    bands that alternate the existing surface tokens (ADR 0009 — rhythm, not
+    new colors), so the long scroll reads as distinct movements instead of one
+    undifferentiated column. Exactly one band inverts to the dark ink ground:
+    Für Organisationen & Vogelwarten, further down.
+    {% endcomment %}
+    <div class="band band--paper">
+    <div class="band__inner">
     {% comment %}
     A shared hero thesis opening on the common truth both audiences hold — an
     end to paper-and-Excel documentation. The artifact slot carries the credible
@@ -168,7 +183,11 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             <p><a class="fork__more" href="#organisationen">{% translate "Für Organisationen ansehen" %}</a></p>
         </section>
     </div>
+    </div>
+    </div>
 
+    <div class="band band--sunk">
+    <div class="band__inner">
     {% comment %}
     The Für-Beringer audience section: names the pain (paper + Excel), shows the
     concrete relief (Fang-Karte, smart ring-numbering, the IWM export), carries
@@ -198,7 +217,11 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
         <p class="audience__beta">{% blocktranslate trimmed %}BirdDoc ist in geschlossener Beta und während der Beta <strong>kostenlos</strong>. Trag dich in die Warteliste ein und wir melden uns, sobald ein Zugangscode frei wird.{% endblocktranslate %}</p>
         <p><a class="button" href="{% url 'landing:warteliste' %}">{% translate "Zugang anfragen" %}</a></p>
     </section>
+    </div>
+    </div>
 
+    <div class="band band--paper">
+    <div class="band__inner">
     {% comment %}
     The product-proof section (issue #139): the page never showed the actual
     product, so this shows the app's real German data-entry form as it stands
@@ -280,7 +303,11 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             </div>
         </article>
     </section>
+    </div>
+    </div>
 
+    <div class="band band--sunk">
+    <div class="band__inner">
     {% comment %}
     The Excel-vs-BirdDoc comparison (issue #116, ADR 0014): a small, factual and
     deliberately non-disparaging contrast of the four error types that a by-hand
@@ -315,7 +342,16 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             </li>
         </ul>
     </section>
+    </div>
+    </div>
 
+    {% comment %}
+    The page's ONE dark-inverted band (issue #142): ink ground, paper text — a
+    graver institutional register for the org decision-maker. The Gespräch CTA
+    inside stays the band's most prominent element.
+    {% endcomment %}
+    <div class="band band--ink">
+    <div class="band__inner">
     {% comment %}
     The Für-Organisationen section (issue #105): it has to earn a scheme-level
     decision from a central body such as the Österreichische Vogelwarte — an
@@ -371,7 +407,11 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             <a class="audience__founder" href="{% url 'landing:register' %}">{% translate "Schon einen Zugangscode? Organisation gründen" %}</a>
         </p>
     </section>
+    </div>
+    </div>
 
+    <div class="band band--elev">
+    <div class="band__inner">
     <section class="hosting" aria-label="Hosting">
         <span class="hosting__flag" aria-hidden="true">🇦🇹</span>
         <p>{% blocktranslate trimmed %}<strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben in Österreich bzw. der EU, DSGVO-konform und ohne Drittanbieter-Tracking.{% endblocktranslate %}</p>
@@ -398,4 +438,6 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             </li>
         </ul>
     </section>
+    </div>
+    </div>
 {% endblock %}
