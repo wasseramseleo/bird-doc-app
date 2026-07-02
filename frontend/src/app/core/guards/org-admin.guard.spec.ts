@@ -25,6 +25,7 @@ describe('orgAdminGuard', () => {
       handle: 'ADM',
       isStaff: false,
       rolle: 'admin',
+      organization: null,
     });
 
     expect(runGuard()).toBeTrue();
@@ -36,6 +37,7 @@ describe('orgAdminGuard', () => {
       handle: 'MEM',
       isStaff: false,
       rolle: 'mitglied',
+      organization: null,
     });
 
     const result = runGuard();
