@@ -11,8 +11,11 @@ import {Injectable} from '@angular/core';
  * so existing stores/data are never dropped.
  */
 export const OFFLINE_DB_NAME = 'birddoc-offline';
-export const OFFLINE_DB_VERSION = 1;
-export const OFFLINE_STORES = ['identity'] as const;
+export const OFFLINE_DB_VERSION = 2;
+// v2 (issue #158) adds 'referenceCache' — the offline reference bundle
+// (species pool, org reference data, last-consumed ring numbers) plus its
+// last-refreshed timestamp, read/written by `ReferenceBundleCacheService`.
+export const OFFLINE_STORES = ['identity', 'referenceCache'] as const;
 export type OfflineStoreName = (typeof OFFLINE_STORES)[number];
 
 /**

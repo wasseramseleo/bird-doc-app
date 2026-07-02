@@ -1,0 +1,23 @@
+<div class="offline-readiness" [class.offline-readiness--ready]="isReady()" role="status">
+  <mat-icon class="offline-readiness__icon" aria-hidden="true">
+    {{ isReady() ? 'cloud_done' : 'cloud_off' }}
+  </mat-icon>
+  <span class="offline-readiness__label">
+    {{ isReady() ? 'Offline bereit' : 'Cache wird vorbereitet …' }}
+  </span>
+  @if (lastRefreshedAt(); as refreshedAt) {
+    <span class="offline-readiness__timestamp">
+      zuletzt aktualisiert {{ refreshedAt | date: 'dd.MM.yyyy HH:mm' }}
+    </span>
+  }
+  <button
+    mat-icon-button
+    type="button"
+    class="offline-readiness__refresh"
+    aria-label="Jetzt aktualisieren"
+    [disabled]="refreshing()"
+    (click)="refreshNow()"
+  >
+    <mat-icon>refresh</mat-icon>
+  </button>
+</div>
