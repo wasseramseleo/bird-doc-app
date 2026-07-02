@@ -453,6 +453,133 @@ def test_two_tenant_isolation_has_no_leakage_either_direction(
 
 
 @pytest.mark.django_db
+def test_replaying_create_with_known_idempotency_key_returns_existing_no_duplicate(
+    auth_client, species, scientist, ringing_station
+):
+    """#155: an offline outbox retry replays the exact same create twice — the
+    second POST must return the first capture, not mint a duplicate."""
+    payload = _payload(species, scientist, ringing_station, ring_number="750")
+    payload["idempotency_key"] = "11111111-1111-1111-1111-111111111111"
+
+    first = auth_client.post(LIST_URL, payload, format="json")
+    assert first.status_code == 201, first.json()
+
+    replay = auth_client.post(LIST_URL, payload, format="json")
+    assert replay.status_code == 201, replay.json()
+
+    assert replay.json()["id"] == first.json()["id"]
+    assert DataEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_replay_does_not_mint_a_second_ring(auth_client, species, scientist, ringing_station):
+    """#155: Ring get-or-create (ADR 0006) is unchanged under replay — the
+    short-circuit returns before ever touching Ring, so no second/orphaned
+    Ring is created for the same (size, number)."""
+    payload = _payload(species, scientist, ringing_station, ring_number="751")
+    payload["idempotency_key"] = "22222222-2222-2222-2222-222222222222"
+
+    auth_client.post(LIST_URL, payload, format="json")
+    auth_client.post(LIST_URL, payload, format="json")
+
+    assert Ring.objects.filter(number="751", size=Ring.RingSizes.V).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_with_different_idempotency_keys_creates_two_records(
+    auth_client, species, scientist, ringing_station
+):
+    """A different key is simply a different capture — creates as today."""
+    first_payload = _payload(species, scientist, ringing_station, ring_number="752")
+    first_payload["idempotency_key"] = "33333333-3333-3333-3333-333333333333"
+    second_payload = _payload(species, scientist, ringing_station, ring_number="753")
+    second_payload["idempotency_key"] = "44444444-4444-4444-4444-444444444444"
+
+    first = auth_client.post(LIST_URL, first_payload, format="json")
+    second = auth_client.post(LIST_URL, second_payload, format="json")
+
+    assert first.status_code == 201, first.json()
+    assert second.status_code == 201, second.json()
+    assert first.json()["id"] != second.json()["id"]
+    assert DataEntry.objects.count() == 2
+
+
+@pytest.mark.django_db
+def test_create_without_idempotency_key_behaves_as_today(
+    auth_client, species, scientist, ringing_station
+):
+    """A create with no key at all is unaffected — same as before this feature."""
+    payload = _payload(species, scientist, ringing_station, ring_number="754")
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get()
+    assert entry.idempotency_key is None
+
+
+@pytest.mark.django_db
+def test_two_creates_without_idempotency_key_both_succeed(
+    auth_client, species, scientist, ringing_station
+):
+    """Multiple key-less creates never collide with one another (NULL != NULL)."""
+    first = auth_client.post(
+        LIST_URL, _payload(species, scientist, ringing_station, ring_number="755"), format="json"
+    )
+    second = auth_client.post(
+        LIST_URL, _payload(species, scientist, ringing_station, ring_number="756"), format="json"
+    )
+
+    assert first.status_code == 201, first.json()
+    assert second.status_code == 201, second.json()
+    assert DataEntry.objects.count() == 2
+
+
+@pytest.mark.django_db
+def test_update_does_not_change_idempotency_key(auth_client, species, scientist, ringing_station):
+    """Editing an existing capture must never change its idempotency key, even
+    if the write payload carries a different one."""
+    payload = _payload(species, scientist, ringing_station, ring_number="757")
+    payload["idempotency_key"] = "55555555-5555-5555-5555-555555555555"
+    create = auth_client.post(LIST_URL, payload, format="json")
+    assert create.status_code == 201, create.json()
+    entry_id = create.json()["id"]
+
+    update_payload = _payload(species, scientist, ringing_station, ring_number="757")
+    update_payload["idempotency_key"] = "66666666-6666-6666-6666-666666666666"
+    response = auth_client.put(_detail_url(entry_id), update_payload, format="json")
+
+    assert response.status_code == 200, response.json()
+    entry = DataEntry.objects.get(id=entry_id)
+    assert str(entry.idempotency_key) == "55555555-5555-5555-5555-555555555555"
+
+
+@pytest.mark.django_db
+def test_idempotency_replay_is_scoped_to_the_recording_organisation(
+    auth_client, auth_client_b, species, scientist, ringing_station, scientist_b, ringing_station_b
+):
+    """A key that happens to collide across two tenants (freak accident or a
+    malicious probe) must never hand tenant A's capture back to tenant B — the
+    replay match is scoped to the recording Organisation (ADR 0005)."""
+    shared_key = "77777777-7777-7777-7777-777777777777"
+    payload_a = _payload(species, scientist, ringing_station, ring_number="758")
+    payload_a["idempotency_key"] = shared_key
+
+    created = auth_client.post(LIST_URL, payload_a, format="json")
+    assert created.status_code == 201, created.json()
+
+    payload_b = _payload(species, scientist_b, ringing_station_b, ring_number="759")
+    payload_b["idempotency_key"] = shared_key
+
+    response_b = auth_client_b.post(LIST_URL, payload_b, format="json")
+
+    # Tenant B's own, independent capture is created — never tenant A's record.
+    assert response_b.status_code == 201, response_b.json()
+    assert response_b.json()["id"] != created.json()["id"]
+    assert DataEntry.objects.count() == 2
+
+
+@pytest.mark.django_db
 def test_filter_by_ring_size_and_number(auth_client, species, scientist, ringing_station):
     target_ring = Ring.objects.create(number="123", size=Ring.RingSizes.V)
     other_ring = Ring.objects.create(number="124", size=Ring.RingSizes.V)

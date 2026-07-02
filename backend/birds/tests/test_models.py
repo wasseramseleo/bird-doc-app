@@ -1,13 +1,24 @@
 import importlib
+import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
 from django.apps import apps as global_apps
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 
-from birds.models import Organization, Project, RingingStation, Scientist, Species, SpeciesList
+from birds.models import (
+    DataEntry,
+    Organization,
+    Project,
+    Ring,
+    RingingStation,
+    Scientist,
+    Species,
+    SpeciesList,
+)
 
 seed_migration = importlib.import_module(
     "birds.migrations.0034_seed_iwm_station_and_project_context"
@@ -196,3 +207,54 @@ def test_saving_inactive_list_does_not_deactivate_siblings(user):
 
     active.refresh_from_db()
     assert active.is_active is True
+
+
+@pytest.mark.django_db
+def test_idempotency_key_enforces_db_uniqueness(species, scientist, ringing_station):
+    """#155: the uniqueness guarantee lives at the DB layer, not just in the
+    view/serializer — a direct ORM create with a duplicate key is rejected."""
+    key = uuid.uuid4()
+    ring_a = Ring.objects.create(number="501", size=Ring.RingSizes.V)
+    ring_b = Ring.objects.create(number="502", size=Ring.RingSizes.V)
+    DataEntry.objects.create(
+        species=species,
+        ring=ring_a,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+        idempotency_key=key,
+    )
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        DataEntry.objects.create(
+            species=species,
+            ring=ring_b,
+            staff=scientist,
+            ringing_station=ringing_station,
+            date_time=datetime(2026, 1, 1, tzinfo=UTC),
+            idempotency_key=key,
+        )
+
+
+@pytest.mark.django_db
+def test_idempotency_key_null_does_not_collide(species, scientist, ringing_station):
+    """Absent keys (the pre-#155 default) never collide with one another."""
+    ring_a = Ring.objects.create(number="503", size=Ring.RingSizes.V)
+    ring_b = Ring.objects.create(number="504", size=Ring.RingSizes.V)
+
+    DataEntry.objects.create(
+        species=species,
+        ring=ring_a,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    DataEntry.objects.create(
+        species=species,
+        ring=ring_b,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    assert DataEntry.objects.filter(idempotency_key__isnull=True).count() == 2

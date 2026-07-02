@@ -222,6 +222,13 @@ export class DataEntryFormComponent implements OnInit {
   // special_kind === 'ring_destroyed', not the German name.
   private readonly ringDestroyedSpecies = signal<Species | null>(null);
 
+  // #155: a fresh client-generated UUID identifies this capture-create attempt
+  // end-to-end, so a retried/replayed offline-outbox create is never duplicated
+  // server-side (the idempotency keystone for PRD #152). Regenerated after
+  // every successful create in cleanReset(); edit mode never sends it (see
+  // transformFromForm), so editing an existing capture never touches its key.
+  private idempotencyKey = crypto.randomUUID();
+
   // Autocomplete Observables
   filteredSpecies!: Observable<Species[]>;
   filteredStations!: Observable<RingingStation[]>;
@@ -798,6 +805,12 @@ export class DataEntryFormComponent implements OnInit {
       payload.project_id = project.id;
     }
 
+    // #155: only a create carries the idempotency key — editing an existing
+    // capture must never change it (the backend also enforces this).
+    if (!this.isEditMode()) {
+      payload.idempotency_key = this.idempotencyKey;
+    }
+
     delete payload.species;
     delete payload.ringing_station;
     delete payload.staff;
@@ -961,6 +974,9 @@ export class DataEntryFormComponent implements OnInit {
 
     this.selectedSpecies.set(null);
     this.recaptureHistory.set([]);
+    // #155: the just-saved capture "used up" this key — the next capture
+    // (this same form instance, no navigation) must mint its own.
+    this.idempotencyKey = crypto.randomUUID();
   }
 
   // #24: restore the loaded record's saved values, dropping the user's edits and

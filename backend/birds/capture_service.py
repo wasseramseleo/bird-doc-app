@@ -78,6 +78,7 @@ def create_capture(
     organization=None,
     project=None,
     comment=None,
+    idempotency_key=None,
     **bird_data,
 ):
     """Create a ``DataEntry`` from resolved inputs, applying every capture
@@ -91,12 +92,26 @@ def create_capture(
     left unset ``DataEntry.save()`` falls back to the Station's Organisation, so
     every capture stays org-owned. In order:
 
+    * a known ``idempotency_key`` (issue #155, PRD #152) short-circuits the
+      whole call — the existing ``DataEntry`` is returned unchanged, minting no
+      new Ring and running no validation, so a retried/replayed offline-outbox
+      create is always safe. The key is unique per ``organization`` (mirroring
+      Ring, ADR 0006), and the lookup itself is scoped the same way, so a
+      freak/malicious cross-tenant key collision can never hand one
+      Organisation's capture back to another's request (ADR 0005);
     * the mandatory-Bemerkung rule for *Aves ignota* is enforced (nothing is
       written on failure — a ``CaptureValidationError`` is raised);
     * the Ring is get-or-created scoped to ``organization`` (ADR 0006);
     * for a *Ring Vernichtet* Sonderart every bird-data field is forced null,
       whatever the caller sent (ADR 0004).
     """
+    if idempotency_key is not None:
+        existing = DataEntry.objects.filter(
+            idempotency_key=idempotency_key, organization=organization
+        ).first()
+        if existing is not None:
+            return existing
+
     validate_capture(species, comment)
 
     fields = dict(bird_data)
@@ -115,6 +130,7 @@ def create_capture(
         project=project,
         date_time=date_time,
         comment=comment,
+        idempotency_key=idempotency_key,
         **fields,
     )
 

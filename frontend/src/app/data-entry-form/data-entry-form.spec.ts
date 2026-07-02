@@ -743,6 +743,22 @@ describe('DataEntryFormComponent', () => {
       expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
     });
 
+    it('never sends idempotency_key on an edit (#155): editing must not touch the create key', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+
+      f.componentInstance.onSubmit();
+
+      const putReq = httpMock.expectOne(
+        (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
+      );
+      expect(putReq.request.body.idempotency_key).toBeUndefined();
+      putReq.flush(savedEntry());
+    });
+
     it('lets Enter on the focused "Zur Liste" button activate it (#59, not suppressed)', async () => {
       const { f, httpMock } = await setupEditMode('42');
       f.detectChanges();
@@ -1606,6 +1622,59 @@ describe('DataEntryFormComponent', () => {
       resetButton.click();
       expect(spy).toHaveBeenCalled();
     });
+  });
+
+  describe('capture idempotency key (#155, offline outbox groundwork)', () => {
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    it('sends a fresh client-generated UUID as idempotency_key on create', () => {
+      fillValidWiederfang();
+      component.onSubmit();
+
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(post.request.body.idempotency_key).toMatch(UUID_PATTERN);
+      post.flush({});
+    });
+
+    it('sends a different idempotency_key for the next capture after a successful save', fakeAsync(() => {
+      fillValidWiederfang();
+      component.onSubmit();
+      const firstPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const firstKey = firstPost.request.body.idempotency_key;
+      firstPost.flush({});
+      tick(900); // drain the "Gespeichert ✓" timer started by cleanReset()
+
+      fillValidWiederfang();
+      component.onSubmit();
+      const secondPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(secondPost.request.body.idempotency_key).not.toBe(firstKey);
+      secondPost.flush({});
+      tick(900);
+    }));
   });
 
   describe('inline autocomplete validation for Art/Station/Beringer (#58)', () => {
