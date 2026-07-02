@@ -505,6 +505,31 @@ describe('DataAccessFacadeService', () => {
         const result = await resultPromise;
         expect(result.next_number).toBe('0043');
       });
+
+      it('falls back to the cache-derived suggestion instead of erroring when the own-queue read fails', async () => {
+        await cache.save({
+          bundle: {
+            ...EMPTY_BUNDLE,
+            last_consumed_ring_numbers: [{project_id: 'p1', size: RingSize.V, number: '0042'}],
+          },
+          refreshedAt: '2026-06-01T09:00:00.000Z',
+        });
+        // A broken IndexedDB read (quota exceeded, blocked storage, or a DB
+        // open failure right after crash/reboot recovery) must degrade to
+        // "nothing queued" rather than error the suggestion out from under
+        // the Mitglied while they are already offline.
+        spyOn(TestBed.inject(OutboxService), 'listOwnQueued').and.returnValue(
+          Promise.reject(new Error('IndexedDB blocked')),
+        );
+
+        const resultPromise = firstValueFrom(service.getNextRingNumber(RingSize.V, 'p1'));
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'))
+          .error(new ProgressEvent('error'));
+
+        const result = await resultPromise;
+        expect(result.next_number).toBe('0043');
+      });
     });
   });
 

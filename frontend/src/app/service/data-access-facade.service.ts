@@ -105,13 +105,17 @@ export class DataAccessFacadeService {
    * Incremented by one exactly like the online suggestion
    * (`RingViewSet._increment`) — leading-zero width preserved, `null` for a
    * non-numeric number. Unlike online, there is no project-less/global
-   * fallback: the cached bundle only ever groups by `(project, size)`.
+   * fallback: the cached bundle only ever groups by `(project, size)`. Both
+   * the cache read ({@link loadCache}) and the own-queue read
+   * ({@link loadOwnQueued}) are best-effort — a broken read degrades to
+   * "nothing there" rather than erroring the suggestion out from under the
+   * Mitglied.
    */
   getNextRingNumber(size: RingSize, projectId?: string): Observable<{next_number: string | null}> {
     return this.withOfflineFallback(this.api.getNextRingNumber(size, projectId), () =>
       this.loadCache().pipe(
         switchMap((cached) =>
-          from(this.outbox.listOwnQueued()).pipe(
+          this.loadOwnQueued().pipe(
             map((queued) => {
               const ringDestroyedSpeciesIds = new Set(
                 (cached?.bundle.species ?? [])
@@ -185,6 +189,24 @@ export class DataAccessFacadeService {
       catchError((error: unknown) => {
         console.error('Failed to read the offline reference cache', error);
         return of(null);
+      }),
+    );
+  }
+
+  /**
+   * Best-effort own-queue read (issue #162), mirroring {@link loadCache}: a
+   * broken IndexedDB read (quota exceeded, blocked/disabled storage, or a DB
+   * open failure right after crash/reboot recovery — see
+   * `IndexedDbStore.openDb()`) must degrade to "nothing queued" rather than
+   * error the ring-number suggestion out from under the Mitglied while they
+   * are already offline. The cache-derived suggestion still applies in that
+   * case.
+   */
+  private loadOwnQueued(): Observable<OutboxEntry[]> {
+    return from(this.outbox.listOwnQueued()).pipe(
+      catchError((error: unknown) => {
+        console.error('Failed to read the offline outbox queue', error);
+        return of([]);
       }),
     );
   }
