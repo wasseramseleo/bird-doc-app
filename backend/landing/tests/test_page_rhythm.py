@@ -16,6 +16,8 @@ styling-proxy assertions live here.
 
 import re
 
+import pytest
+
 # The band wrappers proper (`band band--<surface>`), not the .band__inner
 # content column each one re-centres on the measure.
 BAND_OPEN = re.compile(r'<div class="(band band--[a-z]+)">')
@@ -53,6 +55,26 @@ def test_exactly_one_dark_band_and_it_is_fuer_organisationen(client):
     # None of the other section anchors ride along inside the dark band.
     for anchor in ('id="fuer-beringer"', 'id="fang-formular"', 'id="preise"'):
         assert anchor not in segment, f"{anchor} leaked into the dark band"
+
+
+def test_home_carries_the_page_home_body_class(client):
+    # The full-bleed treatment (unbounded .site-main + bands) keys on the
+    # `page--home` body class, which only home.html declares — that class is
+    # the seam that keeps the banding off every other page--marketing page.
+    content = client.get("/").content.decode()
+    assert '<body class="page--marketing page--home">' in content
+
+
+@pytest.mark.parametrize("path", ["/impressum/", "/datenschutz/", "/agb/"])
+def test_legal_pages_share_the_marketing_measure_but_not_the_banding(client, path):
+    # The legal pages reuse `page--marketing` for the wider measure (issue
+    # #116) but keep base.html's default centred panel main: no `page--home`,
+    # no band wrappers — the regression this pins painted the Impressum panel
+    # edge-to-edge once the unbounded-main rule keyed on `page--marketing`.
+    content = client.get(path).content.decode()
+    assert '<body class="page--marketing">' in content
+    assert "page--home" not in content
+    assert not BAND_OPEN.search(content)
 
 
 def test_dark_band_keeps_the_gespraech_cta_as_its_button(client):

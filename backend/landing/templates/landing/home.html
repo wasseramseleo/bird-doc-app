@@ -1,7 +1,13 @@
 {% extends "landing/base.html" %}
 {% load static i18n humanize %}
 
-{% block body_class %}page--marketing{% endblock %}
+{% comment %}
+`page--marketing` carries the shared marketing surface (wide measure, top nav);
+`page--home` additionally marks THIS page as the banded long-scroll (issue
+#142) — the legal pages reuse `page--marketing` for the measure but keep the
+default centred main, so the full-bleed treatment must key on `page--home`.
+{% endcomment %}
+{% block body_class %}page--marketing page--home{% endblock %}
 
 {% comment %}
 SEO + Open-Graph share baseline (issue #108): a shared BirdDoc link previews
