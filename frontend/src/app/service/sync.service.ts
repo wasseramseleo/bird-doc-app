@@ -44,6 +44,15 @@ const NOTHING_TO_SYNC: SyncResult = {total: 0, synced: 0};
  *   #152's next slice, out of scope here) so the still-queued remainder is
  *   untouched and simply retried, under the same key, by the next
  *   `syncNow()` call — never duplicated server-side.
+ * - **Account-switch-safe mid-replay**: `AuthService.currentUser()` is a
+ *   live, session-cookie-backed signal — it can change *during* the
+ *   `await`-per-entry loop (a shared/offline device where Mitglied B logs in,
+ *   including from another tab, while A's queue is still replaying). The
+ *   loop re-checks it before every entry and aborts — leaving the remainder
+ *   queued, exactly like the stop-on-failure path — the moment it no longer
+ *   matches the `accountKey` this run started with, so a mid-flight switch
+ *   can never have the rest of A's captures POSTed and attributed to B's
+ *   session/organization.
  * - Only entries that are actually confirmed synced (the POST succeeded
  *   *and* the local dequeue landed) are removed from the outbox, via
  *   `OutboxService.dequeue()` — which keeps `OutboxService.pendingCount`
@@ -92,6 +101,16 @@ export class SyncService {
 
       let synced = 0;
       for (const entry of entries) {
+        if (this.auth.currentUser()?.username !== accountKey) {
+          // The active account changed mid-replay (a shared/offline device
+          // where another Mitglied logged in — even from another tab, since
+          // the session cookie is shared). The remaining entries are still
+          // this run's `accountKey`'s payloads: abort rather than let them
+          // be POSTed and silently attributed to the new session/org, and
+          // leave them queued for that account's own next sync.
+          console.warn('Aborting outbox sync: active account changed mid-replay; remaining entries stay queued');
+          break;
+        }
         const ok = await this.syncEntry(entry);
         if (!ok) {
           break;

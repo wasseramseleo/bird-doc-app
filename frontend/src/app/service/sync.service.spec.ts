@@ -284,6 +284,42 @@ describe('SyncService', () => {
     expect(await outboxStore.list()).toEqual([makeEntry()]);
   });
 
+  it('aborts the replay when the active account changes mid-flight, leaving the remainder queued (account-switch safety)', async () => {
+    auth.currentUser.set(authUser({username: 'fre'}));
+    await outboxStore.add(
+      makeEntry({id: 'uuid-1', accountKey: 'fre', queuedAt: '2026-07-02T09:00:00.000Z', payload: {idempotency_key: 'uuid-1'}}),
+    );
+    await outboxStore.add(
+      makeEntry({id: 'uuid-2', accountKey: 'fre', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+    );
+
+    const resultPromise = firstValueFrom(service.syncNow());
+    await settle();
+    expectCsrfFetch().flush(meResponse());
+    await settle();
+
+    expectCreatePost().flush({id: 'server-1'}); // uuid-1 syncs while still 'fre'
+
+    // A different Mitglied logs in on the same shared/offline device (or
+    // another tab sharing the session cookie) — before the loop reaches its
+    // pre-entry check for uuid-2, so it must abort there instead of
+    // replaying uuid-2 too.
+    auth.currentUser.set(authUser({username: 'anm'}));
+    await settle();
+
+    const result = await resultPromise;
+    expect(result).toEqual({total: 2, synced: 1});
+
+    // uuid-2 was never POSTed under 'anm''s session/org, and stays queued
+    // under its original account for 'fre''s next sync.
+    const remaining = await outboxStore.list();
+    expect(remaining.map((e) => e.id)).toEqual(['uuid-2']);
+    // The singleton flag must not be left stuck true across the switch —
+    // otherwise 'anm''s own "sync on app start" auto-trigger would be a
+    // silent no-op.
+    expect(service.syncing()).toBeFalse();
+  });
+
   it('reflects the in-progress state via the syncing() signal', async () => {
     auth.currentUser.set(authUser());
     await outboxStore.add(makeEntry());
