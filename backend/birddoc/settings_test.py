@@ -16,4 +16,11 @@ import os
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-only-secret-key-do-not-use-anywhere")
 
+# An empty ``DATABASE_URL`` (as the test gate passes to blank any inherited value)
+# is not a valid database URL — ``env.db`` would fail to parse it instead of
+# falling back to the sqlite default. Treat empty-as-unset so the suite always
+# runs against the isolated sqlite test database.
+if not os.environ.get("DATABASE_URL"):
+    os.environ.pop("DATABASE_URL", None)
+
 from birddoc.settings import *  # noqa: E402,F401,F403

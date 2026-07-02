@@ -4,11 +4,38 @@ from pathlib import Path
 import openpyxl
 from django.utils.timezone import localtime
 
+from .models import DataEntry
+
 TEMPLATE_PATH = (
     Path(__file__).resolve().parent / "templates" / "iwm" / "Datenmeldung_Vorlage_IWM.xlsx"
 )
 SHEET_NAME = "Fangdaten"
 SCHEME_CODE = "AUW"
+
+# "No additional marking" — every authentic Datenmeldung row carries it (the
+# importer reads and discards it, having no model field to land it in).
+ZUSATZMARKIERUNG = "ZZ"
+
+# The model stores Geschlecht as an integer (0/1/2); the authentic sheet carries
+# it as a letter (U/M/W). This mapping is the inverse of the importer's, so
+# export and import round-trip.
+_SEX_TO_CODE = {
+    DataEntry.Sex.UNKNOWN: "U",
+    DataEntry.Sex.MALE: "M",
+    DataEntry.Sex.FEMALE: "W",
+}
+
+
+def _sex_code(entry):
+    """The authentic Geschlecht letter for a capture, or ``None`` when unset (a
+    Sonderart row carries no sex)."""
+    return _SEX_TO_CODE.get(entry.sex)
+
+
+def _text_code(value):
+    """An authentic category code is text in the sheet; write the integer the
+    model stores as a string, leaving a blank cell blank."""
+    return None if value is None else str(value)
 
 
 def _geo_coordinates(entry):
@@ -33,14 +60,15 @@ def _build_comment(entry):
 
 
 # IWM header text → callable(entry) -> cell value (None = leave blank).
-# Headers absent from this map (Zusatzmarkierung, Zustand, Brutfleck, Kloake)
-# are still deferred per the task brief and written as empty.
+# Headers absent from this map (Zustand, Brutfleck, Kloake) are still deferred
+# per the task brief and written as empty.
 COLUMN_MAP = {
     "Ring": lambda e: SCHEME_CODE,
     "Ringnummer": lambda e: f"{e.ring.size}{e.ring.number}",
     "Ringstatus": lambda e: e.bird_status.upper() if e.bird_status else None,
     "Art": lambda e: e.species.common_name_de,
-    "Geschlecht": lambda e: e.sex,
+    "Zusatzmarkierung": lambda e: ZUSATZMARKIERUNG,
+    "Geschlecht": _sex_code,
     "Alter": lambda e: e.age_class,
     "Datum": lambda e: localtime(e.date_time).date(),
     "Uhrzeit": lambda e: localtime(e.date_time).time(),
@@ -48,12 +76,12 @@ COLUMN_MAP = {
     "Teilfederlänge": lambda e: e.feather_span,
     "Gewicht": lambda e: e.weight_gram,
     "Tarsus": lambda e: e.tarsus,
-    "Fett": lambda e: e.fat_deposit,
-    "Muskel": lambda e: e.muscle_class,
-    "Intensität": lambda e: e.small_feather_int,
+    "Fett": lambda e: _text_code(e.fat_deposit),
+    "Muskel": lambda e: _text_code(e.muscle_class),
+    "Intensität": lambda e: _text_code(e.small_feather_int),
     "Fortschritt": lambda e: e.small_feather_app,
-    "Handschwingen": lambda e: e.hand_wing,
-    "Netz": lambda e: e.net_location,
+    "Handschwingen": lambda e: _text_code(e.hand_wing),
+    "Netz": lambda e: _text_code(e.net_location),
     "Ort": lambda e: e.ringing_station.name if e.ringing_station else None,
     "Land": lambda e: e.ringing_station.country or None if e.ringing_station else None,
     "Region": lambda e: e.ringing_station.region or None if e.ringing_station else None,

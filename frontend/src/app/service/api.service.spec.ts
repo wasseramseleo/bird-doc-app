@@ -198,4 +198,35 @@ describe('ApiService', () => {
     expect(req.request.body).toEqual({ message: 'Die Ringgröße lässt sich nicht speichern.' });
     req.flush(null);
   });
+
+  it('importIwmDryRun POSTs the file as multipart to the project import route (no commit)', () => {
+    const file = new File(['xlsx-bytes'], 'meldung.xlsx');
+
+    service.importIwmDryRun('proj-1', file).subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'POST' && r.url.endsWith('/birds/projects/proj-1/import-iwm/'),
+    );
+    const body = req.request.body as FormData;
+    expect(body instanceof FormData).toBeTrue();
+    expect(body.get('file')).toBe(file);
+    // A dry-run must not carry the commit flag, or it would write.
+    expect(body.has('commit')).toBeFalse();
+    req.flush({ importable: 0, duplicates: 0, errors: [], warnings: [], toCreate: { beringer: [], stationen: [] }, cap: { limit: 5000, exceeded: false } });
+  });
+
+  it('importIwmCommit POSTs the file with commit=true as multipart', () => {
+    const file = new File(['xlsx-bytes'], 'meldung.xlsx');
+
+    service.importIwmCommit('proj-1', file).subscribe();
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'POST' && r.url.endsWith('/birds/projects/proj-1/import-iwm/'),
+    );
+    const body = req.request.body as FormData;
+    expect(body instanceof FormData).toBeTrue();
+    expect(body.get('file')).toBe(file);
+    expect(body.get('commit')).toBe('true');
+    req.flush({ created: 0, duplicatesSkipped: 0, errors: [], createdBeringer: [], createdStationen: [] });
+  });
 });

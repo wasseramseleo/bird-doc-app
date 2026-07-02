@@ -23,7 +23,10 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-extend-exclude = ["*/migrations/*"]
+# Migrations are generated; the birds/demo standalone data-generation scripts
+# hold wide literal data tables and are not part of the app runtime — both are
+# exempt from lint/format like generated code.
+extend-exclude = ["*/migrations/*", "*/demo/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

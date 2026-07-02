@@ -7,6 +7,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { PageEvent } from '@angular/material/paginator';
+import { MatDialog } from '@angular/material/dialog';
+import { of } from 'rxjs';
 
 import { DataEntryListComponent } from './data-entry-list';
 
@@ -20,6 +22,7 @@ describe('DataEntryListComponent', () => {
   let component: DataEntryListComponent;
   let httpMock: HttpTestingController;
   let currentProject: ReturnType<typeof signal<Project | null>>;
+  let dialog: jasmine.SpyObj<MatDialog>;
 
   const project = {
     id: 'p1',
@@ -54,6 +57,7 @@ describe('DataEntryListComponent', () => {
 
   beforeEach(async () => {
     currentProject = signal<Project | null>(project);
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
       imports: [DataEntryListComponent],
@@ -67,6 +71,7 @@ describe('DataEntryListComponent', () => {
           provide: ProjectService,
           useValue: { currentProject, setCurrent: () => {}, clear: () => {} },
         },
+        { provide: MatDialog, useValue: dialog },
       ],
     }).compileComponents();
 
@@ -165,6 +170,50 @@ describe('DataEntryListComponent', () => {
     const afterSwitch = flushEntries([row({})]);
     expect(component.pageIndex()).toBe(0);
     expect(afterSwitch.request.params.get('page')).toBe('1');
+  });
+
+  function importButton(): HTMLButtonElement {
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
+    return buttons.find((b) => b.textContent?.includes('Import'))!;
+  }
+
+  it('enables the Import button only once a Projekt is selected', () => {
+    flushEntries([row({})]);
+    // A Projekt is active (the default fixture): the button is live.
+    expect(importButton().disabled).toBeFalse();
+
+    // Without a selected Projekt there is no unambiguous target, so it is disabled.
+    currentProject.set(null);
+    fixture.detectChanges();
+    expect(importButton().disabled).toBeTrue();
+  });
+
+  it('opens the import dialog for the active Projekt and refreshes the list after a commit', () => {
+    flushEntries([row({ id: 'before-import' })]);
+
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+    importButton().click();
+
+    expect(dialog.open).toHaveBeenCalled();
+    const data = dialog.open.calls.mostRecent().args[1]?.data as { projectId: string };
+    expect(data.projectId).toBe('p1');
+
+    // A committed import refreshes the capture list so the new Fänge appear.
+    const reload = flushEntries([row({ id: 'after-import' })]);
+    expect(reload.request.params.get('project')).toBe('p1');
+    expect(component.entries().map((e) => e.id)).toEqual(['after-import']);
+  });
+
+  it('does not refresh the list when the import dialog is cancelled', () => {
+    flushEntries([row({})]);
+
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+    component.openImport();
+
+    // Cancelling wrote nothing, so no reload request is issued.
+    httpMock.verify();
   });
 
   it('clears the search box on Projekt switch', () => {
