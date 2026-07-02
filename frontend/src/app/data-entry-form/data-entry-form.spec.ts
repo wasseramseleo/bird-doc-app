@@ -1886,6 +1886,154 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // Issue #162 extends the #160 tracer bullet to every capture kind. A
+  // Wiederfang offline-enqueue is already proven above (the #160 describe
+  // block's own `fillValidWiederfang()` fixture *is* a Wiederfang — chosen
+  // there precisely because BirdStatus.ReCatch never triggers the
+  // Ringnummer-suggestion effect, keeping that block's HTTP mocking minimal).
+  // This block covers what #160 did not: the two Sonderarten.
+  describe('offline Sonderarten (#162): Ring vernichtet and Aves ignota enqueue like any other capture', () => {
+    let httpMock: HttpTestingController;
+
+    const RING_VERNICHTET: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      special_kind: 'ring_destroyed',
+    };
+
+    const AVES_IGNOTA: Species = {
+      id: 'aves',
+      common_name_de: 'Art nicht in der Liste (Aves ignota)',
+      common_name_en: 'Species not listed',
+      scientific_name: 'Aves ignota',
+      family_name: '—',
+      order_name: '—',
+      ring_size: null,
+      special_kind: 'unknown_species',
+    };
+
+    function selectSpecies(species: Species): void {
+      component.onSpeciesSelected({ option: { value: species } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+    }
+
+    // A genuine network-level failure (status 0) — the offline simulation
+    // used throughout PRD #152 (see the #160 describe block above).
+    function respondOffline(): void {
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+    }
+
+    // Same real-IndexedDB polling rationale as the #160 block above.
+    async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+      const start = Date.now();
+      while (!predicate()) {
+        if (Date.now() - start > timeoutMs) {
+          throw new Error('Timed out waiting for the offline outbox write to settle.');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    afterEach(async () => {
+      localStorage.clear();
+      const db = TestBed.inject(IndexedDbStore);
+      const entries = await db.getAll<{ id: string }>('outbox');
+      await Promise.all(entries.map((entry) => db.delete('outbox', entry.id)));
+    });
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+    });
+
+    it('enqueues a Ring vernichtet capture offline once the collapsed form is filled in', async () => {
+      const form = component.entryForm;
+      form.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: RING_VERNICHTET as never,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      selectSpecies(RING_VERNICHTET);
+
+      expect(component.isRingDestroyed()).toBe(true);
+      expect(form.valid).toBe(true);
+
+      component.onSubmit();
+      respondOffline();
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      const entries = await TestBed.inject(OutboxStoreService).list();
+      expect(entries.length).toBe(1);
+      const payload = entries[0].payload as { species_id?: string; ring_number?: string };
+      expect(payload.species_id).toBe(RING_VERNICHTET.id);
+      expect(payload.ring_number).toBe('901234');
+    });
+
+    it('refuses to submit an Aves ignota capture offline without the mandatory Bemerkung, and never enqueues it', async () => {
+      const form = component.entryForm;
+      form.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: AVES_IGNOTA as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+        comment: null,
+      });
+      selectSpecies(AVES_IGNOTA);
+
+      expect(component.isUnknownSpecies()).toBe(true);
+      expect(form.invalid).toBe(true);
+
+      component.onSubmit();
+
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+      const entries = await TestBed.inject(OutboxStoreService).list();
+      expect(entries.length).toBe(0);
+    });
+
+    it('enqueues an Aves ignota capture offline once the mandatory Bemerkung is filled in, exactly as online', async () => {
+      const form = component.entryForm;
+      form.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: AVES_IGNOTA as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+        comment: 'Seltener Irrgast, nicht sicher bestimmbar.',
+      });
+      selectSpecies(AVES_IGNOTA);
+
+      expect(form.valid).toBe(true);
+
+      component.onSubmit();
+      respondOffline();
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      const entries = await TestBed.inject(OutboxStoreService).list();
+      expect(entries.length).toBe(1);
+      const payload = entries[0].payload as { species_id?: string; comment?: string };
+      expect(payload.species_id).toBe(AVES_IGNOTA.id);
+      expect(payload.comment).toBe('Seltener Irrgast, nicht sicher bestimmbar.');
+    });
+  });
+
   describe('inline autocomplete validation for Art/Station/Beringer (#58)', () => {
     let httpMock: HttpTestingController;
 

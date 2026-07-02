@@ -36,6 +36,7 @@ describe('OutboxService', () => {
   afterEach(async () => {
     await db.delete('outbox', 'uuid-1');
     await db.delete('outbox', 'uuid-2');
+    await db.delete('outbox', 'uuid-3');
   });
 
   it('starts at a pending count of zero when nothing was ever queued', async () => {
@@ -191,6 +192,59 @@ describe('OutboxService', () => {
 
       const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
       expect(stored.map((e) => e.id)).toEqual(['uuid-1']);
+    });
+  });
+
+  describe('listOwnQueued() (issue #162: the offline ring-suggestion own-queue fold-in)', () => {
+    it('returns an empty list when nothing has ever been queued', async () => {
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(await service.listOwnQueued()).toEqual([]);
+    });
+
+    it('returns only the currently authenticated account\'s own queued entries, oldest-first', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      // Another Mitglied's entry, queued in between on this same shared
+      // device — the tenancy boundary must never fold it into "own queue".
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-2',
+        accountKey: 'anm',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:02:00.000Z',
+      });
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-3',
+        accountKey: 'fre',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:05:00.000Z',
+      });
+
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      const own = await service.listOwnQueued();
+      expect(own.map((e) => e.id)).toEqual(['uuid-1', 'uuid-3']);
+    });
+
+    it('returns an empty list when no account is authenticated', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      auth.currentUser.set(null);
+
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(await service.listOwnQueued()).toEqual([]);
     });
   });
 });
