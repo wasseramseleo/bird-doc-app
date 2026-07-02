@@ -1,5 +1,6 @@
 import {inject, Injectable, signal} from '@angular/core';
 import {HttpErrorResponse} from '@angular/common/http';
+import {Router} from '@angular/router';
 import {firstValueFrom, from, Observable, of, tap} from 'rxjs';
 
 import {ApiService} from './api.service';
@@ -102,6 +103,7 @@ export class SyncService {
   private readonly outbox = inject(OutboxService);
   private readonly pendingBeringer = inject(PendingBeringerService);
   private readonly outboxStore = inject(OutboxStoreService);
+  private readonly router = inject(Router);
 
   private readonly syncingState = signal(false);
   readonly syncing = this.syncingState.asReadonly();
@@ -193,6 +195,17 @@ export class SyncService {
       }
       return {total: entries.length, synced, flagged};
     } catch (error) {
+      if (isSessionExpired(error)) {
+        // The session expired while the device was offline — a 401 from the
+        // CSRF refresh, the first request of a run, since a device offline for
+        // up to ~30 days may hold a cookie the server has since let expire
+        // (issue #165). Pause the whole replay — the queue is untouched — and
+        // prompt a normal re-login; the same account's queue resumes on the
+        // next sync after re-login (its entries are still safely queued under
+        // its accountKey).
+        this.promptReLogin();
+        return NOTHING_TO_SYNC;
+      }
       // The CSRF refresh (or the initial account-scoped read) itself never
       // reached the server — nothing was attempted, so report it exactly
       // like "nothing to do" rather than a misleading partial failure.
@@ -223,6 +236,22 @@ export class SyncService {
       console.error('Failed to sync a quick-added Beringer; it and its captures remain queued', error);
       return null;
     }
+  }
+
+  /**
+   * Pauses sync on an expired session and prompts a normal re-login (issue
+   * #165): invalidates the client session (`AuthService.sessionExpired()` —
+   * so the authenticated shell hides and `guestGuard` admits `/login`, and no
+   * stale identity survives an offline boot) and routes to `/login`, carrying
+   * a `next` param back to where the Mitglied was so login returns them there.
+   * The durable outbox is deliberately untouched — the same account's queue
+   * resumes on the first sync after re-login.
+   */
+  private promptReLogin(): void {
+    const current = this.router.url;
+    const next = current && current !== '/login' ? current : '/';
+    this.auth.sessionExpired();
+    this.router.navigate(['/login'], {queryParams: {next}});
   }
 
   private async syncEntry(entry: OutboxEntry): Promise<EntryOutcome> {
@@ -288,4 +317,14 @@ export class SyncService {
     }
     return error.message || 'Der Server hat den Eintrag abgelehnt.';
   }
+}
+
+/**
+ * A 401 means the *server* rejected the session (expired), as opposed to a
+ * connectivity failure (`status === 0`) — the `/api/auth/me/` CSRF refresh
+ * returns 401 when not authenticated. Used to route an expired session to the
+ * re-login prompt rather than the silent "sync could not start" pause.
+ */
+function isSessionExpired(error: unknown): boolean {
+  return error instanceof HttpErrorResponse && error.status === 401;
 }

@@ -160,6 +160,35 @@ describe('AuthService', () => {
     expect(await referenceBundleCache.load()).toBeNull();
   });
 
+  it('clears currentUser and both caches on sessionExpired(), with no server round trip (issue #165)', async () => {
+    service.currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+    await identityCache.save({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+    await referenceBundleCache.save({bundle: REFERENCE_BUNDLE, refreshedAt: '2026-06-01T09:00:00.000Z'});
+
+    service.sessionExpired();
+    // No logout POST — the session is already gone server-side; httpMock.verify()
+    // in afterEach would fail on an unexpected request.
+    await Promise.resolve();
+    // Let the best-effort cache clears settle.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(service.currentUser()).toBeNull();
+    expect(await identityCache.load()).toBeNull();
+    expect(await referenceBundleCache.load()).toBeNull();
+  });
+
   describe('refreshCsrfToken() (issue #161)', () => {
     it('hits GET /auth/me/ purely for its CSRF-cookie side effect, resolving to void', async () => {
       const resultPromise = firstValueFrom(service.refreshCsrfToken());

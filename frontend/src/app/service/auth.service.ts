@@ -101,6 +101,25 @@ export class AuthService {
   }
 
   /**
+   * Invalidates the client session after the *server* rejected it mid-session
+   * — an expired session surfacing during offline-outbox sync (issue #165).
+   * The sync's CSRF refresh hits `/api/auth/me/`, which the auth interceptor
+   * deliberately exempts from its 401 redirect (that endpoint's own 401 is a
+   * normal "not logged in" for `bootstrap()`), so the sync must invalidate the
+   * client session itself. Clears `currentUser` (so the authenticated shell
+   * hides and `guestGuard` admits `/login`) and both offline caches (so a
+   * later offline boot can't resurrect the expired session) — exactly the
+   * interceptor's non-auth 401 effect — but leaves the durable outbox
+   * untouched, so the queue resumes under the same account once the Mitglied
+   * logs back in. Deliberately no server round trip: the session is already
+   * gone.
+   */
+  sessionExpired(): void {
+    this.currentUser.set(null);
+    void this.clearCaches();
+  }
+
+  /**
    * Clears both the identity cache and the org-scoped reference-bundle cache
    * (issue #158) so a session invalidation never leaves either behind for a
    * different Mitglied to inherit on a shared/offline device. Each cache is

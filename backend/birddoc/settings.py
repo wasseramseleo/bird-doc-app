@@ -174,6 +174,23 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
+# Session lifetime — deliberately long so a Mitglied's identity survives a long
+# offline field trip (PRD #152, issue #165). The offline outbox can hold
+# captures for up to ~30 days between a Station trip and the next sync; if the
+# session expired sooner, a returning Mitglied would be forced to re-login with
+# unsynced captures still queued (and the sync would pause on an expired
+# cookie). We therefore raise the window comfortably above the offline window.
+#
+# BETA THREAT-MODEL TRADE-OFF (documented): a ~30-day authenticated window is
+# longer than a hardened deployment would allow. It is acceptable for the beta —
+# personal laptops used in the field, not shared/kiosk devices — where the cost
+# of stranding queued field data outweighs the risk of a longer session. Revisit
+# before GA or any shared-device use.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30  # 30 days, in seconds
+# Slide the 30-day window forward on every authenticated request, so ongoing
+# online use keeps a device signed in rather than expiring 30 days after login.
+SESSION_SAVE_EVERY_REQUEST = True
+
 # Scope the session cookie to the app subdomain so the Angular SPA and Django
 # /admin (both served from app.birddoc.eu) share one session. Unset in dev so
 # the cookie stays host-only and works on localhost.

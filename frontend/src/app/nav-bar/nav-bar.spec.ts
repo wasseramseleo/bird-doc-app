@@ -5,11 +5,13 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { of } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 
 import { NavBar } from './nav-bar';
 import { ProjectService } from '../service/project.service';
 import { AuthService } from '../service/auth.service';
+import { OutboxService } from '../service/outbox.service';
+import { IndexedDbStore } from '../core/offline/indexed-db-store';
 import { Project } from '../models/project.model';
 import { environment } from '../../environments/environment';
 import { FeedbackDialogComponent } from '../feedback/feedback-dialog/feedback-dialog';
@@ -98,10 +100,82 @@ function openSwitcher(ctx: ReturnType<typeof setup>): HTMLElement[] {
   ) as HTMLElement[];
 }
 
+const QUEUED_ID = 'nav-logout-guard-1';
+
+/**
+ * Signs `fre` in and durably queues one outbox entry for that account, so
+ * `OutboxService.pendingCount()` reads 1 — the non-empty-outbox precondition
+ * for the logout guard (issue #165).
+ */
+async function queueOneCapture(ctx: ReturnType<typeof setup>): Promise<OutboxService> {
+  signIn(ctx, false);
+  const outbox = TestBed.inject(OutboxService);
+  await outbox.ready;
+  await firstValueFrom(outbox.enqueue({idempotency_key: QUEUED_ID, species_id: 's1'}));
+  return outbox;
+}
+
 describe('NavBar', () => {
-  afterEach(() => {
+  afterEach(async () => {
     TestBed.inject(OverlayContainer).ngOnDestroy();
     localStorage.clear();
+    // The single 'outbox' IndexedDB store survives across tests in the browser;
+    // drop the row any logout-guard test queued so counts don't leak forward.
+    await TestBed.inject(IndexedDbStore).delete('outbox', QUEUED_ID);
+  });
+
+  it('warns loudly before logging out with a non-empty outbox and aborts when declined', async () => {
+    const ctx = setup();
+    const outbox = await queueOneCapture(ctx);
+    expect(outbox.pendingCount()).toBe(1);
+
+    const auth = TestBed.inject(AuthService);
+    const logout = spyOn(auth, 'logout').and.returnValue(of(undefined));
+    const navigate = spyOn(ctx.router, 'navigate').and.stub();
+    const confirm = spyOn(window, 'confirm').and.returnValue(false);
+
+    ctx.fixture.componentInstance.onLogout();
+
+    expect(confirm).withContext('a loud confirm is shown').toHaveBeenCalled();
+    const message = confirm.calls.mostRecent().args[0] as string;
+    expect(message).withContext('warns it is not synced').toContain('nicht synchronisiert');
+    expect(message).withContext('states the count').toContain('1');
+    // Declined: the session stays; nothing is logged out or navigated away.
+    expect(logout).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(outbox.pendingCount()).toBe(1);
+  });
+
+  it('proceeds with logout when the non-empty-outbox warning is confirmed', async () => {
+    const ctx = setup();
+    await queueOneCapture(ctx);
+
+    const auth = TestBed.inject(AuthService);
+    const logout = spyOn(auth, 'logout').and.returnValue(of(undefined));
+    const navigate = spyOn(ctx.router, 'navigate').and.stub();
+    spyOn(window, 'confirm').and.returnValue(true);
+
+    ctx.fixture.componentInstance.onLogout();
+
+    expect(logout).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  it('logs out without any warning when the outbox is empty', () => {
+    const ctx = setup();
+    signIn(ctx, false);
+    expect(TestBed.inject(OutboxService).pendingCount()).toBe(0);
+
+    const auth = TestBed.inject(AuthService);
+    const logout = spyOn(auth, 'logout').and.returnValue(of(undefined));
+    const navigate = spyOn(ctx.router, 'navigate').and.stub();
+    const confirm = spyOn(window, 'confirm').and.returnValue(true);
+
+    ctx.fixture.componentInstance.onLogout();
+
+    expect(confirm).withContext('no warning when nothing is queued').not.toHaveBeenCalled();
+    expect(logout).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(['/login']);
   });
 
   it('should create', () => {
