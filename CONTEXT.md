@@ -69,6 +69,22 @@ _Avoid_: Campaign
 First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird. A physical ring is applied to a bird exactly once, so within an Organisation a given ring (Ringgröße + number) may be the subject of **at most one Erstfang** — a second Erstfang on the same number is a genuine ring-uniqueness collision (ADR 0006) and is refused (`capture_service.create_capture`), while any number of Wiederfänge of that ring are expected. This is what turns two concurrent offline devices that record the same Erstfang into exactly one flagged sync error on the losing device, never a silent duplicate (issue #164).
 _Avoid_: First catch / recatch (English), recapture
 
+**Fangtag**:
+A single calendar day (Europe/Vienna) on which a Projekt recorded at least one capture — the unit the dashboard groups daily figures by. A day with no capture is not a Fangtag: the daily series is sparse (only days that happened), never a padded continuous calendar.
+_Avoid_: Catch day (English), Session, Fangsession
+
+**Fänge / Individuenzahl**:
+The count of captures in a set of records — every Erstfang **and** every Wiederfang, because each is a bird that was physically handled. The Ring-vernichtet Sonderart is excluded (it is not a bird); Aves ignota is included. Not deduplicated: a bird caught on three Fangtage counts three times. This is what the dashboard's "Anzahl Fänge" and the per-Fangtag Individuenzahl report. A count of *distinct* birds over a period (deduping Wiederfänge by ring) is a different, biologically stricter figure and is deliberately **not** what Individuenzahl means here.
+_Avoid_: Catches (English), Fangereignis; distinct-individual count (a separate figure, not this one)
+
+**Artenzahl**:
+The number of distinct species among a set of captures (species richness). Aves ignota contributes exactly one distinct "unbekannt" category; the Ring-vernichtet Sonderart never counts. Distinct from Individuenzahl — ten Fänge of a single species are Artenzahl 1, Individuenzahl 10.
+_Avoid_: Species count (English), Artenvielfalt / diversity (a plain richness count is not a diversity index)
+
+**Saison**:
+A ringing campaign period a Beringer treats as one stretch of effort (e.g. an autumn migration run). It is **not a modelled entity** — no Saison row, no start/end on a Projekt. In the dashboard it is expressed only as a selectable date range over the Fangtage; "per Saison" is a preset range (e.g. the current year), never a stored season. A future configurable Saison would be a deliberate schema addition, not something the model implies today.
+_Avoid_: Season (English); year (as a synonym — a calendar year is only a rough stand-in for a Saison)
+
 **Diesjährig**:
 A bird hatched in the current calendar year (age class 3). Diesjährig gates a single field — the Kleingefieder *Fortschritt* (post-juvenile small-feather moult progress, J/U/M/N), recorded for diesjährige birds alone because only a this-year bird undergoes its first post-juvenile moult. The Kleingefieder *Intensität* and the Handschwingenmauser are recorded for **all** age classes.
 _Avoid_: Juvenile, first-year
