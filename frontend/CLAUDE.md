@@ -39,10 +39,11 @@ End-to-end tests live in `e2e/` and drive the real app in a browser via `@playwr
 From `frontend/`:
 
 ```bash
-./node_modules/.bin/playwright test            # all e2e tests (~2s once the server is up)
-./node_modules/.bin/playwright test e2e/navigation-hub.spec.ts   # one file
-npm run e2e                                     # same as the bare `playwright test`
+npm run e2e                                     # all e2e tests (~2s once the server is up) — preferred
+PLAYWRIGHT_FORCE_ASYNC_LOADER=1 ./node_modules/.bin/playwright test e2e/navigation-hub.spec.ts   # one file
 ```
+
+**Always set `PLAYWRIGHT_FORCE_ASYNC_LOADER=1`** (the `npm run e2e` script does this for you). Without it, any spec that imports a local helper module (e.g. `e2e/status-menu-helpers.ts`) fails at load with `TypeError: context.conditions?.includes is not a function` — a Playwright 1.61 + Node 22 bug in the *synchronous* module loader (`playwright/lib/transform/esmLoader.js`, `context.conditions?.includes('import')`). The env var forces Playwright's async loader, which resolves cross-file spec imports correctly. The bug is dormant only for specs with no cross-file imports, so the bare `playwright test` will look like it works right up until it doesn't.
 
 How it's wired (and why it's fast and backend-free):
 - **System Chrome, no browser download.** The config sets `channel: 'chrome'`, reusing `/usr/bin/google-chrome` (same browser Karma uses). Do **not** run `playwright install` — it's unnecessary and may fail offline.

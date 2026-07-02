@@ -7,7 +7,7 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "e2e": "playwright test"
+    "e2e": "PLAYWRIGHT_FORCE_ASYNC_LOADER=1 playwright test"
   },
   "prettier": {
     "printWidth": 100,

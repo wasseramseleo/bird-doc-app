@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { expectPersistenceBadge } from './status-menu-helpers';
 
 /**
  * E2E for the persistent-storage request (issue #166, PRD #152, acceptance
@@ -59,7 +60,7 @@ test.describe('Persistent storage request (issue #166)', () => {
     await page.goto('/');
     await expect(page.locator('app-nav-bar')).toBeVisible();
 
-    await expect(page.locator('.offline-readiness__persistence--granted')).toBeVisible();
+    await expectPersistenceBadge(page, 'granted');
   });
 
   test('reflects a denied persistence state in the readiness indicator', async ({ page }) => {
@@ -72,7 +73,7 @@ test.describe('Persistent storage request (issue #166)', () => {
     await page.goto('/');
     await expect(page.locator('app-nav-bar')).toBeVisible();
 
-    await expect(page.locator('.offline-readiness__persistence--denied')).toBeVisible();
+    await expectPersistenceBadge(page, 'denied');
   });
 });
 

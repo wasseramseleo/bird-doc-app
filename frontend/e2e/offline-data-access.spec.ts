@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { expectOfflineReadiness } from './status-menu-helpers';
 
 /**
  * E2E for the offline data-access facade (issue #159, PRD #152): a device
@@ -139,7 +140,7 @@ test.describe('Offline data-access facade (issue #159)', () => {
     await page.goto('/');
     await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
     await expect(page).toHaveURL(/\/data-entries$/);
-    await expect(page.locator('.offline-readiness')).toContainText('zuletzt aktualisiert');
+    await expectOfflineReadiness(page, 'zuletzt aktualisiert');
 
     // No offline indication while the app is online.
     await expect(page.locator('.offline-indicator')).toHaveCount(0);

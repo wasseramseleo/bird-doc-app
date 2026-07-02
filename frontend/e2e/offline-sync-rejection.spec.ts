@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { expectOutboxIndicator, openUserMenu } from './status-menu-helpers';
 
 /**
  * E2E for skip-and-flag on sync rejection + in-form fix-up (issue #164, PRD
@@ -194,9 +195,7 @@ test.describe('Offline sync rejection — skip-and-flag + in-form fix-up (issue 
     );
     await page.keyboard.press('Control+s');
     await firstPost;
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
 
     await recordErstfang(page, '0044');
     const secondPost = page.waitForRequest(
@@ -204,19 +203,16 @@ test.describe('Offline sync rejection — skip-and-flag + in-form fix-up (issue 
     );
     await page.keyboard.press('Control+s');
     await secondPost;
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '2 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '2 nicht synchronisierte Einträge');
 
     // Reconnect: auto-sync. 0044 reaches the server; 0043 is rejected and left
     // flagged — one bad entry never holds the queue hostage. Exactly one stays.
     await goOnline(page);
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
 
     // "Today's session" shows the survivor flagged with the server's message.
-    await page.locator('a.heutige-session').click();
+    await openUserMenu(page);
+    await page.locator('a.heutige-session-item').click();
     await expect(page).toHaveURL(/\/heute$/);
     const flaggedRow = page.locator('.session-row--queued.session-row--error');
     await expect(flaggedRow).toBeVisible();
@@ -240,9 +236,7 @@ test.describe('Offline sync rejection — skip-and-flag + in-form fix-up (issue 
     await expect(page).toHaveURL(/\/heute$/);
     await expect(page.locator('.session-row--queued')).toHaveCount(1);
     await expect(page.locator('.session-row--error')).toHaveCount(0);
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
 
     // The next sync drains the corrected entry — the queue finally empties.
     const fixedPost = page.waitForRequest(
@@ -251,9 +245,7 @@ test.describe('Offline sync rejection — skip-and-flag + in-form fix-up (issue 
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     const request = await fixedPost;
     expect((request.postDataJSON() as { ring_number: string }).ring_number).toBe(FIXED_RING);
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '0 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
     await expect(page.locator('.session-row--queued')).toHaveCount(0);
   });
 });

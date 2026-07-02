@@ -95,3 +95,61 @@
   align-items: center;
   gap: 0.25rem;
 }
+
+// The offline status chips, relocated from the toolbar into the user dropdown
+// (they render inside the mat-menu overlay but keep this component's content
+// attribute, so these selectors match them there). Flatten each toolbar pill
+// into a full-width, left-aligned menu row and push its inline action to the
+// trailing edge.
+.user-menu__status {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px;
+  // Wide enough that the longest chip row ("N nicht synchronisierte Einträge"
+  // plus its inline sync action) stays on one line instead of wrapping; paired
+  // with the .user-menu-panel max-width bump in styles.scss.
+  min-width: 296px;
+}
+
+.user-menu__status ::ng-deep .outbox-indicator,
+.user-menu__status ::ng-deep .offline-readiness {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px;
+  background: transparent;
+  border-radius: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  cursor: default;
+
+  &:hover {
+    background: var(--bd-paper-sunk);
+  }
+}
+
+.user-menu__status ::ng-deep .outbox-indicator__label,
+.user-menu__status ::ng-deep .offline-readiness__label {
+  flex: 1 1 auto;
+  white-space: normal;
+}
+
+// The last-refreshed line drops to its own full-width row under the status
+// label, indented past the icon, so the narrow menu never clips it.
+.user-menu__status ::ng-deep .offline-readiness__timestamp {
+  flex: 1 1 100%;
+  order: 3;
+  padding-left: 26px;
+  white-space: normal;
+  font-size: 11px;
+}
+
+.user-menu__status ::ng-deep .offline-readiness__persistence {
+  order: 2;
+}
+
+.user-menu__status ::ng-deep .outbox-indicator__sync,
+.user-menu__status ::ng-deep .offline-readiness__refresh {
+  order: 2;
+  margin-left: auto;
+}

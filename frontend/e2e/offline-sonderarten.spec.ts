@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
  * E2E for offline Wiederfang + Sonderarten (issue #162, PRD #152): every
@@ -169,9 +170,7 @@ async function saveAndAwaitFailedPost(page: Page): Promise<void> {
 }
 
 async function expectPendingCount(page: Page, count: number): Promise<void> {
-  await expect(page.locator('.outbox-indicator')).toContainText(
-    `${count} nicht synchronisierte Einträge`,
-  );
+  await expectOutboxIndicator(page, `${count} nicht synchronisierte Einträge`);
 }
 
 test.describe('Offline Wiederfang + Sonderarten (issue #162)', () => {

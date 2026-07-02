@@ -15,7 +15,21 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const identityCache = inject(IdentityCacheService);
   const referenceBundleCache = inject(ReferenceBundleCacheService);
 
-  const headers: Record<string, string> = {};
+  // Keep the Angular service worker (ngsw) out of the API path entirely (PRD
+  // #152). Every request the app makes is dynamic `/api` traffic the SW is not
+  // meant to cache — it has no `dataGroups` for it — so left to its own devices
+  // the SW intercepts an offline API request and returns a synthetic HTTP 504
+  // ("Gateway Timeout"). The whole offline design (DataAccessFacadeService's
+  // outbox/cache fallback, AuthService.bootstrap) treats a genuine connectivity
+  // failure as `HttpErrorResponse.status === 0`; a 504 is neither 0 nor a real
+  // server response, so it slips past every offline check — reads stop falling
+  // back to the cache and, worse, a field capture errors out instead of being
+  // queued to the durable outbox. This only bit in production, where the SW is
+  // active; `ng serve` registers no SW, so dev always saw the real `status === 0`.
+  // `ngsw-bypass` tells the SW to ignore the request (see ngsw-worker `onFetch`),
+  // so offline API failures surface as `status === 0` in prod exactly as in dev,
+  // and a *real* upstream 504 still passes through as a real 504.
+  const headers: Record<string, string> = {'ngsw-bypass': 'true'};
   if (UNSAFE_METHODS.has(req.method.toUpperCase())) {
     const csrfToken = getCookie('csrftoken');
     if (csrfToken) {

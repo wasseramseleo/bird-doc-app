@@ -45,6 +45,26 @@ describe('authInterceptor', () => {
     await referenceBundleCache.clear();
   });
 
+  // PRD #152 prod regression: with the Angular service worker (ngsw) active in
+  // production, an offline `/api` request is intercepted by the SW and returned
+  // as a synthetic HTTP 504 ("Gateway Timeout") instead of failing as a real
+  // network error. The whole offline architecture (DataAccessFacadeService's
+  // outbox/cache fallback, AuthService.bootstrap) keys off `status === 0`, so a
+  // 504 slips past every offline check — captures error out instead of queueing.
+  // Tagging every request with `ngsw-bypass` makes the SW ignore API traffic, so
+  // an offline failure surfaces as `status === 0` in prod exactly as in dev.
+  it('adds the ngsw-bypass header to every request so the service worker never intercepts API traffic', () => {
+    http.get('/api/birds/species/').subscribe({next: () => undefined, error: () => undefined});
+    const getReq = httpMock.expectOne('/api/birds/species/');
+    expect(getReq.request.headers.get('ngsw-bypass')).toBe('true');
+    getReq.flush({});
+
+    http.post('/api/birds/data-entries/', {}).subscribe({next: () => undefined, error: () => undefined});
+    const postReq = httpMock.expectOne('/api/birds/data-entries/');
+    expect(postReq.request.headers.get('ngsw-bypass')).toBe('true');
+    postReq.flush({});
+  });
+
   it('clears the cached identity and reference-bundle cache when a non-auth request comes back 401 (session expired)', async () => {
     await identityCache.save({
       username: 'fre',

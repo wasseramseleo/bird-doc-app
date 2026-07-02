@@ -484,6 +484,77 @@ describe('NavBar', () => {
       .toBeFalse();
   });
 
+  it('collapses "Heutige Session" into the user dropdown (linking to /heute), not the toolbar', () => {
+    const ctx = setup();
+    signIn(ctx, false);
+    activate(ctx, makeProject());
+
+    // No longer a standalone toolbar button.
+    expect(ctx.fixture.nativeElement.querySelector('.heutige-session'))
+      .withContext('Heutige Session removed from the toolbar')
+      .toBeNull();
+
+    const items = openUserMenu(ctx);
+    const heute = items.find((i) => (i.textContent ?? '').includes('Heutige Session')) as
+      | HTMLAnchorElement
+      | undefined;
+    expect(heute).withContext('Heutige Session present in the user dropdown').toBeTruthy();
+    expect(heute!.getAttribute('href')).toBe('/heute');
+  });
+
+  it('does not offer "Heutige Session" in the picker state (no active project)', () => {
+    const ctx = setup();
+    signIn(ctx, false);
+    ctx.fixture.detectChanges();
+
+    const labels = openUserMenu(ctx).map((i) => i.textContent ?? '');
+    expect(labels.some((t) => t.includes('Heutige Session')))
+      .withContext('no Heutige Session without an active project')
+      .toBeFalse();
+  });
+
+  it('collapses the outbox and offline-readiness chips into the user dropdown, off the toolbar', () => {
+    const ctx = setup();
+    signIn(ctx, false);
+    activate(ctx, makeProject());
+
+    // The chips are no longer standalone toolbar elements.
+    const bar: HTMLElement = ctx.fixture.nativeElement;
+    expect(bar.querySelector('app-outbox-indicator'))
+      .withContext('outbox chip off the toolbar')
+      .toBeNull();
+    expect(bar.querySelector('app-offline-readiness'))
+      .withContext('offline-readiness chip off the toolbar')
+      .toBeNull();
+    // The transient offline banner stays on the toolbar (not part of the move).
+    expect(bar.querySelector('app-offline-indicator'))
+      .withContext('offline-indicator stays on the toolbar')
+      .not.toBeNull();
+
+    openUserMenu(ctx);
+    const overlay = ctx.overlay.getContainerElement();
+    expect(overlay.querySelector('.user-menu__status app-outbox-indicator'))
+      .withContext('outbox chip inside the dropdown')
+      .not.toBeNull();
+    expect(overlay.querySelector('.user-menu__status app-offline-readiness'))
+      .withContext('offline-readiness chip inside the dropdown')
+      .not.toBeNull();
+  });
+
+  it('keeps the offline-readiness auto-refresh eager even though it now lives in the closed menu', () => {
+    // Regression guard for the collapse: a <mat-menu>'s direct content is
+    // instantiated eagerly, so OfflineReadiness still fires its reference-cache
+    // refresh on init — the cache must not go stale until the user opens the menu.
+    const ctx = setup();
+    signIn(ctx, false);
+    ctx.fixture.detectChanges();
+
+    const req = ctx.httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/'));
+    expect(req.request.method).withContext('eager reference-cache refresh on init').toBe('GET');
+    // Fail it offline-style so nothing is written to the shared IndexedDB cache.
+    req.error(new ProgressEvent('error'));
+  });
+
   it('never shows Administration for non-staff users', () => {
     const ctx = setup();
     signIn(ctx, false);
