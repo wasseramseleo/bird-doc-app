@@ -1,6 +1,7 @@
 import {TestBed} from '@angular/core/testing';
 import {provideHttpClient} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
+import {Router, provideRouter} from '@angular/router';
 import {firstValueFrom} from 'rxjs';
 
 import {SyncService} from './sync.service';
@@ -63,15 +64,17 @@ describe('SyncService', () => {
   let httpMock: HttpTestingController;
   let outboxStore: OutboxStoreService;
   let auth: AuthService;
+  let router: Router;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     service = TestBed.inject(SyncService);
     httpMock = TestBed.inject(HttpTestingController);
     outboxStore = TestBed.inject(OutboxStoreService);
     auth = TestBed.inject(AuthService);
+    router = TestBed.inject(Router);
   });
 
   afterEach(async () => {
@@ -318,6 +321,64 @@ describe('SyncService', () => {
     // otherwise 'anm''s own "sync on app start" auto-trigger would be a
     // silent no-op.
     expect(service.syncing()).toBeFalse();
+  });
+
+  it('pauses replay and prompts a re-login when the session has expired mid-trip (401 on the CSRF refresh)', async () => {
+    // A device offline for weeks holds an expired session cookie; the CSRF
+    // refresh is the first request of a sync run and 401s (issue #165).
+    auth.currentUser.set(authUser());
+    await outboxStore.add(makeEntry());
+    const navigate = spyOn(router, 'navigate').and.stub();
+
+    const resultPromise = firstValueFrom(service.syncNow());
+    await settle();
+    expectCsrfFetch().flush({detail: 'Not authenticated.'}, {status: 401, statusText: 'Unauthorized'});
+    await settle();
+
+    // Replay paused: nothing was POSTed (httpMock.verify() in afterEach would
+    // fail on an unmatched create) and the queue is untouched.
+    const result = await resultPromise;
+    expect(result).toEqual({total: 0, synced: 0});
+    expect((await outboxStore.list()).map((e) => e.id)).toEqual(['uuid-1']);
+
+    // The Mitglied is prompted to re-login (guestGuard needs the client session
+    // cleared to reach /login), with a next param back to where they were.
+    expect(navigate).toHaveBeenCalled();
+    const [commands, extras] = navigate.calls.mostRecent().args as [string[], {queryParams?: {next?: string}}];
+    expect(commands).toEqual(['/login']);
+    expect(extras.queryParams?.next).toBeDefined();
+    expect(auth.currentUser()).toBeNull();
+    // Not left stuck in-progress, so the resume sync after re-login can run.
+    expect(service.syncing()).toBeFalse();
+  });
+
+  it('resumes the same account\'s intact queue on the next sync after re-login', async () => {
+    auth.currentUser.set(authUser());
+    await outboxStore.add(makeEntry());
+    spyOn(router, 'navigate').and.stub();
+
+    // First run: session expired, replay paused, queue intact.
+    const firstRun = firstValueFrom(service.syncNow());
+    await settle();
+    expectCsrfFetch().flush({detail: 'Not authenticated.'}, {status: 401, statusText: 'Unauthorized'});
+    await settle();
+    expect(await firstRun).toEqual({total: 0, synced: 0});
+
+    // The Mitglied re-logs in as the same account (currentUser repopulated).
+    auth.currentUser.set(authUser());
+
+    // Resume: the still-queued entry now replays cleanly under its original key.
+    const secondRun = firstValueFrom(service.syncNow());
+    await settle();
+    expectCsrfFetch().flush(meResponse());
+    await settle();
+    const postReq = expectCreatePost();
+    expect(postReq.request.body).toEqual(makeEntry().payload);
+    postReq.flush({id: 'server-1'});
+    await settle();
+
+    expect(await secondRun).toEqual({total: 1, synced: 1});
+    expect(await outboxStore.list()).toEqual([]);
   });
 
   it('reflects the in-progress state via the syncing() signal', async () => {

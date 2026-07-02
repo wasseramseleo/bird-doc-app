@@ -148,6 +148,21 @@ def test_development_defaults_remain_working(reload_settings):
     assert settings.SESSION_COOKIE_SECURE is False
 
 
+# --- Offline session lifetime (PRD #152, issue #165) -------------------------
+
+
+def test_session_lifetime_spans_the_offline_field_window(reload_settings):
+    # The offline outbox (PRD #152) can hold field captures for up to ~30 days
+    # between a Station trip and the next sync; the session must outlive that
+    # window or a returning Mitglied would be logged out with unsynced captures
+    # still queued. A deliberate, documented beta threat-model trade-off.
+    thirty_days = 60 * 60 * 24 * 30
+    dev = reload_settings(DJANGO_DEBUG="true")
+    assert dev.SESSION_COOKIE_AGE == thirty_days
+    prod = reload_settings(**_PROD_ENV)
+    assert prod.SESSION_COOKIE_AGE == thirty_days
+
+
 # --- Transactional email (issue #77) -----------------------------------------
 
 
