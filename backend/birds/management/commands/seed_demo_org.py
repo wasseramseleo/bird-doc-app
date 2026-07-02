@@ -9,8 +9,10 @@ the ``BDDEMO`` Organisation and a Projekt exist, then imports an IWM
 
 It is idempotent / re-runnable (local, staging, prod): the importer skips rows
 whose capture key already exists, so a second run creates no duplicate captures,
-and the Organisation / Projekt are get-or-created. During development it runs
-against the committed ``sample_iwm_illmitz.xlsx``.
+and the Organisation / Projekt are get-or-created. It imports the committed,
+de-identified ``demo_iwm.xlsx`` — the anonymiser's (#177) output over the
+synthetic ``sample_iwm_illmitz.xlsx`` today, a pure file replacement once the
+maintainer re-runs the anonymiser over the real export (ADR 0012).
 """
 
 import os
@@ -27,8 +29,13 @@ DEMO_ORG_HANDLE = "BDDEMO"
 DEMO_ORG_NAME = "BirdDoc Demo"
 DEMO_PROJECT_TITLE = "Referenzprojekt Neusiedlersee"
 
-# The committed synthetic stand-in for the (later) anonymised ``demo_iwm.xlsx``.
-DEFAULT_SAMPLE = Path(__file__).resolve().parents[2] / "demo" / "sample_iwm_illmitz.xlsx"
+# The committed, de-identified demo sheet the Referenzprojekt is seeded from
+# (ADR 0012): the anonymiser's (#177) output over the synthetic
+# ``sample_iwm_illmitz.xlsx``. The maintainer overwrites it by re-running the
+# anonymiser on the real export — a pure file replacement, no code change. The
+# synthetic ``sample_iwm_illmitz.xlsx`` is retained as the import-feature test
+# fixture and the anonymiser's test input.
+DEMO_IMPORT_FILE = Path(__file__).resolve().parents[2] / "demo" / "demo_iwm.xlsx"
 
 # The demo Admin (issue #178, ADR 0012). The importer resolves a Beringer by
 # Kürzel across the org's Scientists, so pre-creating ``ABE`` means a later
@@ -52,15 +59,20 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
-        content = self._read(DEFAULT_SAMPLE)
+        content = self._read(DEMO_IMPORT_FILE)
 
         org, _ = Organization.objects.get_or_create(
             handle=DEMO_ORG_HANDLE,
             defaults={"name": DEMO_ORG_NAME, "country": "AT"},
         )
+        # Create the Projekt with its context (Fangmethode/Lockmittel/Umstand)
+        # UNSET so the importer adopts the file's homogeneous values (ADR 0002) —
+        # the Referenzprojekt inherits its methodology from the demo sheet rather
+        # than hard-coding it or keeping the model defaults.
         project, _ = Project.objects.get_or_create(
             title=DEMO_PROJECT_TITLE,
             organization=org,
+            defaults={"capture_method": "", "lure": "", "circumstance": ""},
         )
 
         # Pre-create the named demo Admin (ABE) before importing, so the curated

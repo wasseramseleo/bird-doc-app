@@ -17,6 +17,7 @@ from django.core.management import call_command
 from django.test import override_settings
 
 from birds.invitations import seats_used
+from birds.iwm_anonymize import CURATED_KUERZEL
 from birds.management.commands.seed_demo_org import (
     DEMO_ADMIN_EMAIL,
     DEMO_ADMIN_KÜRZEL,
@@ -31,6 +32,9 @@ from birds.models import (
 )
 
 DEMO_HANDLE = "BDDEMO"
+# The no-account helper Beringer of the curated cast (the non-Admin Kürzel the
+# anonymiser collapses onto — ADR 0012). ``ABE`` is the pre-created Admin.
+DEMO_HELPER_KÜRZEL = next(k for k in CURATED_KUERZEL if k != DEMO_ADMIN_KÜRZEL)
 
 
 def _run(**kwargs):
@@ -212,3 +216,73 @@ def test_rerun_does_not_reset_password_and_creates_no_duplicates(db):
     assert Scientist.objects.filter(handle=DEMO_ADMIN_KÜRZEL).count() == 1
     org = Organization.objects.get(handle=DEMO_HANDLE)
     assert Mitgliedschaft.objects.filter(user=user, organization=org).count() == 1
+
+
+# --- Curated Referenzprojekt from demo_iwm.xlsx (issue #179, ADR 0012) -------
+
+
+@pytest.mark.django_db
+def test_seeds_exactly_one_projekt_one_station_and_two_beringer(db):
+    # The curated demo_iwm.xlsx yields the Referenzprojekt ADR 0012 decides:
+    # exactly one Projekt, one Station, and two Beringer — the account-linked
+    # Admin ``ABE`` plus the auto-created no-account helper ``MHU``.
+    _run()
+    org = Organization.objects.get(handle=DEMO_HANDLE)
+
+    assert Project.objects.filter(organization=org).count() == 1
+    assert RingingStation.objects.filter(organization=org).count() == 1
+
+    beringer = Scientist.objects.filter(organization=org)
+    assert beringer.count() == 2
+    assert set(beringer.values_list("handle", flat=True)) == {
+        DEMO_ADMIN_KÜRZEL,
+        DEMO_HELPER_KÜRZEL,
+    }
+
+
+@pytest.mark.django_db
+def test_captures_attribute_to_the_precreated_admin_not_a_nameless_duplicate(db):
+    # The Admin's captures attribute to the pre-created ``ABE`` account (issue
+    # #178) — never a nameless auto-created duplicate: ``ABE`` stays a single,
+    # account-linked Beringer, and every capture attributes to one of the two
+    # curated Beringer (no stray cast leaked past the anonymiser).
+    _run()
+    org = Organization.objects.get(handle=DEMO_HANDLE)
+
+    abe = Scientist.objects.get(organization=org, handle=DEMO_ADMIN_KÜRZEL)
+    assert abe.user is not None  # the pre-created account, not a no-account dup
+    assert Scientist.objects.filter(organization=org, handle=DEMO_ADMIN_KÜRZEL).count() == 1
+
+    assert DataEntry.objects.filter(organization=org, staff=abe).exists()
+    attributed = set(
+        DataEntry.objects.filter(organization=org).values_list("staff__handle", flat=True)
+    )
+    assert attributed == {DEMO_ADMIN_KÜRZEL, DEMO_HELPER_KÜRZEL}
+
+
+@pytest.mark.django_db
+def test_seeded_captures_carry_biometrics(db):
+    # The biometric import fix (#176) flows through the seed: at least one seeded
+    # capture carries the Decimal biometrics the anonymiser preserved (proving the
+    # fix, not just that rows were created).
+    _run()
+    org = Organization.objects.get(handle=DEMO_HANDLE)
+
+    assert DataEntry.objects.filter(
+        organization=org, wing_span__isnull=False, weight_gram__isnull=False
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_projekt_context_is_adopted_from_the_file(db):
+    # Fangmethode/Lockmittel/Umstand are adopted from the file via the importer's
+    # context-adoption (ADR 0002), not hard-coded on the Projekt: the homogeneous
+    # demo file (Fangmethode ``M``, Lockmittel ``N``, Umstand ``20``) lands its
+    # values on the seeded Projekt.
+    _run()
+    org = Organization.objects.get(handle=DEMO_HANDLE)
+    project = Project.objects.get(organization=org)
+
+    assert project.capture_method == "M"
+    assert project.lure == "N"
+    assert project.circumstance == "20"
