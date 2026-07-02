@@ -124,6 +124,14 @@ h3 { font-size: 20px; line-height: 28px; }
   outline: none;
 }
 
+// The user dropdown now carries the collapsed offline-status chips (relocated
+// from the toolbar). Their rows — e.g. "N nicht synchronisierte Einträge" with
+// an inline sync action — need a touch more room than Material's 280px default
+// so the trailing action button stays on the label's line rather than wrapping.
+.user-menu-panel.mat-mdc-menu-panel {
+  max-width: 340px;
+}
+
 // MO-6 Reduced motion: collapse every transition/animation to effectively
 // instant when the user requests reduced motion.
 @media (prefers-reduced-motion: reduce) {

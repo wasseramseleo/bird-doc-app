@@ -40,14 +40,6 @@
   @if (currentProject()) {
     <a
       mat-button
-      class="heutige-session"
-      routerLink="/heute"
-      routerLinkActive="heutige-session--active"
-    >
-      <span>Heutige Session</span>
-    </a>
-    <a
-      mat-button
       class="letzte-faenge"
       routerLink="/data-entries"
       routerLinkActive="letzte-faenge--active"
@@ -67,8 +59,6 @@
     </a>
   }
   <app-offline-indicator />
-  <app-outbox-indicator />
-  <app-offline-readiness />
   <app-pwa-install-button />
   <button
     mat-button
@@ -84,7 +74,29 @@
     <span>{{ userLabel() }}</span>
     <mat-icon>arrow_drop_down</mat-icon>
   </button>
-  <mat-menu #userMenu="matMenu">
+  <mat-menu #userMenu="matMenu" class="user-menu-panel">
+    @if (currentProject()) {
+      <a mat-menu-item class="heutige-session-item" routerLink="/heute">
+        <mat-icon>today</mat-icon>
+        <span>Heutige Session</span>
+      </a>
+      <mat-divider></mat-divider>
+    }
+    <!--
+      The offline status chips live here as menu items now, not on the toolbar.
+      They keep their eager side effects (auto-sync on start / on reconnect, and
+      the reference-cache refresh that keeps the offline bundle fresh): a
+      `<mat-menu>`'s direct content is instantiated eagerly even while the menu
+      is closed (only `*matMenuContent` defers it), so moving them in here does
+      not gate those triggers on the user ever opening the dropdown.
+      `stopPropagation` keeps the menu open while the Mitglied uses the inline
+      sync/refresh actions (the panel otherwise closes on any click).
+    -->
+    <div class="user-menu__status" (click)="$event.stopPropagation()">
+      <app-outbox-indicator />
+      <app-offline-readiness />
+    </div>
+    <mat-divider></mat-divider>
     @if (isOrgAdmin()) {
       <a
         mat-menu-item

@@ -1,4 +1,5 @@
 import { expect, Page, Request, test } from '@playwright/test';
+import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
  * E2E for the offline quick-add Beringer + Kürzel-matched sync (issue #167,
@@ -185,9 +186,7 @@ test.describe('Offline quick-add Beringer + Kürzel-matched sync (issue #167)', 
     await page.keyboard.press('Control+s');
     await failedCapture;
 
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
 
     // Reconnect: the app auto-syncs. Record the order of the two POSTs and the
     // capture's staff_id so we can assert Beringer-before-capture + resolution.
@@ -210,9 +209,7 @@ test.describe('Offline quick-add Beringer + Kürzel-matched sync (issue #167)', 
     await syncedCapture;
 
     // The queue empties once both are synced.
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '0 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
 
     const beringerIndex = posts.findIndex((p) => p.kind === 'beringer');
     const captureIndex = posts.findIndex((p) => p.kind === 'capture');

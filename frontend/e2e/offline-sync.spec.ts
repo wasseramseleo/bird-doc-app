@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
  * E2E for the offline outbox sync replay (issue #161, PRD #152): the outbox
@@ -163,9 +164,7 @@ test.describe('Offline outbox sync (issue #161)', () => {
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,
     );
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '0 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
 
     // Go offline and record an Erstfang — it lands in the durable outbox
     // (issue #160), never reaching the server.
@@ -179,9 +178,7 @@ test.describe('Offline outbox sync (issue #161)', () => {
     await page.keyboard.press('Control+s');
     await failedPost;
 
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
 
     // Reconnect: the app auto-syncs with no manual action (issue #161).
     const syncedPost = page.waitForRequest(
@@ -195,8 +192,6 @@ test.describe('Offline outbox sync (issue #161)', () => {
     expect(body.idempotency_key).toBeTruthy();
 
     // The queue empties and the pending count reflects it.
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '0 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
   });
 });

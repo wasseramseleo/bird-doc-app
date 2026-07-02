@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
  * E2E for the offline local Wiederfang history panel (issue #168, PRD #152):
@@ -171,7 +172,7 @@ test.describe('Offline local Wiederfang history panel (issue #168)', () => {
     await selectBirdStatus(page, 'Erstfang');
     await expect(page.locator('input[formControlName="ring_number"]')).toHaveValue('0043');
     await saveAndAwaitFailedPost(page);
-    await expect(page.locator('.outbox-indicator')).toContainText('1 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
 
     // --- Now recapture the same ring offline (Wiederfang) and look up its
     // history. With no server reachable, the panel is assembled from the just-

@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
  * E2E for the offline durable outbox tracer bullet (issue #160, PRD #152):
@@ -148,9 +149,7 @@ test.describe('Offline durable outbox (issue #160)', () => {
     );
 
     // The always-visible pending count starts at zero while online.
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '0 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
 
     await goOffline(page);
     await fillErstfang(page);
@@ -189,16 +188,12 @@ test.describe('Offline durable outbox (issue #160)', () => {
 
     // The pending count now shows the queued capture — the durable outbox
     // entry, not a server record, is what the failed POST above resulted in.
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
 
     // Queued entries survive a full reload while still offline.
     await page.reload();
 
     await expect(page).toHaveURL(/\/data-entry$/);
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
   });
 });

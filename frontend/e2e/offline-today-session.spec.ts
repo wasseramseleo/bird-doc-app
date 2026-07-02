@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { expectOutboxIndicator, openUserMenu } from './status-menu-helpers';
 
 /**
  * E2E for "today's session" (issue #163, PRD #152): offline, a queued
@@ -149,13 +150,12 @@ test.describe("Today's session — editing and deleting a queued entry offline (
     );
     await page.keyboard.press('Control+s');
     await failedPost;
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
 
     // "Today's session": the queued capture is visible offline, shown as
     // nicht synchronisiert.
-    await page.locator('a.heutige-session').click();
+    await openUserMenu(page);
+    await page.locator('a.heutige-session-item').click();
     await expect(page).toHaveURL(/\/heute$/);
     const queuedRow = page.locator('.session-row--queued');
     await expect(queuedRow).toBeVisible();
@@ -185,17 +185,13 @@ test.describe("Today's session — editing and deleting a queued entry offline (
 
     // Still exactly one nicht synchronisiert entry — the edit corrected it
     // in place rather than queueing a second capture.
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '1 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
     await expect(page.locator('.session-row--queued')).toHaveCount(1);
 
     // Deleting the queued entry removes it for good.
     await page.locator('[data-testid="delete-queued"]').click();
     await page.locator('mat-dialog-actions button', { hasText: 'Löschen' }).click();
     await expect(page.locator('.session-row--queued')).toHaveCount(0);
-    await expect(page.locator('.outbox-indicator')).toContainText(
-      '0 nicht synchronisierte Einträge',
-    );
+    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
   });
 });
