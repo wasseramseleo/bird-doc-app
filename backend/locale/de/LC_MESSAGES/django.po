@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-02 00:00+0200\n"
+"POT-Creation-Date: 2026-07-02 06:51+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,6 +19,9 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 msgid "Eingelöst"
+msgstr ""
+
+msgid "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
 msgstr ""
 
 msgid "AS"
@@ -501,9 +504,6 @@ msgstr ""
 msgid "Die Station muss zur Organisation des Projekts gehören."
 msgstr ""
 
-msgid "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
-msgstr ""
-
 msgid "Nachricht"
 msgstr ""
 
@@ -583,11 +583,27 @@ msgstr ""
 msgid "Für Organisationen &amp; Vogelwarten"
 msgstr ""
 
+msgid "Anfrage erhalten"
+msgstr ""
+
+msgid ""
+"Danke! Wir haben deine Anfrage notiert und melden uns per E-Mail, um ein "
+"Gespräch zu vereinbaren."
+msgstr ""
+
+msgid "Zurück zur Startseite"
+msgstr ""
+
 msgid ""
 "BirdDoc kann eine ganze Beringungs-Landschaft tragen: DSGVO-konform, in "
 "Österreich gehostet, ohne Lock-in. Erzähl uns kurz von eurer Stelle, und wir "
 "melden uns für ein Gespräch. Es entstehen keine Kosten und du gehst keine "
 "Verpflichtung ein."
+msgstr ""
+
+msgid ""
+"Nach dem Absenden sehen wir uns deine Anfrage an und melden uns per E-Mail, "
+"um einen Termin für das Gespräch zu finden."
 msgstr ""
 
 msgid ""
@@ -857,9 +873,19 @@ msgid "Warteliste · Beringung"
 msgstr ""
 
 msgid ""
+"Danke! Wir haben deine Anfrage notiert und dich auf die Warteliste gesetzt. "
+"Sobald ein Zugangscode für dich frei wird, melden wir uns per E-Mail."
+msgstr ""
+
+msgid ""
 "BirdDoc ist in geschlossener Beta. Trag dich in die Warteliste ein und wir "
 "melden uns, sobald ein Zugangscode frei wird. Es entstehen keine Kosten und "
 "du gehst keine Verpflichtung ein."
+msgstr ""
+
+msgid ""
+"Nach dem Absenden sehen wir uns deine Anfrage an. Sobald ein Platz frei "
+"wird, bekommst du deinen Zugangscode per E-Mail."
 msgstr ""
 
 msgid "Die beiden Passwörter stimmen nicht überein."
