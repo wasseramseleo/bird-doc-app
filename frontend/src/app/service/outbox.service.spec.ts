@@ -247,4 +247,147 @@ describe('OutboxService', () => {
       expect(await service.listOwnQueued()).toEqual([]);
     });
   });
+
+  describe('pendingEntries() / findQueued() (issue #163 — today\'s session)', () => {
+    it('lists the current account\'s queued entries, oldest-first', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-2',
+        accountKey: 'fre',
+        payload: {species_id: 's2'},
+        queuedAt: '2026-07-02T09:05:00.000Z',
+      });
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(service.pendingEntries().map((e) => e.id)).toEqual(['uuid-1', 'uuid-2']);
+    });
+
+    it('excludes another account\'s queued entries from pendingEntries()', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'anm',
+        payload: {},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(service.pendingEntries()).toEqual([]);
+    });
+
+    it('findQueued() resolves an id queued by the current account', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(service.findQueued('uuid-1')?.payload).toEqual({species_id: 's1'});
+    });
+
+    it('findQueued() returns null for an id queued by a different account (tenancy)', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'anm',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(service.findQueued('uuid-1')).toBeNull();
+    });
+
+    it('findQueued() returns null for a server id that was never queued', async () => {
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(service.findQueued('server-42')).toBeNull();
+    });
+  });
+
+  describe('update() (issue #163 — editing a queued entry re-queues it)', () => {
+    it('overwrites the payload of a queued entry, keeping its id and capture order (queuedAt)', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {species_id: 's1', ring_number: '0043'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      await firstValueFrom(service.update('uuid-1', {species_id: 's1', ring_number: '0099'}));
+
+      expect(service.pendingEntries()).toEqual([
+        jasmine.objectContaining({
+          id: 'uuid-1',
+          accountKey: 'fre',
+          queuedAt: '2026-07-02T09:00:00.000Z',
+          payload: {species_id: 's1', ring_number: '0099'},
+        }),
+      ]);
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored[0].payload).toEqual({species_id: 's1', ring_number: '0099'});
+    });
+
+    it('throws when the id is not queued for the current account (tenancy)', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'anm',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(() => service.update('uuid-1', {species_id: 's2'})).toThrowError();
+    });
+  });
+
+  describe('delete() (issue #163 — deleting a queued entry)', () => {
+    it('removes a queued entry from the store and the pending list', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {species_id: 's1'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+      expect(service.pendingCount()).toBe(1);
+
+      await firstValueFrom(service.delete('uuid-1'));
+
+      expect(service.pendingCount()).toBe(0);
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored).toEqual([]);
+    });
+
+    it('throws when the id is not queued for the current account (tenancy)', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'anm',
+        payload: {},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      expect(() => service.delete('uuid-1')).toThrowError();
+    });
+  });
 });

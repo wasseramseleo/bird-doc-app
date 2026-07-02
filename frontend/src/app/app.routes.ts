@@ -18,6 +18,15 @@ export const routes: Routes = [
       import('./data-entry-list/data-entry-list').then((m) => m.DataEntryListComponent),
     canActivate: [authGuard],
   },
+  {
+    // Issue #163: "today's session" — queued (nicht synchronisiert) and
+    // today's already-synced captures for the active Projekt, visible and
+    // reviewable offline.
+    path: 'heute',
+    loadComponent: () =>
+      import('./today-session/today-session').then((m) => m.TodaySessionComponent),
+    canActivate: [authGuard],
+  },
   {path: 'data-entry', component: DataEntryFormComponent, canActivate: [authGuard]},
   {path: 'data-entry/:id', component: DataEntryFormComponent, canActivate: [authGuard]},
   {

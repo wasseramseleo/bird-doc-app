@@ -11,14 +11,19 @@ import {Injectable} from '@angular/core';
  * so existing stores/data are never dropped.
  */
 export const OFFLINE_DB_NAME = 'birddoc-offline';
-export const OFFLINE_DB_VERSION = 3;
+export const OFFLINE_DB_VERSION = 4;
 // v2 (issue #158) adds 'referenceCache' — the offline reference bundle
 // (species pool, org reference data, last-consumed ring numbers) plus its
 // last-refreshed timestamp, read/written by `ReferenceBundleCacheService`.
 // v3 (issue #160) adds 'outbox' — the durable offline outbox: one record per
 // queued capture-create payload, keyed by its own idempotency UUID (#155),
 // read/written by `OutboxStoreService`.
-export const OFFLINE_STORES = ['identity', 'referenceCache', 'outbox'] as const;
+// v4 (issue #163) adds 'recentEntries' — the cached-synced side of "today's
+// session": the last fetch of the active Projekt's already-synced captures,
+// narrowed to today's calendar date, read/written by
+// `RecentEntriesCacheService` so the session view can still show them
+// (read-only) while offline.
+export const OFFLINE_STORES = ['identity', 'referenceCache', 'outbox', 'recentEntries'] as const;
 export type OfflineStoreName = (typeof OFFLINE_STORES)[number];
 
 /**

@@ -29,6 +29,8 @@ import { OutboxStoreService } from '../core/offline/outbox-store';
 import { OutboxService } from '../service/outbox.service';
 import { AuthService } from '../service/auth.service';
 import { IndexedDbStore } from '../core/offline/indexed-db-store';
+import { ReferenceBundleCacheService } from '../core/offline/reference-bundle-cache';
+import { Scientist } from '../models/scientist.model';
 
 registerLocaleData(localeDeAt);
 
@@ -849,6 +851,239 @@ describe('DataEntryFormComponent', () => {
       const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
       f.componentInstance.onBackToList();
       expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+    });
+  });
+
+  describe('queued edit mode (opening a queued outbox entry via /data-entry/:id) (issue #163)', () => {
+    const station: RingingStation = {
+      handle: 'STAMT',
+      name: 'Linz, Botanischer Garten',
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+    };
+    const species: Species = {
+      id: 's1',
+      common_name_de: 'Kohlmeise',
+      common_name_en: 'Great Tit',
+      scientific_name: 'Parus major',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const staff: Scientist = { id: 'sci-1', handle: 'FRE', full_name: 'Filip Reiter' };
+
+    function queuedPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        ringing_station_id: 'STAMT',
+        staff_id: 'sci-1',
+        date_time: '2026-07-02T09:00',
+        species_id: 's1',
+        bird_status: BirdStatus.FirstCatch,
+        ring_size: RingSize.V,
+        ring_number: '0043',
+        net_location: null,
+        net_height: null,
+        net_direction: null,
+        fat_deposit: null,
+        muscle_class: null,
+        age_class: AgeClass.Unknown,
+        sex: Sex.Unknown,
+        small_feather_int: null,
+        small_feather_app: null,
+        hand_wing: null,
+        tarsus: null,
+        feather_span: null,
+        wing_span: null,
+        weight_gram: 18,
+        notch_f2: null,
+        inner_foot: null,
+        comment: 'Erste Notiz',
+        has_mites: false,
+        has_hunger_stripes: false,
+        has_brood_patch: false,
+        has_cpl_plus: false,
+        idempotency_key: 'outbox-uuid-1',
+        project_id: 'p1',
+        ...overrides,
+      };
+    }
+
+    async function setupQueuedEditMode(
+      outboxId: string,
+      payload: Record<string, unknown>,
+    ): Promise<{ f: ComponentFixture<DataEntryFormComponent>; httpMock: HttpTestingController }> {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? outboxId : null) } },
+      };
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+        ],
+      }).compileComponents();
+
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+      await TestBed.inject(OutboxStoreService).add({
+        id: outboxId,
+        accountKey: 'fre',
+        payload,
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      // The outbox must have finished restoring before the component is
+      // constructed — see the `entryId` effect's comment on why the
+      // resolution check is deliberately synchronous.
+      await TestBed.inject(OutboxService).ready;
+
+      await TestBed.inject(ReferenceBundleCacheService).save({
+        bundle: {
+          identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+          species: [{ ...species, usage_count: 0 }],
+          ringing_stations: [station],
+          scientists: [staff],
+          projects: [],
+          last_consumed_ring_numbers: [],
+        },
+        refreshedAt: '2026-07-02T08:00:00.000Z',
+      });
+
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      return { f, httpMock };
+    }
+
+    afterEach(async () => {
+      await TestBed.inject(OutboxStoreService).remove('outbox-uuid-1');
+      await TestBed.inject(ReferenceBundleCacheService).clear();
+      // This describe block uses the real (unstubbed) ProjectService, and a
+      // couple of tests call `.setCurrent()` on it, which persists to real
+      // `localStorage` — clear it so a later test's fresh ProjectService
+      // instance (new TestBed module) never starts from a leaked Projekt.
+      TestBed.inject(ProjectService).clear();
+    });
+
+    // The queued-entry resolution writes through to the real (unpatched by
+    // Zone) browser IndexedDB, so neither `fixture.whenStable()` nor a plain
+    // microtask await observes its completion — only real elapsed time does
+    // (same pattern as offline-readiness.spec.ts).
+    function settle(): Promise<void> {
+      return new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    it('resolves the queued entry locally (never hits the server) and pre-fills the form from the cached bundle', async () => {
+      const { f, httpMock } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload());
+      f.detectChanges();
+
+      httpMock.expectNone(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/outbox-uuid-1/'),
+      );
+
+      await settle();
+      f.detectChanges();
+
+      const form = f.componentInstance.entryForm;
+      expect(f.componentInstance.isEditMode()).toBe(true);
+      expect(f.componentInstance.isQueuedEditMode()).toBe(true);
+      expect(form.get('species')!.value).toEqual(jasmine.objectContaining(species));
+      expect(form.get('ringing_station')!.value).toEqual(station);
+      expect(form.get('staff')!.value).toEqual(staff);
+      expect(form.get('ring_number')!.value).toBe('0043');
+      expect(form.get('comment')!.value).toBe('Erste Notiz');
+    });
+
+    it('re-queues the edit into the outbox on submit instead of PUTting to the server', async () => {
+      const { f, httpMock } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload());
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      f.componentInstance.entryForm.get('weight_gram')!.setValue(21);
+      f.componentInstance.onSubmit();
+      await settle();
+
+      httpMock.expectNone(
+        (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/outbox-uuid-1/'),
+      );
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].id).toBe('outbox-uuid-1');
+      expect(stored[0].queuedAt).toBe('2026-07-02T09:00:00.000Z');
+      expect(stored[0].payload['weight_gram']).toBe(21);
+      expect(stored[0].payload['idempotency_key']).toBe('outbox-uuid-1');
+    });
+
+    it('navigates back to "today\'s session" (not the synced-only list) after re-queueing', async () => {
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload());
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      const router = TestBed.inject(Router);
+      const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+
+      f.componentInstance.onSubmit();
+      await settle();
+
+      expect(navigateSpy).toHaveBeenCalledWith('/heute');
+    });
+
+    it('keeps the entry\'s original project_id when the active Projekt has changed since queuing (review fix)', async () => {
+      // Queued under Projekt "p1" (queuedPayload()'s default). Reproduces the
+      // review scenario: a Mitglied assigned to two Projekte queues a capture
+      // under Projekt A, later switches the active Projekt to B via the
+      // ordinary picker (ProjectService.setCurrent()), then opens the still
+      // queued entry and fixes a typo.
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload({ project_id: 'p1' }));
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      TestBed.inject(ProjectService).setCurrent({
+        ...createProject(),
+        id: 'p2',
+        title: 'Frühjahr',
+      } as Project);
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Tippfehler korrigiert');
+      f.componentInstance.onSubmit();
+      await settle();
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].payload['project_id']).toBe('p1');
+    });
+
+    it('keeps project_id absent when the entry was originally queued without an active Projekt (review fix)', async () => {
+      const payload = queuedPayload();
+      delete payload['project_id'];
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', payload);
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      // An active Projekt now, at edit time — must still not be written onto
+      // an entry that never had one.
+      TestBed.inject(ProjectService).setCurrent(createProject());
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Tippfehler korrigiert');
+      f.componentInstance.onSubmit();
+      await settle();
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].payload['project_id']).toBeUndefined();
     });
   });
 

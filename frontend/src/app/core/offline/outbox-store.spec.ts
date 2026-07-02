@@ -106,8 +106,8 @@ describe('OutboxStoreService', () => {
     });
   });
 
-  describe('remove() (issue #161, dropping a synced entry)', () => {
-    it('removes the entry with the given id', async () => {
+  describe('remove() (issue #161 dropping a synced entry / issue #163 deleting a queued entry)', () => {
+    it('removes the entry so it no longer appears in list()', async () => {
       await service.add(makeEntry({id: 'uuid-1'}));
       await service.add(makeEntry({id: 'uuid-2'}));
 
@@ -117,7 +117,7 @@ describe('OutboxStoreService', () => {
       expect(result.map((e) => e.id)).toEqual(['uuid-2']);
     });
 
-    it('tolerates removing an id that was never queued', async () => {
+    it('is a no-op when the id was never queued', async () => {
       await expectAsync(service.remove('never-queued')).toBeResolved();
     });
   });

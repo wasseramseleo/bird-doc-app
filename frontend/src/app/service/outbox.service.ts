@@ -6,25 +6,29 @@ import {OutboxStoreService} from '../core/offline/outbox-store';
 import {AuthService} from './auth.service';
 
 /**
- * The offline outbox's pending-count signal (issue #160, PRD #152,
- * CONTEXT.md's **nicht synchronisiert** glossary entry): how many captures
- * are durably queued in IndexedDB, still waiting to reach the server.
- * `DataAccessFacadeService` enqueues here whenever a create falls back to
- * the outbox; `OutboxIndicator` (nav bar) reads `pendingCount` to show the
- * always-visible "N nicht synchronisierte Einträge" indication.
+ * The offline outbox's pending-entries state (issue #160, #163, PRD #152,
+ * CONTEXT.md's **nicht synchronisiert** glossary entry): how many — and
+ * which — captures are durably queued in IndexedDB, still waiting to reach
+ * the server. `DataAccessFacadeService` enqueues here whenever a create
+ * falls back to the outbox; `OutboxIndicator` (nav bar) reads `pendingCount`
+ * for the always-visible "N nicht synchronisierte Einträge" indication, and
+ * "today's session" (issue #163) reads `pendingEntries()` to list them, plus
+ * `findQueued()`/`update()`/`delete()` to open, edit and remove one.
  *
  * The count is restored from IndexedDB on construction (`ready`), so a
  * reload/restart shows the real, durable count immediately rather than a
  * transient zero while the first read is in flight — the same pattern
  * `ReferenceCacheService` uses for its own persisted state.
  *
- * Tenancy (issue #160 fix): the single `outbox` IndexedDB store is shared by
- * every account that has ever used this device, so `entries` (loaded from
- * `OutboxStoreService.list()`) may hold more than one account's rows.
- * `pendingCount` and `enqueue()` both scope to `AuthService.currentUser()`
- * — reactively, not just at construction — so handing a shared/offline
- * device to a different Mitglied (logout, then a fresh login, with no
- * reload in between) never shows or grows another account's queue.
+ * Tenancy (issue #160 fix, extended by #163): the single `outbox` IndexedDB
+ * store is shared by every account that has ever used this device, so
+ * `entries` (loaded from `OutboxStoreService.list()`) may hold more than one
+ * account's rows. `pendingCount`, `pendingEntries()`, `findQueued()`,
+ * `enqueue()`, `update()` and `delete()` all scope to
+ * `AuthService.currentUser()` — reactively, not just at construction — so
+ * handing a shared/offline device to a different Mitglied (logout, then a
+ * fresh login, with no reload in between) never shows, grows, edits or
+ * deletes another account's queue.
  */
 @Injectable({providedIn: 'root'})
 export class OutboxService {
@@ -37,12 +41,23 @@ export class OutboxService {
     () => this.auth.currentUser()?.username ?? null,
   );
 
-  readonly pendingCount = computed(() => {
+  readonly pendingCount = computed(() => this.pendingEntries().length);
+
+  /**
+   * Every entry queued by the currently authenticated account, oldest-first
+   * (capture order) — the account-scoped read path "today's session"
+   * (issue #163) lists queued entries through, exactly like `pendingCount`
+   * above. Never exposes another account's rows on a shared/offline device.
+   */
+  readonly pendingEntries = computed<OutboxEntry[]>(() => {
     const accountKey = this.currentAccountKey();
     if (accountKey === null) {
-      return 0;
+      return [];
     }
-    return this.entries().filter((entry) => entry.accountKey === accountKey).length;
+    return this.entries()
+      .filter((entry) => entry.accountKey === accountKey)
+      .slice()
+      .sort((a, b) => a.queuedAt.localeCompare(b.queuedAt));
   });
 
   readonly ready: Promise<void> = this.restore();
@@ -117,5 +132,54 @@ export class OutboxService {
       return [];
     }
     return this.store.listForAccount(accountKey);
+  }
+
+  /**
+   * Resolves a queued entry by id, scoped to the currently authenticated
+   * account (issue #163: "today's session" navigation resolving both server
+   * IDs and local outbox IDs to the same form). Returns `null` for a server
+   * id (never queued) exactly the same as for another account's entry — a
+   * caller cannot distinguish "not queued" from "not yours", which is the
+   * point: a shared/offline device must never leak another Mitglied's queue.
+   */
+  findQueued(id: string): OutboxEntry | null {
+    return this.pendingEntries().find((entry) => entry.id === id) ?? null;
+  }
+
+  /**
+   * Edits a queued (nicht synchronisiert) entry in place (issue #163):
+   * overwrites its payload — e.g. after fixing a typo in the normal capture
+   * form — while preserving its id and `queuedAt`, so the correction
+   * re-queues under the same idempotency key and in its original capture
+   * order rather than jumping to the back of the queue. Only ever targets an
+   * entry already visible to the current account via `findQueued()`.
+   */
+  update(id: string, payload: Record<string, unknown>): Observable<void> {
+    const existing = this.findQueued(id);
+    if (!existing) {
+      throw new Error('Cannot edit an outbox entry that is not queued for the current account.');
+    }
+    const updated: OutboxEntry = {...existing, payload};
+    return from(this.ready.then(() => this.store.add(updated))).pipe(
+      tap(() =>
+        this.entries.update((current) => current.map((entry) => (entry.id === id ? updated : entry))),
+      ),
+    );
+  }
+
+  /**
+   * Deletes a queued (nicht synchronisiert) entry (issue #163) — the only
+   * kind of entry that can be removed on-device; an already-synchronisiert
+   * entry is read-only and has no delete path here. Only ever targets an
+   * entry already visible to the current account via `findQueued()`.
+   */
+  delete(id: string): Observable<void> {
+    const existing = this.findQueued(id);
+    if (!existing) {
+      throw new Error('Cannot delete an outbox entry that is not queued for the current account.');
+    }
+    return from(this.ready.then(() => this.store.remove(id))).pipe(
+      tap(() => this.entries.update((current) => current.filter((entry) => entry.id !== id))),
+    );
   }
 }

@@ -43,8 +43,12 @@ import {
 } from '../models/data-entry.model';
 import {ApiService} from '../service/api.service';
 import {DataAccessFacadeService} from '../service/data-access-facade.service';
+import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
 import {WorkbenchStorageService} from '../service/workbench-storage.service';
+import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
+import {resolveQueuedEntryDisplay} from '../core/offline/queued-entry-display';
+import {OutboxEntry} from '../models/outbox-entry.model';
 import {Species} from '../models/species.model';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {RingingStation} from '../models/ringing-station.model';
@@ -104,6 +108,11 @@ export class DataEntryFormComponent implements OnInit {
   // `apiService` — writes and single-record reads are out of this issue's
   // scope.
   private readonly dataAccess = inject(DataAccessFacadeService);
+  // Issue #163: resolves whether /data-entry/:id points at a queued (nicht
+  // synchronisiert) outbox entry or a synced server record, and owns the
+  // edit/delete of the former — see the `entryId` effect and `onSubmit()`.
+  private readonly outbox = inject(OutboxService);
+  private readonly referenceCache = inject(ReferenceBundleCacheService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly projectService = inject(ProjectService);
@@ -125,6 +134,15 @@ export class DataEntryFormComponent implements OnInit {
   // #24: the record loaded in edit mode, kept so Zurücksetzen can restore its
   // saved values instead of emptying the form.
   private readonly loadedEntry = signal<DataEntry | null>(null);
+  // Issue #163: set instead of `loadedEntry` when `entryId` resolves to a
+  // queued outbox entry rather than a synced server record — editing it
+  // saves back into the outbox (re-queue) instead of PUTting to the server.
+  private readonly loadedQueuedEntry = signal<OutboxEntry | null>(null);
+  readonly isQueuedEditMode = computed(() => this.loadedQueuedEntry() !== null);
+  // The queued entry's payload resolved to display-ready form values (issue
+  // #163), kept alongside `loadedQueuedEntry` so Zurücksetzen can restore it
+  // without re-reading the reference cache.
+  private readonly loadedQueuedFormValue = signal<Record<string, unknown> | null>(null);
   readonly loading = signal<boolean>(false);
   // MO-3 submit feedback: drives the brief green "Gespeichert ✓" button state.
   readonly saved = signal<boolean>(false);
@@ -450,18 +468,76 @@ export class DataEntryFormComponent implements OnInit {
 
     effect(() => {
       const id = this.entryId();
-      if (id) {
-        this.loading.set(true);
-        this.apiService.getDataEntry(id).subscribe(entry => {
-          this.loadedEntry.set(entry);
-          this.entryForm.patchValue(this.transformToForm(entry));
-          // Issue #19/#57: a loaded Sonderart entry must apply the same
-          // collapse / mandatory-comment behaviour as a freshly selected one.
-          this.selectedSpecies.set(entry.species ?? null);
-          this.loading.set(false);
-        });
+      if (!id) {
+        return;
       }
+
+      // Issue #163: entry-detail navigation resolves both server IDs and
+      // local outbox IDs to the same form. `findQueued()` is a synchronous,
+      // already-account-scoped read of `OutboxService`'s in-memory state —
+      // safe here because the only way to reach /data-entry/:id with a
+      // queued id is via "today's session" (issue #163), whose own list
+      // already awaited `OutboxService.ready` to render, so the outbox is
+      // guaranteed populated by the time this component is ever constructed
+      // with such an id. A server id (never queued) simply falls through to
+      // the unchanged server fetch below.
+      const queued = this.outbox.findQueued(id);
+      if (queued) {
+        this.loadedQueuedEntry.set(queued);
+        void this.loadQueuedEntryForEdit(queued);
+        return;
+      }
+
+      this.loading.set(true);
+      this.apiService.getDataEntry(id).subscribe(entry => {
+        this.loadedEntry.set(entry);
+        this.entryForm.patchValue(this.transformToForm(entry));
+        // Issue #19/#57: a loaded Sonderart entry must apply the same
+        // collapse / mandatory-comment behaviour as a freshly selected one.
+        this.selectedSpecies.set(entry.species ?? null);
+        this.loading.set(false);
+      });
     });
+  }
+
+  /**
+   * Loads a queued (nicht synchronisiert) outbox entry into the form for
+   * editing (issue #163). The outbox only ever stores the flat write-shape
+   * payload (`species_id`/`ringing_station_id`/`staff_id`, exactly what a
+   * create POSTs) — never the nested records the form controls hold — so
+   * this resolves them from the already-cached offline reference bundle
+   * (issue #158) via `resolveQueuedEntryDisplay`, the same lookup "today's
+   * session" uses to render the queue. An id no longer resolvable in the
+   * cache (e.g. a species removed from the pool since) is left `null`,
+   * surfacing as an empty, reselectable field rather than blocking the edit.
+   */
+  private async loadQueuedEntryForEdit(entry: OutboxEntry): Promise<void> {
+    this.loading.set(true);
+    let bundle = null;
+    try {
+      bundle = (await this.referenceCache.load())?.bundle ?? null;
+    } catch (error) {
+      console.error('Failed to read the offline reference cache', error);
+    }
+    const display = resolveQueuedEntryDisplay(entry.payload, bundle);
+    const formValue: Record<string, unknown> = {
+      ...entry.payload,
+      species: display.species,
+      ringing_station: display.ringingStation,
+      staff: display.staff,
+    };
+    delete formValue['species_id'];
+    delete formValue['ringing_station_id'];
+    delete formValue['staff_id'];
+    delete formValue['idempotency_key'];
+    delete formValue['project_id'];
+
+    this.loadedQueuedFormValue.set(formValue);
+    this.entryForm.patchValue(formValue);
+    // Issue #19/#57: a loaded Sonderart entry must apply the same collapse /
+    // mandatory-comment behaviour as a freshly selected one.
+    this.selectedSpecies.set(display.species);
+    this.loading.set(false);
   }
 
   ngOnInit(): void {
@@ -750,9 +826,11 @@ export class DataEntryFormComponent implements OnInit {
   }
 
   // #24: leave the list-bound back navigation in edit mode so an opened record can
-  // be left without saving, separate from Zurücksetzen.
+  // be left without saving, separate from Zurücksetzen. Issue #163: a queued
+  // entry was opened from "today's session", so it returns there instead of
+  // the synced-only "Letzte Fänge" list.
   onBackToList(): void {
-    this.router.navigateByUrl('/data-entries');
+    this.router.navigateByUrl(this.isQueuedEditMode() ? '/heute' : '/data-entries');
   }
 
   onSubmit(): void {
@@ -772,7 +850,9 @@ export class DataEntryFormComponent implements OnInit {
     // #155: only reuse the idempotency key across a resubmit when it replays the
     // exact same content as the last failed attempt (a true retry). An edited
     // resubmit must never risk the server treating it as the same create and
-    // silently discarding the correction — mint a fresh key instead.
+    // silently discarding the correction — mint a fresh key instead. A queued
+    // edit (#163) never touches this key at all — it always keeps its own
+    // outbox id, see transformFromForm().
     if (!this.isEditMode() && this.lastFailedSubmission !== null) {
       if (JSON.stringify(rawValue) !== this.lastFailedSubmission) {
         this.idempotencyKey = crypto.randomUUID();
@@ -781,15 +861,21 @@ export class DataEntryFormComponent implements OnInit {
 
     const formValue = this.transformFromForm(rawValue);
 
-    // #160: a create routes through the offline-aware facade, which attempts
-    // the real POST first and only durably enqueues into the offline outbox
-    // on a genuine connectivity failure — never on any other server error.
-    // An edit always targets an existing server record, so it stays on
-    // `apiService` unchanged (offline edits of already-synced entries are
-    // out of scope for PRD #152 — see its "Out of Scope" section).
-    const saveOperation: Observable<unknown> = this.isEditMode()
-      ? this.apiService.updateDataEntry(this.entryId()!, formValue)
-      : this.dataAccess.createDataEntry(formValue);
+    // #160/#163: a create — including re-saving a queued (nicht
+    // synchronisiert) entry, which is really "create, still pending" — routes
+    // through the offline outbox. A brand-new create goes through the
+    // offline-aware facade (attempts the real POST first, only durably
+    // enqueues on a genuine connectivity failure); a queued edit writes
+    // straight back into the outbox via `OutboxService.update()` — it was
+    // never on the server to begin with, so there is nothing to PUT. An edit
+    // of an already-*synced* record always targets the server, so it stays on
+    // `apiService` unchanged (offline edits of synced entries are out of
+    // scope for PRD #152 — see its "Out of Scope" section).
+    const saveOperation: Observable<unknown> = this.isQueuedEditMode()
+      ? this.outbox.update(this.entryId()!, formValue as Record<string, unknown>)
+      : this.isEditMode()
+        ? this.apiService.updateDataEntry(this.entryId()!, formValue)
+        : this.dataAccess.createDataEntry(formValue);
 
     saveOperation.subscribe({
       next: () => {
@@ -800,6 +886,12 @@ export class DataEntryFormComponent implements OnInit {
           horizontalPosition: 'center',
           verticalPosition: 'bottom',
         });
+        if (this.isQueuedEditMode()) {
+          // Issue #163: back to "today's session", where the re-queued entry
+          // still shows as nicht synchronisiert.
+          this.router.navigateByUrl('/heute');
+          return;
+        }
         if (this.isEditMode()) {
           // Edits return to the list hub; high-speed create flow stays put.
           this.router.navigateByUrl('/data-entries');
@@ -843,14 +935,33 @@ export class DataEntryFormComponent implements OnInit {
     payload.ringing_station_id = formValue.ringing_station?.handle;
     payload.staff_id = formValue.staff?.id;
 
-    const project = this.currentProject();
-    if (project) {
-      payload.project_id = project.id;
+    // #163: a queued edit must never re-derive project_id from the
+    // *currently active* Projekt — the Mitglied may have switched Projekt
+    // (via the ordinary picker) at any point between queueing and re-saving
+    // the correction, and the active Projekt is not part of the capture's
+    // own identity. Keep the id the entry was originally queued under
+    // instead (undefined stays undefined, matching a create queued while no
+    // Projekt was active), so re-saving a typo fix can never silently
+    // reattribute the capture to a different Projekt. Only a genuine create
+    // or an edit of an already-synced record derives project_id from the
+    // active Projekt.
+    if (this.isQueuedEditMode()) {
+      payload.project_id = this.loadedQueuedEntry()!.payload['project_id'];
+    } else {
+      const project = this.currentProject();
+      if (project) {
+        payload.project_id = project.id;
+      }
     }
 
-    // #155: only a create carries the idempotency key — editing an existing
-    // capture must never change it (the backend also enforces this).
-    if (!this.isEditMode()) {
+    // #155/#163: a create carries a fresh idempotency key; re-saving a
+    // queued entry carries the *same* key it already had (its own outbox
+    // id) — it is still the same not-yet-synced capture, just corrected.
+    // Editing an already-*synced* record must never send one at all (the
+    // backend also enforces this).
+    if (this.isQueuedEditMode()) {
+      payload.idempotency_key = this.entryId()!;
+    } else if (!this.isEditMode()) {
       payload.idempotency_key = this.idempotencyKey;
     }
 
@@ -1024,8 +1135,20 @@ export class DataEntryFormComponent implements OnInit {
   }
 
   // #24: restore the loaded record's saved values, dropping the user's edits and
-  // returning the form to a pristine, error-free state.
+  // returning the form to a pristine, error-free state. Issue #163: a queued
+  // entry restores from its already-resolved form value instead of
+  // `transformToForm()`, which expects a server-shaped `DataEntry`.
   private resetToSaved(): void {
+    if (this.isQueuedEditMode()) {
+      const formValue = this.loadedQueuedFormValue();
+      if (!formValue) {
+        return;
+      }
+      this.resetFormTo(formValue);
+      this.selectedSpecies.set((formValue['species'] as Species | null) ?? null);
+      this.recaptureHistory.set([]);
+      return;
+    }
     const entry = this.loadedEntry();
     if (!entry) {
       return;

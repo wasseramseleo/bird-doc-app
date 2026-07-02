@@ -27,14 +27,6 @@ export class OutboxStoreService {
   }
 
   /**
-   * Drops a queued entry once it has been durably synced to the server
-   * (issue #161) — keyed by its own idempotency UUID, exactly like `add()`.
-   */
-  remove(id: string): Promise<void> {
-    return this.db.delete('outbox', id);
-  }
-
-  /**
    * Every queued entry across every account, oldest-first (capture order).
    * `OutboxService` uses this to build its full local snapshot, which it
    * then filters reactively to the currently authenticated account — see
@@ -54,5 +46,16 @@ export class OutboxStoreService {
   async listForAccount(accountKey: string): Promise<OutboxEntry[]> {
     const entries = await this.list();
     return entries.filter((entry) => entry.accountKey === accountKey);
+  }
+
+  /**
+   * Removes a queued entry permanently — once it has been durably synced to
+   * the server (issue #161's sync replay) or deleted on-device (issue #163:
+   * removing a nicht synchronisiert entry from "today's session"). Keyed the
+   * same way as `add()`; removing an id that was never queued is a harmless
+   * no-op.
+   */
+  remove(id: string): Promise<void> {
+    return this.db.delete('outbox', id);
   }
 }
