@@ -85,4 +85,23 @@ export class OutboxService {
       tap(() => this.entries.update((current) => [...current, entry])),
     );
   }
+
+  /**
+   * The currently authenticated account's own queued entries, oldest-first
+   * (issue #162): the read path the offline ring-number suggestion folds in
+   * alongside the cached last-consumed number, so back-to-back offline
+   * Erstfänge/Ring-vernichtet captures suggest sequential numbers. Goes
+   * through `OutboxStoreService.listForAccount()` — the account-scoped read
+   * path (issue #160 tenancy fix) — never the raw, unfiltered store, so a
+   * shared/offline device never folds another Mitglied's queued captures
+   * into this account's suggestion. Resolves to an empty list when no
+   * account is authenticated, mirroring `enqueue()`'s own guard.
+   */
+  async listOwnQueued(): Promise<OutboxEntry[]> {
+    const accountKey = this.currentAccountKey();
+    if (accountKey === null) {
+      return [];
+    }
+    return this.store.listForAccount(accountKey);
+  }
 }

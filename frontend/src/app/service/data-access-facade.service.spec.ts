@@ -86,8 +86,13 @@ describe('DataAccessFacadeService', () => {
   afterEach(async () => {
     httpMock.verify();
     await cache.clear();
+    // Issue #162's own-queue tests enqueue an unpredictable number of
+    // randomly-keyed outbox rows — sweep every entry the DB actually holds
+    // rather than a fixed id list, so no test leaks a stray row into the
+    // next one's outbox reads.
     const db = TestBed.inject(IndexedDbStore);
-    await db.delete('outbox', 'uuid-1');
+    const entries = await db.getAll<{id: string}>('outbox');
+    await Promise.all(entries.map((entry) => db.delete('outbox', entry.id)));
   });
 
   describe('getSpecies()', () => {
@@ -341,6 +346,165 @@ describe('DataAccessFacadeService', () => {
 
       const result = await resultPromise;
       expect(result.next_number).toBeNull();
+    });
+
+    describe('own-queue fold-in (issue #162)', () => {
+      const RING_VERNICHTET: OfflineSpecies = {
+        id: 's-rv',
+        common_name_de: 'Ring Vernichtet',
+        common_name_en: '',
+        scientific_name: '',
+        family_name: '',
+        order_name: '',
+        ring_size: null,
+        special_kind: 'ring_destroyed',
+        usage_count: 0,
+      };
+
+      async function queueEntry(payload: Record<string, unknown>): Promise<void> {
+        await firstValueFrom(
+          TestBed.inject(OutboxService).enqueue({
+            idempotency_key: `uuid-${Math.random()}`,
+            ...payload,
+          }),
+        );
+      }
+
+      it("combines the cached last-consumed number with the device's own queued Erstfang entry, so consecutive offline Erstfänge suggest sequential numbers", async () => {
+        await cache.save({
+          bundle: {
+            ...EMPTY_BUNDLE,
+            last_consumed_ring_numbers: [{project_id: 'p1', size: RingSize.V, number: '0042'}],
+          },
+          refreshedAt: '2026-06-01T09:00:00.000Z',
+        });
+        // A first offline Erstfang has already drawn "0043" from the rope and
+        // sits queued, unsynced, on this device.
+        await queueEntry({
+          bird_status: 'e',
+          ring_size: RingSize.V,
+          ring_number: '0043',
+          project_id: 'p1',
+        });
+
+        const resultPromise = firstValueFrom(service.getNextRingNumber(RingSize.V, 'p1'));
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'))
+          .error(new ProgressEvent('error'));
+
+        const result = await resultPromise;
+        expect(result.next_number).toBe('0044');
+      });
+
+      it('treats a queued Ring-vernichtet entry as consuming a number, exactly like a queued Erstfang', async () => {
+        await cache.save({
+          bundle: {
+            ...EMPTY_BUNDLE,
+            species: [RING_VERNICHTET],
+            last_consumed_ring_numbers: [{project_id: 'p1', size: RingSize.V, number: '0042'}],
+          },
+          refreshedAt: '2026-06-01T09:00:00.000Z',
+        });
+        // A queued "Ring vernichtet" record carries no bird_status (the field
+        // is hidden/collapsed once that Sonderart is selected) — only the
+        // species tells the suggestion it drew a fresh number.
+        await queueEntry({
+          species_id: RING_VERNICHTET.id,
+          ring_size: RingSize.V,
+          ring_number: '0043',
+          project_id: 'p1',
+        });
+
+        const resultPromise = firstValueFrom(service.getNextRingNumber(RingSize.V, 'p1'));
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'))
+          .error(new ProgressEvent('error'));
+
+        const result = await resultPromise;
+        expect(result.next_number).toBe('0044');
+      });
+
+      it('does not treat a queued Wiederfang entry as consuming a number', async () => {
+        await cache.save({
+          bundle: {
+            ...EMPTY_BUNDLE,
+            last_consumed_ring_numbers: [{project_id: 'p1', size: RingSize.V, number: '0042'}],
+          },
+          refreshedAt: '2026-06-01T09:00:00.000Z',
+        });
+        await queueEntry({
+          bird_status: 'w',
+          ring_size: RingSize.V,
+          ring_number: '0043',
+          project_id: 'p1',
+        });
+
+        const resultPromise = firstValueFrom(service.getNextRingNumber(RingSize.V, 'p1'));
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'))
+          .error(new ProgressEvent('error'));
+
+        const result = await resultPromise;
+        // The cached last-consumed alone ("0042" + 1) — the Wiederfang never
+        // moved the rope forward.
+        expect(result.next_number).toBe('0043');
+      });
+
+      it('ignores a queued consuming entry for a different Projekt or Ringgröße', async () => {
+        await cache.save({
+          bundle: {
+            ...EMPTY_BUNDLE,
+            last_consumed_ring_numbers: [{project_id: 'p1', size: RingSize.V, number: '0042'}],
+          },
+          refreshedAt: '2026-06-01T09:00:00.000Z',
+        });
+        await queueEntry({
+          bird_status: 'e',
+          ring_size: RingSize.V,
+          ring_number: '9999',
+          project_id: 'other-project',
+        });
+        await queueEntry({
+          bird_status: 'e',
+          ring_size: RingSize.T,
+          ring_number: '8888',
+          project_id: 'p1',
+        });
+
+        const resultPromise = firstValueFrom(service.getNextRingNumber(RingSize.V, 'p1'));
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'))
+          .error(new ProgressEvent('error'));
+
+        const result = await resultPromise;
+        expect(result.next_number).toBe('0043');
+      });
+
+      it("never folds another account's queued entries into this account's suggestion (tenancy)", async () => {
+        await cache.save({
+          bundle: {
+            ...EMPTY_BUNDLE,
+            last_consumed_ring_numbers: [{project_id: 'p1', size: RingSize.V, number: '0042'}],
+          },
+          refreshedAt: '2026-06-01T09:00:00.000Z',
+        });
+        // A different Mitglied's queued Erstfang, sitting on this same
+        // shared/offline device.
+        await TestBed.inject(OutboxStoreService).add({
+          id: 'uuid-other-account',
+          accountKey: 'anm',
+          payload: {bird_status: 'e', ring_size: RingSize.V, ring_number: '0099', project_id: 'p1'},
+          queuedAt: '2026-06-01T09:30:00.000Z',
+        });
+
+        const resultPromise = firstValueFrom(service.getNextRingNumber(RingSize.V, 'p1'));
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'))
+          .error(new ProgressEvent('error'));
+
+        const result = await resultPromise;
+        expect(result.next_number).toBe('0043');
+      });
     });
   });
 
