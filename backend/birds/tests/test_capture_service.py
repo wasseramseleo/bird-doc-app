@@ -259,3 +259,99 @@ def test_create_capture_attaches_project(
     )
 
     assert entry.project == project
+
+
+@pytest.mark.django_db
+def test_create_capture_rejects_second_erstfang_on_same_org_ring(
+    species, scientist, ringing_station, organization
+):
+    """A second Erstfang on a ring the Organisation already first-caught is a
+    genuine ring-uniqueness collision (ADR 0006), not a reuse: it is refused so
+    two concurrent offline devices converge on exactly one flagged sync error
+    (issue #164, PRD #152), never a silent second Erstfang on one physical ring.
+
+    The idempotency short-circuit runs first, so a genuine *replay* (same key)
+    is unaffected — only two distinct create attempts (distinct keys) collide.
+    """
+    create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_number="830",
+            idempotency_key=uuid.uuid4(),
+        )
+    )
+
+    with pytest.raises(CaptureValidationError) as exc_info:
+        create_capture(
+            **_capture_kwargs(
+                species,
+                scientist,
+                ringing_station,
+                organization,
+                ring_number="830",
+                idempotency_key=uuid.uuid4(),
+            )
+        )
+
+    assert exc_info.value.field == "ring_number"
+    assert (
+        DataEntry.objects.filter(
+            ring__number="830", bird_status=DataEntry.BirdStatus.FIRST_CATCH
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_create_capture_allows_wiederfang_on_already_first_caught_ring(
+    species, scientist, ringing_station, organization
+):
+    """A recapture (Wiederfang) of an already-first-caught ring is expected —
+    it is never treated as a ring-uniqueness collision and must still create."""
+    create_capture(
+        **_capture_kwargs(species, scientist, ringing_station, organization, ring_number="831")
+    )
+
+    entry = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_number="831",
+            bird_status=DataEntry.BirdStatus.RE_CATCH,
+        )
+    )
+
+    assert entry.bird_status == DataEntry.BirdStatus.RE_CATCH
+
+
+@pytest.mark.django_db
+def test_create_capture_erstfang_allowed_when_other_org_first_caught_same_number(
+    species, scientist, ringing_station, organization, organization_b
+):
+    """Ring uniqueness is org-scoped (ADR 0006): another Organisation having
+    first-caught the same (size, number) never blocks this Organisation's own
+    first Erstfang on that number — the rings are two different rows."""
+    other_ring = Ring.objects.create(
+        number="832", size=Ring.RingSizes.V, organization=organization_b
+    )
+    DataEntry.objects.create(
+        species=species,
+        ring=other_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        organization=organization_b,
+        bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+        date_time=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
+    )
+
+    entry = create_capture(
+        **_capture_kwargs(species, scientist, ringing_station, organization, ring_number="832")
+    )
+
+    assert entry.bird_status == DataEntry.BirdStatus.FIRST_CATCH
+    assert entry.ring.organization == organization

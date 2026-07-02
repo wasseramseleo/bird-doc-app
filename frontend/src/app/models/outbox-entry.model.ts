@@ -27,4 +27,12 @@ export interface OutboxEntry {
   // ISO 8601 timestamp of when the entry was queued — the capture order that
   // issue #161's sync replays entries in.
   queuedAt: string;
+  // The server's rejection message when a sync attempt was refused (issue
+  // #164, PRD #152): the entry is left in the queue, flagged with this
+  // message, while the rest of the queue syncs on. Absent/`null` means the
+  // entry is not flagged — a plain nicht synchronisiert capture still awaiting
+  // its first (or a retried) sync. A flagged entry is skipped by the replay
+  // until it is fixed in the normal capture form, which re-queues it clean
+  // (clearing this flag) — resolving a sync error is just ordinary editing.
+  syncError?: string | null;
 }

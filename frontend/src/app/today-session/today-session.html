@@ -12,13 +12,24 @@
       <p class="today-session__empty">Keine nicht synchronisierten Einträge.</p>
     } @else {
       @for (row of queuedRows(); track row.id) {
-        <div class="session-row session-row--queued" (click)="openQueued(row)">
+        <div
+          class="session-row session-row--queued"
+          [class.session-row--error]="row.syncError"
+          (click)="openQueued(row)"
+        >
           <span class="session-row__time">{{ row.timestamp | date:'HH:mm' }}</span>
           <span class="session-row__species">{{ row.speciesLabel }}</span>
           <span class="session-row__ring">{{ row.ringLabel }}</span>
           <span class="session-row__status">{{ row.statusLabel }}</span>
           <span class="session-row__staff">{{ row.staffLabel }}</span>
-          <span class="session-row__badge session-row__badge--pending">nicht synchronisiert</span>
+          @if (row.syncError) {
+            <span class="session-row__badge session-row__badge--error" title="Zum Beheben öffnen">
+              <mat-icon inline="true" aria-hidden="true">error_outline</mat-icon>
+              Sync-Fehler
+            </span>
+          } @else {
+            <span class="session-row__badge session-row__badge--pending">nicht synchronisiert</span>
+          }
           <button
             mat-icon-button
             type="button"
@@ -29,6 +40,9 @@
             <mat-icon>delete</mat-icon>
           </button>
         </div>
+        @if (row.syncError) {
+          <p class="session-row__error-message" data-testid="queued-sync-error">{{ row.syncError }}</p>
+        }
       }
     }
   </section>

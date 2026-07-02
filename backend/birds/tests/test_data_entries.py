@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
@@ -604,3 +605,64 @@ def test_filter_by_ring_size_and_number(auth_client, species, scientist, ringing
     body = response.json()
     assert body["count"] == 1
     assert body["results"][0]["id"] == str(target.id)
+
+
+@pytest.mark.django_db
+def test_duplicate_erstfang_across_devices_is_rejected_not_silently_duplicated(
+    auth_client, species, scientist, ringing_station
+):
+    """AC3 (#164): two offline devices at one Organisation each record an
+    Erstfang on the same ring number (each with its own idempotency key). The
+    first wins; the second is a genuine ring-uniqueness collision (ADR 0006)
+    and is refused with a 400 field error, so the losing device surfaces
+    exactly one flagged sync error rather than silently filing a second
+    Erstfang on one physical ring."""
+    first = auth_client.post(
+        LIST_URL,
+        {
+            **_payload(species, scientist, ringing_station, ring_number="820"),
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        format="json",
+    )
+    assert first.status_code == 201, first.json()
+
+    second = auth_client.post(
+        LIST_URL,
+        {
+            **_payload(species, scientist, ringing_station, ring_number="820"),
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        format="json",
+    )
+    assert second.status_code == 400, second.json()
+    assert "ring_number" in second.json()
+    assert (
+        DataEntry.objects.filter(
+            ring__number="820", bird_status=DataEntry.BirdStatus.FIRST_CATCH
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_replaying_the_same_erstfang_create_is_idempotent_not_a_collision(
+    auth_client, species, scientist, ringing_station
+):
+    """The duplicate-Erstfang guard must never mistake a genuine replay (an
+    offline outbox retry firing twice under the *same* idempotency key) for a
+    collision — the idempotency short-circuit returns the existing row, so a
+    replayed create still succeeds and creates no second row (#155/#164)."""
+    key = str(uuid.uuid4())
+    payload = {
+        **_payload(species, scientist, ringing_station, ring_number="822"),
+        "idempotency_key": key,
+    }
+
+    first = auth_client.post(LIST_URL, payload, format="json")
+    assert first.status_code == 201, first.json()
+
+    replay = auth_client.post(LIST_URL, payload, format="json")
+    assert replay.status_code == 201, replay.json()
+    assert replay.json()["id"] == first.json()["id"]
+    assert DataEntry.objects.filter(ring__number="822").count() == 1

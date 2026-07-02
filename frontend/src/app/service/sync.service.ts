@@ -1,4 +1,5 @@
 import {inject, Injectable, signal} from '@angular/core';
+import {HttpErrorResponse} from '@angular/common/http';
 import {firstValueFrom, from, Observable, of, tap} from 'rxjs';
 
 import {ApiService} from './api.service';
@@ -8,20 +9,31 @@ import {OutboxStoreService} from '../core/offline/outbox-store';
 import {OutboxEntry} from '../models/outbox-entry.model';
 
 /**
- * The outcome of one `syncNow()` run — how many of the account's queued
- * entries were durably synced out of how many were attempted. `total === 0`
- * means there was nothing to do (no account, nothing queued, or the CSRF
- * refresh itself never reached the server); `synced < total` is a partial
- * completion — the sync was interrupted (e.g. connectivity dropped
- * mid-replay) and the remaining entries are still safely queued for the
- * next attempt.
+ * The outcome of one `syncNow()` run over the account's *eligible* queued
+ * entries — every queued entry except those already flagged with a prior sync
+ * rejection (issue #164), which the replay skips until they are fixed. `total`
+ * is how many eligible entries were attempted; `synced` how many reached the
+ * server durably; `flagged` how many the server rejected this run (left queued,
+ * flagged, so the rest could sync on).
+ *
+ * - `total === 0`: nothing to do (no account, nothing eligible queued, or the
+ *   CSRF refresh itself never reached the server).
+ * - `synced + flagged === total`: the run reached the end of the queue — every
+ *   eligible entry either synced or was flagged.
+ * - `synced + flagged < total`: the run was interrupted (e.g. connectivity
+ *   dropped mid-replay); the untouched remainder is still safely queued for the
+ *   next attempt.
  */
 export interface SyncResult {
   readonly total: number;
   readonly synced: number;
+  readonly flagged: number;
 }
 
-const NOTHING_TO_SYNC: SyncResult = {total: 0, synced: 0};
+/** One eligible entry's fate during replay. */
+type EntryOutcome = 'synced' | 'flagged' | 'interrupted';
+
+const NOTHING_TO_SYNC: SyncResult = {total: 0, synced: 0, flagged: 0};
 
 /**
  * Drains the offline outbox to the server (issue #161, PRD #152): the
@@ -39,11 +51,21 @@ const NOTHING_TO_SYNC: SyncResult = {total: 0, synced: 0};
  *   `OutboxStoreService.listForAccount()` already returns them in — capture
  *   order), one at a time.
  * - **Idempotent / interruption-safe**: each entry carries its own
- *   idempotency UUID (#155) end-to-end. Replay stops at the first entry that
- *   fails (rather than skipping ahead — skip-and-flag rejection handling is
- *   #152's next slice, out of scope here) so the still-queued remainder is
- *   untouched and simply retried, under the same key, by the next
- *   `syncNow()` call — never duplicated server-side.
+ *   idempotency UUID (#155) end-to-end. A *transient* failure (connectivity
+ *   dropped again — `HttpErrorResponse.status === 0` — or a `5xx` server error)
+ *   stops the replay at that entry, so the still-queued remainder is untouched
+ *   and simply retried, under the same key, by the next `syncNow()` call —
+ *   never duplicated server-side.
+ * - **Skip-and-flag on rejection (issue #164)**: a *definitive* server
+ *   rejection (`4xx` — a validation change, a Station archived mid-trip, a
+ *   Beringer reassigned to the Gelöschter Nutzer, or a genuine ring-uniqueness
+ *   collision from a concurrent device) is not a transient failure: retrying
+ *   the same payload will only be refused again. Rather than let one bad entry
+ *   hold the whole queue hostage, that entry is left in the queue, flagged with
+ *   the server's own error message (`OutboxService.flag()`), and the replay
+ *   continues with the rest. A flagged entry is skipped by later replays until
+ *   it is fixed in the normal capture form (`OutboxService.update()` clears the
+ *   flag) — resolving a sync error is just ordinary editing.
  * - **Account-switch-safe mid-replay**: `AuthService.currentUser()` is a
  *   live, session-cookie-backed signal — it can change *during* the
  *   `await`-per-entry loop (a shared/offline device where Mitglied B logs in,
@@ -89,7 +111,14 @@ export class SyncService {
 
   private async runSync(accountKey: string): Promise<SyncResult> {
     try {
-      const entries = await this.outboxStore.listForAccount(accountKey);
+      // A previously flagged entry (issue #164) is skipped, not re-attempted:
+      // the server already rejected that exact payload and would only reject it
+      // again — it becomes eligible once more only after being fixed in the
+      // form (which clears its flag). Filtering it out here also keeps its
+      // rejection from being re-announced on every reconnect.
+      const entries = (await this.outboxStore.listForAccount(accountKey)).filter(
+        (entry) => !entry.syncError,
+      );
       if (entries.length === 0) {
         return NOTHING_TO_SYNC;
       }
@@ -100,6 +129,7 @@ export class SyncService {
       await firstValueFrom(this.auth.refreshCsrfToken());
 
       let synced = 0;
+      let flagged = 0;
       for (const entry of entries) {
         if (this.auth.currentUser()?.username !== accountKey) {
           // The active account changed mid-replay (a shared/offline device
@@ -111,13 +141,17 @@ export class SyncService {
           console.warn('Aborting outbox sync: active account changed mid-replay; remaining entries stay queued');
           break;
         }
-        const ok = await this.syncEntry(entry);
-        if (!ok) {
+        const outcome = await this.syncEntry(entry);
+        if (outcome === 'interrupted') {
           break;
         }
-        synced++;
+        if (outcome === 'synced') {
+          synced++;
+        } else {
+          flagged++;
+        }
       }
-      return {total: entries.length, synced};
+      return {total: entries.length, synced, flagged};
     } catch (error) {
       // The CSRF refresh (or the initial account-scoped read) itself never
       // reached the server — nothing was attempted, so report it exactly
@@ -127,17 +161,67 @@ export class SyncService {
     }
   }
 
-  private async syncEntry(entry: OutboxEntry): Promise<boolean> {
+  private async syncEntry(entry: OutboxEntry): Promise<EntryOutcome> {
     try {
       await firstValueFrom(this.api.createDataEntry(entry.payload));
       await this.outbox.dequeue(entry.id);
-      return true;
+      return 'synced';
     } catch (error) {
-      // Whatever the cause (connectivity dropped again, a rejection — the
-      // skip-and-flag slice isn't built yet), the entry simply stays queued,
-      // untouched, under its original idempotency key for the next attempt.
+      if (this.isRejection(error)) {
+        // A definitive server rejection (4xx): skip-and-flag (issue #164) —
+        // leave the entry queued, tagged with the server's own message, and
+        // let the caller carry on with the rest of the queue.
+        await this.outbox.flag(entry, this.extractServerMessage(error));
+        return 'flagged';
+      }
+      // Transient (connectivity dropped again — status 0 — or a 5xx): the entry
+      // stays queued, untouched, under its original idempotency key, and the
+      // whole replay stops so the remainder is retried on the next attempt.
       console.error('Failed to sync a queued capture; it remains queued', error);
-      return false;
+      return 'interrupted';
     }
+  }
+
+  /**
+   * A *definitive* server rejection is an HTTP client-error response (`4xx`):
+   * the payload itself is refused (validation, a ring-uniqueness collision,
+   * an archived Station…), so retrying it unchanged is pointless. A dropped
+   * connection surfaces as `status === 0` and a server fault as `5xx` — both
+   * transient, retried rather than flagged.
+   */
+  private isRejection(error: unknown): error is HttpErrorResponse {
+    return error instanceof HttpErrorResponse && error.status >= 400 && error.status < 500;
+  }
+
+  /**
+   * The human message to flag a rejected entry with, dug out of the DRF error
+   * body: a plain string, a `{detail: "…"}`, or field errors
+   * (`{ring_number: ["…"], …}`) joined into one line. Falls back to the
+   * transport-level message, and finally a generic German sentence, so a
+   * flagged entry never carries an empty explanation.
+   */
+  private extractServerMessage(error: HttpErrorResponse): string {
+    const body: unknown = error.error;
+    if (typeof body === 'string' && body.trim()) {
+      return body.trim();
+    }
+    if (body && typeof body === 'object') {
+      const detail = (body as Record<string, unknown>)['detail'];
+      if (typeof detail === 'string' && detail.trim()) {
+        return detail.trim();
+      }
+      const messages: string[] = [];
+      for (const value of Object.values(body as Record<string, unknown>)) {
+        if (Array.isArray(value)) {
+          messages.push(...value.filter((item): item is string => typeof item === 'string'));
+        } else if (typeof value === 'string' && value.trim()) {
+          messages.push(value.trim());
+        }
+      }
+      if (messages.length > 0) {
+        return messages.join(' ');
+      }
+    }
+    return error.message || 'Der Server hat den Eintrag abgelehnt.';
   }
 }

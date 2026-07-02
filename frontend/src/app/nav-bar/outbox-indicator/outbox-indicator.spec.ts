@@ -168,6 +168,33 @@ describe('OutboxIndicator', () => {
       );
     });
 
+    it('calls out flagged (server-rejected) entries separately in the feedback (issue #164)', async () => {
+      const snackBarSpy = spyOnSnackBar(fixture);
+      await firstValueFrom(outbox.enqueue({idempotency_key: 'uuid-1', species_id: 's1'}));
+      await firstValueFrom(outbox.enqueue({idempotency_key: 'uuid-2', species_id: 's2'}));
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.outbox-indicator__sync') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      await settle();
+
+      httpMock.expectOne((r) => r.url.endsWith('/auth/me/')).flush(meResponse());
+      await settle();
+      httpMock.expectOne((r) => r.url.endsWith('/birds/data-entries/')).flush({id: 'server-1'});
+      await settle();
+      // uuid-2 is rejected by the server (a 4xx) — skipped and flagged.
+      httpMock
+        .expectOne((r) => r.url.endsWith('/birds/data-entries/'))
+        .flush({ring_number: ['Ring bereits vergeben.']}, {status: 400, statusText: 'Bad Request'});
+      await settle();
+
+      expect(snackBarSpy).toHaveBeenCalledWith(
+        '1 von 2 Einträgen synchronisiert, 1 mit Fehler markiert.',
+        'Schließen',
+        jasmine.objectContaining({duration: 3000}),
+      );
+    });
+
     it('triggers a sync automatically as soon as it is shown (app start), when an entry is already queued', async () => {
       // Simulates a reload: the entry was queued by a previous session, so a
       // freshly-created component must replay it with no user action.

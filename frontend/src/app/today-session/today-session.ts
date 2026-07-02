@@ -37,6 +37,10 @@ interface QueuedRow {
   ringLabel: string;
   statusLabel: string;
   staffLabel: string;
+  // The server's rejection message when this queued entry was skipped-and-
+  // flagged during sync (issue #164); `null` for a plain, not-yet-synced
+  // capture. A flagged row is highlighted and opens in the form to be fixed.
+  syncError: string | null;
 }
 
 /**
@@ -148,6 +152,7 @@ export class TodaySessionComponent implements OnInit {
       ringLabel: ringSize && ringNumber ? `${ringSize} ${ringNumber}` : '—',
       statusLabel: entry.payload['bird_status'] === BirdStatus.FirstCatch ? 'Erstfang' : 'Wiederfang',
       staffLabel: display.staff?.full_name ?? '—',
+      syncError: entry.syncError ?? null,
     };
   }
 

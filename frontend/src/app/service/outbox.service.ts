@@ -147,19 +147,51 @@ export class OutboxService {
   }
 
   /**
+   * Flags a queued entry the server rejected during sync (issue #164): leaves
+   * it in the queue, untouched but for the attached `syncError` message, so the
+   * replay can skip past it and drain the rest of the queue — one bad entry
+   * never holds the queue hostage. Durable-first (persists before the reactive
+   * signal update), mirroring `dequeue()`, so the flag survives a reload; the
+   * in-memory `entries` signal is updated too so "today's session" shows the
+   * flag reactively. Takes the whole `OutboxEntry` (the sync replay already
+   * holds it) so it persists authoritatively even when a prior session's row
+   * has not yet been folded into the in-memory snapshot.
+   */
+  async flag(entry: OutboxEntry, syncError: string): Promise<void> {
+    await this.ready;
+    const flagged: OutboxEntry = {...entry, syncError};
+    await this.store.add(flagged);
+    this.entries.update((current) =>
+      current.some((e) => e.id === entry.id)
+        ? current.map((e) => (e.id === entry.id ? flagged : e))
+        : [...current, flagged],
+    );
+  }
+
+  /**
    * Edits a queued (nicht synchronisiert) entry in place (issue #163):
    * overwrites its payload — e.g. after fixing a typo in the normal capture
    * form — while preserving its id and `queuedAt`, so the correction
    * re-queues under the same idempotency key and in its original capture
    * order rather than jumping to the back of the queue. Only ever targets an
    * entry already visible to the current account via `findQueued()`.
+   *
+   * A re-save always re-queues the entry *clean*: any prior `syncError` flag
+   * (issue #164) is dropped, since fixing a server-rejected entry in the form
+   * is exactly how it is resolved — the corrected capture becomes eligible for
+   * the next sync again rather than staying skipped as flagged.
    */
   update(id: string, payload: Record<string, unknown>): Observable<void> {
     const existing = this.findQueued(id);
     if (!existing) {
       throw new Error('Cannot edit an outbox entry that is not queued for the current account.');
     }
-    const updated: OutboxEntry = {...existing, payload};
+    const updated: OutboxEntry = {
+      id: existing.id,
+      accountKey: existing.accountKey,
+      queuedAt: existing.queuedAt,
+      payload,
+    };
     return from(this.ready.then(() => this.store.add(updated))).pipe(
       tap(() =>
         this.entries.update((current) => current.map((entry) => (entry.id === id ? updated : entry))),

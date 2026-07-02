@@ -139,6 +139,11 @@ export class DataEntryFormComponent implements OnInit {
   // saves back into the outbox (re-queue) instead of PUTting to the server.
   private readonly loadedQueuedEntry = signal<OutboxEntry | null>(null);
   readonly isQueuedEditMode = computed(() => this.loadedQueuedEntry() !== null);
+  // Issue #164: the server's rejection message when this queued entry was
+  // skipped-and-flagged during sync — shown as a banner so the Mitglied knows
+  // exactly what to fix before re-saving (which re-queues it clean). `null`
+  // for an ordinary, never-rejected queued entry.
+  readonly syncError = computed(() => this.loadedQueuedEntry()?.syncError ?? null);
   // The queued entry's payload resolved to display-ready form values (issue
   // #163), kept alongside `loadedQueuedEntry` so Zurücksetzen can restore it
   // without re-reading the reference cache.

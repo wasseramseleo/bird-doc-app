@@ -67,6 +67,26 @@
       gap: 2px;
       color: var(--bd-ink-soft);
     }
+
+    &--error {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      color: var(--bd-error, #b3261e);
+      font-weight: 600;
+    }
+  }
+
+  &--error {
+    background: var(--bd-error-bg, rgba(179, 38, 30, 0.06));
+  }
+
+  &__error-message {
+    margin: 0;
+    padding: 0 12px 8px 12px;
+    color: var(--bd-error, #b3261e);
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--bd-border, #e0e0e0);
   }
 }
 

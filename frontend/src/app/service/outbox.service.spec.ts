@@ -358,6 +358,52 @@ describe('OutboxService', () => {
     });
   });
 
+  describe('flag() (issue #164 — a server-rejected entry stays queued, flagged)', () => {
+    it('durably attaches the server error to a queued entry and keeps it pending', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {species_id: 's1', ring_number: '0043'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+      const entry = service.findQueued('uuid-1')!;
+
+      await service.flag(entry, 'Ring bereits vergeben.');
+
+      // The flag is visible reactively on the pending entry...
+      expect(service.findQueued('uuid-1')?.syncError).toBe('Ring bereits vergeben.');
+      // ...and it stays counted as pending (nicht synchronisiert), not dropped.
+      expect(service.pendingCount()).toBe(1);
+      // ...and it is durable across a reload (persisted, not in-memory only).
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored[0].syncError).toBe('Ring bereits vergeben.');
+    });
+  });
+
+  describe('update() clears a prior flag (issue #164 — fixing re-queues clean)', () => {
+    it('drops the syncError when a flagged entry is re-saved from the form', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {species_id: 's1', ring_number: '0043'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+        syncError: 'Ring bereits vergeben.',
+      });
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+      expect(service.findQueued('uuid-1')?.syncError).toBe('Ring bereits vergeben.');
+
+      await firstValueFrom(service.update('uuid-1', {species_id: 's1', ring_number: '0099'}));
+
+      expect(service.findQueued('uuid-1')?.syncError).toBeFalsy();
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored[0].syncError).toBeFalsy();
+      expect(stored[0].payload).toEqual({species_id: 's1', ring_number: '0099'});
+    });
+  });
+
   describe('delete() (issue #163 — deleting a queued entry)', () => {
     it('removes a queued entry from the store and the pending list', async () => {
       await TestBed.inject(OutboxStoreService).add({
