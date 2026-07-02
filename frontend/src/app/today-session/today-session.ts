@@ -80,9 +80,23 @@ export class TodaySessionComponent implements OnInit {
   // `resolveQueuedEntryDisplay`.
   private readonly cachedBundle = signal<OfflineBundle | null>(null);
 
-  readonly queuedRows = computed<QueuedRow[]>(() =>
-    this.outbox.pendingEntries().map((entry) => this.toQueuedRow(entry)),
-  );
+  // Scoped to the active Projekt, mirroring `syncedEntries` (issue #163
+  // review fix): a queued entry always carries the `project_id` it was
+  // created under (`DataEntryFormComponent.transformFromForm()` — a create
+  // requires an active Projekt), so without this filter switching the
+  // active Projekt would mix every Projekt the account has ever queued for
+  // into whichever Projekt happens to be selected, letting a capture be
+  // opened/edited/deleted from the wrong Projekt's session view.
+  readonly queuedRows = computed<QueuedRow[]>(() => {
+    const projectId = this.currentProject()?.id;
+    if (!projectId) {
+      return [];
+    }
+    return this.outbox
+      .pendingEntries()
+      .filter((entry) => entry.payload['project_id'] === projectId)
+      .map((entry) => this.toQueuedRow(entry));
+  });
 
   constructor() {
     // Reactive load, mirroring DataEntryListComponent: tracks only the

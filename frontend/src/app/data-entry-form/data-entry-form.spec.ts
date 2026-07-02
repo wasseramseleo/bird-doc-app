@@ -965,6 +965,11 @@ describe('DataEntryFormComponent', () => {
     afterEach(async () => {
       await TestBed.inject(OutboxStoreService).remove('outbox-uuid-1');
       await TestBed.inject(ReferenceBundleCacheService).clear();
+      // This describe block uses the real (unstubbed) ProjectService, and a
+      // couple of tests call `.setCurrent()` on it, which persists to real
+      // `localStorage` — clear it so a later test's fresh ProjectService
+      // instance (new TestBed module) never starts from a leaked Projekt.
+      TestBed.inject(ProjectService).clear();
     });
 
     // The queued-entry resolution writes through to the real (unpatched by
@@ -1032,6 +1037,53 @@ describe('DataEntryFormComponent', () => {
       await settle();
 
       expect(navigateSpy).toHaveBeenCalledWith('/heute');
+    });
+
+    it('keeps the entry\'s original project_id when the active Projekt has changed since queuing (review fix)', async () => {
+      // Queued under Projekt "p1" (queuedPayload()'s default). Reproduces the
+      // review scenario: a Mitglied assigned to two Projekte queues a capture
+      // under Projekt A, later switches the active Projekt to B via the
+      // ordinary picker (ProjectService.setCurrent()), then opens the still
+      // queued entry and fixes a typo.
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload({ project_id: 'p1' }));
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      TestBed.inject(ProjectService).setCurrent({
+        ...createProject(),
+        id: 'p2',
+        title: 'Frühjahr',
+      } as Project);
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Tippfehler korrigiert');
+      f.componentInstance.onSubmit();
+      await settle();
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].payload['project_id']).toBe('p1');
+    });
+
+    it('keeps project_id absent when the entry was originally queued without an active Projekt (review fix)', async () => {
+      const payload = queuedPayload();
+      delete payload['project_id'];
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', payload);
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      // An active Projekt now, at edit time — must still not be written onto
+      // an entry that never had one.
+      TestBed.inject(ProjectService).setCurrent(createProject());
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Tippfehler korrigiert');
+      f.componentInstance.onSubmit();
+      await settle();
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].payload['project_id']).toBeUndefined();
     });
   });
 

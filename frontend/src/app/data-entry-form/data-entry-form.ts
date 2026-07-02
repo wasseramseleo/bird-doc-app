@@ -935,9 +935,23 @@ export class DataEntryFormComponent implements OnInit {
     payload.ringing_station_id = formValue.ringing_station?.handle;
     payload.staff_id = formValue.staff?.id;
 
-    const project = this.currentProject();
-    if (project) {
-      payload.project_id = project.id;
+    // #163: a queued edit must never re-derive project_id from the
+    // *currently active* Projekt — the Mitglied may have switched Projekt
+    // (via the ordinary picker) at any point between queueing and re-saving
+    // the correction, and the active Projekt is not part of the capture's
+    // own identity. Keep the id the entry was originally queued under
+    // instead (undefined stays undefined, matching a create queued while no
+    // Projekt was active), so re-saving a typo fix can never silently
+    // reattribute the capture to a different Projekt. Only a genuine create
+    // or an edit of an already-synced record derives project_id from the
+    // active Projekt.
+    if (this.isQueuedEditMode()) {
+      payload.project_id = this.loadedQueuedEntry()!.payload['project_id'];
+    } else {
+      const project = this.currentProject();
+      if (project) {
+        payload.project_id = project.id;
+      }
     }
 
     // #155/#163: a create carries a fresh idempotency key; re-saving a

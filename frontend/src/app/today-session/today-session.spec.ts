@@ -111,7 +111,7 @@ describe('TodaySessionComponent', () => {
   let httpMock: HttpTestingController;
   let dialog: jasmine.SpyObj<MatDialog>;
 
-  async function setup(): Promise<void> {
+  async function setup(project: Project | null = PROJECT): Promise<void> {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     TestBed.resetTestingModule();
@@ -126,7 +126,7 @@ describe('TodaySessionComponent', () => {
         {
           provide: ProjectService,
           useValue: {
-            currentProject: signal<Project | null>(PROJECT),
+            currentProject: signal<Project | null>(project),
             setCurrent: () => {},
             clear: () => {},
           },
@@ -165,6 +165,7 @@ describe('TodaySessionComponent', () => {
 
   afterEach(async () => {
     await TestBed.inject(OutboxStoreService).remove('outbox-uuid-1');
+    await TestBed.inject(OutboxStoreService).remove('outbox-uuid-2');
     await TestBed.inject(ReferenceBundleCacheService).clear();
   });
 
@@ -207,6 +208,51 @@ describe('TodaySessionComponent', () => {
       expect(text).toContain('V 0043');
       expect(text).toContain('Filip Reiter');
       expect(text).toContain('nicht synchronisiert');
+    });
+
+    it('hides a queued entry from a different Projekt than the active one (review fix)', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload({project_id: 'p1'}),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-2',
+        accountKey: 'fre',
+        payload: queuedPayload({project_id: 'p2', idempotency_key: 'outbox-uuid-2'}),
+        queuedAt: '2026-07-02T09:05:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+
+      expect(component.queuedRows().map((row) => row.id)).toEqual(['outbox-uuid-1']);
+      expect(
+        fixture.nativeElement.querySelectorAll('.session-row--queued').length,
+      ).toBe(1);
+    });
+
+    it('shows no queued entries when no Projekt is active (review fix)', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload({project_id: 'p1'}),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup(null);
+      fixture.detectChanges();
+      await settle();
+      fixture.detectChanges();
+
+      expect(component.queuedRows()).toEqual([]);
+      expect(fixture.nativeElement.querySelectorAll('.session-row--queued').length).toBe(0);
     });
 
     it('opens a queued entry in the capture form on click', async () => {
