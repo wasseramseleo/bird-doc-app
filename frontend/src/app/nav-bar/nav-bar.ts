@@ -15,6 +15,7 @@ import {FeedbackDialogComponent} from '../feedback/feedback-dialog/feedback-dial
 import {environment} from '../../environments/environment';
 import {OfflineReadiness} from './offline-readiness/offline-readiness';
 import {OfflineIndicator} from './offline-indicator/offline-indicator';
+import {PwaInstallButton} from './pwa-install-button/pwa-install-button';
 
 @Component({
   selector: 'app-nav-bar',
@@ -29,6 +30,7 @@ import {OfflineIndicator} from './offline-indicator/offline-indicator';
     MatDialogModule,
     OfflineReadiness,
     OfflineIndicator,
+    PwaInstallButton,
   ],
   templateUrl: './nav-bar.html',
   styleUrl: './nav-bar.scss',

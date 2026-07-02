@@ -15,10 +15,19 @@ const BUNDLE: OfflineBundle = {
   last_consumed_ring_numbers: [],
 };
 
-async function setup(): Promise<{
+async function setup(
+  options: {persist?: boolean | 'pending'} = {},
+): Promise<{
   fixture: ComponentFixture<OfflineReadiness>;
   httpMock: HttpTestingController;
 }> {
+  const {persist = true} = options;
+  if (persist === 'pending') {
+    spyOn(navigator.storage, 'persist').and.returnValue(new Promise(() => {}));
+  } else {
+    spyOn(navigator.storage, 'persist').and.resolveTo(persist);
+  }
+
   TestBed.configureTestingModule({
     imports: [OfflineReadiness],
     providers: [provideHttpClient(), provideHttpClientTesting()],
@@ -127,5 +136,36 @@ describe('OfflineReadiness', () => {
     expect(req.request.method).toBe('GET');
     req.flush(BUNDLE);
     await settle();
+  });
+
+  describe('persistent storage state (issue #166)', () => {
+    it('shows no persistence icon while the browser request is still pending', async () => {
+      const {fixture} = await setup({persist: 'pending'});
+
+      const icon = fixture.nativeElement.querySelector('.offline-readiness__persistence');
+      expect(icon).withContext('no persistence icon before the request settles').toBeNull();
+    });
+
+    it('shows a protected-storage icon once persistent storage is granted', async () => {
+      const {fixture} = await setup({persist: true});
+      await settle();
+      fixture.detectChanges();
+
+      const icon = fixture.nativeElement.querySelector('.offline-readiness__persistence--granted');
+      expect(icon).withContext('granted persistence icon').not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.offline-readiness__persistence--denied')).toBeNull();
+    });
+
+    it('shows a denied-persistence icon when the browser refuses persistent storage', async () => {
+      const {fixture} = await setup({persist: false});
+      await settle();
+      fixture.detectChanges();
+
+      const icon = fixture.nativeElement.querySelector('.offline-readiness__persistence--denied');
+      expect(icon).withContext('denied persistence icon').not.toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('.offline-readiness__persistence--granted'),
+      ).toBeNull();
+    });
   });
 });
