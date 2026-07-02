@@ -7,6 +7,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { of } from 'rxjs';
 
@@ -24,6 +25,9 @@ import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
+import { OutboxStoreService } from '../core/offline/outbox-store';
+import { OutboxService } from '../service/outbox.service';
+import { IndexedDbStore } from '../core/offline/indexed-db-store';
 
 registerLocaleData(localeDeAt);
 
@@ -1683,10 +1687,14 @@ describe('DataEntryFormComponent', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
       const firstKey = firstPost.request.body.idempotency_key;
-      firstPost.flush({detail: 'Netzwerkfehler'}, {status: 0, statusText: 'Unknown Error'});
+      // A genuine server-side failure (not a connectivity loss — status 0 is
+      // now #160's offline-outbox trigger, exercised in its own describe
+      // block below) that still leaves the create unsaved and requiring a
+      // manual resubmit.
+      firstPost.flush({detail: 'Serverfehler'}, {status: 500, statusText: 'Internal Server Error'});
 
       // No edits — the user just hits save again after the error, exactly the
-      // flaky-connectivity retry the key exists for.
+      // true retry the key exists for.
       component.onSubmit();
       const retryPost = httpMock.expectOne(
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
@@ -1702,9 +1710,10 @@ describe('DataEntryFormComponent', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
       const firstKey = firstPost.request.body.idempotency_key;
-      // The response never made it back — could be a lost/timed-out client
-      // response even though the server actually persisted the create.
-      firstPost.flush({detail: 'Netzwerkfehler'}, {status: 0, statusText: 'Unknown Error'});
+      // A genuine server-side failure (not a connectivity loss — see the
+      // #160 offline-outbox describe block below for that case) that still
+      // leaves the create unsaved.
+      firstPost.flush({detail: 'Serverfehler'}, {status: 500, statusText: 'Internal Server Error'});
 
       // The user corrects a field before hitting submit again — replaying the
       // stale key would risk create_capture() silently returning the original
@@ -1717,6 +1726,151 @@ describe('DataEntryFormComponent', () => {
       expect(secondPost.request.body.idempotency_key).not.toBe(firstKey);
       expect(secondPost.request.body.ring_number).toBe('901235');
       secondPost.flush({});
+    });
+  });
+
+  describe('offline durable outbox (#160): submitting offline enqueues instead of erroring', () => {
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let httpMock: HttpTestingController;
+
+    // The offline outbox writes through to the real (Zone-unpatched) browser
+    // IndexedDB — see offline-readiness.spec.ts's `settle()` for why neither
+    // `fixture.whenStable()` nor a plain microtask await observes its
+    // completion, only real elapsed time does. Polling a condition (rather
+    // than a single fixed delay) keeps this robust under the variable
+    // IndexedDB latency this large a spec run produces.
+    async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+      const start = Date.now();
+      while (!predicate()) {
+        if (Date.now() - start > timeoutMs) {
+          throw new Error('Timed out waiting for the offline outbox write to settle.');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    afterEach(async () => {
+      localStorage.clear();
+      const db = TestBed.inject(IndexedDbStore);
+      const entries = await db.getAll<{id: string}>('outbox');
+      await Promise.all(entries.map((entry) => db.delete('outbox', entry.id)));
+    });
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    // A genuine network-level failure (status 0) is what `HttpErrorResponse`
+    // reports for a real connectivity loss (issue #159's established
+    // convention) — the offline simulation used throughout PRD #152.
+    function respondOffline(): void {
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+    }
+
+    it('enqueues a durable outbox entry carrying the idempotency UUID instead of failing the save', async () => {
+      const outboxStore = TestBed.inject(OutboxStoreService);
+
+      fillValidWiederfang();
+      component.onSubmit();
+      respondOffline();
+      // `patchValue()` never marks the form dirty (only real DOM interaction
+      // or the reset directive does), so `pristine` is uninformative here —
+      // poll a value cleanReset() is known to clear instead.
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      const entries = await outboxStore.list();
+      expect(entries.length).toBe(1);
+      expect(entries[0].id).toMatch(UUID_PATTERN);
+      expect((entries[0].payload as {idempotency_key?: string}).idempotency_key).toBe(entries[0].id);
+      expect((entries[0].payload as {ring_number?: string}).ring_number).toBe('901234');
+    });
+
+    it('increments the visible pending count in the outbox service', async () => {
+      const outbox = TestBed.inject(OutboxService);
+      await outbox.ready;
+      expect(outbox.pendingCount()).toBe(0);
+
+      fillValidWiederfang();
+      component.onSubmit();
+      respondOffline();
+      await waitUntil(() => outbox.pendingCount() === 1);
+
+      expect(outbox.pendingCount()).toBe(1);
+    });
+
+    it('behaves identically to an online save: no error snackbar, and the same clean-reset (Station + Beringer kept)', async () => {
+      // The component imports MatSnackBarModule, so it holds its own
+      // MatSnackBar instance — spy on that one, not the root injector's
+      // (mirrors the MatDialog spy pattern used elsewhere in this file).
+      const openSpy = spyOn(
+        (component as unknown as { snackBar: MatSnackBar }).snackBar,
+        'open',
+      ).and.callThrough();
+
+      fillValidWiederfang();
+      component.onSubmit();
+      respondOffline();
+      // `patchValue()` never marks the form dirty (only real DOM interaction
+      // or the reset directive does), so `pristine` is uninformative here —
+      // poll a value cleanReset() is known to clear instead.
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+      fixture.detectChanges();
+
+      expect(openSpy).toHaveBeenCalledWith(
+        'Beringungseintrag gespeichert.',
+        undefined,
+        jasmine.any(Object),
+      );
+      expect(component.entryForm.get('ringing_station')!.value).toEqual({
+        handle: 'STAMT',
+        name: 'Linz',
+      } as never);
+      expect(component.entryForm.get('staff')!.value).toEqual({
+        id: 'p1',
+        handle: 'FRE',
+        full_name: 'Filip Reiter',
+      } as never);
+      expect(component.entryForm.get('species')!.value).toBeNull();
+      expect(component.entryForm.pristine).toBe(true);
+    });
+
+    it('mints the next capture a fresh idempotency key after an offline-queued save, just like an online one', async () => {
+      fillValidWiederfang();
+      component.onSubmit();
+      const firstPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const firstKey = firstPost.request.body.idempotency_key;
+      firstPost.error(new ProgressEvent('error'));
+      // `patchValue()` never marks the form dirty (only real DOM interaction
+      // or the reset directive does), so `pristine` is uninformative here —
+      // poll a value cleanReset() is known to clear instead.
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      fillValidWiederfang();
+      component.onSubmit();
+      const secondPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(secondPost.request.body.idempotency_key).not.toBe(firstKey);
+      secondPost.error(new ProgressEvent('error'));
+      // `patchValue()` never marks the form dirty (only real DOM interaction
+      // or the reset directive does), so `pristine` is uninformative here —
+      // poll a value cleanReset() is known to clear instead.
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
     });
   });
 

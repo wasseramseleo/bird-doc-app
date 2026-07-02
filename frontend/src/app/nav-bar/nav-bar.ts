@@ -15,6 +15,7 @@ import {FeedbackDialogComponent} from '../feedback/feedback-dialog/feedback-dial
 import {environment} from '../../environments/environment';
 import {OfflineReadiness} from './offline-readiness/offline-readiness';
 import {OfflineIndicator} from './offline-indicator/offline-indicator';
+import {OutboxIndicator} from './outbox-indicator/outbox-indicator';
 import {PwaInstallButton} from './pwa-install-button/pwa-install-button';
 
 @Component({
@@ -30,6 +31,7 @@ import {PwaInstallButton} from './pwa-install-button/pwa-install-button';
     MatDialogModule,
     OfflineReadiness,
     OfflineIndicator,
+    OutboxIndicator,
     PwaInstallButton,
   ],
   templateUrl: './nav-bar.html',

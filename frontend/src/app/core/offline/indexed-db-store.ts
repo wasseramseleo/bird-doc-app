@@ -11,11 +11,14 @@ import {Injectable} from '@angular/core';
  * so existing stores/data are never dropped.
  */
 export const OFFLINE_DB_NAME = 'birddoc-offline';
-export const OFFLINE_DB_VERSION = 2;
+export const OFFLINE_DB_VERSION = 3;
 // v2 (issue #158) adds 'referenceCache' — the offline reference bundle
 // (species pool, org reference data, last-consumed ring numbers) plus its
 // last-refreshed timestamp, read/written by `ReferenceBundleCacheService`.
-export const OFFLINE_STORES = ['identity', 'referenceCache'] as const;
+// v3 (issue #160) adds 'outbox' — the durable offline outbox: one record per
+// queued capture-create payload, keyed by its own idempotency UUID (#155),
+// read/written by `OutboxStoreService`.
+export const OFFLINE_STORES = ['identity', 'referenceCache', 'outbox'] as const;
 export type OfflineStoreName = (typeof OFFLINE_STORES)[number];
 
 /**
@@ -48,6 +51,22 @@ export class IndexedDbStore {
           tx.objectStore(storeName).put(value, key);
           tx.oncomplete = () => resolve();
           tx.onerror = () => reject(tx.error);
+        }),
+    );
+  }
+
+  /**
+   * Every value currently in the store, in no particular order — the outbox
+   * (issue #160) uses this to enumerate its queued entries; callers that
+   * need a stable order (e.g. capture order) sort the result themselves.
+   */
+  getAll<T>(storeName: OfflineStoreName): Promise<T[]> {
+    return this.openDb().then(
+      (db) =>
+        new Promise<T[]>((resolve, reject) => {
+          const request = db.transaction(storeName, 'readonly').objectStore(storeName).getAll();
+          request.onsuccess = () => resolve(request.result as T[]);
+          request.onerror = () => reject(request.error);
         }),
     );
   }
