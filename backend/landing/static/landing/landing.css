@@ -1331,3 +1331,108 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ── Motion (issue #144): scroll reveals + the orchestrated hero moment ── */
+
+/* Every selector below keys on a js-* class that the landing's single script
+   adds at runtime, and only when prefers-reduced-motion is NOT set — so the
+   server-rendered page never hides anything, and a visitor without JS (or
+   with reduced motion) sees every section fully visible and still. The whole
+   block additionally sits inside the no-preference guard: under `reduce`
+   none of these states even exists, and a mid-session switch to `reduce`
+   instantly lands everything in its final, visible state. */
+
+/* Outside the guard, only a safety net for the tick's decorative layer: the
+   script builds the tick from two stacked spans (the aria-hidden last
+   consumed number under the real next one). Should the guarded stacking ever
+   stop applying, the decorative copy simply disappears and the true next
+   number stands alone — never two numbers run together. */
+.js-tick__from {
+    display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    /* Quiet scroll reveals: the sections below the hero ease in. */
+    .js-reveal {
+        opacity: 0;
+        transform: translateY(0.85rem);
+        transition:
+            opacity 600ms ease-out,
+            transform 600ms ease-out;
+    }
+
+    .js-reveal--in {
+        opacity: 1;
+        transform: none;
+    }
+
+    /* The orchestrated moment, first beat: the hero Fang-Karte fills in
+       field by field (the script staggers the --in class). */
+    .js-fill {
+        opacity: 0;
+        transform: translateY(0.35rem);
+        transition:
+            opacity 420ms ease-out,
+            transform 420ms ease-out;
+    }
+
+    .js-fill--in {
+        opacity: 1;
+        transform: none;
+    }
+
+    /* Second beat: the script takes the Ringserie's load reveal over
+       (removing .ringserie--reveal) and stages the thread here instead, so
+       it lands as the moment's finale rather than racing the card fill. */
+    .js-stage {
+        opacity: 0;
+        transform: translateY(0.6rem);
+        transition:
+            opacity 700ms ease-out,
+            transform 700ms ease-out;
+    }
+
+    .js-stage--in {
+        opacity: 1;
+        transform: none;
+    }
+
+    /* The finale: the suggested next number ticks over from the last
+       consumed one — die nächste Nummer ist die letzte verbrauchte + 1,
+       performed once. Two layers stack in one grid cell (tabular-nums keeps
+       their widths identical); the decorative "from" starts in the consumed
+       numbers' quiet ink voice and rolls up out as the accented true next
+       number rolls up in. */
+    .js-tick {
+        display: inline-grid;
+    }
+
+    .js-tick__from,
+    .js-tick__to {
+        grid-area: 1 / 1;
+        transition:
+            opacity 450ms ease-out,
+            transform 450ms ease-out;
+    }
+
+    .js-tick__from {
+        display: block;
+        color: var(--ink);
+        font-weight: 500;
+    }
+
+    .js-tick__to {
+        opacity: 0;
+        transform: translateY(0.45em);
+    }
+
+    .js-tick--now .js-tick__from {
+        opacity: 0;
+        transform: translateY(-0.45em);
+    }
+
+    .js-tick--now .js-tick__to {
+        opacity: 1;
+        transform: none;
+    }
+}
