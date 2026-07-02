@@ -40,6 +40,14 @@
   @if (currentProject()) {
     <a
       mat-button
+      class="heutige-session"
+      routerLink="/heute"
+      routerLinkActive="heutige-session--active"
+    >
+      <span>Heutige Session</span>
+    </a>
+    <a
+      mat-button
       class="letzte-faenge"
       routerLink="/data-entries"
       routerLinkActive="letzte-faenge--active"
@@ -58,6 +66,10 @@
       <span>Neuer Fang</span>
     </a>
   }
+  <app-offline-indicator />
+  <app-outbox-indicator />
+  <app-offline-readiness />
+  <app-pwa-install-button />
   <button
     mat-button
     type="button"

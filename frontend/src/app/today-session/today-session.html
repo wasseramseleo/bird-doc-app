@@ -1,0 +1,80 @@
+<section class="today-session">
+  <header class="today-session__header">
+    <h1>Heutige Session</h1>
+    @if (currentProject(); as project) {
+      <p class="today-session__subhead">{{ project.title }}</p>
+    }
+  </header>
+
+  <section class="today-session__group">
+    <h2>Nicht synchronisiert ({{ queuedRows().length }})</h2>
+    @if (queuedRows().length === 0) {
+      <p class="today-session__empty">Keine nicht synchronisierten Einträge.</p>
+    } @else {
+      @for (row of queuedRows(); track row.id) {
+        <div
+          class="session-row session-row--queued"
+          [class.session-row--error]="row.syncError"
+          (click)="openQueued(row)"
+        >
+          <span class="session-row__time">{{ row.timestamp | date:'HH:mm' }}</span>
+          <span class="session-row__species">{{ row.speciesLabel }}</span>
+          <span class="session-row__ring">{{ row.ringLabel }}</span>
+          <span class="session-row__status">{{ row.statusLabel }}</span>
+          <span class="session-row__staff">{{ row.staffLabel }}</span>
+          @if (row.syncError) {
+            <span class="session-row__badge session-row__badge--error" title="Zum Beheben öffnen">
+              <mat-icon inline="true" aria-hidden="true">error_outline</mat-icon>
+              Sync-Fehler
+            </span>
+          } @else {
+            <span class="session-row__badge session-row__badge--pending">nicht synchronisiert</span>
+          }
+          <button
+            mat-icon-button
+            type="button"
+            data-testid="delete-queued"
+            aria-label="Eintrag löschen"
+            (click)="deleteQueued(row, $event)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+        @if (row.syncError) {
+          <p class="session-row__error-message" data-testid="queued-sync-error">{{ row.syncError }}</p>
+        }
+      }
+    }
+  </section>
+
+  <section class="today-session__group">
+    <h2>Synchronisiert ({{ syncedEntries().length }})</h2>
+    @if (loadingSynced()) {
+      <mat-spinner diameter="24"></mat-spinner>
+    } @else if (syncedEntries().length === 0) {
+      <p class="today-session__empty">Noch keine synchronisierten Einträge von heute.</p>
+    } @else {
+      @for (entry of syncedEntries(); track entry.id) {
+        <div class="session-row session-row--synced" (click)="openSynced(entry)">
+          <span class="session-row__time">{{ entry.date_time | date:'HH:mm' }}</span>
+          <span class="session-row__species">{{ entry.species.common_name_de }}</span>
+          <span class="session-row__ring">
+            @if (entry.ring) {
+              {{ entry.ring.size }} {{ entry.ring.number }}
+            } @else {
+              —
+            }
+          </span>
+          <span class="session-row__status">
+            {{ entry.bird_status === BirdStatus.FirstCatch ? 'Erstfang' : 'Wiederfang' }}
+          </span>
+          <span class="session-row__staff">{{ entry.staff.full_name }}</span>
+          <span class="session-row__badge session-row__badge--synced">
+            <mat-icon inline="true" aria-hidden="true">lock</mat-icon>
+            synchronisiert
+          </span>
+        </div>
+      }
+    }
+  </section>
+</section>

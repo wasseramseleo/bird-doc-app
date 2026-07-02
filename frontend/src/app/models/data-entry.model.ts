@@ -97,6 +97,10 @@ export interface DataEntry {
   created: string;
   updated: string;
   comment: string | null;
+  // #155: the client-generated idempotency key set on create; absent on
+  // captures recorded before this field existed. Read-only from the client's
+  // perspective — see DataEntryFormComponent for where it is minted.
+  idempotency_key?: string | null;
   has_mites: boolean;
   has_hunger_stripes: boolean;
   has_brood_patch: boolean;

@@ -66,7 +66,7 @@ A named campaign that groups captures, scoped to one Organisation and a set of B
 _Avoid_: Campaign
 
 **Erstfang / Wiederfang**:
-First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird.
+First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird. A physical ring is applied to a bird exactly once, so within an Organisation a given ring (Ringgröße + number) may be the subject of **at most one Erstfang** — a second Erstfang on the same number is a genuine ring-uniqueness collision (ADR 0006) and is refused (`capture_service.create_capture`), while any number of Wiederfänge of that ring are expected. This is what turns two concurrent offline devices that record the same Erstfang into exactly one flagged sync error on the losing device, never a silent duplicate (issue #164).
 _Avoid_: First catch / recatch (English), recapture
 
 **Diesjährig**:
@@ -108,3 +108,23 @@ _Avoid_: Reason, condition
 **Referenzprojekt**:
 The de-identified demo tenant — realised as a real **Organisation** (currently _BirdDoc Demo_, handle `BDDEMO`) holding one **Projekt** of plausible-but-non-real captures — used to onboard new users, generate marketing visualisations, and test features. Seeded from a real IWM export whose every reality-linking field (Beringer, Station, Ringnummer, capture year) is transformed so no row matches a real capture and the source dataset cannot be recognised or reconstructed: the demo captures are explicitly **not Fangdaten**. It is an ordinary tenant with no schema marker — real Mitglieder never see it (they hold no Mitgliedschaft in it), and code that must single it out does so by its known handle. See ADR 0012.
 _Avoid_: Testprojekt, Sandbox, Beispieldaten, Demoprojekt (English: demo project — say Referenzprojekt)
+
+**Offline**:
+The connectivity state in which the app has no reach to the server but keeps working from its local cache and outstanding entries (PRD #152). Surfaced with a persistent, always-visible indicator so a Mitglied at a Station always knows whether an entry is being saved to the server or only locally, e.g. "Offline – Einträge werden lokal gespeichert". The normal connected state carries no special term of its own.
+_Avoid_: Offline-Modus, disconnected (English)
+
+**nicht synchronisiert**:
+The state of a captured entry recorded on a device but not yet reached the server — what a Mitglied sees instead of a named queue. The underlying local hold-area is deliberately **not** given a first-class domain name (no "Warteschlange"): it stays implicit, and the UI describes entries by their sync state instead, e.g. a pending count read as "N nicht synchronisierte Einträge". Only entries that are nicht synchronisiert can still be edited or deleted on that device; once an entry synchronisiert, it becomes read-only offline. A nicht synchronisiert entry the server **rejects** during sync (a validation change, an archived Station, or a ring-uniqueness collision) is not lost and does not stall the rest of the queue: it is skipped and stays on the device flagged with the server's own error message (a **Sync-Fehler**), while the remaining entries sync on. Resolving it is just ordinary editing — the flagged entry opens in the normal capture form, is corrected, and re-queues clean for the next sync (issue #164).
+_Avoid_: Warteschlange, Queue (English), Outbox (English — internal/code term only, never user-facing)
+
+**synchronisieren / zuletzt synchronisiert**:
+The act of replaying a device's nicht synchronisiert entries to the server once connectivity returns — automatically, or on demand via a manual "Jetzt synchronisieren" action — and, once it has happened at least once, the resulting **zuletzt synchronisiert** timestamp shown alongside the Offline-Bereitschaft indicator so a Mitglied can see when a device last reached the server.
+_Avoid_: Abgleich, sync (English — internal/code term only), Upload
+
+**Synchronisierungsfehler**:
+An entry the server rejected while synchronisieren was in progress (e.g. a Station archived mid-trip, a stale reference) — it stays on the device, flagged with the server's reason, and reopens in the ordinary capture form for fix-up and re-queueing. The rest of the sync continues around it: one Synchronisierungsfehler never blocks the other entries.
+_Avoid_: Sync error (English), failed entry, rejected entry
+
+**Offline-Bereitschaft**:
+Whether a device is currently prepared to keep working with no network — its offline cache is fresh, its identity is cached, its storage is protected from eviction. Surfaced as a readiness indicator, alongside zuletzt synchronisiert, so a Mitglied can check before leaving for a Station with no coverage; a manual "Jetzt aktualisieren" action tops up the cache on demand. See ADR 0015 for the related operational rule (sync before importing the same period via IWM import).
+_Avoid_: Readiness (English), offline mode, Vorbereitung

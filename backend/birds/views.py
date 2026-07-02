@@ -12,6 +12,7 @@ from rest_framework.exceptions import APIException, PermissionDenied, Validation
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .accounts import normalize_email
 from .invitations import account_for_email, seats_available
@@ -22,6 +23,7 @@ from .iwm_import import (
     build_import_preview,
     commit_import,
 )
+from .kuerzel import derive_handle
 from .models import (
     FALLBACK_BERINGER_HANDLE,
     DataEntry,
@@ -43,6 +45,7 @@ from .permissions import (
 from .serializers import (
     DataEntrySerializer,
     MitgliedschaftSerializer,
+    OfflineSpeciesSerializer,
     OrganizationSerializer,
     OrgEinladungSerializer,
     ProjectSerializer,
@@ -52,7 +55,7 @@ from .serializers import (
     SpeciesListSerializer,
     SpeciesSerializer,
 )
-from .tenancy import active_organization
+from .tenancy import active_organization, active_organization_rolle
 
 # Shown when an invite would push the Organisation past its Seat-Limit. The
 # Org-Einladung is ungated by the operator but capped by the Seat-Limit (ADR
@@ -82,6 +85,19 @@ class SeatLimitReached(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = SEAT_LIMIT_MESSAGE
     default_code = "seat_limit_reached"
+
+
+def _ring_consuming_entries(organization):
+    """DataEntries of ``organization`` that drew a fresh number from the rope:
+    a first catch (Erstfang) **or** a destroyed-ring record (``ring_destroyed``
+    Sonderart). Recaptures (Wiederfang) consume nothing and are excluded. Shared
+    by ``RingViewSet.next_number`` (the live suggestion) and the offline
+    reference bundle's last-consumed-per-Projekt-and-Ringgröße field (issue
+    #157), so both agree on exactly the same consumption rule."""
+    return DataEntry.objects.filter(organization=organization).filter(
+        Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH)
+        | Q(species__special_kind=Species.SpecialKind.RING_DESTROYED)
+    )
 
 
 def _require_active_organization(user):
@@ -269,12 +285,7 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
 
         project = request.query_params.get("project")
 
-        consumptions = DataEntry.objects.filter(
-            organization=organization, ring__size=ring_size
-        ).filter(
-            Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH)
-            | Q(species__special_kind=Species.SpecialKind.RING_DESTROYED)
-        )
+        consumptions = _ring_consuming_entries(organization).filter(ring__size=ring_size)
         if project:
             consumptions = consumptions.filter(project=project)
 
@@ -401,6 +412,33 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
             .exclude(handle=FALLBACK_BERINGER_HANDLE)
             .order_by("last_name", "first_name")
         )
+
+    def create(self, request, *args, **kwargs):
+        """Idempotent by Kürzel (issue #167, offline sync): a quick-added
+        No-Account Beringer replayed after the same Kürzel was already created
+        server-side — by an online colleague, or a retried sync of this very
+        Beringer — matches the existing one and returns it (200) rather than
+        duplicating it or failing on the unique constraint. This lets an offline
+        device's dependent captures resolve to the real id whether the Beringer
+        was created for the first time or matched. A genuinely new Kürzel is
+        created as before (201). The match is scoped to the active Organisation,
+        mirroring the tenant boundary the autocomplete and ``perform_create``
+        already enforce (ADR 0005)."""
+        organization = _require_active_organization(request.user)
+        handle = (request.data.get("handle") or "").strip()
+        if not handle:
+            handle = derive_handle(
+                request.data.get("first_name", ""), request.data.get("last_name", "")
+            )
+        existing = (
+            Scientist.objects.filter(organization=organization, handle=handle).first()
+            if handle
+            else None
+        )
+        if existing is not None:
+            serializer = self.get_serializer(existing)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         """A quick-added No-Account Beringer is org-owned, so it attaches to the
@@ -652,3 +690,146 @@ class MitgliedschaftViewSet(
             .exclude(pk=membership.pk)
             .exists()
         )
+
+
+class OfflineBundleView(APIView):
+    """The offline reference bundle (issue #157, PRD #152): everything a device
+    needs to cache while online to operate offline, scoped to the requester's
+    active Organisation.
+
+    Bundles:
+
+    - The offline species pool: the requester's active Artenliste members
+      (``SpeciesViewSet``'s own filter), every Sonderart (always selectable —
+      present even with no active Artenliste), and every species the
+      Organisation has ever used in a capture, each annotated with a
+      per-Organisation usage count so the offline picker can approximate the
+      most-used-first ordering ``SpeciesViewSet._order_by_usage`` gives online.
+      Never the full ~1M-row Species table.
+    - Org reference data: the active (non-archived) Stationen, the
+      Organisation's own Beringer (excluding the reserved ``GELÖSCHT``
+      fallback), and the requester's own Projekte (scoped to their Beringer,
+      exactly as ``ProjectViewSet`` scopes them online).
+    - The last-consumed (raw, un-incremented) ring number per Projekt +
+      Ringgröße, using the exact same consumption rule as
+      ``RingViewSet.next_number`` (``_ring_consuming_entries``): a first catch
+      or a destroyed-ring record consumes a number, a recapture does not. The
+      client combines this with its own queued captures to derive its own
+      "last consumed + 1" suggestion offline.
+    - The requester's cached identity (user, Organisation, Rolle), for the
+      offline auth bootstrap.
+
+    With no resolvable active Organisation there is no tenant to bundle for, so
+    every collection is empty (mirrors the other org-scoped endpoints — empty,
+    never a 403 or another tenant's data).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        organization = active_organization(request.user)
+        return Response(
+            {
+                "identity": self._identity(request.user, organization),
+                "species": self._species_pool(request.user, organization),
+                "ringing_stations": self._ringing_stations(organization),
+                "scientists": self._scientists(organization),
+                "projects": self._projects(request.user),
+                "last_consumed_ring_numbers": self._last_consumed_ring_numbers(organization),
+            }
+        )
+
+    @staticmethod
+    def _identity(user, organization):
+        scientist = getattr(user, "scientist", None)
+        return {
+            "username": user.username,
+            "handle": scientist.handle if scientist is not None else None,
+            "organization": (
+                OrganizationSerializer(organization).data if organization is not None else None
+            ),
+            "rolle": active_organization_rolle(user),
+        }
+
+    @staticmethod
+    def _species_pool(user, organization):
+        if organization is None:
+            return []
+        active_list = SpeciesList.objects.filter(user=user, is_active=True).first()
+        org_used_ids = DataEntry.objects.filter(organization=organization).values_list(
+            "species_id", flat=True
+        )
+        candidate_filter = Q(id__in=org_used_ids) | ~Q(special_kind="")
+        if active_list:
+            candidate_filter |= Q(lists=active_list)
+        candidates = (
+            Species.objects.filter(candidate_filter)
+            .distinct()
+            .annotate(
+                usage_count=Count("dataentry", filter=Q(dataentry__organization=organization))
+            )
+            .order_by("-usage_count", "common_name_de")
+        )
+        return OfflineSpeciesSerializer(candidates, many=True).data
+
+    @staticmethod
+    def _ringing_stations(organization):
+        if organization is None:
+            return []
+        stations = (
+            RingingStation.objects.select_related("organization")
+            .filter(organization=organization, is_active=True)
+            .order_by("name")
+        )
+        return RingingStationSerializer(stations, many=True).data
+
+    @staticmethod
+    def _scientists(organization):
+        if organization is None:
+            return []
+        scientists = (
+            Scientist.objects.select_related("user")
+            .filter(organization=organization)
+            .exclude(handle=FALLBACK_BERINGER_HANDLE)
+            .order_by("last_name", "first_name")
+        )
+        return ScientistSerializer(scientists, many=True).data
+
+    @staticmethod
+    def _projects(user):
+        # Mirrors ProjectViewSet.get_queryset(): a Projekt is visible to a
+        # requester through their own Beringer, which is itself org-owned, so
+        # this is tenant-scoped without needing a separate organization filter.
+        scientist = getattr(user, "scientist", None)
+        if scientist is None:
+            return []
+        projects = (
+            Project.objects.filter(scientists=scientist)
+            .select_related("organization", "default_station__organization")
+            .prefetch_related("scientists__user")
+            .order_by("-updated")
+        )
+        return ProjectSerializer(projects, many=True).data
+
+    @staticmethod
+    def _last_consumed_ring_numbers(organization):
+        if organization is None:
+            return []
+        consuming = _ring_consuming_entries(organization).exclude(project__isnull=True)
+        groups = consuming.values("project_id", "ring__size").distinct()
+        results = []
+        for group in groups:
+            latest = (
+                consuming.filter(project_id=group["project_id"], ring__size=group["ring__size"])
+                .select_related("ring")
+                .order_by("-created")
+                .first()
+            )
+            results.append(
+                {
+                    "project_id": str(group["project_id"]),
+                    "size": group["ring__size"],
+                    "number": latest.ring.number,
+                }
+            )
+        return results

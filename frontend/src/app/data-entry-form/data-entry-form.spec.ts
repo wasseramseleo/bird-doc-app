@@ -7,6 +7,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { of } from 'rxjs';
 
@@ -20,10 +21,17 @@ import {
   SmallFeatherIntMoult,
 } from '../models/data-entry.model';
 import { Species } from '../models/species.model';
+import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
+import { OutboxStoreService } from '../core/offline/outbox-store';
+import { OutboxService } from '../service/outbox.service';
+import { AuthService } from '../service/auth.service';
+import { IndexedDbStore } from '../core/offline/indexed-db-store';
+import { ReferenceBundleCacheService } from '../core/offline/reference-bundle-cache';
+import { Scientist } from '../models/scientist.model';
 
 registerLocaleData(localeDeAt);
 
@@ -743,6 +751,22 @@ describe('DataEntryFormComponent', () => {
       expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
     });
 
+    it('never sends idempotency_key on an edit (#155): editing must not touch the create key', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+
+      f.componentInstance.onSubmit();
+
+      const putReq = httpMock.expectOne(
+        (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
+      );
+      expect(putReq.request.body.idempotency_key).toBeUndefined();
+      putReq.flush(savedEntry());
+    });
+
     it('lets Enter on the focused "Zur Liste" button activate it (#59, not suppressed)', async () => {
       const { f, httpMock } = await setupEditMode('42');
       f.detectChanges();
@@ -828,6 +852,239 @@ describe('DataEntryFormComponent', () => {
       const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
       f.componentInstance.onBackToList();
       expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+    });
+  });
+
+  describe('queued edit mode (opening a queued outbox entry via /data-entry/:id) (issue #163)', () => {
+    const station: RingingStation = {
+      handle: 'STAMT',
+      name: 'Linz, Botanischer Garten',
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+    };
+    const species: Species = {
+      id: 's1',
+      common_name_de: 'Kohlmeise',
+      common_name_en: 'Great Tit',
+      scientific_name: 'Parus major',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const staff: Scientist = { id: 'sci-1', handle: 'FRE', full_name: 'Filip Reiter' };
+
+    function queuedPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        ringing_station_id: 'STAMT',
+        staff_id: 'sci-1',
+        date_time: '2026-07-02T09:00',
+        species_id: 's1',
+        bird_status: BirdStatus.FirstCatch,
+        ring_size: RingSize.V,
+        ring_number: '0043',
+        net_location: null,
+        net_height: null,
+        net_direction: null,
+        fat_deposit: null,
+        muscle_class: null,
+        age_class: AgeClass.Unknown,
+        sex: Sex.Unknown,
+        small_feather_int: null,
+        small_feather_app: null,
+        hand_wing: null,
+        tarsus: null,
+        feather_span: null,
+        wing_span: null,
+        weight_gram: 18,
+        notch_f2: null,
+        inner_foot: null,
+        comment: 'Erste Notiz',
+        has_mites: false,
+        has_hunger_stripes: false,
+        has_brood_patch: false,
+        has_cpl_plus: false,
+        idempotency_key: 'outbox-uuid-1',
+        project_id: 'p1',
+        ...overrides,
+      };
+    }
+
+    async function setupQueuedEditMode(
+      outboxId: string,
+      payload: Record<string, unknown>,
+    ): Promise<{ f: ComponentFixture<DataEntryFormComponent>; httpMock: HttpTestingController }> {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? outboxId : null) } },
+      };
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+        ],
+      }).compileComponents();
+
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+      await TestBed.inject(OutboxStoreService).add({
+        id: outboxId,
+        accountKey: 'fre',
+        payload,
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      // The outbox must have finished restoring before the component is
+      // constructed — see the `entryId` effect's comment on why the
+      // resolution check is deliberately synchronous.
+      await TestBed.inject(OutboxService).ready;
+
+      await TestBed.inject(ReferenceBundleCacheService).save({
+        bundle: {
+          identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+          species: [{ ...species, usage_count: 0 }],
+          ringing_stations: [station],
+          scientists: [staff],
+          projects: [],
+          last_consumed_ring_numbers: [],
+        },
+        refreshedAt: '2026-07-02T08:00:00.000Z',
+      });
+
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      return { f, httpMock };
+    }
+
+    afterEach(async () => {
+      await TestBed.inject(OutboxStoreService).remove('outbox-uuid-1');
+      await TestBed.inject(ReferenceBundleCacheService).clear();
+      // This describe block uses the real (unstubbed) ProjectService, and a
+      // couple of tests call `.setCurrent()` on it, which persists to real
+      // `localStorage` — clear it so a later test's fresh ProjectService
+      // instance (new TestBed module) never starts from a leaked Projekt.
+      TestBed.inject(ProjectService).clear();
+    });
+
+    // The queued-entry resolution writes through to the real (unpatched by
+    // Zone) browser IndexedDB, so neither `fixture.whenStable()` nor a plain
+    // microtask await observes its completion — only real elapsed time does
+    // (same pattern as offline-readiness.spec.ts).
+    function settle(): Promise<void> {
+      return new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    it('resolves the queued entry locally (never hits the server) and pre-fills the form from the cached bundle', async () => {
+      const { f, httpMock } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload());
+      f.detectChanges();
+
+      httpMock.expectNone(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/outbox-uuid-1/'),
+      );
+
+      await settle();
+      f.detectChanges();
+
+      const form = f.componentInstance.entryForm;
+      expect(f.componentInstance.isEditMode()).toBe(true);
+      expect(f.componentInstance.isQueuedEditMode()).toBe(true);
+      expect(form.get('species')!.value).toEqual(jasmine.objectContaining(species));
+      expect(form.get('ringing_station')!.value).toEqual(station);
+      expect(form.get('staff')!.value).toEqual(staff);
+      expect(form.get('ring_number')!.value).toBe('0043');
+      expect(form.get('comment')!.value).toBe('Erste Notiz');
+    });
+
+    it('re-queues the edit into the outbox on submit instead of PUTting to the server', async () => {
+      const { f, httpMock } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload());
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      f.componentInstance.entryForm.get('weight_gram')!.setValue(21);
+      f.componentInstance.onSubmit();
+      await settle();
+
+      httpMock.expectNone(
+        (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/outbox-uuid-1/'),
+      );
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].id).toBe('outbox-uuid-1');
+      expect(stored[0].queuedAt).toBe('2026-07-02T09:00:00.000Z');
+      expect(stored[0].payload['weight_gram']).toBe(21);
+      expect(stored[0].payload['idempotency_key']).toBe('outbox-uuid-1');
+    });
+
+    it('navigates back to "today\'s session" (not the synced-only list) after re-queueing', async () => {
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload());
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      const router = TestBed.inject(Router);
+      const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+
+      f.componentInstance.onSubmit();
+      await settle();
+
+      expect(navigateSpy).toHaveBeenCalledWith('/heute');
+    });
+
+    it('keeps the entry\'s original project_id when the active Projekt has changed since queuing (review fix)', async () => {
+      // Queued under Projekt "p1" (queuedPayload()'s default). Reproduces the
+      // review scenario: a Mitglied assigned to two Projekte queues a capture
+      // under Projekt A, later switches the active Projekt to B via the
+      // ordinary picker (ProjectService.setCurrent()), then opens the still
+      // queued entry and fixes a typo.
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload({ project_id: 'p1' }));
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      TestBed.inject(ProjectService).setCurrent({
+        ...createProject(),
+        id: 'p2',
+        title: 'Frühjahr',
+      } as Project);
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Tippfehler korrigiert');
+      f.componentInstance.onSubmit();
+      await settle();
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].payload['project_id']).toBe('p1');
+    });
+
+    it('keeps project_id absent when the entry was originally queued without an active Projekt (review fix)', async () => {
+      const payload = queuedPayload();
+      delete payload['project_id'];
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', payload);
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      // An active Projekt now, at edit time — must still not be written onto
+      // an entry that never had one.
+      TestBed.inject(ProjectService).setCurrent(createProject());
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Tippfehler korrigiert');
+      f.componentInstance.onSubmit();
+      await settle();
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].payload['project_id']).toBeUndefined();
     });
   });
 
@@ -1154,6 +1411,83 @@ describe('DataEntryFormComponent', () => {
       expect(component.entryForm.get('species')!.value).toBeNull();
       expect(component.entryForm.get('sex')!.value).toBe(Sex.Unknown);
       expect(component.recaptureHistory()).toEqual([]);
+    });
+  });
+
+  describe('local Wiederfang history panel offline (issue #168)', () => {
+    const incompleteHint = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="offline-history-incomplete"]',
+      ) as HTMLElement | null;
+
+    const historyRow = (): DataEntry =>
+      ({
+        id: 'outbox-uuid-1',
+        date_time: '2026-07-01T08:30:00Z',
+        species: { common_name_de: 'Kohlmeise' },
+        ring: { id: '', number: '0043', size: RingSize.V },
+        bird_status: BirdStatus.ReCatch,
+        staff: { full_name: 'Filip Reiter', handle: 'FRE' },
+        age_class: AgeClass.Unknown,
+        sex: Sex.Unknown,
+      }) as unknown as DataEntry;
+
+    it('labels the history panel as possibly incomplete when it was assembled offline', () => {
+      component.recaptureHistory.set([historyRow()]);
+      component.historyPossiblyIncomplete.set(true);
+      fixture.detectChanges();
+
+      const hint = incompleteHint();
+      expect(hint).not.toBeNull();
+      expect(hint!.textContent).toContain('Offline');
+      expect(hint!.textContent).toContain('möglicherweise unvollständig');
+    });
+
+    it('does not show the incomplete label when the history came from the server (online)', () => {
+      component.recaptureHistory.set([historyRow()]);
+      component.historyPossiblyIncomplete.set(false);
+      fixture.detectChanges();
+
+      expect(incompleteHint()).toBeNull();
+    });
+
+    it('routes the ring lookup through the offline-aware facade and shows the panel + label from a locally-assembled, possibly-incomplete history', () => {
+      const facade = TestBed.inject(DataAccessFacadeService);
+      const spy = spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries: [historyRow()], possiblyIncomplete: true }),
+      );
+
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.V,
+        ring_number: '0043',
+      });
+      component.fetchRingHistory();
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.V, '0043');
+      expect(component.historyPossiblyIncomplete()).toBeTrue();
+      expect(component.recaptureHistory().length).toBe(1);
+      expect(incompleteHint()).not.toBeNull();
+    });
+
+    it('shows the panel without the incomplete label when the facade returns a complete (online) history', () => {
+      const facade = TestBed.inject(DataAccessFacadeService);
+      spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries: [historyRow()], possiblyIncomplete: false }),
+      );
+
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.V,
+        ring_number: '0043',
+      });
+      component.fetchRingHistory();
+      fixture.detectChanges();
+
+      expect(component.historyPossiblyIncomplete()).toBeFalse();
+      expect(component.recaptureHistory().length).toBe(1);
+      expect(incompleteHint()).toBeNull();
     });
   });
 
@@ -1605,6 +1939,411 @@ describe('DataEntryFormComponent', () => {
       const spy = spyOn(component, 'onReset');
       resetButton.click();
       expect(spy).toHaveBeenCalled();
+    });
+  });
+
+  describe('capture idempotency key (#155, offline outbox groundwork)', () => {
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    it('sends a fresh client-generated UUID as idempotency_key on create', () => {
+      fillValidWiederfang();
+      component.onSubmit();
+
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(post.request.body.idempotency_key).toMatch(UUID_PATTERN);
+      post.flush({});
+    });
+
+    it('sends a different idempotency_key for the next capture after a successful save', fakeAsync(() => {
+      fillValidWiederfang();
+      component.onSubmit();
+      const firstPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const firstKey = firstPost.request.body.idempotency_key;
+      firstPost.flush({});
+      tick(900); // drain the "Gespeichert ✓" timer started by cleanReset()
+
+      fillValidWiederfang();
+      component.onSubmit();
+      const secondPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(secondPost.request.body.idempotency_key).not.toBe(firstKey);
+      secondPost.flush({});
+      tick(900);
+    }));
+
+    it('#155: reuses the same idempotency_key on an unedited resubmit after a failed save (true retry)', () => {
+      fillValidWiederfang();
+      component.onSubmit();
+      const firstPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const firstKey = firstPost.request.body.idempotency_key;
+      // A genuine server-side failure (not a connectivity loss — status 0 is
+      // now #160's offline-outbox trigger, exercised in its own describe
+      // block below) that still leaves the create unsaved and requiring a
+      // manual resubmit.
+      firstPost.flush({detail: 'Serverfehler'}, {status: 500, statusText: 'Internal Server Error'});
+
+      // No edits — the user just hits save again after the error, exactly the
+      // true retry the key exists for.
+      component.onSubmit();
+      const retryPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(retryPost.request.body.idempotency_key).toBe(firstKey);
+      retryPost.flush({});
+    });
+
+    it('#155: mints a fresh idempotency_key when the form is edited before resubmitting after a failed save', () => {
+      fillValidWiederfang();
+      component.onSubmit();
+      const firstPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const firstKey = firstPost.request.body.idempotency_key;
+      // A genuine server-side failure (not a connectivity loss — see the
+      // #160 offline-outbox describe block below for that case) that still
+      // leaves the create unsaved.
+      firstPost.flush({detail: 'Serverfehler'}, {status: 500, statusText: 'Internal Server Error'});
+
+      // The user corrects a field before hitting submit again — replaying the
+      // stale key would risk create_capture() silently returning the original
+      // record instead of saving this edit.
+      component.entryForm.patchValue({ring_number: '901235'});
+      component.onSubmit();
+      const secondPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(secondPost.request.body.idempotency_key).not.toBe(firstKey);
+      expect(secondPost.request.body.ring_number).toBe('901235');
+      secondPost.flush({});
+    });
+  });
+
+  describe('offline durable outbox (#160): submitting offline enqueues instead of erroring', () => {
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let httpMock: HttpTestingController;
+
+    // The offline outbox writes through to the real (Zone-unpatched) browser
+    // IndexedDB — see offline-readiness.spec.ts's `settle()` for why neither
+    // `fixture.whenStable()` nor a plain microtask await observes its
+    // completion, only real elapsed time does. Polling a condition (rather
+    // than a single fixed delay) keeps this robust under the variable
+    // IndexedDB latency this large a spec run produces.
+    async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+      const start = Date.now();
+      while (!predicate()) {
+        if (Date.now() - start > timeoutMs) {
+          throw new Error('Timed out waiting for the offline outbox write to settle.');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    afterEach(async () => {
+      localStorage.clear();
+      const db = TestBed.inject(IndexedDbStore);
+      const entries = await db.getAll<{id: string}>('outbox');
+      await Promise.all(entries.map((entry) => db.delete('outbox', entry.id)));
+    });
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+      // The outbox (issue #160) stamps every enqueued entry with the
+      // currently authenticated account (tenancy fix) — an entry can only
+      // be durably queued once someone is signed in, exactly like in the
+      // app (the capture form sits behind `authGuard`).
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    // A genuine network-level failure (status 0) is what `HttpErrorResponse`
+    // reports for a real connectivity loss (issue #159's established
+    // convention) — the offline simulation used throughout PRD #152.
+    function respondOffline(): void {
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+    }
+
+    it('enqueues a durable outbox entry carrying the idempotency UUID instead of failing the save', async () => {
+      const outboxStore = TestBed.inject(OutboxStoreService);
+
+      fillValidWiederfang();
+      component.onSubmit();
+      respondOffline();
+      // `patchValue()` never marks the form dirty (only real DOM interaction
+      // or the reset directive does), so `pristine` is uninformative here —
+      // poll a value cleanReset() is known to clear instead.
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      const entries = await outboxStore.list();
+      expect(entries.length).toBe(1);
+      expect(entries[0].id).toMatch(UUID_PATTERN);
+      expect((entries[0].payload as {idempotency_key?: string}).idempotency_key).toBe(entries[0].id);
+      expect((entries[0].payload as {ring_number?: string}).ring_number).toBe('901234');
+    });
+
+    it('increments the visible pending count in the outbox service', async () => {
+      const outbox = TestBed.inject(OutboxService);
+      await outbox.ready;
+      expect(outbox.pendingCount()).toBe(0);
+
+      fillValidWiederfang();
+      component.onSubmit();
+      respondOffline();
+      await waitUntil(() => outbox.pendingCount() === 1);
+
+      expect(outbox.pendingCount()).toBe(1);
+    });
+
+    it('behaves identically to an online save: no error snackbar, and the same clean-reset (Station + Beringer kept)', async () => {
+      // The component imports MatSnackBarModule, so it holds its own
+      // MatSnackBar instance — spy on that one, not the root injector's
+      // (mirrors the MatDialog spy pattern used elsewhere in this file).
+      const openSpy = spyOn(
+        (component as unknown as { snackBar: MatSnackBar }).snackBar,
+        'open',
+      ).and.callThrough();
+
+      fillValidWiederfang();
+      component.onSubmit();
+      respondOffline();
+      // `patchValue()` never marks the form dirty (only real DOM interaction
+      // or the reset directive does), so `pristine` is uninformative here —
+      // poll a value cleanReset() is known to clear instead.
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+      fixture.detectChanges();
+
+      expect(openSpy).toHaveBeenCalledWith(
+        'Beringungseintrag gespeichert.',
+        undefined,
+        jasmine.any(Object),
+      );
+      expect(component.entryForm.get('ringing_station')!.value).toEqual({
+        handle: 'STAMT',
+        name: 'Linz',
+      } as never);
+      expect(component.entryForm.get('staff')!.value).toEqual({
+        id: 'p1',
+        handle: 'FRE',
+        full_name: 'Filip Reiter',
+      } as never);
+      expect(component.entryForm.get('species')!.value).toBeNull();
+      expect(component.entryForm.pristine).toBe(true);
+    });
+
+    it('mints the next capture a fresh idempotency key after an offline-queued save, just like an online one', async () => {
+      fillValidWiederfang();
+      component.onSubmit();
+      const firstPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const firstKey = firstPost.request.body.idempotency_key;
+      firstPost.error(new ProgressEvent('error'));
+      // `patchValue()` never marks the form dirty (only real DOM interaction
+      // or the reset directive does), so `pristine` is uninformative here —
+      // poll a value cleanReset() is known to clear instead.
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      fillValidWiederfang();
+      component.onSubmit();
+      const secondPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(secondPost.request.body.idempotency_key).not.toBe(firstKey);
+      secondPost.error(new ProgressEvent('error'));
+      // `patchValue()` never marks the form dirty (only real DOM interaction
+      // or the reset directive does), so `pristine` is uninformative here —
+      // poll a value cleanReset() is known to clear instead.
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+    });
+  });
+
+  // Issue #162 extends the #160 tracer bullet to every capture kind. A
+  // Wiederfang offline-enqueue is already proven above (the #160 describe
+  // block's own `fillValidWiederfang()` fixture *is* a Wiederfang — chosen
+  // there precisely because BirdStatus.ReCatch never triggers the
+  // Ringnummer-suggestion effect, keeping that block's HTTP mocking minimal).
+  // This block covers what #160 did not: the two Sonderarten.
+  describe('offline Sonderarten (#162): Ring vernichtet and Aves ignota enqueue like any other capture', () => {
+    let httpMock: HttpTestingController;
+
+    const RING_VERNICHTET: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      special_kind: 'ring_destroyed',
+    };
+
+    const AVES_IGNOTA: Species = {
+      id: 'aves',
+      common_name_de: 'Art nicht in der Liste (Aves ignota)',
+      common_name_en: 'Species not listed',
+      scientific_name: 'Aves ignota',
+      family_name: '—',
+      order_name: '—',
+      ring_size: null,
+      special_kind: 'unknown_species',
+    };
+
+    function selectSpecies(species: Species): void {
+      component.onSpeciesSelected({ option: { value: species } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+    }
+
+    // A genuine network-level failure (status 0) — the offline simulation
+    // used throughout PRD #152 (see the #160 describe block above).
+    function respondOffline(): void {
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+    }
+
+    // Same real-IndexedDB polling rationale as the #160 block above.
+    async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+      const start = Date.now();
+      while (!predicate()) {
+        if (Date.now() - start > timeoutMs) {
+          throw new Error('Timed out waiting for the offline outbox write to settle.');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    afterEach(async () => {
+      localStorage.clear();
+      const db = TestBed.inject(IndexedDbStore);
+      const entries = await db.getAll<{ id: string }>('outbox');
+      await Promise.all(entries.map((entry) => db.delete('outbox', entry.id)));
+    });
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+    });
+
+    it('enqueues a Ring vernichtet capture offline once the collapsed form is filled in', async () => {
+      const form = component.entryForm;
+      form.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: RING_VERNICHTET as never,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      selectSpecies(RING_VERNICHTET);
+
+      expect(component.isRingDestroyed()).toBe(true);
+      expect(form.valid).toBe(true);
+
+      component.onSubmit();
+      respondOffline();
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      const entries = await TestBed.inject(OutboxStoreService).list();
+      expect(entries.length).toBe(1);
+      const payload = entries[0].payload as { species_id?: string; ring_number?: string };
+      expect(payload.species_id).toBe(RING_VERNICHTET.id);
+      expect(payload.ring_number).toBe('901234');
+    });
+
+    it('refuses to submit an Aves ignota capture offline without the mandatory Bemerkung, and never enqueues it', async () => {
+      const form = component.entryForm;
+      form.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: AVES_IGNOTA as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+        comment: null,
+      });
+      selectSpecies(AVES_IGNOTA);
+
+      expect(component.isUnknownSpecies()).toBe(true);
+      expect(form.invalid).toBe(true);
+
+      component.onSubmit();
+
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+      const entries = await TestBed.inject(OutboxStoreService).list();
+      expect(entries.length).toBe(0);
+    });
+
+    it('enqueues an Aves ignota capture offline once the mandatory Bemerkung is filled in, exactly as online', async () => {
+      const form = component.entryForm;
+      form.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: AVES_IGNOTA as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+        comment: 'Seltener Irrgast, nicht sicher bestimmbar.',
+      });
+      selectSpecies(AVES_IGNOTA);
+
+      expect(form.valid).toBe(true);
+
+      component.onSubmit();
+      respondOffline();
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      const entries = await TestBed.inject(OutboxStoreService).list();
+      expect(entries.length).toBe(1);
+      const payload = entries[0].payload as { species_id?: string; comment?: string };
+      expect(payload.species_id).toBe(AVES_IGNOTA.id);
+      expect(payload.comment).toBe('Seltener Irrgast, nicht sicher bestimmbar.');
     });
   });
 

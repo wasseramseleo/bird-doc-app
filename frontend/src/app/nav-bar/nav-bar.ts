@@ -9,10 +9,15 @@ import {MatMenuModule} from '@angular/material/menu';
 import {MatDividerModule} from '@angular/material/divider';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {AuthService} from '../service/auth.service';
+import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
 import {Project} from '../models/project.model';
 import {FeedbackDialogComponent} from '../feedback/feedback-dialog/feedback-dialog';
 import {environment} from '../../environments/environment';
+import {OfflineReadiness} from './offline-readiness/offline-readiness';
+import {OfflineIndicator} from './offline-indicator/offline-indicator';
+import {OutboxIndicator} from './outbox-indicator/outbox-indicator';
+import {PwaInstallButton} from './pwa-install-button/pwa-install-button';
 
 @Component({
   selector: 'app-nav-bar',
@@ -25,6 +30,10 @@ import {environment} from '../../environments/environment';
     MatMenuModule,
     MatDividerModule,
     MatDialogModule,
+    OfflineReadiness,
+    OfflineIndicator,
+    OutboxIndicator,
+    PwaInstallButton,
   ],
   templateUrl: './nav-bar.html',
   styleUrl: './nav-bar.scss',
@@ -32,6 +41,7 @@ import {environment} from '../../environments/environment';
 })
 export class NavBar {
   private readonly auth = inject(AuthService);
+  private readonly outbox = inject(OutboxService);
   private readonly projectService = inject(ProjectService);
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
@@ -102,9 +112,27 @@ export class NavBar {
   }
 
   onLogout(): void {
+    // Guard against silently stranding unsynced field data (issue #165): a
+    // logout ends the session, and the still-queued captures can only be
+    // synchronised once the *same* Mitglied logs back in on this device — so a
+    // Mitglied handing the device off after logging out could lose them by
+    // accident. Warn loudly and require confirmation while the outbox is
+    // non-empty; the durable queue itself is never touched here.
+    if (this.outbox.pendingCount() > 0 && !this.confirmLogoutWithPendingCaptures()) {
+      return;
+    }
     this.auth.logout().subscribe({
       next: () => this.router.navigate(['/login']),
       error: () => this.router.navigate(['/login']),
     });
+  }
+
+  private confirmLogoutWithPendingCaptures(): boolean {
+    const count = this.outbox.pendingCount();
+    return window.confirm(
+      `Achtung: Es ${count === 1 ? 'ist noch 1 Fang' : `sind noch ${count} Fänge`} nicht ` +
+        'synchronisiert. Diese Fänge können erst nach erneuter Anmeldung mit diesem Konto ' +
+        'zum Server übertragen werden. Jetzt trotzdem abmelden?',
+    );
   }
 }

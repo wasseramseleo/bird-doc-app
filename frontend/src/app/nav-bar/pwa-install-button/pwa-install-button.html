@@ -1,0 +1,12 @@
+@if (installAvailable()) {
+  <button
+    mat-button
+    type="button"
+    class="pwa-install"
+    aria-label="App installieren"
+    (click)="install()"
+  >
+    <mat-icon>install_desktop</mat-icon>
+    <span>App installieren</span>
+  </button>
+}

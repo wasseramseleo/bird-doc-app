@@ -37,6 +37,17 @@ class SpeciesSerializer(serializers.ModelSerializer):
         ]
 
 
+class OfflineSpeciesSerializer(SpeciesSerializer):
+    """A Species row in the offline reference bundle (issue #157), carrying its
+    per-Organisation usage count so the offline picker can approximate the
+    most-used-first ordering ``SpeciesViewSet._order_by_usage`` gives online."""
+
+    usage_count = serializers.IntegerField(read_only=True)
+
+    class Meta(SpeciesSerializer.Meta):
+        fields = [*SpeciesSerializer.Meta.fields, "usage_count"]
+
+
 class RingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ring
@@ -240,6 +251,13 @@ class DataEntrySerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    # #155: declared explicitly (rather than left to ModelSerializer's
+    # auto-generation) so it carries no ``UniqueValidator`` — a replayed create
+    # with a known key is a deliberate, expected case handled by
+    # ``create_capture()`` returning the existing record, not a validation
+    # error. The DB's unique constraint (see the migration) remains the
+    # backstop against a genuine collision reaching this code path.
+    idempotency_key = serializers.UUIDField(required=False, allow_null=True)
 
     class Meta:
         model = DataEntry
@@ -275,6 +293,7 @@ class DataEntrySerializer(serializers.ModelSerializer):
             "hand_wing",
             "date_time",
             "comment",
+            "idempotency_key",
             "created",
             "updated",
             "has_hunger_stripes",
@@ -348,6 +367,10 @@ class DataEntrySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({exc.field: exc.message}) from exc
 
     def update(self, instance, validated_data):
+        # #155: the idempotency key identifies the create attempt, not the
+        # record's current content — editing an existing capture must never
+        # change it, however the payload was built.
+        validated_data.pop("idempotency_key", None)
         with transaction.atomic():
             old_ring = instance.ring
             new_ring = self._get_or_create_ring(

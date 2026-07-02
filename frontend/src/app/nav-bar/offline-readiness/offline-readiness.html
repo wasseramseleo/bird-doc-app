@@ -1,0 +1,39 @@
+<div class="offline-readiness" [class.offline-readiness--ready]="isReady()" role="status">
+  <mat-icon class="offline-readiness__icon" aria-hidden="true">
+    {{ isReady() ? 'cloud_done' : 'cloud_off' }}
+  </mat-icon>
+  <span class="offline-readiness__label">
+    {{ isReady() ? 'Offline bereit' : 'Cache wird vorbereitet …' }}
+  </span>
+  @if (lastRefreshedAt(); as refreshedAt) {
+    <span class="offline-readiness__timestamp">
+      zuletzt aktualisiert {{ refreshedAt | date: 'dd.MM.yyyy HH:mm' }}
+    </span>
+  }
+  @switch (persistenceState()) {
+    @case ('granted') {
+      <mat-icon
+        class="offline-readiness__persistence offline-readiness__persistence--granted"
+        aria-label="Speicher vor Löschung geschützt"
+        title="Speicher vor Löschung geschützt"
+      >verified_user</mat-icon>
+    }
+    @case ('denied') {
+      <mat-icon
+        class="offline-readiness__persistence offline-readiness__persistence--denied"
+        aria-label="Speicherschutz vom Browser abgelehnt"
+        title="Speicherschutz vom Browser abgelehnt"
+      >gpp_maybe</mat-icon>
+    }
+  }
+  <button
+    mat-icon-button
+    type="button"
+    class="offline-readiness__refresh"
+    aria-label="Jetzt aktualisieren"
+    [disabled]="refreshing()"
+    (click)="refreshNow()"
+  >
+    <mat-icon>refresh</mat-icon>
+  </button>
+</div>

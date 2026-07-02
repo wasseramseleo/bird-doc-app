@@ -657,6 +657,45 @@ class DataEntry(models.Model):
     comment = models.CharField(
         max_length=2048, verbose_name=_("Bemerkungen"), null=True, blank=True
     )
+    # #155 (PRD #152 — offline outbox sync): a client-generated UUID that
+    # identifies one capture-create attempt end-to-end. A create carrying an
+    # already-known key returns the existing record instead of minting a
+    # duplicate (see capture_service.create_capture) — the keystone that lets
+    # an offline device safely retry/replay a queued create. Scoped to the
+    # recording Organisation (Meta.constraints below), mirroring Ring (ADR
+    # 0006): two Organisations independently generating offline captures must
+    # never have one's key collide with the other's, and a freak/malicious
+    # cross-tenant collision must never resolve to another Organisation's row.
+    # Nullable because only an idempotency-aware client (the capture form, the
+    # future offline outbox) sends one; admin edits, the IWM importer and
+    # legacy rows leave it unset.
+    idempotency_key = models.UUIDField(null=True, blank=True, verbose_name=_("Idempotenzschlüssel"))
+
+    class Meta:
+        # NULL is never compared equal to NULL in a SQL unique index, so any
+        # number of key-less captures coexist per Organisation — only two
+        # captures of the *same* Organisation sharing an actual key collide.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "idempotency_key"],
+                name="unique_idempotency_key_per_organization",
+            ),
+            # A physical ring is applied to a bird exactly once, so at most one
+            # Erstfang (first catch) may reference any Ring row (ADR 0006). The
+            # Ring is itself org-scoped, so this is per-Organisation. A partial
+            # index over ``bird_status='e'`` only: a ring may still carry any
+            # number of Wiederfänge, and a 'ring_destroyed' record (bird_status
+            # forced null) is outside the index. This is the DB backstop behind
+            # ``create_capture``'s check-then-insert — two offline devices that
+            # race a second Erstfang onto one ring both pass the pre-check SELECT,
+            # but the losing INSERT hits this constraint and is deterministically
+            # flagged (issue #164, PRD #152) instead of silently double-filing.
+            models.UniqueConstraint(
+                fields=["ring"],
+                condition=models.Q(bird_status="e"),
+                name="unique_erstfang_per_ring",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         # Keep every capture org-owned: when the Organisation is not set
