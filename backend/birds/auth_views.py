@@ -4,23 +4,7 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from .models import Mitgliedschaft
-from .tenancy import active_organization
-
-
-def _active_organization_rolle(user):
-    """The actor's Rolle in their active Organisation, or ``None``.
-
-    Mirrors the tenancy spine (ADR 0005): the active Organisation is the org of
-    the account's single Mitgliedschaft, so the Rolle is that membership's Rolle.
-    With no unambiguous active Organisation (zero memberships, or several awaiting
-    the org-switcher) there is no Rolle to report and this returns ``None``.
-    """
-    organization = active_organization(user)
-    if organization is None:
-        return None
-    membership = Mitgliedschaft.objects.filter(user=user, organization=organization).first()
-    return membership.rolle if membership is not None else None
+from .tenancy import active_organization_rolle
 
 
 def _user_payload(user):
@@ -32,7 +16,7 @@ def _user_payload(user):
         "username": user.username,
         "handle": handle,
         "is_staff": user.is_staff,
-        "active_organization_rolle": _active_organization_rolle(user),
+        "active_organization_rolle": active_organization_rolle(user),
     }
 
 

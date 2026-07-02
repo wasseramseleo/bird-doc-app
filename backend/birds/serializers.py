@@ -37,6 +37,17 @@ class SpeciesSerializer(serializers.ModelSerializer):
         ]
 
 
+class OfflineSpeciesSerializer(SpeciesSerializer):
+    """A Species row in the offline reference bundle (issue #157), carrying its
+    per-Organisation usage count so the offline picker can approximate the
+    most-used-first ordering ``SpeciesViewSet._order_by_usage`` gives online."""
+
+    usage_count = serializers.IntegerField(read_only=True)
+
+    class Meta(SpeciesSerializer.Meta):
+        fields = [*SpeciesSerializer.Meta.fields, "usage_count"]
+
+
 class RingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ring
