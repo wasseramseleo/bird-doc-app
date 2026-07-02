@@ -341,6 +341,12 @@ _ROUND_TRIP_FIELDS = (
     "small_feather_int",
     "hand_wing",
     "net_location",
+    # Decimal biometrics + the moult Fortschritt (issue #176).
+    "wing_span",
+    "feather_span",
+    "weight_gram",
+    "tarsus",
+    "small_feather_app",
 )
 
 
@@ -380,6 +386,11 @@ def test_export_import_round_trip_reconstructs_equivalent_captures(
         small_feather_int=1,
         hand_wing=3,
         net_location=7,
+        wing_span=Decimal("82.50"),
+        feather_span=Decimal("63.00"),
+        weight_gram=Decimal("18.30"),
+        tarsus=Decimal("20.10"),
+        small_feather_app=DataEntry.SmallFeatherAppMoult.MIXED,
         comment="Zecken am Kopf",
     )
     _seed(

@@ -596,6 +596,14 @@ def _resolve_row(values, header_index, row_num, project, resolver):
         "small_feather_int": _parse_int(_cell(values, header_index, "Intensität")),
         "hand_wing": _parse_int(_cell(values, header_index, "Handschwingen")),
         "net_location": _parse_int(_cell(values, header_index, "Netz")),
+        # Decimal biometrics + the moult Fortschritt the export emits (issue #176).
+        # The columns are optional (never required); a blank or garbage cell parses
+        # to None and never blocks the row, so export→import round-trips.
+        "wing_span": _parse_decimal(_cell(values, header_index, "Flügellänge")),
+        "feather_span": _parse_decimal(_cell(values, header_index, "Teilfederlänge")),
+        "weight_gram": _parse_decimal(_cell(values, header_index, "Gewicht")),
+        "tarsus": _parse_decimal(_cell(values, header_index, "Tarsus")),
+        "small_feather_app": text("Fortschritt"),
     }
     # Run the shared creation invariants now (e.g. the *Aves ignota* mandatory
     # Bemerkung — ADR 0004) so the dry-run preview reports exactly the blocking
@@ -675,6 +683,31 @@ def _parse_int(value):
     try:
         return int(value)
     except (TypeError, ValueError):
+        return None
+
+
+# The two-place quantum matching the biometrics' ``DecimalField(decimal_places=2)``.
+_TWO_PLACES = Decimal("0.01")
+
+
+def _parse_decimal(value):
+    """Parse a lenient biometric cell into a 2-place ``Decimal``, or ``None``.
+
+    Accepts openpyxl numerics (``int``/``float``) and strings, treats both ``.``
+    and ``,`` as the decimal separator (a German-locale Datenmeldung writes
+    ``12,5``), and quantizes to two decimal places to match the model's
+    ``DecimalField(decimal_places=2)``. Returns ``None`` on a blank or unparseable
+    cell — lenient like ``_parse_int``, so one bad biometric cell never blocks a
+    row. A ``float`` is routed through ``str`` first so its shortest decimal repr
+    is preserved rather than its binary-float artefacts (``18.3`` → ``18.30``)."""
+    if value is None:
+        return None
+    text = str(value).strip().replace(",", ".")
+    if not text:
+        return None
+    try:
+        return Decimal(text).quantize(_TWO_PLACES)
+    except (InvalidOperation, ValueError):
         return None
 
 
