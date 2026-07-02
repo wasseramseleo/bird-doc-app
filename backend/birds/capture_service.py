@@ -174,20 +174,39 @@ def create_capture(
                 **fields,
             )
     except IntegrityError:
-        # Lost the race: a concurrent request carrying the same idempotency_key
-        # committed its INSERT first, so ours hit
-        # ``unique_idempotency_key_per_organization``. The atomic() block above
-        # already rolled back to the savepoint, leaving the connection usable, so
-        # re-run the lookup and hand back the winner's row — the promised
-        # idempotent behaviour, not a 500. A genuinely unrelated IntegrityError
-        # (or a key-less create, which cannot hit this constraint) still has no
-        # matching row here and is re-raised unchanged.
+        # Lost a race: our INSERT hit a unique constraint a concurrent request
+        # committed first past our pre-checks. The atomic() block above already
+        # rolled back to the savepoint, leaving the connection usable, so we can
+        # re-read to tell *which* race it was. Two are possible:
+        #
+        # 1. ``unique_idempotency_key_per_organization`` — a concurrent request
+        #    carrying *this same* idempotency_key committed first (the #155
+        #    TOCTOU replay). Re-run the lookup and hand back the winner's row —
+        #    the promised idempotent behaviour, not a 500. Checked first so a
+        #    genuine replay is never mis-flagged as a rival Erstfang below.
+        # 2. ``unique_erstfang_per_ring`` — a *different* device raced a second
+        #    Erstfang onto the same ring (AC3, issue #164): both passed the
+        #    check-then-insert pre-check before either committed. Deterministically
+        #    flag the loser with the same ``CaptureValidationError`` the sequential
+        #    pre-check raises, so the concurrent duplicate surfaces as one sync
+        #    error instead of silently double-filing one physical ring.
+        #
+        # A genuinely unrelated IntegrityError matches neither re-read and is
+        # re-raised unchanged.
         if idempotency_key is not None:
             existing = DataEntry.objects.filter(
                 idempotency_key=idempotency_key, organization=organization
             ).first()
             if existing is not None:
                 return existing
+        if stored_bird_status == DataEntry.BirdStatus.FIRST_CATCH:
+            rival_erstfaenge = DataEntry.objects.filter(
+                ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH
+            )
+            if idempotency_key is not None:
+                rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)
+            if rival_erstfaenge.exists():
+                raise CaptureValidationError("ring_number", RING_ALREADY_FIRST_CAUGHT) from None
         raise
 
 

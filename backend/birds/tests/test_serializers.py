@@ -184,11 +184,16 @@ def test_update_keeps_old_ring_when_still_referenced(
     data_entry, species, scientist, ringing_station
 ):
     old_ring = data_entry.ring
+    # A second capture keeps ``old_ring`` referenced after ``data_entry`` moves to
+    # a new ring. ``data_entry`` is already the ring's Erstfang, so this one is a
+    # Wiederfang — at most one Erstfang may reference a ring (unique_erstfang_per_ring,
+    # issue #164), and a recapture referencing the ring is what the test needs.
     DataEntry.objects.create(
         species=species,
         ring=old_ring,
         staff=scientist,
         ringing_station=ringing_station,
+        bird_status=DataEntry.BirdStatus.RE_CATCH,
         date_time=datetime(2026, 2, 2, 8, 0, tzinfo=UTC),
     )
 

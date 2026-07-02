@@ -292,6 +292,10 @@ def test_filter_by_project_returns_only_that_projects_entries(
 def _bulk_entries(n, *, species, ring, scientist, ringing_station, project=None):
     # bulk_create bypasses Model.save(), so the org fallback never fires — set it
     # explicitly (to the Station's org) to keep these captures in the tenant scope.
+    # These share one Ring purely to fill a page; at most one Erstfang may
+    # reference a ring (unique_erstfang_per_ring, issue #164), so they are recorded
+    # as Wiederfänge — a recapture consumes no rope number and any number may share
+    # the ring, exactly what a pagination fixture needs.
     DataEntry.objects.bulk_create(
         DataEntry(
             species=species,
@@ -300,6 +304,7 @@ def _bulk_entries(n, *, species, ring, scientist, ringing_station, project=None)
             ringing_station=ringing_station,
             organization=ringing_station.organization,
             project=project,
+            bird_status=DataEntry.BirdStatus.RE_CATCH,
             date_time=datetime(2026, 1, 1, tzinfo=UTC),
         )
         for _ in range(n)

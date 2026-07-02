@@ -306,6 +306,111 @@ def test_create_capture_rejects_second_erstfang_on_same_org_ring(
 
 
 @pytest.mark.django_db
+def test_create_capture_concurrent_second_erstfang_is_flagged_not_silently_duplicated(
+    monkeypatch, species, scientist, ringing_station, organization
+):
+    """AC3 concurrency backstop (issue #164, PRD #152): two offline devices at one
+    Organisation each record an Erstfang on the same ring number (each with its own
+    idempotency_key) and reconnect near-simultaneously. Both requests can run the
+    check-then-insert pre-check SELECT before either commits, so the
+    at-most-one-Erstfang-per-ring rule cannot rest on that SELECT alone — it would
+    let both INSERT and silently double-file one physical ring, exactly what AC3
+    forbids. A partial unique index on ``ring`` where ``bird_status='e'`` is the
+    real backstop: the losing INSERT hits it, and the resulting ``IntegrityError``
+    is turned into the same flagged ``CaptureValidationError`` the sequential case
+    raises — one surfaced sync error, never a silent second Erstfang.
+
+    Simulated deterministically (no real threads, no flaky SQLite file-locking): a
+    "concurrent winner" Erstfang is created first, then the losing request's
+    ring-Erstfang pre-check SELECT is forced to miss exactly once — reproducing its
+    view of the world at the instant it read "no rival Erstfang" — before it tries
+    to insert a second Erstfang onto the same ring.
+    """
+    winner = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_number="840",
+            idempotency_key=uuid.uuid4(),
+        )
+    )
+
+    real_filter = DataEntry.objects.filter
+    precheck = {"missed": False}
+
+    def _erstfang_precheck_misses_once(*args, **kwargs):
+        # Only the ring-Erstfang pre-check names ``bird_status``; force it to
+        # miss exactly once, leaving the idempotency lookups and the except-block
+        # rival re-check on the real, winner-visible data.
+        if "bird_status" in kwargs and not precheck["missed"]:
+            precheck["missed"] = True
+            return DataEntry.objects.none()
+        return real_filter(*args, **kwargs)
+
+    monkeypatch.setattr(DataEntry.objects, "filter", _erstfang_precheck_misses_once)
+
+    with pytest.raises(CaptureValidationError) as exc_info:
+        create_capture(
+            **_capture_kwargs(
+                species,
+                scientist,
+                ringing_station,
+                organization,
+                ring_number="840",
+                idempotency_key=uuid.uuid4(),
+            )
+        )
+
+    assert exc_info.value.field == "ring_number"
+    assert exc_info.value.message == capture_service.RING_ALREADY_FIRST_CAUGHT
+    # The silent duplicate AC3 forbids never materialised: still exactly one
+    # Erstfang on the physical ring, and the winner is untouched.
+    assert (
+        DataEntry.objects.filter(
+            ring__number="840", bird_status=DataEntry.BirdStatus.FIRST_CATCH
+        ).count()
+        == 1
+    )
+    assert DataEntry.objects.filter(id=winner.id).exists()
+    assert DataEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_erstfang_per_ring_uniqueness_is_enforced_at_the_database(
+    species, scientist, ringing_station, organization
+):
+    """The at-most-one-Erstfang-per-ring rule has a DB constraint behind it, not
+    just the application-level check-then-insert: two Erstfänge on one Ring row are
+    rejected by the database even when ``create_capture``'s pre-check is bypassed
+    (a direct ORM write — admin repair, a raced INSERT). This is the invariant AC3
+    leans on to guarantee a concurrent duplicate is flagged, never silently lost.
+    """
+    ring = Ring.objects.create(number="850", size=Ring.RingSizes.V, organization=organization)
+    DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        organization=organization,
+        bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+        date_time=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
+    )
+
+    with pytest.raises(capture_service.IntegrityError):
+        DataEntry.objects.create(
+            species=species,
+            ring=ring,
+            staff=scientist,
+            ringing_station=ringing_station,
+            organization=organization,
+            bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+            date_time=datetime(2026, 3, 2, 12, 0, tzinfo=UTC),
+        )
+
+
+@pytest.mark.django_db
 def test_create_capture_allows_wiederfang_on_already_first_caught_ring(
     species, scientist, ringing_station, organization
 ):
