@@ -1,10 +1,11 @@
-{% extends "landing/base.html" %}
+{% extends "landing/base_funnel.html" %}
+{% load i18n %}
 
-{% block title %}Gespräch vereinbaren · BirdDoc{% endblock %}
+{% block title %}{% translate "Gespräch vereinbaren" %} · BirdDoc{% endblock %}
 
 {% block content %}
-    <h1>Anfrage erhalten</h1>
-    <p>Danke! Wir haben deine Anfrage notiert und melden uns per E-Mail, um ein
-        Gespräch zu vereinbaren.</p>
-    <p><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
+    <p class="eyebrow">{% translate "Für Organisationen &amp; Vogelwarten" %}</p>
+    <h1>{% translate "Anfrage erhalten" %}</h1>
+    <p>{% blocktranslate trimmed %}Danke! Wir haben deine Anfrage notiert und melden uns per E-Mail, um ein Gespräch zu vereinbaren.{% endblocktranslate %}</p>
+    <p><a class="button" href="{% url 'landing:home' %}">{% translate "Zurück zur Startseite" %}</a></p>
 {% endblock %}

@@ -1,11 +1,11 @@
-{% extends "landing/base.html" %}
+{% extends "landing/base_funnel.html" %}
+{% load i18n %}
 
-{% block title %}Zugang anfragen · BirdDoc{% endblock %}
+{% block title %}{% translate "Zugang anfragen" %} · BirdDoc{% endblock %}
 
 {% block content %}
-    <h1>Anfrage erhalten</h1>
-    <p>Danke! Wir haben deine Anfrage notiert und dich auf die Warteliste
-        gesetzt. Sobald ein Zugangscode für dich frei wird, melden wir uns per
-        E-Mail.</p>
-    <p><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
+    <p class="eyebrow">{% translate "Warteliste · Beringung" %}</p>
+    <h1>{% translate "Anfrage erhalten" %}</h1>
+    <p>{% blocktranslate trimmed %}Danke! Wir haben deine Anfrage notiert und dich auf die Warteliste gesetzt. Sobald ein Zugangscode für dich frei wird, melden wir uns per E-Mail.{% endblocktranslate %}</p>
+    <p><a class="button" href="{% url 'landing:home' %}">{% translate "Zurück zur Startseite" %}</a></p>
 {% endblock %}

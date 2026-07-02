@@ -145,6 +145,13 @@ body {
     text-underline-offset: 2px;
 }
 
+/* A button-like anchor inside the panel keeps the button's paper-bright label:
+   without this, the more specific `.panel a` rule above would repaint it in
+   the low-contrast link brown (issue #143). */
+.panel a.button {
+    color: #fff;
+}
+
 /* Eyebrow — a mono field-record label above the heading */
 .panel p.eyebrow {
     margin-bottom: 0.6rem;
@@ -573,6 +580,59 @@ body {
 
 @media (max-width: 30rem) {
     .page--home .band__inner {
+        padding-top: 2.25rem;
+        padding-bottom: 2.25rem;
+    }
+}
+
+/* ── Funnel pages — the lead forms + confirmations ride the rhythm (issue #143) ──
+   The Warteliste and Gespräch funnels are the marketing home's conversion
+   endpoints, so they speak the same band vocabulary instead of the plain
+   destination column: one full-bleed band on the sunk surface carries the
+   unified panel card, re-centred on the shared measure. Keyed on
+   `.page--funnel` — the legal pages keep the default centred main (issue
+   #142), and only the funnel templates declare this class. */
+
+.page--funnel .site-main {
+    max-width: none;
+    padding: 0;
+    /* Let the single band paint the full height down to the footer. */
+    display: flex;
+    flex-direction: column;
+}
+
+.page--funnel .band {
+    flex: 1 0 auto;
+}
+
+.page--funnel .band__inner {
+    width: 100%;
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: 3.25rem 1.25rem;
+}
+
+/* The form card keeps its comfortable single-column reading measure inside
+   the wide marketing band. */
+.page--funnel .panel {
+    max-width: 34rem;
+    margin: 0 auto;
+}
+
+/* The post-submit reassurance — one quiet bordered field-note (the hosting
+   note's family) naming what happens after the form is sent. */
+.panel p.funnel-next {
+    margin: 1.5rem 0 0;
+    padding: 0.9rem 1rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    font-size: 0.92rem;
+}
+
+@media (max-width: 30rem) {
+    .page--funnel .band__inner {
         padding-top: 2.25rem;
         padding-bottom: 2.25rem;
     }

@@ -1,0 +1,32 @@
+{% extends "landing/base.html" %}
+
+{% comment %}
+The shared base for the two lead funnels — the Warteliste ("Zugang anfragen")
+and Gespräch forms and their gesendet confirmations (issue #143). The funnel is
+the marketing surface's conversion endpoint, so it speaks the same rhythm
+language as the home (issue #142): the content card sits inside a full-bleed
+band on the sunk paper surface, re-centred on the shared measure, instead of
+the plain destination column. The card itself is the landing's unified brass-
+edged panel; the form styling is inherited from the brand layer (ADR 0009).
+{% endcomment %}
+
+{% block body_class %}page--marketing page--funnel{% endblock %}
+
+{% comment %}
+The lead funnels are part of the bilingual surface (issue #107), so their
+header carries the DE/EN toggle: it switches each page between German (apex)
+and English (/en/) without leaving it.
+{% endcomment %}
+{% block header_back %}
+    {% include "landing/_lang_toggle.html" %}
+{% endblock %}
+
+{% block main %}
+    <div class="band band--sunk">
+        <div class="band__inner">
+            <div class="panel">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+{% endblock %}
