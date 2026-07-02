@@ -2,6 +2,7 @@ import {inject, Injectable} from '@angular/core';
 import {HttpErrorResponse} from '@angular/common/http';
 import {catchError, from, map, Observable, of, tap, throwError} from 'rxjs';
 
+import {DataEntry} from '../models/data-entry.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {Project} from '../models/project.model';
 import {RingingStation} from '../models/ringing-station.model';
@@ -9,6 +10,7 @@ import {RingSize} from '../models/ring.model';
 import {Scientist} from '../models/scientist.model';
 import {Species} from '../models/species.model';
 import {ApiService} from './api.service';
+import {OutboxService} from './outbox.service';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {
   CachedReferenceBundle,
@@ -16,22 +18,25 @@ import {
 } from '../core/offline/reference-bundle-cache';
 
 /**
- * The offline-aware data-access facade (issue #159, PRD #152): fronts the
- * capture-form's reads — species/Station/Beringer/Projekt pickers and the
- * ring next-number suggestion — behind an interface shaped exactly like
- * `ApiService`. The online path is unchanged: every call attempts the real
- * server request first, so a healthy connection sees identical behaviour to
- * calling `ApiService` directly. Only a genuine connectivity failure
- * (`HttpErrorResponse.status === 0` — the same signal `AuthService.bootstrap()`
- * already treats as "no connectivity", issue #156) falls back to the
- * IndexedDB reference-bundle cache (issue #158); any other error (e.g. a 401,
- * handled globally by the auth interceptor) propagates unchanged.
+ * The offline-aware data-access facade (issue #159, #160, PRD #152): fronts
+ * the capture-form's reads — species/Station/Beringer/Projekt pickers and
+ * the ring next-number suggestion — and the capture create, behind an
+ * interface shaped exactly like `ApiService`. The online path is unchanged:
+ * every call attempts the real server request first, so a healthy connection
+ * sees identical behaviour to calling `ApiService` directly. Only a genuine
+ * connectivity failure (`HttpErrorResponse.status === 0` — the same signal
+ * `AuthService.bootstrap()` already treats as "no connectivity", issue #156)
+ * falls back to the IndexedDB reference-bundle cache (issue #158) for reads,
+ * or the durable offline outbox (issue #160) for the capture create; any
+ * other error (e.g. a 401, handled globally by the auth interceptor)
+ * propagates unchanged.
  */
 @Injectable({providedIn: 'root'})
 export class DataAccessFacadeService {
   private readonly api = inject(ApiService);
   private readonly cache = inject(ReferenceBundleCacheService);
   private readonly connectivity = inject(ConnectivityService);
+  private readonly outbox = inject(OutboxService);
 
   getSpecies(searchTerm?: string, projectId?: string): Observable<PaginatedApiResponse<Species>> {
     return this.withOfflineFallback(this.api.getSpecies(searchTerm, projectId), () =>
@@ -104,6 +109,25 @@ export class DataAccessFacadeService {
           return {next_number: lastConsumed ? incrementRingNumber(lastConsumed.number) : null};
         }),
       ),
+    );
+  }
+
+  /**
+   * The offline-capable capture create — the durable-outbox tracer bullet
+   * (issue #160): attempts the real POST first, exactly like `ApiService`.
+   * Only a connectivity failure durably enqueues the payload into the
+   * offline outbox instead (issue #160) rather than surfacing a save error,
+   * so a Mitglied at a Station with no reception never loses a capture. The
+   * payload already carries its client-generated idempotency UUID (#155),
+   * minted once by `DataEntryFormComponent` and carried through unchanged —
+   * enqueueing never mints a second one. Resolves to the created `DataEntry`
+   * when saved online, or `null` when durably queued instead.
+   */
+  createDataEntry(payload: Partial<DataEntry>): Observable<DataEntry | null> {
+    return this.withOfflineFallback(this.api.createDataEntry(payload), () =>
+      this.outbox
+        .enqueue(payload as Record<string, unknown> & {idempotency_key?: string | null})
+        .pipe(map(() => null)),
     );
   }
 

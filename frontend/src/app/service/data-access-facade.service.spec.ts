@@ -4,9 +4,14 @@ import {HttpTestingController, provideHttpClientTesting} from '@angular/common/h
 import {firstValueFrom} from 'rxjs';
 
 import {DataAccessFacadeService} from './data-access-facade.service';
+import {AuthService} from './auth.service';
+import {OutboxService} from './outbox.service';
+import {OutboxStoreService} from '../core/offline/outbox-store';
 import {ConnectivityService} from '../core/offline/connectivity';
+import {IndexedDbStore} from '../core/offline/indexed-db-store';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {OfflineBundle, OfflineSpecies} from '../models/offline-bundle.model';
+import {DataEntry} from '../models/data-entry.model';
 import {Species} from '../models/species.model';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist} from '../models/scientist.model';
@@ -66,11 +71,23 @@ describe('DataAccessFacadeService', () => {
     httpMock = TestBed.inject(HttpTestingController);
     cache = TestBed.inject(ReferenceBundleCacheService);
     connectivity = TestBed.inject(ConnectivityService);
+    // The outbox (issue #160) stamps every enqueued entry with the
+    // currently authenticated account (tenancy fix) — an entry can only be
+    // durably queued once someone is signed in, exactly like in the app.
+    TestBed.inject(AuthService).currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
   });
 
   afterEach(async () => {
     httpMock.verify();
     await cache.clear();
+    const db = TestBed.inject(IndexedDbStore);
+    await db.delete('outbox', 'uuid-1');
   });
 
   describe('getSpecies()', () => {
@@ -324,6 +341,87 @@ describe('DataAccessFacadeService', () => {
 
       const result = await resultPromise;
       expect(result.next_number).toBeNull();
+    });
+  });
+
+  describe('createDataEntry() (issue #160, the offline durable outbox)', () => {
+    function payload(): Partial<DataEntry> {
+      return {
+        idempotency_key: 'uuid-1',
+        species_id: 's1',
+        ring_number: '0043',
+      } as unknown as Partial<DataEntry>;
+    }
+
+    it('passes the server response through unchanged while online, and never touches the outbox', async () => {
+      const created: Partial<DataEntry> = {id: 'server-1'};
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      req.flush(created);
+
+      const result = await resultPromise;
+      expect(result).toEqual(created as DataEntry);
+      expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
+    });
+
+    it('durably enqueues the payload into the outbox instead of erroring when the server is unreachable', async () => {
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result).toBeNull();
+
+      const queued = await TestBed.inject(OutboxStoreService).list();
+      expect(queued.length).toBe(1);
+      expect(queued[0].id).toBe('uuid-1');
+      expect(queued[0].payload).toEqual(payload() as unknown as Record<string, unknown>);
+    });
+
+    it('marks the app offline once the create falls back to the outbox', async () => {
+      expect(connectivity.isOffline()).toBeFalse();
+
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+      await resultPromise;
+
+      expect(connectivity.isOffline()).toBeTrue();
+    });
+
+    it('increments the outbox pending count on enqueue', async () => {
+      const outbox = TestBed.inject(OutboxService);
+      await outbox.ready;
+      expect(outbox.pendingCount()).toBe(0);
+
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+      await resultPromise;
+
+      expect(outbox.pendingCount()).toBe(1);
+    });
+
+    it('does not treat a non-connectivity error (e.g. a validation 400) as offline, and propagates it unchanged instead of enqueueing', async () => {
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+      let caught: unknown;
+      resultPromise.catch((error: unknown) => (caught = error));
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({detail: 'Ungültige Ringnummer.'}, {status: 400, statusText: 'Bad Request'});
+
+      await expectAsync(resultPromise).toBeRejected();
+      expect(connectivity.isOffline()).toBeFalse();
+      expect((caught as {status?: number} | undefined)?.status).toBe(400);
+      expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
     });
   });
 
