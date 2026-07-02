@@ -605,6 +605,13 @@ body {
     flex: 1 0 auto;
 }
 
+/* The band's sunk surface — the home's band--sunk rule is keyed on
+   `.page--home` (issue #142), so the funnel needs its own binding of the
+   modifier to the token or the band renders on the plain body paper. */
+.page--funnel .band--sunk {
+    background: var(--bd-paper-sunk);
+}
+
 .page--funnel .band__inner {
     width: 100%;
     max-width: var(--measure);
