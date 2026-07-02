@@ -16,6 +16,7 @@ import {
   CachedReferenceBundle,
   ReferenceBundleCacheService,
 } from '../core/offline/reference-bundle-cache';
+import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
 
 /**
  * The offline-aware data-access facade (issue #159, #160, PRD #152): fronts
@@ -37,6 +38,7 @@ export class DataAccessFacadeService {
   private readonly cache = inject(ReferenceBundleCacheService);
   private readonly connectivity = inject(ConnectivityService);
   private readonly outbox = inject(OutboxService);
+  private readonly recentEntriesCache = inject(RecentEntriesCacheService);
 
   getSpecies(searchTerm?: string, projectId?: string): Observable<PaginatedApiResponse<Species>> {
     return this.withOfflineFallback(this.api.getSpecies(searchTerm, projectId), () =>
@@ -113,6 +115,44 @@ export class DataAccessFacadeService {
   }
 
   /**
+   * "Today's session" (issue #163): the active Projekt's already-synced
+   * captures, narrowed to today's calendar date — the cached-synced half of
+   * the session view, alongside the account-scoped queued entries
+   * `OutboxService.pendingEntries()` supplies. The API has no date filter,
+   * so the narrowing happens client-side over a generously large page (a
+   * single day's session is never anywhere close to it).
+   *
+   * Every successful online fetch writes through to
+   * `RecentEntriesCacheService` so the same (already-narrowed) list can be
+   * read back while offline. A connectivity failure falls back to that
+   * cache, but only when it belongs to the *same* Projekt — a stale
+   * snapshot from a Projekt switched away from while offline would
+   * misattribute captures, so it degrades to an empty list instead, mirroring
+   * the other caches' best-effort degradation.
+   */
+  getTodayEntries(projectId: string): Observable<DataEntry[]> {
+    const online$ = this.api.getDataEntries({projectId, page: 1, pageSize: 200}).pipe(
+      map((response) => response.results.filter(isToday)),
+      tap((entries) => {
+        this.recentEntriesCache
+          .save({projectId, entries, cachedAt: new Date().toISOString()})
+          .catch((error: unknown) =>
+            console.error('Failed to cache today\'s entries for offline reading', error),
+          );
+      }),
+    );
+    return this.withOfflineFallback(online$, () =>
+      from(this.recentEntriesCache.load()).pipe(
+        map((cached) => (cached && cached.projectId === projectId ? cached.entries : [])),
+        catchError((error: unknown) => {
+          console.error('Failed to read the cached today\'s entries', error);
+          return of([]);
+        }),
+      ),
+    );
+  }
+
+  /**
    * The offline-capable capture create — the durable-outbox tracer bullet
    * (issue #160): attempts the real POST first, exactly like `ApiService`.
    * Only a connectivity failure durably enqueues the payload into the
@@ -171,6 +211,19 @@ export class DataAccessFacadeService {
 
 function toPage<T>(results: T[]): PaginatedApiResponse<T> {
   return {count: results.length, next: null, previous: null, results};
+}
+
+// "Today" is the device's own local calendar date (Austrian field hardware —
+// LOCALE_ID 'de-AT'), matching the date a Beringer would call "today's
+// session" regardless of the UTC offset `date_time` is serialized in.
+function isToday(entry: DataEntry): boolean {
+  const captured = new Date(entry.date_time);
+  const now = new Date();
+  return (
+    captured.getFullYear() === now.getFullYear() &&
+    captured.getMonth() === now.getMonth() &&
+    captured.getDate() === now.getDate()
+  );
 }
 
 // Mirrors `RingViewSet._increment` (backend/birds/views.py) verbatim: the

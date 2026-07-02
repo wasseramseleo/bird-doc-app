@@ -103,6 +103,11 @@
     @if (isEditMode()) {
       <div class="edit-mode-badge">Bearbeitungsmodus</div>
     }
+    @if (isQueuedEditMode()) {
+      <div class="queued-edit-badge" role="status">
+        Nicht synchronisiert – wird beim Speichern erneut eingereiht
+      </div>
+    }
     <h2>{{ isEditMode() ? 'Daten bearbeiten' : 'Neuer Beringungseintrag' }}</h2>
 
     <div class="form-section">
