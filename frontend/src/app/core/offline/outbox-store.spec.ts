@@ -106,6 +106,22 @@ describe('OutboxStoreService', () => {
     });
   });
 
+  describe('remove() (issue #161, dropping a synced entry)', () => {
+    it('removes the entry with the given id', async () => {
+      await service.add(makeEntry({id: 'uuid-1'}));
+      await service.add(makeEntry({id: 'uuid-2'}));
+
+      await service.remove('uuid-1');
+
+      const result = await service.list();
+      expect(result.map((e) => e.id)).toEqual(['uuid-2']);
+    });
+
+    it('tolerates removing an id that was never queued', async () => {
+      await expectAsync(service.remove('never-queued')).toBeResolved();
+    });
+  });
+
   it('tolerates roughly two weeks of daily sessions worth of queued entries', async () => {
     const count = 300; // ~2 weeks * ~20 captures/day, rounded up
     for (let i = 0; i < count; i++) {

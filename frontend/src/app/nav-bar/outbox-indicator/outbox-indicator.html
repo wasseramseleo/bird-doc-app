@@ -1,4 +1,14 @@
 <div class="outbox-indicator" role="status" aria-live="polite">
   <mat-icon class="outbox-indicator__icon" aria-hidden="true">outbox</mat-icon>
   <span class="outbox-indicator__label">{{ pendingCount() }} nicht synchronisierte Einträge</span>
+  <button
+    mat-icon-button
+    type="button"
+    class="outbox-indicator__sync"
+    aria-label="Jetzt synchronisieren"
+    [disabled]="syncing()"
+    (click)="syncNow()"
+  >
+    <mat-icon>sync</mat-icon>
+  </button>
 </div>

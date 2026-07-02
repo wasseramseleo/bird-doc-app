@@ -21,4 +21,19 @@
   &__label {
     white-space: nowrap;
   }
+
+  &__sync {
+    flex: none;
+    // Shrink the icon button to fit the compact pill instead of Material's
+    // default 40px tap target, which would dwarf the rest of the indicator.
+    width: 28px;
+    height: 28px;
+    padding: 2px;
+    line-height: 1;
+
+    ::ng-deep .mat-mdc-button-touch-target {
+      width: 28px;
+      height: 28px;
+    }
+  }
 }

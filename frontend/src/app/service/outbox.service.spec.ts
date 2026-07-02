@@ -98,6 +98,40 @@ describe('OutboxService', () => {
     expect(() => service.enqueue({species_id: 's1'})).toThrowError();
   });
 
+  describe('dequeue() (issue #161, dropping a synced entry)', () => {
+    it('removes a queued entry from the durable store and the pending count', async () => {
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+      await firstValueFrom(service.enqueue({idempotency_key: 'uuid-1'}));
+      expect(service.pendingCount()).toBe(1);
+
+      await service.dequeue('uuid-1');
+
+      expect(service.pendingCount()).toBe(0);
+      expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
+    });
+
+    it('leaves other queued entries untouched', async () => {
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+      await firstValueFrom(service.enqueue({idempotency_key: 'uuid-1'}));
+      await firstValueFrom(service.enqueue({idempotency_key: 'uuid-2'}));
+
+      await service.dequeue('uuid-1');
+
+      expect(service.pendingCount()).toBe(1);
+      const stored = await TestBed.inject(OutboxStoreService).list();
+      expect(stored.map((e) => e.id)).toEqual(['uuid-2']);
+    });
+
+    it('tolerates dequeuing an id that was never queued', async () => {
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      await expectAsync(service.dequeue('never-queued')).toBeResolved();
+    });
+  });
+
   describe('tenancy (issue #160 fix — a shared/offline device never leaks another account\'s queue)', () => {
     it('refuses to enqueue a payload when no account is authenticated', async () => {
       auth.currentUser.set(null);
