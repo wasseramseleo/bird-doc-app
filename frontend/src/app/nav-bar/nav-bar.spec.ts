@@ -76,6 +76,7 @@ function signIn(
     handle: 'FRE',
     isStaff,
     rolle,
+    organization: null,
   });
 }
 

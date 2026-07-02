@@ -45,7 +45,7 @@ def test_legacy_username_account_still_logs_in_by_username(api_client, user):
 
 
 @pytest.mark.django_db
-def test_login_with_valid_credentials_returns_payload(api_client, user, scientist):
+def test_login_with_valid_credentials_returns_payload(api_client, user, scientist, organization):
     response = api_client.post(
         LOGIN_URL,
         {"username": "alice", "password": "hunter2-very-strong"},
@@ -58,6 +58,12 @@ def test_login_with_valid_credentials_returns_payload(api_client, user, scientis
         "handle": "ALC",
         "is_staff": False,
         "active_organization_rolle": "admin",
+        "active_organization": {
+            "id": str(organization.id),
+            "handle": "ORG1",
+            "name": "Test Org",
+            "country": "DE",
+        },
     }
 
 
@@ -103,7 +109,7 @@ def test_me_unauthenticated_returns_401(api_client):
 
 
 @pytest.mark.django_db
-def test_me_authenticated_returns_payload(auth_client, scientist):
+def test_me_authenticated_returns_payload(auth_client, scientist, organization):
     response = auth_client.get(ME_URL)
     assert response.status_code == 200
     assert response.json() == {
@@ -111,6 +117,12 @@ def test_me_authenticated_returns_payload(auth_client, scientist):
         "handle": "ALC",
         "is_staff": False,
         "active_organization_rolle": "admin",
+        "active_organization": {
+            "id": str(organization.id),
+            "handle": "ORG1",
+            "name": "Test Org",
+            "country": "DE",
+        },
     }
 
 
@@ -142,3 +154,14 @@ def test_me_reports_null_rolle_without_unambiguous_active_organisation(auth_clie
     response = auth_client.get(ME_URL)
     assert response.status_code == 200
     assert response.json()["active_organization_rolle"] is None
+
+
+@pytest.mark.django_db
+def test_me_reports_null_active_organization_without_unambiguous_active_organisation(
+    auth_client, user
+):
+    # Same "no unambiguous active Organisation" case, for the Organisation itself
+    # — this is the identity the offline PWA caches (issue #156).
+    response = auth_client.get(ME_URL)
+    assert response.status_code == 200
+    assert response.json()["active_organization"] is None
