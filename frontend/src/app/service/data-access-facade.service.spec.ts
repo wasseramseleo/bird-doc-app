@@ -10,8 +10,9 @@ import {OutboxStoreService} from '../core/offline/outbox-store';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {IndexedDbStore} from '../core/offline/indexed-db-store';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
+import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
 import {OfflineBundle, OfflineSpecies} from '../models/offline-bundle.model';
-import {DataEntry} from '../models/data-entry.model';
+import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {Species} from '../models/species.model';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist} from '../models/scientist.model';
@@ -86,6 +87,7 @@ describe('DataAccessFacadeService', () => {
   afterEach(async () => {
     httpMock.verify();
     await cache.clear();
+    await TestBed.inject(RecentEntriesCacheService).clear();
     const db = TestBed.inject(IndexedDbStore);
     await db.delete('outbox', 'uuid-1');
   });
@@ -341,6 +343,132 @@ describe('DataAccessFacadeService', () => {
 
       const result = await resultPromise;
       expect(result.next_number).toBeNull();
+    });
+  });
+
+  describe('getTodayEntries() (issue #163, "today\'s session")', () => {
+    function isoAt(hoursAgoFromMidnight: number, dayOffset = 0): string {
+      const d = new Date();
+      d.setDate(d.getDate() + dayOffset);
+      d.setHours(hoursAgoFromMidnight, 0, 0, 0);
+      return d.toISOString();
+    }
+
+    function syncedEntry(overrides: Partial<DataEntry> = {}): DataEntry {
+      return {
+        id: 'e1',
+        species: {
+          id: 's1',
+          common_name_de: 'Kohlmeise',
+          common_name_en: 'Great Tit',
+          scientific_name: 'Parus major',
+          family_name: '',
+          order_name: '',
+          ring_size: null,
+          special_kind: '',
+        },
+        ring: {id: 'r1', number: '0043', size: RingSize.V},
+        staff: {id: 'sci-1', handle: 'FRE', full_name: 'Filip Reiter'},
+        ringing_station: {handle: 'STAMT', name: 'Linz, Botanischer Garten'},
+        project: null,
+        net_location: null,
+        net_height: null,
+        net_direction: null,
+        feather_span: null,
+        wing_span: null,
+        tarsus: null,
+        notch_f2: null,
+        inner_foot: null,
+        weight_gram: null,
+        bird_status: BirdStatus.FirstCatch,
+        fat_deposit: null,
+        muscle_class: null,
+        age_class: 2 as DataEntry['age_class'],
+        sex: 0 as DataEntry['sex'],
+        small_feather_int: null,
+        small_feather_app: null,
+        hand_wing: null,
+        date_time: isoAt(9),
+        created: isoAt(9),
+        updated: isoAt(9),
+        comment: null,
+        has_mites: false,
+        has_hunger_stripes: false,
+        has_brood_patch: false,
+        has_cpl_plus: false,
+        ...overrides,
+      } as DataEntry;
+    }
+
+    it('fetches the Projekt\'s entries and narrows them to today\'s calendar date while online', async () => {
+      const today = syncedEntry({id: 'today-1', date_time: isoAt(9)});
+      const yesterday = syncedEntry({id: 'yesterday-1', date_time: isoAt(9, -1)});
+      const resultPromise = firstValueFrom(service.getTodayEntries('p1'));
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(req.request.params.get('project')).toBe('p1');
+      req.flush(page0([today, yesterday]));
+
+      const result = await resultPromise;
+      expect(result.map((e) => e.id)).toEqual(['today-1']);
+    });
+
+    it('caches today\'s entries for offline reading', async () => {
+      const today = syncedEntry({id: 'today-1'});
+      const resultPromise = firstValueFrom(service.getTodayEntries('p1'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .flush(page0([today]));
+      await resultPromise;
+
+      const cached = await TestBed.inject(RecentEntriesCacheService).load();
+      expect(cached?.projectId).toBe('p1');
+      expect(cached?.entries.map((e) => e.id)).toEqual(['today-1']);
+    });
+
+    it('falls back to the cached entries for the same Projekt when offline', async () => {
+      const today = syncedEntry({id: 'today-1'});
+      await TestBed.inject(RecentEntriesCacheService).save({
+        projectId: 'p1',
+        entries: [today],
+        cachedAt: '2026-06-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getTodayEntries('p1'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.map((e) => e.id)).toEqual(['today-1']);
+    });
+
+    it('returns an empty list offline when the cache belongs to a different Projekt', async () => {
+      await TestBed.inject(RecentEntriesCacheService).save({
+        projectId: 'other-project',
+        entries: [syncedEntry()],
+        cachedAt: '2026-06-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getTodayEntries('p1'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result).toEqual([]);
+    });
+
+    it('returns an empty list instead of throwing when nothing has ever been cached', async () => {
+      const resultPromise = firstValueFrom(service.getTodayEntries('p1'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result).toEqual([]);
     });
   });
 

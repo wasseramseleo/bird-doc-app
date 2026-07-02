@@ -47,4 +47,13 @@ export class OutboxStoreService {
     const entries = await this.list();
     return entries.filter((entry) => entry.accountKey === accountKey);
   }
+
+  /**
+   * Removes a queued entry permanently (issue #163: deleting a nicht
+   * synchronisiert entry from "today's session"). Keyed the same way as
+   * `add()`; removing an id that was never queued is a harmless no-op.
+   */
+  remove(id: string): Promise<void> {
+    return this.db.delete('outbox', id);
+  }
 }

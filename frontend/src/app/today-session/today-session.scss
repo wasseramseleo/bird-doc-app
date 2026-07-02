@@ -1,0 +1,72 @@
+:host {
+  display: block;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding: 24px;
+}
+
+.today-session__header h1 {
+  margin: 0;
+}
+
+.today-session__subhead {
+  margin: 4px 0 0;
+  color: var(--bd-ink-soft);
+}
+
+.today-session__group {
+  margin-top: 24px;
+
+  h2 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+}
+
+.today-session__empty {
+  color: var(--bd-ink-soft);
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bd-border, #e0e0e0);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bd-hover-bg, rgba(0, 0, 0, 0.03));
+  }
+
+  &__species {
+    flex: 1 1 auto;
+    font-weight: 500;
+  }
+
+  &__time,
+  &__ring,
+  &__status,
+  &__staff {
+    color: var(--bd-ink-soft);
+    white-space: nowrap;
+  }
+
+  &__badge {
+    font-size: 0.8rem;
+    white-space: nowrap;
+
+    &--pending {
+      color: var(--bd-warning, #b26a00);
+    }
+
+    &--synced {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      color: var(--bd-ink-soft);
+    }
+  }
+}
+
