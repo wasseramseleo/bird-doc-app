@@ -1,7 +1,13 @@
 {% extends "landing/base.html" %}
-{% load i18n %}
+{% load static i18n humanize %}
 
-{% block body_class %}page--marketing{% endblock %}
+{% comment %}
+`page--marketing` carries the shared marketing surface (wide measure, top nav);
+`page--home` additionally marks THIS page as the banded long-scroll (issue
+#142) — the legal pages reuse `page--marketing` for the measure but keep the
+default centred main, so the full-bleed treatment must key on `page--home`.
+{% endcomment %}
+{% block body_class %}page--marketing page--home{% endblock %}
 
 {% comment %}
 SEO + Open-Graph share baseline (issue #108): a shared BirdDoc link previews
@@ -34,6 +40,15 @@ built in the view.
 {% endblock %}
 
 {% comment %}
+The landing's single light JavaScript file (issue #141): vanilla, dependency-
+free, served from the landing's own statics. It only *enhances* — without it
+the nav above renders fully expanded and the page works unchanged.
+{% endcomment %}
+{% block scripts %}
+    <script src="{% static 'landing/nav.js' %}" defer></script>
+{% endblock %}
+
+{% comment %}
 The marketing home's full top nav fills the header slot beside the wordmark
 (issue #104): in-page anchors to the IA sections, an *Anmelden* action that
 links OUT to the SPA login (login stays in the SPA — ADR 0008), and the DE/EN
@@ -41,16 +56,36 @@ toggle (issue #107). The marketing home and the two lead forms are the bilingual
 surface; the toggle switches between German (apex, no prefix) and English (/en/).
 {% endcomment %}
 {% block header_back %}
+    {% comment %}
+    At narrow viewports the section links collapse behind a toggle (issue #141)
+    as a progressive enhancement carried by the landing's single vanilla JS
+    file: the sections group ships fully expanded (no hidden attribute) so the
+    no-JS page works unchanged. Anmelden and the DE/EN toggle sit OUTSIDE the
+    collapsible group and stay directly visible at every viewport width.
+    {% endcomment %}
     <nav class="site-nav" aria-label="{% translate 'Hauptnavigation' %}">
-        <a class="site-nav__link" href="#funktionen">{% translate "Funktionen" %}</a>
-        <a class="site-nav__link" href="#organisationen">{% translate "Für Organisationen" %}</a>
-        <a class="site-nav__link" href="#preise">{% translate "Preise" %}</a>
+        <button class="site-nav__toggle" type="button" hidden
+                aria-expanded="false" aria-controls="site-nav-sections">{% translate "Menü" %}</button>
+        <div class="site-nav__sections" id="site-nav-sections">
+            <a class="site-nav__link" href="#funktionen">{% translate "Funktionen" %}</a>
+            <a class="site-nav__link" href="#organisationen">{% translate "Für Organisationen" %}</a>
+            <a class="site-nav__link" href="#preise">{% translate "Preise" %}</a>
+        </div>
         <a class="site-nav__link site-nav__link--login" href="{{ app_login_url }}">{% translate "Anmelden" %}</a>
         {% include "landing/_lang_toggle.html" %}
     </nav>
 {% endblock %}
 
 {% block main %}
+    {% comment %}
+    Page rhythm (issue #142): the sections sit inside full-bleed background
+    bands that alternate the existing surface tokens (ADR 0009 — rhythm, not
+    new colors), so the long scroll reads as distinct movements instead of one
+    undifferentiated column. Exactly one band inverts to the dark ink ground:
+    Für Organisationen & Vogelwarten, further down.
+    {% endcomment %}
+    <div class="band band--paper">
+    <div class="band__inner">
     {% comment %}
     A shared hero thesis opening on the common truth both audiences hold — an
     end to paper-and-Excel documentation. The artifact slot carries the credible
@@ -63,8 +98,16 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             <p class="lead">{% blocktranslate trimmed %}BirdDoc ist das Stationsjournal für die Beringung: ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten Tabellen.{% endblocktranslate %}
                 <span class="badge badge--beta">Beta</span></p>
             {% include "landing/_app_german_only_note.html" %}
+            {% comment %}
+            Hero CTAs (issue #138): the primary action is the Warteliste — a
+            Beringer convinced by the hero can act on it right here instead of
+            scrolling screens down. The secondary ghost button forks the other
+            audience to the Für-Organisationen section; a "Für Beringer" anchor
+            is deliberately absent — the page's default reading flow IS the
+            Beringer path.
+            {% endcomment %}
             <p class="hero__ctas">
-                <a class="button" href="#fuer-beringer">{% translate "Für Beringer" %}</a>
+                <a class="button" href="{% url 'landing:warteliste' %}">{% translate "Zugang anfragen" %}</a>
                 <a class="button button--ghost" href="#organisationen">{% translate "Für Organisationen" %}</a>
             </p>
         </div>
@@ -114,10 +157,14 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     The Ringserie number thread (issue #106): a run of CONSUMED ring numbers
     (last-consumed + 1) threading the page as an honest structural marker. Set in
     tabular-nums (the data voice). The numbers themselves are data, not copy.
+    Its caption (issue #138) names what the thread is — consumed ring numbers
+    from station operation, next number = last consumed + 1 — so the thread
+    reads as evidence, not decoration.
     {% endcomment %}
     <p class="ringserie ringserie--reveal data" aria-label="{% translate 'Ringserie: fortlaufende Ringnummern' %}">
         {% for number in fang_karte.ringserie %}<span class="ringserie__num">{{ number }}</span>{% if not forloop.last %}<span class="ringserie__sep" aria-hidden="true">·</span>{% endif %}{% endfor %}<span class="ringserie__sep" aria-hidden="true">·</span><span class="ringserie__next" title="{% translate 'Nächste Nummer: letzte verbrauchte + 1' %}">{{ fang_karte.next_number }}</span>
     </p>
+    <p class="ringserie__caption">{% translate "Ringserie: fortlaufend verbrauchte Ringnummern aus dem Stationsbetrieb; die nächste Nummer ist die letzte verbrauchte + 1." %}</p>
 
     {% comment %}
     The fork band — both audience columns rendered server-side at once (SEO;
@@ -136,7 +183,11 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             <p><a class="fork__more" href="#organisationen">{% translate "Für Organisationen ansehen" %}</a></p>
         </section>
     </div>
+    </div>
+    </div>
 
+    <div class="band band--sunk">
+    <div class="band__inner">
     {% comment %}
     The Für-Beringer audience section: names the pain (paper + Excel), shows the
     concrete relief (Fang-Karte, smart ring-numbering, the IWM export), carries
@@ -166,7 +217,97 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
         <p class="audience__beta">{% blocktranslate trimmed %}BirdDoc ist in geschlossener Beta und während der Beta <strong>kostenlos</strong>. Trag dich in die Warteliste ein und wir melden uns, sobald ein Zugangscode frei wird.{% endblocktranslate %}</p>
         <p><a class="button" href="{% url 'landing:warteliste' %}">{% translate "Zugang anfragen" %}</a></p>
     </section>
+    </div>
+    </div>
 
+    <div class="band band--paper">
+    <div class="band__inner">
+    {% comment %}
+    The product-proof section (issue #139): the page never showed the actual
+    product, so this shows the app's real German data-entry form as it stands
+    at the Ringtisch — server-rendered markup styled to read as the app's form
+    (no screenshot pipeline, no JS), narratively linked to the hero: the form
+    at the Ringtisch becomes the clean Fang-Karte record. The form's labels
+    stay honestly German even under /en/ — like the hero card, it is a preview
+    of the German app itself (the app-is-German-only note sets that
+    expectation); the surrounding narrative copy translates. Its content is a
+    frozen Referenzprojekt-shaped specimen (ADR 0012): plausible, non-real
+    ringing data, never real Fangdaten.
+    {% endcomment %}
+    <section class="formular-proof" id="fang-formular" aria-labelledby="fang-formular-title">
+        <p class="eyebrow">{% translate "Ein Blick in BirdDoc" %}</p>
+        <h2 id="fang-formular-title" class="formular-proof__title">{% translate "Das Formular am Ringtisch" %}</h2>
+        <p class="formular-proof__lead">{% blocktranslate trimmed %}Genau dieses Formular füllst du am Ringtisch aus, während der Vogel in der Hand ist. Aus jedem ausgefüllten Formular wird eine saubere Fang-Karte wie oben: ohne Zettel, ohne Übertragen.{% endblocktranslate %}</p>
+
+        <article class="formular" aria-label="Beispiel-Beringungseintrag">
+            <header class="formular__head">
+                <p class="eyebrow">Neuer Beringungseintrag</p>
+            </header>
+            <div class="formular__grid">
+                <p class="formular__field formular__field--wide">
+                    <span class="formular__label">Projekt</span>
+                    <span class="formular__value">{{ fang_formular.projekt }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Station</span>
+                    <span class="formular__value">{{ fang_formular.station }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Beringer</span>
+                    <span class="formular__value">{{ fang_formular.beringer_first }} {{ fang_formular.beringer_last }} ({{ fang_formular.kuerzel }})</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Datum und Uhrzeit</span>
+                    <span class="formular__value data">{{ fang_formular.datum }}, {{ fang_formular.uhrzeit }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Art</span>
+                    <span class="formular__value">{{ fang_formular.common_name_de }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Status</span>
+                    <span class="formular__value">{{ fang_formular.status }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Ringgröße</span>
+                    <span class="formular__value data">{{ fang_formular.ring_size }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Ringnummer</span>
+                    <span class="formular__value data">{{ fang_formular.ring_number }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Alter</span>
+                    <span class="formular__value">{{ fang_formular.age }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Geschlecht</span>
+                    <span class="formular__value">{{ fang_formular.sex }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Fett</span>
+                    <span class="formular__value data">{{ fang_formular.fat }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Muskelklasse</span>
+                    <span class="formular__value data">{{ fang_formular.muscle }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Flügellänge (mm)</span>
+                    <span class="formular__value data">{{ fang_formular.wing_mm }}</span>
+                </p>
+                <p class="formular__field">
+                    <span class="formular__label">Gewicht (g)</span>
+                    <span class="formular__value data">{{ fang_formular.weight_g }}</span>
+                </p>
+            </div>
+        </article>
+    </section>
+    </div>
+    </div>
+
+    <div class="band band--sunk">
+    <div class="band__inner">
     {% comment %}
     The Excel-vs-BirdDoc comparison (issue #116, ADR 0014): a small, factual and
     deliberately non-disparaging contrast of the four error types that a by-hand
@@ -201,7 +342,16 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             </li>
         </ul>
     </section>
+    </div>
+    </div>
 
+    {% comment %}
+    The page's ONE dark-inverted band (issue #142): ink ground, paper text — a
+    graver institutional register for the org decision-maker. The Gespräch CTA
+    inside stays the band's most prominent element.
+    {% endcomment %}
+    <div class="band band--ink">
+    <div class="band__inner">
     {% comment %}
     The Für-Organisationen section (issue #105): it has to earn a scheme-level
     decision from a central body such as the Österreichische Vogelwarte — an
@@ -234,6 +384,22 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             </li>
         </ul>
 
+        {% comment %}
+        The quiet stats row substantiating "An der Station bewährt" (issue #140):
+        three hand-maintained, operator-confirmed production figures from
+        landing/stats.py — constants, never live-queried across tenants. A <dl>
+        pairs each figure with its accessible label; the figures are set in the
+        page's tabular-nums data voice, digit grouping following the locale.
+        {% endcomment %}
+        <dl class="org-stats" aria-label="{% translate 'Zahlen aus dem Stationsbetrieb' %}">
+            {% for stat in station_stats %}
+                <div class="org-stats__item">
+                    <dt class="org-stats__label">{{ stat.label }}</dt>
+                    <dd class="org-stats__value data">{{ stat.value|intcomma }}</dd>
+                </div>
+            {% endfor %}
+        </dl>
+
         <p class="audience__pilot">{% blocktranslate trimmed %}Für interessierte Gruppen ist ein begleiteter <strong>Beta-Pilot</strong> möglich, ohne festen Zeitplan.{% endblocktranslate %}</p>
 
         <p class="audience__org-ctas">
@@ -241,7 +407,11 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             <a class="audience__founder" href="{% url 'landing:register' %}">{% translate "Schon einen Zugangscode? Organisation gründen" %}</a>
         </p>
     </section>
+    </div>
+    </div>
 
+    <div class="band band--elev">
+    <div class="band__inner">
     <section class="hosting" aria-label="Hosting">
         <span class="hosting__flag" aria-hidden="true">🇦🇹</span>
         <p>{% blocktranslate trimmed %}<strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben in Österreich bzw. der EU, DSGVO-konform und ohne Drittanbieter-Tracking.{% endblocktranslate %}</p>
@@ -268,4 +438,6 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             </li>
         </ul>
     </section>
+    </div>
+    </div>
 {% endblock %}

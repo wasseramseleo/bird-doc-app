@@ -1,16 +1,7 @@
-{% extends "landing/base.html" %}
+{% extends "landing/base_funnel.html" %}
 {% load i18n %}
 
 {% block title %}{% translate "Zugang anfragen" %} · BirdDoc{% endblock %}
-
-{% comment %}
-A lead form is part of the bilingual surface (issue #107), so its header carries
-the DE/EN toggle. The toggle switches this page between German (apex) and English
-(/en/) without leaving it.
-{% endcomment %}
-{% block header_back %}
-    {% include "landing/_lang_toggle.html" %}
-{% endblock %}
 
 {% block content %}
     <p class="eyebrow">{% translate "Warteliste · Beringung" %}</p>
@@ -22,4 +13,10 @@ the DE/EN toggle. The toggle switches this page between German (apex) and Englis
         {{ form.as_p }}
         <button type="submit" class="button">{% translate "Zugang anfragen" %}</button>
     </form>
+    {% comment %}
+    The post-submit reassurance (issue #143): one quiet field-note naming what
+    happens after the form is sent, so the lead knows the request lands with a
+    person and the Zugangscode follows when a place is free.
+    {% endcomment %}
+    <p class="funnel-next" role="note">{% blocktranslate trimmed %}Nach dem Absenden sehen wir uns deine Anfrage an. Sobald ein Platz frei wird, bekommst du deinen Zugangscode per E-Mail.{% endblocktranslate %}</p>
 {% endblock %}

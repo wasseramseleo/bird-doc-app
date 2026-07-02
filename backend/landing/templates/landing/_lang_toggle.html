@@ -2,8 +2,9 @@
 {% comment %}
 The header DE/EN toggle for the bilingual marketing surface (issue #107). The
 active language is the plain current chip; the other is a link to the same page
-in that language (switch_url). Shown on the marketing home and both lead forms —
-not on the German-only legal/auth pages.
+in that language (switch_url). Shown on the marketing home and the two lead
+funnels (both forms + their gesendet confirmations, issue #143) — not on the
+German-only legal/auth pages.
 {% endcomment %}
 {% get_current_language as CUR_LANG %}
 <div class="site-nav__lang lang-toggle" aria-label="{% translate 'Sprache' %}">

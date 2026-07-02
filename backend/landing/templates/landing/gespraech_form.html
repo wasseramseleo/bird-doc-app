@@ -1,16 +1,7 @@
-{% extends "landing/base.html" %}
+{% extends "landing/base_funnel.html" %}
 {% load i18n %}
 
 {% block title %}{% translate "Gespräch vereinbaren" %} · BirdDoc{% endblock %}
-
-{% comment %}
-A lead form is part of the bilingual surface (issue #107), so its header carries
-the DE/EN toggle. The toggle switches this page between German (apex) and English
-(/en/) without leaving it.
-{% endcomment %}
-{% block header_back %}
-    {% include "landing/_lang_toggle.html" %}
-{% endblock %}
 
 {% block content %}
     <p class="eyebrow">{% translate "Für Organisationen &amp; Vogelwarten" %}</p>
@@ -22,4 +13,10 @@ the DE/EN toggle. The toggle switches this page between German (apex) and Englis
         {{ form.as_p }}
         <button type="submit" class="button">{% translate "Gespräch vereinbaren" %}</button>
     </form>
+    {% comment %}
+    The post-submit reassurance (issue #143): one quiet field-note naming what
+    happens after the form is sent, so the lead knows the request lands with a
+    person who follows up to arrange the Gespräch.
+    {% endcomment %}
+    <p class="funnel-next" role="note">{% blocktranslate trimmed %}Nach dem Absenden sehen wir uns deine Anfrage an und melden uns per E-Mail, um einen Termin für das Gespräch zu finden.{% endblocktranslate %}</p>
 {% endblock %}
