@@ -8,10 +8,11 @@ import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {Project} from '../models/project.model';
 import {RingingStation} from '../models/ringing-station.model';
 import {RingSize} from '../models/ring.model';
-import {Scientist} from '../models/scientist.model';
+import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Species} from '../models/species.model';
 import {ApiService} from './api.service';
 import {OutboxService} from './outbox.service';
+import {PendingBeringerService} from './pending-beringer.service';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {
   CachedReferenceBundle,
@@ -39,6 +40,7 @@ export class DataAccessFacadeService {
   private readonly cache = inject(ReferenceBundleCacheService);
   private readonly connectivity = inject(ConnectivityService);
   private readonly outbox = inject(OutboxService);
+  private readonly pendingBeringer = inject(PendingBeringerService);
   private readonly recentEntriesCache = inject(RecentEntriesCacheService);
 
   getSpecies(searchTerm?: string, projectId?: string): Observable<PaginatedApiResponse<Species>> {
@@ -78,11 +80,32 @@ export class DataAccessFacadeService {
     return this.withOfflineFallback(this.api.getScientists(searchTerm), () =>
       this.loadCache().pipe(
         map((cached) => {
-          const pool = cached?.bundle.scientists ?? [];
+          // Fold this device's own offline quick-added (not-yet-synced) Beringer
+          // (issue #167) in front of the cached org Beringer, so a Beringer
+          // added at a remote Station is selectable in the same offline session
+          // — even across a reload — before they ever reach the server.
+          const pool = [...this.pendingBeringer.pendingScientists(), ...(cached?.bundle.scientists ?? [])];
           const filtered = filterBySearch(pool, searchTerm, (s) => [s.handle, s.full_name]);
           return toPage(filtered);
         }),
       ),
+    );
+  }
+
+  /**
+   * The offline-capable no-account Beringer quick-add (issue #167): attempts the
+   * real POST first, exactly like `ApiService`, so a healthy connection creates
+   * the Beringer server-side immediately. Only a connectivity failure durably
+   * queues the Beringer into the pending-Beringer store instead (issue #167) and
+   * hands back a local placeholder `Scientist` — carrying the client id its
+   * dependent captures reference in the same session — rather than surfacing an
+   * error. On sync the queued Beringer is created before its dependent captures
+   * and matched by Kürzel if one already exists server-side (see `SyncService`).
+   * Any other error (e.g. a 400) propagates unchanged, like every other read.
+   */
+  createScientist(payload: ScientistCreatePayload): Observable<Scientist> {
+    return this.withOfflineFallback(this.api.createScientist(payload), () =>
+      this.pendingBeringer.enqueue(payload),
     );
   }
 

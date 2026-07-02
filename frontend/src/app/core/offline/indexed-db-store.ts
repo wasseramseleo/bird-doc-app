@@ -11,7 +11,7 @@ import {Injectable} from '@angular/core';
  * so existing stores/data are never dropped.
  */
 export const OFFLINE_DB_NAME = 'birddoc-offline';
-export const OFFLINE_DB_VERSION = 4;
+export const OFFLINE_DB_VERSION = 5;
 // v2 (issue #158) adds 'referenceCache' — the offline reference bundle
 // (species pool, org reference data, last-consumed ring numbers) plus its
 // last-refreshed timestamp, read/written by `ReferenceBundleCacheService`.
@@ -23,7 +23,18 @@ export const OFFLINE_DB_VERSION = 4;
 // narrowed to today's calendar date, read/written by
 // `RecentEntriesCacheService` so the session view can still show them
 // (read-only) while offline.
-export const OFFLINE_STORES = ['identity', 'referenceCache', 'outbox', 'recentEntries'] as const;
+// v5 (issue #167) adds 'pendingBeringer' — no-account Beringer quick-added
+// while offline: one record per queued Beringer, keyed by a client-generated
+// placeholder id that dependent captures reference until sync creates (or
+// Kürzel-matches) the real Beringer, read/written by
+// `PendingBeringerStoreService`.
+export const OFFLINE_STORES = [
+  'identity',
+  'referenceCache',
+  'outbox',
+  'recentEntries',
+  'pendingBeringer',
+] as const;
 export type OfflineStoreName = (typeof OFFLINE_STORES)[number];
 
 /**

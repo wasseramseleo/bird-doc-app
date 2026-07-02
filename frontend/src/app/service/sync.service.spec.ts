@@ -7,8 +7,10 @@ import {SyncService} from './sync.service';
 import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
 import {OutboxStoreService} from '../core/offline/outbox-store';
+import {PendingBeringerStoreService} from '../core/offline/pending-beringer-store';
 import {IndexedDbStore} from '../core/offline/indexed-db-store';
 import {OutboxEntry} from '../models/outbox-entry.model';
+import {PendingBeringer} from '../models/pending-beringer.model';
 import {AuthUser} from '../models/auth-user.model';
 
 /**
@@ -80,6 +82,8 @@ describe('SyncService', () => {
     await db.delete('outbox', 'uuid-1');
     await db.delete('outbox', 'uuid-2');
     await db.delete('outbox', 'uuid-3');
+    const beringer = await db.getAll<{id: string}>('pendingBeringer');
+    await Promise.all(beringer.map((entry) => db.delete('pendingBeringer', entry.id)));
   });
 
   function expectCsrfFetch() {
@@ -469,5 +473,123 @@ describe('SyncService', () => {
     expectCreatePost().flush({id: 'server-1'});
     await settle();
     await first;
+  });
+
+  describe('quick-added Beringer synced before its dependent captures (issue #167)', () => {
+    let pendingStore: PendingBeringerStoreService;
+
+    beforeEach(() => {
+      pendingStore = TestBed.inject(PendingBeringerStoreService);
+    });
+
+    function makePending(overrides: Partial<PendingBeringer> = {}): PendingBeringer {
+      return {
+        id: 'local-b',
+        accountKey: 'fre',
+        first_name: 'Filip',
+        last_name: 'Reiter',
+        handle: 'FRE',
+        queuedAt: '2026-07-02T08:59:00.000Z',
+        ...overrides,
+      };
+    }
+
+    function expectScientistPost() {
+      return httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'),
+      );
+    }
+
+    it('creates the Beringer first, then replays the capture resolved to the real server id', async () => {
+      auth.currentUser.set(authUser());
+      await pendingStore.add(makePending());
+      await outboxStore.add(
+        makeEntry({
+          id: 'uuid-1',
+          queuedAt: '2026-07-02T09:00:00.000Z',
+          payload: {idempotency_key: 'uuid-1', species_id: 's1', staff_id: 'local-b', ring_number: '0043'},
+        }),
+      );
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      // The Beringer is created BEFORE any dependent capture is POSTed.
+      const beringerReq = expectScientistPost();
+      expect(beringerReq.request.body).toEqual({
+        first_name: 'Filip',
+        last_name: 'Reiter',
+        handle: 'FRE',
+      });
+      beringerReq.flush({id: 'server-sci-1', handle: 'FRE', full_name: 'Filip Reiter'});
+      await settle();
+
+      // The capture then replays with its staff_id resolved to the real id.
+      const captureReq = expectCreatePost();
+      expect(captureReq.request.body.staff_id).toBe('server-sci-1');
+      captureReq.flush({id: 'server-1'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 1, flagged: 0});
+      expect(await pendingStore.list()).toEqual([]);
+      expect(await outboxStore.list()).toEqual([]);
+    });
+
+    it('matches a Kürzel already created server-side: the capture resolves to the returned (existing) id, never duplicating', async () => {
+      auth.currentUser.set(authUser());
+      await pendingStore.add(makePending());
+      await outboxStore.add(
+        makeEntry({
+          id: 'uuid-1',
+          queuedAt: '2026-07-02T09:00:00.000Z',
+          payload: {idempotency_key: 'uuid-1', staff_id: 'local-b'},
+        }),
+      );
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      // The server matched the Kürzel to a Beringer created server-side in the
+      // meantime (idempotent create) and returns its real, pre-existing id.
+      expectScientistPost().flush({id: 'server-existing', handle: 'FRE', full_name: 'Filip Reiter'});
+      await settle();
+
+      const captureReq = expectCreatePost();
+      expect(captureReq.request.body.staff_id).toBe('server-existing');
+      captureReq.flush({id: 'server-1'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 1, flagged: 0});
+    });
+
+    it('stops before any dependent capture when the Beringer create fails, leaving both queued for the next attempt', async () => {
+      auth.currentUser.set(authUser());
+      await pendingStore.add(makePending());
+      await outboxStore.add(
+        makeEntry({
+          id: 'uuid-1',
+          queuedAt: '2026-07-02T09:00:00.000Z',
+          payload: {idempotency_key: 'uuid-1', staff_id: 'local-b'},
+        }),
+      );
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      // Connectivity drops on the Beringer create — the whole sync stops before
+      // the capture is ever POSTed (it depends on the not-yet-created Beringer).
+      expectScientistPost().error(new ProgressEvent('error'));
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 0, flagged: 0});
+      expect((await pendingStore.list()).map((b) => b.id)).toEqual(['local-b']);
+      expect((await outboxStore.list()).map((e) => e.id)).toEqual(['uuid-1']);
+    });
   });
 });

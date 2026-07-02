@@ -436,4 +436,48 @@ describe('OutboxService', () => {
       expect(() => service.delete('uuid-1')).toThrowError();
     });
   });
+
+  describe('rewriteStaffId() (issue #167 — resolving a quick-added Beringer on sync)', () => {
+    it('durably rewrites the staff_id of the account\'s captures that referenced the placeholder id', async () => {
+      const store = TestBed.inject(OutboxStoreService);
+      await store.add({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        payload: {idempotency_key: 'uuid-1', staff_id: 'local-b', species_id: 's1'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await store.add({
+        id: 'uuid-2',
+        accountKey: 'fre',
+        payload: {idempotency_key: 'uuid-2', staff_id: 'other', species_id: 's2'},
+        queuedAt: '2026-07-02T09:05:00.000Z',
+      });
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      await service.rewriteStaffId('local-b', 'server-sci-1');
+
+      const stored = await store.listForAccount('fre');
+      expect(stored.find((e) => e.id === 'uuid-1')!.payload['staff_id']).toBe('server-sci-1');
+      // A capture that referenced a different Beringer is untouched.
+      expect(stored.find((e) => e.id === 'uuid-2')!.payload['staff_id']).toBe('other');
+    });
+
+    it('never rewrites another account\'s captures (tenancy)', async () => {
+      const store = TestBed.inject(OutboxStoreService);
+      await store.add({
+        id: 'uuid-2',
+        accountKey: 'anm',
+        payload: {idempotency_key: 'uuid-2', staff_id: 'local-b'},
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      const service = TestBed.inject(OutboxService);
+      await service.ready;
+
+      await service.rewriteStaffId('local-b', 'server-sci-1');
+
+      const stored = await store.list();
+      expect(stored.find((e) => e.id === 'uuid-2')!.payload['staff_id']).toBe('local-b');
+    });
+  });
 });

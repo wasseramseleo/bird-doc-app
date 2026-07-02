@@ -214,4 +214,40 @@ export class OutboxService {
       tap(() => this.entries.update((current) => current.filter((entry) => entry.id !== id))),
     );
   }
+
+  /**
+   * Rewrites the `staff_id` of every queued capture that referenced a locally
+   * quick-added Beringer by its client placeholder id to the real server id the
+   * Beringer got on sync (issue #167), so the dependent captures resolve to the
+   * real Beringer when `SyncService` replays them — whether the Beringer was
+   * newly created or matched by Kürzel to one already created server-side.
+   *
+   * Durable and account-scoped: it reads and writes through the store (not just
+   * the in-memory signal), so the rewrite survives an interrupted sync — a later
+   * run finds the captures already carrying the real id even though the pending
+   * Beringer that drove the rewrite has already been dequeued. The in-memory
+   * signal is kept consistent for any entry it already tracks. Scoped to the
+   * current account so a shared/offline device never rewrites another Mitglied's
+   * captures.
+   */
+  async rewriteStaffId(placeholderId: string, realId: string): Promise<void> {
+    await this.ready;
+    const accountKey = this.currentAccountKey();
+    if (accountKey === null) {
+      return;
+    }
+    const stored = await this.store.listForAccount(accountKey);
+    for (const entry of stored) {
+      if (entry.payload['staff_id'] !== placeholderId) {
+        continue;
+      }
+      const updated: OutboxEntry = {...entry, payload: {...entry.payload, staff_id: realId}};
+      await this.store.add(updated);
+      this.entries.update((current) =>
+        current.some((e) => e.id === updated.id)
+          ? current.map((e) => (e.id === updated.id ? updated : e))
+          : current,
+      );
+    }
+  }
 }

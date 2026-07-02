@@ -632,7 +632,12 @@ export class DataEntryFormComponent implements OnInit {
       if (!result) {
         return;
       }
-      this.apiService.createScientist(result).subscribe({
+      // Issue #167: route through the offline-aware facade — online it POSTs the
+      // Beringer exactly as before; offline it durably queues a placeholder and
+      // hands it back so it is selectable in this same session's captures at
+      // once. Sync then creates the queued Beringer before its dependent
+      // captures (Kürzel-matched), which resolve to the real id.
+      this.dataAccess.createScientist(result).subscribe({
         next: created => {
           this.entryForm.get('staff')?.setValue(created);
           this.snackBar.open(

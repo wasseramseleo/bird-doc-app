@@ -215,6 +215,50 @@ def test_create_respects_supplied_kuerzel(auth_client, membership):
 
 
 @pytest.mark.django_db
+def test_create_matches_existing_beringer_by_kuerzel_instead_of_duplicating(
+    auth_client, membership, organization
+):
+    """Offline sync (issue #167): a quick-added Beringer replayed after the same
+    Kürzel was already created server-side (an online colleague, or a retried
+    sync) matches the existing Beringer and returns it (200) rather than
+    duplicating it or 400-ing on the unique constraint — so the offline device's
+    dependent captures can resolve to the real id."""
+    existing = Scientist.objects.create(
+        handle="FRE", first_name="Filip", last_name="Reiter", organization=organization
+    )
+
+    response = auth_client.post(
+        "/api/birds/scientists/",
+        {"first_name": "Filip", "last_name": "Reiter", "handle": "FRE"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["id"] == existing.id
+    assert Scientist.objects.filter(handle="FRE", organization=organization).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_matches_existing_beringer_by_derived_kuerzel(auth_client, membership, organization):
+    """The Kürzel match also holds when the client omits the handle: it is
+    derived from the names first, so a replay of "Filip Reiter" still matches an
+    existing FRE rather than duplicating (issue #167)."""
+    existing = Scientist.objects.create(
+        handle="FRE", first_name="Filip", last_name="Reiter", organization=organization
+    )
+
+    response = auth_client.post(
+        "/api/birds/scientists/",
+        {"first_name": "Filip", "last_name": "Reiter"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["id"] == existing.id
+    assert Scientist.objects.filter(handle="FRE", organization=organization).count() == 1
+
+
+@pytest.mark.django_db
 def test_listing_excludes_reserved_fallback_beringer(auth_client, membership, organization):
     # The fallback Beringer (Kürzel GELÖSCHT) exists via data migration; it is
     # org-less, so the tenant scope already drops it, and it must stay hidden from

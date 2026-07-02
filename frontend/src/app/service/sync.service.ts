@@ -5,8 +5,10 @@ import {firstValueFrom, from, Observable, of, tap} from 'rxjs';
 import {ApiService} from './api.service';
 import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
+import {PendingBeringerService} from './pending-beringer.service';
 import {OutboxStoreService} from '../core/offline/outbox-store';
 import {OutboxEntry} from '../models/outbox-entry.model';
+import {PendingBeringer} from '../models/pending-beringer.model';
 
 /**
  * The outcome of one `syncNow()` run over the account's *eligible* queued
@@ -47,6 +49,13 @@ const NOTHING_TO_SYNC: SyncResult = {total: 0, synced: 0, flagged: 0};
  * - **CSRF-fresh**: fetches a new CSRF token (`AuthService.refreshCsrfToken()`)
  *   before the first replay POST, since a device that was offline for up to
  *   two weeks may be holding an expired cookie.
+ * - **Beringer-before-captures (issue #167)**: no-account Beringer quick-added
+ *   while offline are created FIRST, before any dependent capture, so those
+ *   captures can be replayed with a real `staff_id`. Each create is idempotent
+ *   by Kürzel server-side, so a Beringer already created online (or a retried
+ *   sync of this one) is matched, not duplicated; the dependent captures'
+ *   placeholder `staff_id` is durably rewritten to the returned real id before
+ *   they replay. A Beringer failure stops the whole sync before any capture.
  * - **Ordered**: entries are replayed oldest-first (the order
  *   `OutboxStoreService.listForAccount()` already returns them in — capture
  *   order), one at a time.
@@ -91,6 +100,7 @@ export class SyncService {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly outbox = inject(OutboxService);
+  private readonly pendingBeringer = inject(PendingBeringerService);
   private readonly outboxStore = inject(OutboxStoreService);
 
   private readonly syncingState = signal(false);
@@ -111,23 +121,53 @@ export class SyncService {
 
   private async runSync(accountKey: string): Promise<SyncResult> {
     try {
+      const beringer = await this.pendingBeringer.listOwnQueued();
       // A previously flagged entry (issue #164) is skipped, not re-attempted:
       // the server already rejected that exact payload and would only reject it
       // again — it becomes eligible once more only after being fixed in the
       // form (which clears its flag). Filtering it out here also keeps its
       // rejection from being re-announced on every reconnect.
-      const entries = (await this.outboxStore.listForAccount(accountKey)).filter(
+      let entries = (await this.outboxStore.listForAccount(accountKey)).filter(
         (entry) => !entry.syncError,
       );
-      if (entries.length === 0) {
+      if (beringer.length === 0 && entries.length === 0) {
         return NOTHING_TO_SYNC;
       }
 
       // Fetched once per sync run, immediately before the first replay POST
-      // — never per-entry — since one fresh cookie is valid for the whole
-      // replay.
+      // (Beringer or capture) — never per-entry — since one fresh cookie is
+      // valid for the whole replay.
       await firstValueFrom(this.auth.refreshCsrfToken());
 
+      // Phase 1 (issue #167): create the quick-added no-account Beringer FIRST,
+      // before any dependent capture, so those captures can be replayed with a
+      // real `staff_id`. Each create is idempotent by Kürzel server-side, so a
+      // Beringer someone else already created online (or a retried sync of this
+      // very one) is matched, not duplicated — the returned id is the real one
+      // either way. The dependent captures' placeholder `staff_id` is durably
+      // rewritten to it, then the Beringer is dequeued. A failure here (or an
+      // account switch) stops the whole sync before any capture is POSTed —
+      // everything stays queued for the next attempt.
+      for (const pending of beringer) {
+        if (this.auth.currentUser()?.username !== accountKey) {
+          console.warn('Aborting outbox sync: active account changed mid-replay; remaining entries stay queued');
+          return {total: entries.length, synced: 0, flagged: 0};
+        }
+        const realId = await this.syncBeringer(pending);
+        if (realId === null) {
+          return {total: entries.length, synced: 0, flagged: 0};
+        }
+        await this.outbox.rewriteStaffId(pending.id, realId);
+        await this.pendingBeringer.dequeue(pending.id);
+      }
+
+      // Re-read so the phase-1 `staff_id` rewrites are reflected in the payloads
+      // about to be replayed; still skipping any flagged entry (issue #164).
+      entries = (await this.outboxStore.listForAccount(accountKey)).filter(
+        (entry) => !entry.syncError,
+      );
+
+      // Phase 2: replay the captures (oldest-first), staff_id now resolved.
       let synced = 0;
       let flagged = 0;
       for (const entry of entries) {
@@ -158,6 +198,30 @@ export class SyncService {
       // like "nothing to do" rather than a misleading partial failure.
       console.error('Offline outbox sync could not start', error);
       return NOTHING_TO_SYNC;
+    }
+  }
+
+  /**
+   * Creates one quick-added Beringer on the server (issue #167), returning the
+   * real (or Kürzel-matched) `Scientist.id` its dependent captures resolve to,
+   * or `null` when the create could not proceed (connectivity dropped, or a
+   * rejection). A `null` stops the sync before any dependent capture, leaving
+   * the Beringer — and its captures — queued for the next attempt, replayed
+   * under the same Kürzel (idempotent) so a retry never duplicates it.
+   */
+  private async syncBeringer(pending: PendingBeringer): Promise<string | null> {
+    try {
+      const created = await firstValueFrom(
+        this.api.createScientist({
+          first_name: pending.first_name,
+          last_name: pending.last_name,
+          handle: pending.handle,
+        }),
+      );
+      return created.id;
+    } catch (error) {
+      console.error('Failed to sync a quick-added Beringer; it and its captures remain queued', error);
+      return null;
     }
   }
 

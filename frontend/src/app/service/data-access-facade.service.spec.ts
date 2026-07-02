@@ -7,6 +7,8 @@ import {DataAccessFacadeService} from './data-access-facade.service';
 import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
 import {OutboxStoreService} from '../core/offline/outbox-store';
+import {PendingBeringerStoreService} from '../core/offline/pending-beringer-store';
+import {PendingBeringerService} from './pending-beringer.service';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {IndexedDbStore} from '../core/offline/indexed-db-store';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
@@ -95,6 +97,10 @@ describe('DataAccessFacadeService', () => {
     const db = TestBed.inject(IndexedDbStore);
     const entries = await db.getAll<{id: string}>('outbox');
     await Promise.all(entries.map((entry) => db.delete('outbox', entry.id)));
+    // Issue #167's quick-add tests queue randomly-keyed pending-Beringer rows —
+    // sweep every entry the DB holds so none leaks into the next test.
+    const beringer = await db.getAll<{id: string}>('pendingBeringer');
+    await Promise.all(beringer.map((entry) => db.delete('pendingBeringer', entry.id)));
   });
 
   describe('getSpecies()', () => {
@@ -238,6 +244,28 @@ describe('DataAccessFacadeService', () => {
 
       const result = await resultPromise;
       expect(result.results).toEqual([BERINGER]);
+    });
+
+    it('folds this device\'s offline quick-added Beringer into the offline picker (issue #167)', async () => {
+      await cache.save({
+        bundle: {...EMPTY_BUNDLE, scientists: [BERINGER]},
+        refreshedAt: '2026-06-01T09:00:00.000Z',
+      });
+      const pending = TestBed.inject(PendingBeringerService);
+      await pending.ready;
+      await firstValueFrom(
+        pending.enqueue({first_name: 'Anna', last_name: 'Muster', handle: 'ANM'}),
+      );
+
+      const resultPromise = firstValueFrom(service.getScientists());
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/scientists/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      const handles = result.results.map((s) => s.handle);
+      expect(handles).toContain('ANM');
+      expect(handles).toContain('FRE');
     });
   });
 
@@ -739,6 +767,55 @@ describe('DataAccessFacadeService', () => {
       expect(connectivity.isOffline()).toBeFalse();
       expect((caught as {status?: number} | undefined)?.status).toBe(400);
       expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
+    });
+  });
+
+  describe('createScientist() (issue #167, offline no-account Beringer quick-add)', () => {
+    const payload = {first_name: 'Filip', last_name: 'Reiter', handle: 'FRE'};
+
+    it('passes the server response through unchanged while online, and never queues a pending Beringer', async () => {
+      const created: Scientist = {id: 'sci-1', handle: 'FRE', full_name: 'Filip Reiter'};
+      const resultPromise = firstValueFrom(service.createScientist(payload));
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'),
+      );
+      expect(req.request.body).toEqual(payload);
+      req.flush(created);
+
+      const result = await resultPromise;
+      expect(result).toEqual(created);
+      expect(await TestBed.inject(PendingBeringerStoreService).list()).toEqual([]);
+    });
+
+    it('durably queues a placeholder Beringer instead of erroring when the server is unreachable, and hands it back to select at once', async () => {
+      const resultPromise = firstValueFrom(service.createScientist(payload));
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'))
+        .error(new ProgressEvent('error'));
+
+      const placeholder = await resultPromise;
+      expect(placeholder.handle).toBe('FRE');
+      expect(placeholder.full_name).toBe('Filip Reiter');
+
+      const queued = await TestBed.inject(PendingBeringerStoreService).list();
+      expect(queued.length).toBe(1);
+      expect(queued[0].id).toBe(placeholder.id);
+      expect(queued[0].handle).toBe('FRE');
+      expect(connectivity.isOffline()).toBeTrue();
+    });
+
+    it('propagates a non-connectivity error (e.g. a 400) unchanged instead of queuing', async () => {
+      const resultPromise = firstValueFrom(service.createScientist(payload));
+      resultPromise.catch(() => undefined);
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'))
+        .flush({detail: 'Ungültig.'}, {status: 400, statusText: 'Bad Request'});
+
+      await expectAsync(resultPromise).toBeRejected();
+      expect(connectivity.isOffline()).toBeFalse();
+      expect(await TestBed.inject(PendingBeringerStoreService).list()).toEqual([]);
     });
   });
 
