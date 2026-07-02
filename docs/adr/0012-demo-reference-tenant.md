@@ -52,6 +52,17 @@ app's IWM import service** (ADR 0013), invoked by a management command.
   Ring size stays consistent with species (ADR 0006).
 - **The real Excel never enters the repo.** The maintainer runs the anonymiser
   locally and commits only the safe `demo_iwm.xlsx`, which is non-personal.
+- **Interim synthetic stand-in until the real swap.** The anonymiser reads *any*
+  IWM `Datenmeldung` sheet, so the identical pipeline runs on the repo's synthetic
+  generator output now and on the real export later. Until the maintainer has the
+  real export, the committed `demo_iwm.xlsx` is produced by running the anonymiser
+  over the synthetic `sample_iwm_illmitz.xlsx` (whose diverse generated cast
+  collapses onto the curated one) — so the anonymiser is exercised end-to-end and
+  the demo is populated, but that file's *content* is synthetic, **not yet
+  de-identified real data**. Swapping in the real data is then a pure file
+  replacement (`anonymize_iwm --input <real.xlsx> --output demo_iwm.xlsx`) with no
+  code change, because the curated-cast targets (the demo Admin Kürzel, the one
+  Station) are constants inside the anonymiser.
 - **Seed via the import service, not a migration.** The anonymised `demo_iwm.xlsx`
   is loaded by the same IWM import service the app exposes to Org-Admins (ADR 0013),
   invoked by a `seed_demo_org` management command (idempotent, re-runnable for
