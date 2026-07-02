@@ -85,4 +85,18 @@ export class OutboxService {
       tap(() => this.entries.update((current) => [...current, entry])),
     );
   }
+
+  /**
+   * Durably drops a queued entry once it has been synced to the server
+   * (issue #161's sync replay), keeping the in-memory `entries` — and so
+   * `pendingCount` — in sync with the durable store the moment the write
+   * lands. Waits for `ready` first, for the same reason `enqueue()` does: a
+   * dequeue racing the initial `restore()` read must never let the stale
+   * read silently resurrect an entry that was just removed.
+   */
+  async dequeue(id: string): Promise<void> {
+    await this.ready;
+    await this.store.remove(id);
+    this.entries.update((current) => current.filter((entry) => entry.id !== id));
+  }
 }
