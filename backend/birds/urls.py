@@ -18,7 +18,10 @@ router.register(r"invitations", views.OrgEinladungViewSet, basename="invitation"
 router.register(r"mitgliedschaften", views.MitgliedschaftViewSet, basename="mitgliedschaft")
 
 # The API URLs are now determined automatically by the router.
-# We just need to include the router.urls in our urlpatterns.
+# We just need to include the router.urls in our urlpatterns. The offline
+# reference bundle (issue #157) isn't a single-model ViewSet, so it is wired
+# directly rather than through the router.
 urlpatterns = [
+    path("offline-bundle/", views.OfflineBundleView.as_view(), name="offline-bundle"),
     path("", include(router.urls)),
 ]
