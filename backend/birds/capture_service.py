@@ -10,6 +10,7 @@ single code path for capture creation. "Make the change easy, then make the easy
 change."
 """
 
+from django.db import IntegrityError, transaction
 from django.utils.translation import gettext_lazy as _
 
 from .models import DataEntry, Ring, Species
@@ -78,6 +79,7 @@ def create_capture(
     organization=None,
     project=None,
     comment=None,
+    idempotency_key=None,
     **bird_data,
 ):
     """Create a ``DataEntry`` from resolved inputs, applying every capture
@@ -91,12 +93,32 @@ def create_capture(
     left unset ``DataEntry.save()`` falls back to the Station's Organisation, so
     every capture stays org-owned. In order:
 
+    * a known ``idempotency_key`` (issue #155, PRD #152) short-circuits the
+      whole call — the existing ``DataEntry`` is returned unchanged, minting no
+      new Ring and running no validation, so a retried/replayed offline-outbox
+      create is always safe. The key is unique per ``organization`` (mirroring
+      Ring, ADR 0006), and the lookup itself is scoped the same way, so a
+      freak/malicious cross-tenant key collision can never hand one
+      Organisation's capture back to another's request (ADR 0005). This initial
+      check is a fast path, not the safety net — two requests carrying the same
+      key can both race past it before either commits (the flaky-connectivity
+      retry PRD #152 exists for), so the DB's ``unique_idempotency_key_per_organization``
+      constraint (migration 0053) is the actual backstop: the insert below is
+      wrapped so a losing, concurrent insert catches the resulting
+      ``IntegrityError`` and returns the winner's row instead of raising;
     * the mandatory-Bemerkung rule for *Aves ignota* is enforced (nothing is
       written on failure — a ``CaptureValidationError`` is raised);
     * the Ring is get-or-created scoped to ``organization`` (ADR 0006);
     * for a *Ring Vernichtet* Sonderart every bird-data field is forced null,
       whatever the caller sent (ADR 0004).
     """
+    if idempotency_key is not None:
+        existing = DataEntry.objects.filter(
+            idempotency_key=idempotency_key, organization=organization
+        ).first()
+        if existing is not None:
+            return existing
+
     validate_capture(species, comment)
 
     fields = dict(bird_data)
@@ -106,17 +128,36 @@ def create_capture(
 
     ring = get_or_create_ring(number=ring_number, size=ring_size, organization=organization)
 
-    return DataEntry.objects.create(
-        species=species,
-        ring=ring,
-        staff=staff,
-        ringing_station=ringing_station,
-        organization=organization,
-        project=project,
-        date_time=date_time,
-        comment=comment,
-        **fields,
-    )
+    try:
+        with transaction.atomic():
+            return DataEntry.objects.create(
+                species=species,
+                ring=ring,
+                staff=staff,
+                ringing_station=ringing_station,
+                organization=organization,
+                project=project,
+                date_time=date_time,
+                comment=comment,
+                idempotency_key=idempotency_key,
+                **fields,
+            )
+    except IntegrityError:
+        # Lost the race: a concurrent request carrying the same idempotency_key
+        # committed its INSERT first, so ours hit
+        # ``unique_idempotency_key_per_organization``. The atomic() block above
+        # already rolled back to the savepoint, leaving the connection usable, so
+        # re-run the lookup and hand back the winner's row — the promised
+        # idempotent behaviour, not a 500. A genuinely unrelated IntegrityError
+        # (or a key-less create, which cannot hit this constraint) still has no
+        # matching row here and is re-raised unchanged.
+        if idempotency_key is not None:
+            existing = DataEntry.objects.filter(
+                idempotency_key=idempotency_key, organization=organization
+            ).first()
+            if existing is not None:
+                return existing
+        raise
 
 
 def validate_capture(species, comment):
