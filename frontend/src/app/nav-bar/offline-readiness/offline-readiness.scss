@@ -1,0 +1,47 @@
+.offline-readiness {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bd-paper-sunk);
+  color: var(--bd-ink-soft);
+  font-size: 12px;
+  line-height: 16px;
+
+  &--ready {
+    color: var(--bd-accent-deep);
+  }
+
+  &__icon {
+    flex: none;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  &__label {
+    white-space: nowrap;
+  }
+
+  &__timestamp {
+    white-space: nowrap;
+    color: var(--bd-ink-soft);
+  }
+
+  &__refresh {
+    flex: none;
+    // Shrink the icon button to fit the compact pill instead of Material's
+    // default 40px tap target, which would dwarf the rest of the indicator.
+    width: 28px;
+    height: 28px;
+    padding: 2px;
+    line-height: 1;
+
+    ::ng-deep .mat-mdc-button-touch-target {
+      width: 28px;
+      height: 28px;
+    }
+  }
+}
