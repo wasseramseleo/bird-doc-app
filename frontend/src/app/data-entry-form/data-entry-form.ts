@@ -42,6 +42,7 @@ import {
   SelectOption, FatClass
 } from '../models/data-entry.model';
 import {ApiService} from '../service/api.service';
+import {DataAccessFacadeService} from '../service/data-access-facade.service';
 import {ProjectService} from '../service/project.service';
 import {WorkbenchStorageService} from '../service/workbench-storage.service';
 import {Species} from '../models/species.model';
@@ -96,6 +97,13 @@ export class DataEntryFormComponent implements OnInit {
   // Services and Router
   private readonly fb = inject(FormBuilder);
   private readonly apiService = inject(ApiService);
+  // Offline-aware reads (issue #159, PRD #152): species/Station/Beringer
+  // pickers and the Ringnummer suggestion route through the facade so they
+  // keep working from the cache when the server is unreachable. Everything
+  // else (loading/saving an entry, quick-adding a Beringer) stays on
+  // `apiService` — writes and single-record reads are out of this issue's
+  // scope.
+  private readonly dataAccess = inject(DataAccessFacadeService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly projectService = inject(ProjectService);
@@ -391,7 +399,7 @@ export class DataEntryFormComponent implements OnInit {
         // Scope the suggestion to the current Projekt so the next number tracks
         // this campaign's Erstfang rings rather than the global maximum (#22).
         const projectId = this.currentProject()?.id;
-        this.apiService.getNextRingNumber(size, projectId).subscribe(res => {
+        this.dataAccess.getNextRingNumber(size, projectId).subscribe(res => {
           // Populate the field with the suggestion verbatim so leading zeros
           // (e.g. "0043") survive; leave it empty when there is none (#42).
           this.entryForm.get('ring_number')?.setValue(res.next_number ?? '');
@@ -477,7 +485,7 @@ export class DataEntryFormComponent implements OnInit {
       debounceTime(300),
       map(value => (typeof value === 'string' ? value : value?.common_name_de ?? '')),
       distinctUntilChanged(),
-      switchMap(name => this.apiService.getSpecies(name, this.currentProject()?.id).pipe(map(response => response.results)))
+      switchMap(name => this.dataAccess.getSpecies(name, this.currentProject()?.id).pipe(map(response => response.results)))
     );
 
     this.filteredStations = this.entryForm.get('ringing_station')!.valueChanges.pipe(
@@ -485,7 +493,7 @@ export class DataEntryFormComponent implements OnInit {
       debounceTime(300),
       map(value => (typeof value === 'string' ? value : value?.name ?? '')),
       distinctUntilChanged(),
-      switchMap(name => this.apiService.getRingingStations(name, this.currentProject()?.organization.handle).pipe(map(response => response.results)))
+      switchMap(name => this.dataAccess.getRingingStations(name, this.currentProject()?.organization.handle).pipe(map(response => response.results)))
     );
 
     this.filteredScientists = this.entryForm.get('staff')!.valueChanges.pipe(
@@ -494,7 +502,7 @@ export class DataEntryFormComponent implements OnInit {
       map(value => (typeof value === 'string' ? value : value?.full_name ?? '')),
       distinctUntilChanged(),
       tap(term => this.staffSearchTerm.set(term)),
-      switchMap(name => this.apiService.getScientists(name).pipe(map(response => response.results))),
+      switchMap(name => this.dataAccess.getScientists(name).pipe(map(response => response.results))),
       tap(results => this.staffResults.set(results)),
     );
 
@@ -502,7 +510,7 @@ export class DataEntryFormComponent implements OnInit {
 
     // Issue #19/#57: load the "Ring Vernichtet" Art so the quick-button can
     // apply it in one click. It is identified by special_kind === 'ring_destroyed'.
-    this.apiService.getSpecies('', this.currentProject()?.id).subscribe(response => {
+    this.dataAccess.getSpecies('', this.currentProject()?.id).subscribe(response => {
       this.ringDestroyedSpecies.set(
         response.results.find(s => s.special_kind === 'ring_destroyed') ?? null,
       );

@@ -3,12 +3,14 @@ import {Observable} from 'rxjs';
 import {map, tap} from 'rxjs/operators';
 import {Project} from '../models/project.model';
 import {WorkbenchStorageService} from './workbench-storage.service';
-import {ApiService} from './api.service';
+import {DataAccessFacadeService} from './data-access-facade.service';
 
 @Injectable({providedIn: 'root'})
 export class ProjectService {
   private readonly storage = inject(WorkbenchStorageService);
-  private readonly api = inject(ApiService);
+  // Offline-aware (issue #159, PRD #152): the Projekt switcher/picker falls
+  // back to the cached Projekte when the server is unreachable.
+  private readonly api = inject(DataAccessFacadeService);
 
   // Rehydrated from storage so a browser reload returns to the entry form
   // rather than project selection.
