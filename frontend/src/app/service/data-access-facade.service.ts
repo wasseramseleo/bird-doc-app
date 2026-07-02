@@ -1,8 +1,9 @@
 import {inject, Injectable} from '@angular/core';
 import {HttpErrorResponse} from '@angular/common/http';
-import {catchError, from, map, Observable, of, tap, throwError} from 'rxjs';
+import {catchError, from, map, Observable, of, switchMap, tap, throwError} from 'rxjs';
 
-import {DataEntry} from '../models/data-entry.model';
+import {BirdStatus, DataEntry} from '../models/data-entry.model';
+import {OutboxEntry} from '../models/outbox-entry.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {Project} from '../models/project.model';
 import {RingingStation} from '../models/ringing-station.model';
@@ -90,24 +91,48 @@ export class DataAccessFacadeService {
   }
 
   /**
-   * The offline ring next-number suggestion (issue #159): the cached
-   * last-consumed (raw, un-incremented) number for this Projekt + Ringgröße,
-   * incremented by one exactly like the online suggestion
+   * The offline ring next-number suggestion (issue #159, extended by #162):
+   * the cached last-consumed (raw, un-incremented) number for this Projekt +
+   * Ringgröße, combined with this device's own queued (not-yet-synced)
+   * entries that drew a fresh number since that cache snapshot — a first
+   * catch (Erstfang) or a destroyed-ring record (`ring_destroyed`
+   * Sonderart), exactly the `_ring_consuming_entries` rule the backend uses
+   * for the live suggestion and the offline bundle alike; a Wiederfang
+   * consumes nothing. The most recently queued qualifying entry (if any)
+   * wins over the cache — it is strictly newer, since the cache can only
+   * reflect activity from before this device went offline — so consecutive
+   * offline Erstfänge/Ring-vernichtet captures suggest sequential numbers.
+   * Incremented by one exactly like the online suggestion
    * (`RingViewSet._increment`) — leading-zero width preserved, `null` for a
    * non-numeric number. Unlike online, there is no project-less/global
-   * fallback: the cached bundle only ever groups by `(project, size)`. The
-   * device's own queued captures are folded in by a later PRD #152 slice
-   * (issue #160's follow-up) — this suggestion is cache-only.
+   * fallback: the cached bundle only ever groups by `(project, size)`. Both
+   * the cache read ({@link loadCache}) and the own-queue read
+   * ({@link loadOwnQueued}) are best-effort — a broken read degrades to
+   * "nothing there" rather than erroring the suggestion out from under the
+   * Mitglied.
    */
   getNextRingNumber(size: RingSize, projectId?: string): Observable<{next_number: string | null}> {
     return this.withOfflineFallback(this.api.getNextRingNumber(size, projectId), () =>
       this.loadCache().pipe(
-        map((cached) => {
-          const lastConsumed = cached?.bundle.last_consumed_ring_numbers.find(
-            (entry) => entry.project_id === projectId && entry.size === size,
-          );
-          return {next_number: lastConsumed ? incrementRingNumber(lastConsumed.number) : null};
-        }),
+        switchMap((cached) =>
+          this.loadOwnQueued().pipe(
+            map((queued) => {
+              const ringDestroyedSpeciesIds = new Set(
+                (cached?.bundle.species ?? [])
+                  .filter((s) => s.special_kind === 'ring_destroyed')
+                  .map((s) => s.id),
+              );
+              const fromQueue = lastQueuedConsumption(queued, size, projectId, ringDestroyedSpeciesIds);
+              const lastConsumed =
+                fromQueue ??
+                cached?.bundle.last_consumed_ring_numbers.find(
+                  (entry) => entry.project_id === projectId && entry.size === size,
+                )?.number ??
+                null;
+              return {next_number: lastConsumed ? incrementRingNumber(lastConsumed) : null};
+            }),
+          ),
+        ),
       ),
     );
   }
@@ -167,6 +192,24 @@ export class DataAccessFacadeService {
       }),
     );
   }
+
+  /**
+   * Best-effort own-queue read (issue #162), mirroring {@link loadCache}: a
+   * broken IndexedDB read (quota exceeded, blocked/disabled storage, or a DB
+   * open failure right after crash/reboot recovery — see
+   * `IndexedDbStore.openDb()`) must degrade to "nothing queued" rather than
+   * error the ring-number suggestion out from under the Mitglied while they
+   * are already offline. The cache-derived suggestion still applies in that
+   * case.
+   */
+  private loadOwnQueued(): Observable<OutboxEntry[]> {
+    return from(this.outbox.listOwnQueued()).pipe(
+      catchError((error: unknown) => {
+        console.error('Failed to read the offline outbox queue', error);
+        return of([]);
+      }),
+    );
+  }
 }
 
 function toPage<T>(results: T[]): PaginatedApiResponse<T> {
@@ -182,6 +225,52 @@ function incrementRingNumber(number: string): string | null {
     return null;
   }
   return String(Number(number) + 1).padStart(number.length, '0');
+}
+
+/**
+ * The ring_number of the most recently queued outbox entry that consumed a
+ * fresh number for this Projekt + Ringgröße (issue #162), or `null` when
+ * none qualifies. `queued` is oldest-first (`OutboxService.listOwnQueued()`),
+ * so the last matching element is the most recent — mirroring
+ * `_ring_consuming_entries().order_by("-created").first()` on the backend.
+ */
+function lastQueuedConsumption(
+  queued: OutboxEntry[],
+  size: RingSize,
+  projectId: string | undefined,
+  ringDestroyedSpeciesIds: ReadonlySet<string>,
+): string | null {
+  const consuming = queued.filter((entry) =>
+    isConsumingQueuedEntry(entry.payload, size, projectId, ringDestroyedSpeciesIds),
+  );
+  const latest = consuming[consuming.length - 1];
+  return typeof latest?.payload['ring_number'] === 'string' ? (latest.payload['ring_number'] as string) : null;
+}
+
+/**
+ * Mirrors `_ring_consuming_entries` (backend/birds/views.py) verbatim: a
+ * queued capture draws a fresh number from the rope when it is a first catch
+ * (Erstfang) or a destroyed-ring record (`ring_destroyed` Sonderart) — a
+ * recapture (Wiederfang) consumes nothing. A `ring_destroyed` capture never
+ * carries `bird_status` (the field collapses out of the form once that
+ * Sonderart is selected), so its species is what marks it as consuming;
+ * `ringDestroyedSpeciesIds` resolves that from the cached species pool since
+ * the queued payload itself only carries a flat `species_id`.
+ */
+function isConsumingQueuedEntry(
+  payload: Record<string, unknown>,
+  size: RingSize,
+  projectId: string | undefined,
+  ringDestroyedSpeciesIds: ReadonlySet<string>,
+): boolean {
+  if (payload['ring_size'] !== size || payload['project_id'] !== projectId) {
+    return false;
+  }
+  if (payload['bird_status'] === BirdStatus.FirstCatch) {
+    return true;
+  }
+  const speciesId = payload['species_id'];
+  return typeof speciesId === 'string' && ringDestroyedSpeciesIds.has(speciesId);
 }
 
 /**
