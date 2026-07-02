@@ -10,6 +10,22 @@
       zuletzt aktualisiert {{ refreshedAt | date: 'dd.MM.yyyy HH:mm' }}
     </span>
   }
+  @switch (persistenceState()) {
+    @case ('granted') {
+      <mat-icon
+        class="offline-readiness__persistence offline-readiness__persistence--granted"
+        aria-label="Speicher vor Löschung geschützt"
+        title="Speicher vor Löschung geschützt"
+      >verified_user</mat-icon>
+    }
+    @case ('denied') {
+      <mat-icon
+        class="offline-readiness__persistence offline-readiness__persistence--denied"
+        aria-label="Speicherschutz vom Browser abgelehnt"
+        title="Speicherschutz vom Browser abgelehnt"
+      >gpp_maybe</mat-icon>
+    }
+  }
   <button
     mat-icon-button
     type="button"

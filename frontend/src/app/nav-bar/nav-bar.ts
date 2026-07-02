@@ -14,6 +14,7 @@ import {Project} from '../models/project.model';
 import {FeedbackDialogComponent} from '../feedback/feedback-dialog/feedback-dialog';
 import {environment} from '../../environments/environment';
 import {OfflineReadiness} from './offline-readiness/offline-readiness';
+import {PwaInstallButton} from './pwa-install-button/pwa-install-button';
 
 @Component({
   selector: 'app-nav-bar',
@@ -27,6 +28,7 @@ import {OfflineReadiness} from './offline-readiness/offline-readiness';
     MatDividerModule,
     MatDialogModule,
     OfflineReadiness,
+    PwaInstallButton,
   ],
   templateUrl: './nav-bar.html',
   styleUrl: './nav-bar.scss',

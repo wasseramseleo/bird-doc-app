@@ -30,6 +30,21 @@
     color: var(--bd-ink-soft);
   }
 
+  &__persistence {
+    flex: none;
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+
+    &--granted {
+      color: var(--bd-accent-deep);
+    }
+
+    &--denied {
+      color: var(--bd-error);
+    }
+  }
+
   &__refresh {
     flex: none;
     // Shrink the icon button to fit the compact pill instead of Material's
