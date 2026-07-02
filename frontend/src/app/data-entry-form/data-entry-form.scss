@@ -78,6 +78,27 @@
     margin-bottom: 1rem;
   }
 
+  // #168: the offline ring history is assembled from only what this device
+  // holds locally, so it is flagged as possibly incomplete — an informational
+  // hint (neutral/blue), distinct from the sex-contradiction warning.
+  .offline-history-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 1rem;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background-color: var(--bd-info-soft, rgba(21, 101, 192, 0.1));
+    border: 1px solid var(--bd-info, #1565c0);
+    color: var(--bd-info-deep, #0d47a1);
+    font-size: 0.85rem;
+    font-weight: 500;
+
+    mat-icon {
+      flex: none;
+    }
+  }
+
   // #115: a determined-sex contradiction (both Männchen and Weibchen in the
   // ring history) is a data-quality warning the Beringer must notice at a glance.
   .sex-contradiction {

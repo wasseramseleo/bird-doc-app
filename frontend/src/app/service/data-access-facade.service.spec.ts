@@ -742,6 +742,219 @@ describe('DataAccessFacadeService', () => {
     });
   });
 
+  describe('getRingHistory() (issue #168, the offline local Wiederfang history panel)', () => {
+    const BERINGER: Scientist = {id: 'sci-1', handle: 'FRE', full_name: 'Filip Reiter'};
+
+    function dataEntry(overrides: Partial<DataEntry> = {}): DataEntry {
+      return {
+        id: 'e1',
+        species: KOHLMEISE,
+        ring: {id: 'r1', number: '0043', size: RingSize.V},
+        staff: BERINGER,
+        ringing_station: {handle: 'STAMT', name: 'Linz, Botanischer Garten'},
+        project: null,
+        net_location: null,
+        net_height: null,
+        net_direction: null,
+        feather_span: null,
+        wing_span: null,
+        tarsus: null,
+        notch_f2: null,
+        inner_foot: null,
+        weight_gram: null,
+        bird_status: BirdStatus.FirstCatch,
+        fat_deposit: null,
+        muscle_class: null,
+        age_class: 2 as DataEntry['age_class'],
+        sex: 0 as DataEntry['sex'],
+        small_feather_int: null,
+        small_feather_app: null,
+        hand_wing: null,
+        date_time: '2026-07-01T08:00:00.000Z',
+        created: '2026-07-01T08:00:00.000Z',
+        updated: '2026-07-01T08:00:00.000Z',
+        comment: null,
+        has_mites: false,
+        has_hunger_stripes: false,
+        has_brood_patch: false,
+        has_cpl_plus: false,
+        ...overrides,
+      } as DataEntry;
+    }
+
+    async function queueEntry(payload: Record<string, unknown>): Promise<void> {
+      await firstValueFrom(
+        TestBed.inject(OutboxService).enqueue({
+          idempotency_key: `uuid-${Math.random()}`,
+          ...payload,
+        }),
+      );
+    }
+
+    async function saveBundleWithReferences(): Promise<void> {
+      await cache.save({
+        bundle: {
+          ...EMPTY_BUNDLE,
+          species: [offlineSpecies({id: 's1'})],
+          scientists: [BERINGER],
+        },
+        refreshedAt: '2026-07-01T06:00:00.000Z',
+      });
+    }
+
+    it('passes the server history through unchanged while online, flagged complete', async () => {
+      const server = dataEntry({id: 'srv-1'});
+      const resultPromise = firstValueFrom(service.getRingHistory(RingSize.V, '0043'));
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(req.request.params.get('ring_size')).toBe('V');
+      expect(req.request.params.get('ring_number')).toBe('0043');
+      req.flush(page0([server]));
+
+      const result = await resultPromise;
+      expect(result.entries).toEqual([server]);
+      expect(result.possiblyIncomplete).toBeFalse();
+    });
+
+    it("assembles the history from the device's own queued captures for that ring when offline, flagged possibly incomplete", async () => {
+      await saveBundleWithReferences();
+      await queueEntry({
+        species_id: 's1',
+        staff_id: 'sci-1',
+        ring_size: RingSize.V,
+        ring_number: '0043',
+        bird_status: 'w',
+        sex: 2,
+        age_class: 4,
+        date_time: '2026-07-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getRingHistory(RingSize.V, '0043'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.possiblyIncomplete).toBeTrue();
+      expect(result.entries.length).toBe(1);
+      // The flat queued payload is resolved back to the nested records the
+      // history table renders (species/staff from the cached bundle, the ring
+      // from the payload's own size + number).
+      expect(result.entries[0].species.common_name_de).toBe('Kohlmeise');
+      expect(result.entries[0].staff.handle).toBe('FRE');
+      expect(result.entries[0].ring.number).toBe('0043');
+      expect(result.entries[0].bird_status).toBe(BirdStatus.ReCatch);
+      expect(result.entries[0].sex).toBe(2);
+    });
+
+    it('assembles the history from cached recent captures for that ring when offline', async () => {
+      await TestBed.inject(RecentEntriesCacheService).save({
+        projectId: 'p1',
+        entries: [dataEntry({id: 'cached-1', ring: {id: 'r1', number: '0043', size: RingSize.V}})],
+        cachedAt: '2026-07-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getRingHistory(RingSize.V, '0043'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.possiblyIncomplete).toBeTrue();
+      expect(result.entries.map((e) => e.id)).toEqual(['cached-1']);
+    });
+
+    it('combines queued + cached captures for that ring, oldest-first, and ignores other rings', async () => {
+      await saveBundleWithReferences();
+      await TestBed.inject(RecentEntriesCacheService).save({
+        projectId: 'p1',
+        entries: [
+          dataEntry({
+            id: 'cached-match',
+            ring: {id: 'r1', number: '0043', size: RingSize.V},
+            date_time: '2026-07-01T07:00:00.000Z',
+          }),
+          dataEntry({
+            id: 'cached-other-ring',
+            ring: {id: 'r2', number: '9999', size: RingSize.V},
+            date_time: '2026-07-01T07:30:00.000Z',
+          }),
+        ],
+        cachedAt: '2026-07-01T09:00:00.000Z',
+      });
+      await queueEntry({
+        species_id: 's1',
+        staff_id: 'sci-1',
+        ring_size: RingSize.V,
+        ring_number: '0043',
+        bird_status: 'w',
+        date_time: '2026-07-01T09:00:00.000Z',
+      });
+      // A queued capture for a *different* ring must never leak into this
+      // ring's history.
+      await queueEntry({
+        species_id: 's1',
+        staff_id: 'sci-1',
+        ring_size: RingSize.V,
+        ring_number: '8888',
+        bird_status: 'w',
+        date_time: '2026-07-01T10:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getRingHistory(RingSize.V, '0043'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.entries.length).toBe(2);
+      expect(result.entries.every((e) => e.ring.number === '0043')).toBeTrue();
+      // Oldest-first: the cached capture (07:00) precedes the queued one (09:00).
+      expect(result.entries[0].id).toBe('cached-match');
+      expect(result.entries[1].bird_status).toBe(BirdStatus.ReCatch);
+    });
+
+    it('returns an empty, possibly-incomplete history when the device knows nothing about that ring offline', async () => {
+      const resultPromise = firstValueFrom(service.getRingHistory(RingSize.V, '0043'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.entries).toEqual([]);
+      expect(result.possiblyIncomplete).toBeTrue();
+    });
+
+    it("never surfaces another account's queued captures in this account's history (tenancy)", async () => {
+      await saveBundleWithReferences();
+      // A different Mitglied's queued Wiederfang, sitting on this same
+      // shared/offline device.
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'uuid-other-account',
+        accountKey: 'anm',
+        payload: {
+          species_id: 's1',
+          staff_id: 'sci-1',
+          ring_size: RingSize.V,
+          ring_number: '0043',
+          bird_status: 'w',
+          date_time: '2026-07-01T09:00:00.000Z',
+        },
+        queuedAt: '2026-07-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getRingHistory(RingSize.V, '0043'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.entries).toEqual([]);
+    });
+  });
+
   describe('connectivity signalling', () => {
     it('marks the app offline once a read falls back to the cache', async () => {
       expect(connectivity.isOffline()).toBeFalse();

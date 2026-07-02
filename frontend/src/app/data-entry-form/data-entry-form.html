@@ -10,6 +10,12 @@
       @if (recaptureHistory().length > 0) {
     <div class="recapture-section">
       <h3>Bisherige Fänge ({{ recaptureHistory().length }})</h3>
+      @if (historyPossiblyIncomplete()) {
+        <div class="offline-history-hint" role="status" data-testid="offline-history-incomplete">
+          <mat-icon aria-hidden="true">cloud_off</mat-icon>
+          <span>Offline – diese Fanggeschichte stammt nur aus den lokal gespeicherten Daten dieses Geräts und ist möglicherweise unvollständig.</span>
+        </div>
+      }
       @if (hasSexContradiction()) {
         <div class="sex-contradiction" role="alert">
           <mat-icon aria-hidden="true">warning</mat-icon>
@@ -25,7 +31,7 @@
 
         <ng-container matColumnDef="species">
           <th mat-header-cell *matHeaderCellDef>Art</th>
-          <td mat-cell *matCellDef="let element">{{ element.species.common_name_de }}</td>
+          <td mat-cell *matCellDef="let element">{{ element.species?.common_name_de ?? '—' }}</td>
         </ng-container>
 
         <ng-container matColumnDef="bird_status">
@@ -41,7 +47,7 @@
 
         <ng-container matColumnDef="staff">
           <th mat-header-cell *matHeaderCellDef>Beringer</th>
-          <td mat-cell *matCellDef="let element">{{ element.staff.handle }}</td>
+          <td mat-cell *matCellDef="let element">{{ element.staff?.handle ?? '—' }}</td>
         </ng-container>
 
         <ng-container matColumnDef="tarsus">
