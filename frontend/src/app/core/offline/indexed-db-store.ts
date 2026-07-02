@@ -74,7 +74,13 @@ export class IndexedDbStore {
           }
         };
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => {
+          // Don't let a transient failure (blocked upgrade, quota, disabled
+          // storage) wedge every future call for the rest of the page's
+          // lifetime — allow the next get()/put()/delete() to retry the open.
+          this.dbPromise = null;
+          reject(request.error);
+        };
       });
     }
     return this.dbPromise;

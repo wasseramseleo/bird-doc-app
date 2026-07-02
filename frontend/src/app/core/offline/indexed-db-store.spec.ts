@@ -45,4 +45,26 @@ describe('IndexedDbStore', () => {
     const result = await store.get('identity', 'k1');
     expect(result).toBeUndefined();
   });
+
+  it('recovers on the next call after a failed open, instead of staying wedged for the session', async () => {
+    const originalOpen = indexedDB.open.bind(indexedDB);
+    let attempt = 0;
+    spyOn(indexedDB, 'open').and.callFake((name: string, version?: number): IDBOpenDBRequest => {
+      attempt++;
+      if (attempt === 1) {
+        const failingRequest = {error: new DOMException('boom', 'UnknownError')} as unknown as IDBOpenDBRequest;
+        queueMicrotask(() => failingRequest.onerror?.(new Event('error')));
+        return failingRequest;
+      }
+      return originalOpen(name, version);
+    });
+
+    await expectAsync(store.put('identity', 'k1', {foo: 'bar'})).toBeRejected();
+
+    // A second call must not reuse the poisoned, already-rejected open promise.
+    await store.put('identity', 'k1', {foo: 'bar'});
+    const result = await store.get('identity', 'k1');
+
+    expect(result).toEqual({foo: 'bar'});
+  });
 });

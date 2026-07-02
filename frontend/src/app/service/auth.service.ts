@@ -1,6 +1,6 @@
 import {computed, inject, Injectable, signal} from '@angular/core';
 import {HttpClient, HttpErrorResponse} from '@angular/common/http';
-import {catchError, from, map, Observable, switchMap, tap} from 'rxjs';
+import {catchError, from, map, Observable, of, switchMap, tap} from 'rxjs';
 import {environment} from '../../environments/environment';
 import {AuthUser, OrganizationRolle} from '../models/auth-user.model';
 import {Organization} from '../models/organization.model';
@@ -41,10 +41,24 @@ export class AuthService {
       tap((user) => this.currentUser.set(user)),
       catchError((error: unknown) => {
         if (error instanceof HttpErrorResponse && error.status === 0) {
-          return from(this.identityCache.load()).pipe(tap((user) => this.currentUser.set(user)));
+          return from(this.identityCache.load()).pipe(
+            catchError((cacheError: unknown) => {
+              // Best effort: a broken cache must not stop bootstrap() from
+              // resolving (a rejected app initializer is a white screen).
+              console.error('Failed to load cached identity for offline boot', cacheError);
+              return of(null);
+            }),
+            tap((user) => this.currentUser.set(user)),
+          );
         }
         this.currentUser.set(null);
-        return from(this.identityCache.clear()).pipe(map(() => null));
+        return from(this.identityCache.clear()).pipe(
+          map(() => null),
+          catchError((cacheError: unknown) => {
+            console.error('Failed to clear cached identity', cacheError);
+            return of(null);
+          }),
+        );
       }),
     );
   }
@@ -59,13 +73,30 @@ export class AuthService {
 
   logout(): Observable<void> {
     return this.http.post<void>(`${this.authUrl}/logout/`, {}).pipe(
-      switchMap(() => from(this.identityCache.clear())),
+      switchMap(() =>
+        from(this.identityCache.clear()).pipe(
+          catchError((cacheError: unknown) => {
+            // Best effort: the server-side session is already gone by this
+            // point — a cache failure must not leave currentUser stale.
+            console.error('Failed to clear cached identity on logout', cacheError);
+            return of(undefined);
+          }),
+        ),
+      ),
       tap(() => this.currentUser.set(null)),
     );
   }
 
   private cacheIdentity(user: AuthUser): Observable<AuthUser> {
-    return from(this.identityCache.save(user)).pipe(map(() => user));
+    return from(this.identityCache.save(user)).pipe(
+      map(() => user),
+      catchError((error: unknown) => {
+        // Best effort: caching for offline use must never block a successful
+        // online login/session check from completing.
+        console.error('Failed to cache identity for offline use', error);
+        return of(user);
+      }),
+    );
   }
 }
 

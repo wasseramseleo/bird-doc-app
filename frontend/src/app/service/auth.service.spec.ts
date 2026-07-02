@@ -151,4 +151,99 @@ describe('AuthService', () => {
 
     expect(await identityCache.load()).toBeNull();
   });
+
+  it('resolves login() with the user even when caching the identity fails', async () => {
+    spyOn(identityCache, 'save').and.returnValue(Promise.reject(new Error('quota exceeded')));
+
+    const resultPromise = firstValueFrom(service.login('admin@example.com', 'pw'));
+
+    const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/auth/login/'));
+    req.flush({
+      username: 'admin@example.com',
+      handle: 'ADM',
+      is_staff: false,
+      active_organization_rolle: 'admin',
+      active_organization: null,
+    });
+    const result = await resultPromise;
+
+    expect(result.username).toBe('admin@example.com');
+    expect(service.currentUser()?.username).toBe('admin@example.com');
+  });
+
+  it('resolves bootstrap() with the user even when caching the identity fails', async () => {
+    spyOn(identityCache, 'save').and.returnValue(Promise.reject(new Error('quota exceeded')));
+
+    const resultPromise = firstValueFrom(service.bootstrap());
+
+    const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/auth/me/'));
+    req.flush({
+      username: 'fre',
+      handle: 'FRE',
+      is_staff: false,
+      active_organization_rolle: 'mitglied',
+      active_organization: null,
+    });
+    const result = await resultPromise;
+
+    expect(result?.username).toBe('fre');
+    expect(service.currentUser()?.username).toBe('fre');
+  });
+
+  it('resolves bootstrap() to null instead of rejecting when reading the offline cache fails', async () => {
+    spyOn(identityCache, 'load').and.returnValue(Promise.reject(new Error('IndexedDB blocked')));
+
+    const resultPromise = firstValueFrom(service.bootstrap());
+    const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/auth/me/'));
+    req.error(new ProgressEvent('error'));
+    const result = await resultPromise;
+
+    expect(result).toBeNull();
+    expect(service.currentUser()).toBeNull();
+  });
+
+  it('still clears currentUser on a genuine 401 when clearing the cache fails', async () => {
+    const clearSpy = spyOn(identityCache, 'clear').and.returnValue(
+      Promise.reject(new Error('IndexedDB blocked')),
+    );
+    service.currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+
+    const resultPromise = firstValueFrom(service.bootstrap());
+    const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/auth/me/'));
+    req.flush({detail: 'Not authenticated.'}, {status: 401, statusText: 'Unauthorized'});
+    const result = await resultPromise;
+
+    expect(result).toBeNull();
+    expect(service.currentUser()).toBeNull();
+
+    clearSpy.and.callThrough();
+  });
+
+  it('still clears currentUser on logout when clearing the cache fails', async () => {
+    const clearSpy = spyOn(identityCache, 'clear').and.returnValue(
+      Promise.reject(new Error('IndexedDB blocked')),
+    );
+    service.currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+
+    const resultPromise = firstValueFrom(service.logout());
+    const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/auth/logout/'));
+    req.flush(null);
+    await resultPromise;
+
+    expect(service.currentUser()).toBeNull();
+
+    clearSpy.and.callThrough();
+  });
 });
