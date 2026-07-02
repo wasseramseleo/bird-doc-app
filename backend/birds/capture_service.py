@@ -56,6 +56,10 @@ AVES_IGNOTA_COMMENT_REQUIRED = _(
     "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
 )
 
+RING_ALREADY_FIRST_CAUGHT = _(
+    "Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang."
+)
+
 
 def get_or_create_ring(*, number, size, organization):
     """Find or create the Ring *within the recording Organisation*.
@@ -128,6 +132,33 @@ def create_capture(
 
     ring = get_or_create_ring(number=ring_number, size=ring_size, organization=organization)
 
+    # A physical ring is applied to a bird exactly once, so at most one Erstfang
+    # (first catch) may reference a ring within the Organisation — ring
+    # uniqueness (ADR 0006). Two offline devices that each independently record
+    # an Erstfang on the same number (both suggested the same "last consumed
+    # + 1" while offline) converge here after the idempotency short-circuit
+    # above has already let a genuine *replay* (same key) through untouched: the
+    # first genuine create wins, and the second — a different device, a
+    # different key — is refused so the losing device surfaces exactly one
+    # flagged sync error (issue #164, PRD #152) instead of silently filing a
+    # second Erstfang on one physical ring. A Wiederfang (recapture) of the ring
+    # is expected and never blocked; a 'ring_destroyed' Sonderart has its
+    # bird_status forced null above, so it is not an Erstfang here either.
+    #
+    # A row carrying *this same* idempotency_key is excluded: it is a genuine
+    # replay of this very capture (a retry that slipped past the short-circuit
+    # in the #155 TOCTOU race), which the DB's key-uniqueness constraint below
+    # already resolves to the existing row — never a rival Erstfang.
+    stored_bird_status = fields.get("bird_status", DataEntry.BirdStatus.FIRST_CATCH)
+    if stored_bird_status == DataEntry.BirdStatus.FIRST_CATCH:
+        rival_erstfaenge = DataEntry.objects.filter(
+            ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH
+        )
+        if idempotency_key is not None:
+            rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)
+        if rival_erstfaenge.exists():
+            raise CaptureValidationError("ring_number", RING_ALREADY_FIRST_CAUGHT)
+
     try:
         with transaction.atomic():
             return DataEntry.objects.create(
@@ -143,20 +174,39 @@ def create_capture(
                 **fields,
             )
     except IntegrityError:
-        # Lost the race: a concurrent request carrying the same idempotency_key
-        # committed its INSERT first, so ours hit
-        # ``unique_idempotency_key_per_organization``. The atomic() block above
-        # already rolled back to the savepoint, leaving the connection usable, so
-        # re-run the lookup and hand back the winner's row — the promised
-        # idempotent behaviour, not a 500. A genuinely unrelated IntegrityError
-        # (or a key-less create, which cannot hit this constraint) still has no
-        # matching row here and is re-raised unchanged.
+        # Lost a race: our INSERT hit a unique constraint a concurrent request
+        # committed first past our pre-checks. The atomic() block above already
+        # rolled back to the savepoint, leaving the connection usable, so we can
+        # re-read to tell *which* race it was. Two are possible:
+        #
+        # 1. ``unique_idempotency_key_per_organization`` — a concurrent request
+        #    carrying *this same* idempotency_key committed first (the #155
+        #    TOCTOU replay). Re-run the lookup and hand back the winner's row —
+        #    the promised idempotent behaviour, not a 500. Checked first so a
+        #    genuine replay is never mis-flagged as a rival Erstfang below.
+        # 2. ``unique_erstfang_per_ring`` — a *different* device raced a second
+        #    Erstfang onto the same ring (AC3, issue #164): both passed the
+        #    check-then-insert pre-check before either committed. Deterministically
+        #    flag the loser with the same ``CaptureValidationError`` the sequential
+        #    pre-check raises, so the concurrent duplicate surfaces as one sync
+        #    error instead of silently double-filing one physical ring.
+        #
+        # A genuinely unrelated IntegrityError matches neither re-read and is
+        # re-raised unchanged.
         if idempotency_key is not None:
             existing = DataEntry.objects.filter(
                 idempotency_key=idempotency_key, organization=organization
             ).first()
             if existing is not None:
                 return existing
+        if stored_bird_status == DataEntry.BirdStatus.FIRST_CATCH:
+            rival_erstfaenge = DataEntry.objects.filter(
+                ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH
+            )
+            if idempotency_key is not None:
+                rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)
+            if rival_erstfaenge.exists():
+                raise CaptureValidationError("ring_number", RING_ALREADY_FIRST_CAUGHT) from None
         raise
 
 

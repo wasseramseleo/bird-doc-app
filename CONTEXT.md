@@ -66,7 +66,7 @@ A named campaign that groups captures, scoped to one Organisation and a set of B
 _Avoid_: Campaign
 
 **Erstfang / Wiederfang**:
-First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird.
+First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird. A physical ring is applied to a bird exactly once, so within an Organisation a given ring (Ringgröße + number) may be the subject of **at most one Erstfang** — a second Erstfang on the same number is a genuine ring-uniqueness collision (ADR 0006) and is refused (`capture_service.create_capture`), while any number of Wiederfänge of that ring are expected. This is what turns two concurrent offline devices that record the same Erstfang into exactly one flagged sync error on the losing device, never a silent duplicate (issue #164).
 _Avoid_: First catch / recatch (English), recapture
 
 **Diesjährig**:
@@ -114,7 +114,7 @@ The connectivity state in which the app has no reach to the server but keeps wor
 _Avoid_: Offline-Modus, disconnected (English)
 
 **nicht synchronisiert**:
-The state of a captured entry recorded on a device but not yet reached the server — what a Mitglied sees instead of a named queue. The underlying local hold-area is deliberately **not** given a first-class domain name (no "Warteschlange"): it stays implicit, and the UI describes entries by their sync state instead, e.g. a pending count read as "N nicht synchronisierte Einträge". Only entries that are nicht synchronisiert can still be edited or deleted on that device; once an entry synchronisiert, it becomes read-only offline.
+The state of a captured entry recorded on a device but not yet reached the server — what a Mitglied sees instead of a named queue. The underlying local hold-area is deliberately **not** given a first-class domain name (no "Warteschlange"): it stays implicit, and the UI describes entries by their sync state instead, e.g. a pending count read as "N nicht synchronisierte Einträge". Only entries that are nicht synchronisiert can still be edited or deleted on that device; once an entry synchronisiert, it becomes read-only offline. A nicht synchronisiert entry the server **rejects** during sync (a validation change, an archived Station, or a ring-uniqueness collision) is not lost and does not stall the rest of the queue: it is skipped and stays on the device flagged with the server's own error message (a **Sync-Fehler**), while the remaining entries sync on. Resolving it is just ordinary editing — the flagged entry opens in the normal capture form, is corrected, and re-queues clean for the next sync (issue #164).
 _Avoid_: Warteschlange, Queue (English), Outbox (English — internal/code term only, never user-facing)
 
 **synchronisieren / zuletzt synchronisiert**:

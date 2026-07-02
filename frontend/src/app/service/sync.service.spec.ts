@@ -95,7 +95,7 @@ describe('SyncService', () => {
 
     const result = await firstValueFrom(service.syncNow());
 
-    expect(result).toEqual({total: 0, synced: 0});
+    expect(result).toEqual({total: 0, synced: 0, flagged: 0});
   });
 
   it('does nothing when the outbox is empty for the currently authenticated account', async () => {
@@ -103,7 +103,7 @@ describe('SyncService', () => {
 
     const result = await firstValueFrom(service.syncNow());
 
-    expect(result).toEqual({total: 0, synced: 0});
+    expect(result).toEqual({total: 0, synced: 0, flagged: 0});
   });
 
   it('fetches a fresh CSRF token before the first replay POST', async () => {
@@ -123,7 +123,7 @@ describe('SyncService', () => {
     await settle();
 
     const result = await resultPromise;
-    expect(result).toEqual({total: 1, synced: 1});
+    expect(result).toEqual({total: 1, synced: 1, flagged: 0});
   });
 
   it('replays queued entries in captured order (oldest first)', async () => {
@@ -160,7 +160,7 @@ describe('SyncService', () => {
     await settle();
 
     const result = await resultPromise;
-    expect(result).toEqual({total: 2, synced: 2});
+    expect(result).toEqual({total: 2, synced: 2, flagged: 0});
   });
 
   it('removes each successfully synced entry from the outbox and updates the pending count', async () => {
@@ -200,7 +200,7 @@ describe('SyncService', () => {
     await settle();
 
     const result = await resultPromise;
-    expect(result).toEqual({total: 1, synced: 1});
+    expect(result).toEqual({total: 1, synced: 1, flagged: 0});
 
     const remaining = await outboxStore.list();
     expect(remaining.map((e) => e.id)).toEqual(['uuid-2']);
@@ -227,7 +227,7 @@ describe('SyncService', () => {
     await settle();
 
     const result = await resultPromise;
-    expect(result).toEqual({total: 2, synced: 1});
+    expect(result).toEqual({total: 2, synced: 1, flagged: 0});
 
     const remaining = await outboxStore.list();
     expect(remaining.map((e) => e.id)).toEqual(['uuid-2']);
@@ -251,7 +251,7 @@ describe('SyncService', () => {
     await settle();
     expectCreatePost().error(new ProgressEvent('error'));
     await settle();
-    expect(await firstRun).toEqual({total: 2, synced: 1});
+    expect(await firstRun).toEqual({total: 2, synced: 1, flagged: 0});
 
     // Retry: replays only the still-queued uuid-2, under its original key —
     // never a freshly-minted one, and uuid-1 is never POSTed again.
@@ -265,7 +265,7 @@ describe('SyncService', () => {
     retryReq.flush({id: 'server-2'});
     await settle();
 
-    expect(await secondRun).toEqual({total: 1, synced: 1});
+    expect(await secondRun).toEqual({total: 1, synced: 1, flagged: 0});
     expect(await outboxStore.list()).toEqual([]);
   });
 
@@ -280,7 +280,7 @@ describe('SyncService', () => {
     await settle();
 
     const result = await resultPromise;
-    expect(result).toEqual({total: 0, synced: 0});
+    expect(result).toEqual({total: 0, synced: 0, flagged: 0});
     expect(await outboxStore.list()).toEqual([makeEntry()]);
   });
 
@@ -308,7 +308,7 @@ describe('SyncService', () => {
     await settle();
 
     const result = await resultPromise;
-    expect(result).toEqual({total: 2, synced: 1});
+    expect(result).toEqual({total: 2, synced: 1, flagged: 0});
 
     // uuid-2 was never POSTed under 'anm''s session/org, and stays queued
     // under its original account for 'fre''s next sync.
@@ -318,6 +318,121 @@ describe('SyncService', () => {
     // otherwise 'anm''s own "sync on app start" auto-trigger would be a
     // silent no-op.
     expect(service.syncing()).toBeFalse();
+  });
+
+  describe('skip-and-flag on rejection (issue #164)', () => {
+    it('skips a server-rejected entry — flagging it with the server error — while the rest of the queue syncs on', async () => {
+      auth.currentUser.set(authUser());
+      await outboxStore.add(
+        makeEntry({id: 'uuid-1', queuedAt: '2026-07-02T09:00:00.000Z', payload: {idempotency_key: 'uuid-1'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-2', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-3', queuedAt: '2026-07-02T09:10:00.000Z', payload: {idempotency_key: 'uuid-3'}}),
+      );
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectCreatePost().flush({id: 'server-1'}); // uuid-1 syncs
+      await settle();
+
+      // uuid-2 is rejected — a genuine ring-uniqueness collision from a
+      // concurrent device (ADR 0006): a 400 with a DRF field-error body.
+      expectCreatePost().flush(
+        {ring_number: ['Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.']},
+        {status: 400, statusText: 'Bad Request'},
+      );
+      await settle();
+
+      expectCreatePost().flush({id: 'server-3'}); // uuid-3 still syncs
+      await settle();
+
+      const result = await resultPromise;
+      expect(result).toEqual({total: 3, synced: 2, flagged: 1});
+
+      // The two good entries left the queue; the rejected one stays, flagged
+      // with the server's own message (not silently lost).
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-2']);
+      expect(remaining[0].syncError).toBe(
+        'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.',
+      );
+    });
+
+    it('flags with the server\'s {detail} message when the body is not a field-error map', async () => {
+      auth.currentUser.set(authUser());
+      await outboxStore.add(makeEntry({id: 'uuid-1', payload: {idempotency_key: 'uuid-1'}}));
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectCreatePost().flush(
+        {detail: 'Diese Station wurde archiviert.'},
+        {status: 400, statusText: 'Bad Request'},
+      );
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 0, flagged: 1});
+      const remaining = await outboxStore.list();
+      expect(remaining[0].syncError).toBe('Diese Station wurde archiviert.');
+    });
+
+    it('does not re-attempt an already-flagged entry — only the still-eligible one is replayed', async () => {
+      auth.currentUser.set(authUser());
+      // uuid-1 was flagged on a previous sync; uuid-2 is a fresh, clean capture.
+      await outboxStore.add(
+        makeEntry({
+          id: 'uuid-1',
+          queuedAt: '2026-07-02T09:00:00.000Z',
+          payload: {idempotency_key: 'uuid-1'},
+          syncError: 'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.',
+        }),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-2', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+      );
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      // Only uuid-2 is POSTed — the flagged uuid-1 is never re-sent.
+      const req = expectCreatePost();
+      expect(req.request.body).toEqual({idempotency_key: 'uuid-2'});
+      req.flush({id: 'server-2'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 1, flagged: 0});
+      // uuid-1 stays queued, still flagged; uuid-2 drained.
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
+    });
+
+    it('stops (does not skip-and-flag) on a transient failure — a 5xx keeps the entry queued unflagged', async () => {
+      auth.currentUser.set(authUser());
+      await outboxStore.add(makeEntry({id: 'uuid-1', payload: {idempotency_key: 'uuid-1'}}));
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectCreatePost().flush({detail: 'boom'}, {status: 503, statusText: 'Service Unavailable'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 0, flagged: 0});
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
+      expect(remaining[0].syncError).toBeFalsy();
+    });
   });
 
   it('reflects the in-progress state via the syncing() signal', async () => {
@@ -347,7 +462,7 @@ describe('SyncService', () => {
     expect(service.syncing()).toBeTrue();
 
     const second = await firstValueFrom(service.syncNow());
-    expect(second).toEqual({total: 0, synced: 0});
+    expect(second).toEqual({total: 0, synced: 0, flagged: 0});
 
     expectCsrfFetch().flush(meResponse());
     await settle();

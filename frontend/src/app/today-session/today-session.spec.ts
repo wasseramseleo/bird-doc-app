@@ -210,6 +210,31 @@ describe('TodaySessionComponent', () => {
       expect(text).toContain('nicht synchronisiert');
     });
 
+    it('flags a server-rejected queued entry with its sync error (issue #164)', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload(),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+        syncError: 'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement;
+      expect(row.classList).toContain('session-row--error');
+      const text = fixture.nativeElement.textContent as string;
+      expect(text).toContain('Sync-Fehler');
+      expect(text).toContain(
+        'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.',
+      );
+    });
+
     it('hides a queued entry from a different Projekt than the active one (review fix)', async () => {
       await TestBed.inject(OutboxStoreService).add({
         id: 'outbox-uuid-1',

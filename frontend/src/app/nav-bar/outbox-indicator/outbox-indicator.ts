@@ -63,16 +63,22 @@ export class OutboxIndicator {
     this.sync.syncNow().subscribe((result) => this.showSyncFeedback(result));
   }
 
-  // Nothing was ever queued (the common case on every app start / reconnect)
-  // — silently do nothing rather than announce a no-op sync.
+  // Nothing eligible was queued (the common case on every app start /
+  // reconnect) — silently do nothing rather than announce a no-op sync.
   private showSyncFeedback(result: SyncResult): void {
     if (result.total === 0) {
       return;
     }
-    const message =
-      result.synced === result.total
-        ? `${result.synced} von ${result.total} Einträgen synchronisiert.`
-        : `${result.synced} von ${result.total} Einträgen synchronisiert – der Rest folgt automatisch.`;
+    // Entries neither synced nor flagged were left untouched by an interrupted
+    // run — they follow automatically on the next attempt. A flagged entry
+    // (issue #164) does not: it needs fixing in the form, so it is called out
+    // separately rather than folded into the reassuring "der Rest folgt".
+    const deferred = result.total - result.synced - result.flagged;
+    let message = `${result.synced} von ${result.total} Einträgen synchronisiert`;
+    if (result.flagged > 0) {
+      message += `, ${result.flagged} mit Fehler markiert`;
+    }
+    message += deferred > 0 ? ' – der Rest folgt automatisch.' : '.';
     this.snackBar.open(message, 'Schließen', {duration: 3000});
   }
 }

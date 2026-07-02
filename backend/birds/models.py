@@ -679,7 +679,22 @@ class DataEntry(models.Model):
             models.UniqueConstraint(
                 fields=["organization", "idempotency_key"],
                 name="unique_idempotency_key_per_organization",
-            )
+            ),
+            # A physical ring is applied to a bird exactly once, so at most one
+            # Erstfang (first catch) may reference any Ring row (ADR 0006). The
+            # Ring is itself org-scoped, so this is per-Organisation. A partial
+            # index over ``bird_status='e'`` only: a ring may still carry any
+            # number of Wiederfänge, and a 'ring_destroyed' record (bird_status
+            # forced null) is outside the index. This is the DB backstop behind
+            # ``create_capture``'s check-then-insert — two offline devices that
+            # race a second Erstfang onto one ring both pass the pre-check SELECT,
+            # but the losing INSERT hits this constraint and is deterministically
+            # flagged (issue #164, PRD #152) instead of silently double-filing.
+            models.UniqueConstraint(
+                fields=["ring"],
+                condition=models.Q(bird_status="e"),
+                name="unique_erstfang_per_ring",
+            ),
         ]
 
     def save(self, *args, **kwargs):

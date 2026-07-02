@@ -4,6 +4,17 @@
   </div>
 }
 
+@if (syncError(); as error) {
+  <div class="sync-error-banner" role="alert" data-testid="sync-error-banner">
+    <mat-icon aria-hidden="true">error_outline</mat-icon>
+    <span>
+      <strong>Synchronisierung abgelehnt:</strong>
+      {{ error }}
+      Bitte korrigieren und erneut speichern.
+    </span>
+  </div>
+}
+
 <div>
   <div class="recapture-reveal" [class.is-open]="recaptureHistory().length > 0">
     <div class="recapture-reveal__inner">
