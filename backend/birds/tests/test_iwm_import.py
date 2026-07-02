@@ -26,6 +26,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils.timezone import localtime, make_aware
 
+from birds.iwm_import import _parse_decimal
 from birds.models import DataEntry, Project, Ring, RingingStation, Scientist
 
 PROJECTS_URL = "/api/birds/projects/"
@@ -1124,3 +1125,153 @@ def test_sample_fixture_imports_sonderart_rows_and_authentic_codes(
             assert entry.small_feather_int == int(sheet_row["Intensität"])
             assert entry.hand_wing == int(sheet_row["Handschwingen"])
             assert entry.net_location == int(sheet_row["Netz"])
+
+
+# --- Biometrics + Fortschritt (issue #176) ------------------------------------
+# The export writes the decimal biometrics (Flügellänge/Teilfederlänge/Gewicht/
+# Tarsus) and the moult Fortschritt (small_feather_app), but the importer used to
+# drop them — so export→import was not a round-trip. A lenient decimal parser now
+# reads both point- and comma-separated cells (German-locale files), ignores a
+# single garbage cell without blocking the row, and the columns stay optional.
+
+# The optional biometric + Fortschritt columns, layered onto the spine headers.
+BIOMETRIC_HEADERS = [*HEADERS, "Flügellänge", "Teilfederlänge", "Gewicht", "Tarsus", "Fortschritt"]
+
+
+@pytest.mark.django_db
+def test_commit_imports_biometrics_with_point_separator(
+    auth_client, scientist, ringing_station, project, species
+):
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                **{
+                    "Flügellänge": "82.5",
+                    "Teilfederlänge": "63.0",
+                    "Gewicht": "18.3",
+                    "Tarsus": "20.1",
+                },
+            )
+        ],
+        headers=BIOMETRIC_HEADERS,
+    )
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["created"] == 1
+    entry = DataEntry.objects.get()
+    assert entry.wing_span == Decimal("82.50")
+    assert entry.feather_span == Decimal("63.00")
+    assert entry.weight_gram == Decimal("18.30")
+    assert entry.tarsus == Decimal("20.10")
+
+
+@pytest.mark.django_db
+def test_commit_imports_biometrics_with_comma_separator(
+    auth_client, scientist, ringing_station, project, species
+):
+    # German-locale Datenmeldung files write the decimal comma ("18,3"); it must
+    # import to the same value a point-separated cell would.
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                **{
+                    "Flügellänge": "82,5",
+                    "Teilfederlänge": "63,0",
+                    "Gewicht": "18,3",
+                    "Tarsus": "20,1",
+                },
+            )
+        ],
+        headers=BIOMETRIC_HEADERS,
+    )
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    entry = DataEntry.objects.get()
+    assert entry.wing_span == Decimal("82.50")
+    assert entry.feather_span == Decimal("63.00")
+    assert entry.weight_gram == Decimal("18.30")
+    assert entry.tarsus == Decimal("20.10")
+
+
+@pytest.mark.django_db
+def test_commit_imports_fortschritt_onto_capture(
+    auth_client, scientist, ringing_station, project, species
+):
+    # The moult Kleingefieder-Fortschritt is a text code (J/U/M/N) the export
+    # writes and the import must read back onto small_feather_app.
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, Fortschritt="M")],
+        headers=BIOMETRIC_HEADERS,
+    )
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    entry = DataEntry.objects.get()
+    assert entry.small_feather_app == DataEntry.SmallFeatherAppMoult.MIXED
+
+
+@pytest.mark.django_db
+def test_single_garbage_biometric_cell_is_ignored_and_does_not_block_row(
+    auth_client, scientist, ringing_station, project, species
+):
+    # One unparseable biometric cell is left empty (lenient, like the integer
+    # parser) — it never turns into a blocking error, and the good sibling cells
+    # on the same row still import.
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                **{"Flügellänge": "keine Ahnung", "Gewicht": "18.3"},
+            )
+        ],
+        headers=BIOMETRIC_HEADERS,
+    )
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body["created"] == 1
+    assert body["errors"] == []
+    entry = DataEntry.objects.get()
+    assert entry.wing_span is None  # the garbage cell is ignored, left empty
+    assert entry.weight_gram == Decimal("18.30")  # the good cell still imports
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("12.5", Decimal("12.50")),  # point separator
+        ("12,5", Decimal("12.50")),  # comma separator (German locale)
+        (12.5, Decimal("12.50")),  # openpyxl float
+        (12, Decimal("12.00")),  # openpyxl int
+        ("", None),  # blank string
+        (None, None),  # empty cell
+        ("junk", None),  # unparseable
+    ],
+)
+def test_parse_decimal_is_lenient(raw, expected):
+    # Direct unit coverage of the lenient decimal parser (issue #176 AC): numerics
+    # and strings, both separators, quantized to two places; blank/junk → None.
+    assert _parse_decimal(raw) == expected
