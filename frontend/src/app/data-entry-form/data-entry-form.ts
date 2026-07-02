@@ -781,9 +781,15 @@ export class DataEntryFormComponent implements OnInit {
 
     const formValue = this.transformFromForm(rawValue);
 
-    const saveOperation = this.isEditMode()
+    // #160: a create routes through the offline-aware facade, which attempts
+    // the real POST first and only durably enqueues into the offline outbox
+    // on a genuine connectivity failure — never on any other server error.
+    // An edit always targets an existing server record, so it stays on
+    // `apiService` unchanged (offline edits of already-synced entries are
+    // out of scope for PRD #152 — see its "Out of Scope" section).
+    const saveOperation: Observable<unknown> = this.isEditMode()
       ? this.apiService.updateDataEntry(this.entryId()!, formValue)
-      : this.apiService.createDataEntry(formValue);
+      : this.dataAccess.createDataEntry(formValue);
 
     saveOperation.subscribe({
       next: () => {

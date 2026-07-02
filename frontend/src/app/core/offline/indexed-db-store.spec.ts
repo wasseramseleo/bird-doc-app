@@ -67,4 +67,26 @@ describe('IndexedDbStore', () => {
 
     expect(result).toEqual({foo: 'bar'});
   });
+
+  describe('getAll() (issue #160, the offline outbox)', () => {
+    afterEach(async () => {
+      await store.delete('outbox', 'o1');
+      await store.delete('outbox', 'o2');
+    });
+
+    it('returns an empty array when the store has never been written to', async () => {
+      const result = await store.getAll('outbox');
+
+      expect(result).toEqual([]);
+    });
+
+    it('returns every value put into the store, regardless of key', async () => {
+      await store.put('outbox', 'o1', {foo: 'bar'});
+      await store.put('outbox', 'o2', {foo: 'baz'});
+
+      const result = await store.getAll('outbox');
+
+      expect(result).toEqual(jasmine.arrayWithExactContents([{foo: 'bar'}, {foo: 'baz'}]));
+    });
+  });
 });
