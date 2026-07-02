@@ -5,6 +5,7 @@ import {environment} from '../../environments/environment';
 import {AuthUser, OrganizationRolle} from '../models/auth-user.model';
 import {Organization} from '../models/organization.model';
 import {IdentityCacheService} from '../core/offline/identity-cache';
+import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 
 interface AuthUserDto {
   username: string;
@@ -18,6 +19,7 @@ interface AuthUserDto {
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly identityCache = inject(IdentityCacheService);
+  private readonly referenceBundleCache = inject(ReferenceBundleCacheService);
   private readonly authUrl = `${environment.apiUrl}/auth`;
 
   readonly currentUser = signal<AuthUser | null>(null);
@@ -30,9 +32,11 @@ export class AuthService {
    * `HttpErrorResponse.status === 0` — falls back to the identity cached by
    * the last successful online check, so a cold boot at a Station without a
    * network still admits a previously-prepared Mitglied. A real server
-   * response (401 = not authenticated) is authoritative: it clears both
-   * `currentUser` and the cache, so logout/expiry behave online exactly as
-   * today and never resurrect a stale identity on a later offline boot.
+   * response (401 = not authenticated) is authoritative: it clears
+   * `currentUser`, the identity cache, *and* the org-scoped reference-bundle
+   * cache (issue #158), so logout/expiry behave online exactly as today and
+   * never resurrect a stale identity — or a previous Mitglied's cached
+   * reference data — on a later offline boot on a shared device.
    */
   bootstrap(): Observable<AuthUser | null> {
     return this.http.get<AuthUserDto>(`${this.authUrl}/me/`).pipe(
@@ -52,10 +56,10 @@ export class AuthService {
           );
         }
         this.currentUser.set(null);
-        return from(this.identityCache.clear()).pipe(
+        return from(this.clearCaches()).pipe(
           map(() => null),
           catchError((cacheError: unknown) => {
-            console.error('Failed to clear cached identity', cacheError);
+            console.error('Failed to clear cached identity/reference data', cacheError);
             return of(null);
           }),
         );
@@ -73,18 +77,29 @@ export class AuthService {
 
   logout(): Observable<void> {
     return this.http.post<void>(`${this.authUrl}/logout/`, {}).pipe(
-      switchMap(() =>
-        from(this.identityCache.clear()).pipe(
-          catchError((cacheError: unknown) => {
-            // Best effort: the server-side session is already gone by this
-            // point — a cache failure must not leave currentUser stale.
-            console.error('Failed to clear cached identity on logout', cacheError);
-            return of(undefined);
-          }),
-        ),
-      ),
+      switchMap(() => from(this.clearCaches())),
       tap(() => this.currentUser.set(null)),
     );
+  }
+
+  /**
+   * Clears both the identity cache and the org-scoped reference-bundle cache
+   * (issue #158) so a session invalidation never leaves either behind for a
+   * different Mitglied to inherit on a shared/offline device. Each cache is
+   * cleared independently and best-effort: a failure on one (e.g. IndexedDB
+   * blocked) must not stop the other from being cleared, and must never
+   * reject — the server-side session is already gone by this point, so a
+   * cache failure must not leave `currentUser` stale.
+   */
+  private clearCaches(): Promise<void> {
+    return Promise.all([
+      this.identityCache.clear().catch((cacheError: unknown) => {
+        console.error('Failed to clear cached identity', cacheError);
+      }),
+      this.referenceBundleCache.clear().catch((cacheError: unknown) => {
+        console.error('Failed to clear the cached reference bundle', cacheError);
+      }),
+    ]).then(() => undefined);
   }
 
   private cacheIdentity(user: AuthUser): Observable<AuthUser> {

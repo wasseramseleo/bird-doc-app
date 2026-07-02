@@ -13,6 +13,7 @@ import {ProjectService} from '../service/project.service';
 import {Project} from '../models/project.model';
 import {FeedbackDialogComponent} from '../feedback/feedback-dialog/feedback-dialog';
 import {environment} from '../../environments/environment';
+import {OfflineReadiness} from './offline-readiness/offline-readiness';
 
 @Component({
   selector: 'app-nav-bar',
@@ -25,6 +26,7 @@ import {environment} from '../../environments/environment';
     MatMenuModule,
     MatDividerModule,
     MatDialogModule,
+    OfflineReadiness,
   ],
   templateUrl: './nav-bar.html',
   styleUrl: './nav-bar.scss',
