@@ -160,6 +160,55 @@ describe('AuthService', () => {
     expect(await referenceBundleCache.load()).toBeNull();
   });
 
+  describe('refreshCsrfToken() (issue #161)', () => {
+    it('hits GET /auth/me/ purely for its CSRF-cookie side effect, resolving to void', async () => {
+      const resultPromise = firstValueFrom(service.refreshCsrfToken());
+
+      const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/auth/me/'));
+      req.flush({
+        username: 'fre',
+        handle: 'FRE',
+        is_staff: false,
+        active_organization_rolle: 'mitglied',
+        active_organization: null,
+      });
+
+      expect(await resultPromise).toBeUndefined();
+    });
+
+    it('does not change currentUser or cache the response', async () => {
+      service.currentUser.set({
+        username: 'someone-else',
+        handle: 'ELS',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+
+      const resultPromise = firstValueFrom(service.refreshCsrfToken());
+      const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/auth/me/'));
+      req.flush({
+        username: 'fre',
+        handle: 'FRE',
+        is_staff: false,
+        active_organization_rolle: 'mitglied',
+        active_organization: null,
+      });
+      await resultPromise;
+
+      expect(service.currentUser()?.username).toBe('someone-else');
+      expect(await identityCache.load()).toBeNull();
+    });
+
+    it('propagates a failure (e.g. no connectivity, or an expired session) to the caller unchanged', async () => {
+      const resultPromise = firstValueFrom(service.refreshCsrfToken());
+      const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/auth/me/'));
+      req.error(new ProgressEvent('error'));
+
+      await expectAsync(resultPromise).toBeRejected();
+    });
+  });
+
   it('resolves login() with the user even when caching the identity fails', async () => {
     spyOn(identityCache, 'save').and.returnValue(Promise.reject(new Error('quota exceeded')));
 

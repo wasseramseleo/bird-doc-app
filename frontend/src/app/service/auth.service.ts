@@ -67,6 +67,24 @@ export class AuthService {
     );
   }
 
+  /**
+   * Fetches a fresh CSRF token cookie from the server (issue #161): before
+   * replaying the offline outbox, the client needs a cookie that is
+   * guaranteed current — a device that spent up to two weeks offline may
+   * hold one that has since expired. Reuses `/api/auth/me/`
+   * (`@ensure_csrf_cookie` server-side, the same endpoint `bootstrap()`
+   * calls) purely for that cookie side effect: deliberately does not touch
+   * `currentUser` or either offline cache, so a mid-trip sync attempt never
+   * interferes with the app's own session-bootstrap state. A 401 here (an
+   * expired session) or a connectivity failure both simply propagate to the
+   * caller — `SyncService` treats either as "sync could not proceed this
+   * time", pausing until the next trigger; re-login/session-expiry handling
+   * is out of this issue's scope.
+   */
+  refreshCsrfToken(): Observable<void> {
+    return this.http.get<AuthUserDto>(`${this.authUrl}/me/`).pipe(map(() => undefined));
+  }
+
   login(username: string, password: string): Observable<AuthUser> {
     return this.http.post<AuthUserDto>(`${this.authUrl}/login/`, {username, password}).pipe(
       map(toAuthUser),
