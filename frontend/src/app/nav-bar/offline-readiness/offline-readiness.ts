@@ -6,6 +6,7 @@ import {MatIconModule} from '@angular/material/icon';
 import {fromEvent} from 'rxjs';
 
 import {ReferenceCacheService} from '../../service/reference-cache.service';
+import {PersistentStorageService} from '../../service/persistent-storage.service';
 
 /**
  * The Offline-Bereitschaft indicator (issue #158, PRD #152, see CONTEXT.md):
@@ -15,6 +16,11 @@ import {ReferenceCacheService} from '../../service/reference-cache.service';
  * creation is the "use the app online" trigger that keeps the cache fresh
  * with no separate user action, and it re-fetches again automatically
  * whenever connectivity returns.
+ *
+ * Also surfaces the granted/denied state of the browser's persistent-storage
+ * request (issue #166): the domain glossary's Offline-Bereitschaft explicitly
+ * includes "its storage is protected from eviction", so this indicator is
+ * where that state belongs.
  */
 @Component({
   selector: 'app-offline-readiness',
@@ -25,9 +31,11 @@ import {ReferenceCacheService} from '../../service/reference-cache.service';
 })
 export class OfflineReadiness {
   private readonly referenceCache = inject(ReferenceCacheService);
+  private readonly persistentStorage = inject(PersistentStorageService);
 
   readonly isReady = this.referenceCache.isReady;
   readonly lastRefreshedAt = this.referenceCache.lastRefreshedAt;
+  readonly persistenceState = this.persistentStorage.state;
   readonly refreshing = signal(false);
 
   constructor() {
