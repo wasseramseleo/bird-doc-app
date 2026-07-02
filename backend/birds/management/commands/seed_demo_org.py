@@ -13,12 +13,15 @@ and the Organisation / Projekt are get-or-created. During development it runs
 against the committed ``sample_iwm_illmitz.xlsx``.
 """
 
+import os
 from pathlib import Path
 
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
 from birds.iwm_import import IwmStructureError, commit_import
-from birds.models import Organization, Project
+from birds.models import Mitgliedschaft, Organization, Project, Scientist
 
 DEMO_ORG_HANDLE = "BDDEMO"
 DEMO_ORG_NAME = "BirdDoc Demo"
@@ -26,6 +29,19 @@ DEMO_PROJECT_TITLE = "Referenzprojekt Neusiedlersee"
 
 # The committed synthetic stand-in for the (later) anonymised ``demo_iwm.xlsx``.
 DEFAULT_SAMPLE = Path(__file__).resolve().parents[2] / "demo" / "sample_iwm_illmitz.xlsx"
+
+# The demo Admin (issue #178, ADR 0012). The importer resolves a Beringer by
+# Kürzel across the org's Scientists, so pre-creating ``ABE`` means a later
+# curated import attributes the Admin's captures to this named account instead of
+# auto-creating a nameless duplicate. ``DEMO_ADMIN_KÜRZEL`` is the one value this
+# seed shares with the anonymiser.
+DEMO_ADMIN_KÜRZEL = "ABE"
+DEMO_ADMIN_EMAIL = "demo@birddoc.eu"
+# A rename-able placeholder identity — the operator may relabel it later.
+DEMO_ADMIN_FIRST_NAME = "Anna"
+DEMO_ADMIN_LAST_NAME = "Berger"
+# Known dev password used only under DEBUG (overridable via DEMO_ADMIN_PASSWORD).
+DEFAULT_DEMO_ADMIN_PASSWORD = "demo-birddoc"
 
 
 class Command(BaseCommand):
@@ -47,6 +63,10 @@ class Command(BaseCommand):
             organization=org,
         )
 
+        # Pre-create the named demo Admin (ABE) before importing, so the curated
+        # import attributes its captures to this account (issue #178, ADR 0012).
+        self._ensure_demo_admin(org)
+
         # ``enforce_cap=False``: this is the sanctioned over-cap path (ADR 0013).
         # The API rejects a file beyond ROW_CAP (issue #125); the command loads a
         # demo seed or a multi-year one-time backfill without a background worker.
@@ -56,6 +76,46 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
 
         self._report(org, project, result)
+
+    def _ensure_demo_admin(self, org):
+        """Idempotently pre-create the demo Admin (login, Beringer, Mitgliedschaft).
+
+        An ordinary Admin Mitglied in BDDEMO consuming one Mitgliedsplatz — no
+        ``is_demo`` / schema marker (ADR 0012). The trio is get-or-created so a
+        re-run makes no duplicates. The password is set **only on first creation**
+        (never on re-run), so a prod secret set out-of-band survives: under DEBUG a
+        known dev password (overridable via ``DEMO_ADMIN_PASSWORD``), otherwise an
+        unusable password the operator sets out-of-band.
+        """
+        User = get_user_model()
+        user, user_created = User.objects.get_or_create(
+            username=DEMO_ADMIN_EMAIL,
+            defaults={"email": DEMO_ADMIN_EMAIL, "is_active": True},
+        )
+        if user_created:
+            if settings.DEBUG:
+                password = os.environ.get("DEMO_ADMIN_PASSWORD") or DEFAULT_DEMO_ADMIN_PASSWORD
+                user.set_password(password)
+            else:
+                # No known credential ships in a real deployment; the operator
+                # sets the password out-of-band.
+                user.set_unusable_password()
+            user.save(update_fields=["password"])
+
+        Scientist.objects.get_or_create(
+            handle=DEMO_ADMIN_KÜRZEL,
+            defaults={
+                "first_name": DEMO_ADMIN_FIRST_NAME,
+                "last_name": DEMO_ADMIN_LAST_NAME,
+                "organization": org,
+                "user": user,
+            },
+        )
+        Mitgliedschaft.objects.get_or_create(
+            user=user,
+            organization=org,
+            defaults={"rolle": Mitgliedschaft.Rolle.ADMIN},
+        )
 
     def _read(self, path):
         try:
