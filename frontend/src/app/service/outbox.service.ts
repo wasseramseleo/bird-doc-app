@@ -3,6 +3,7 @@ import {from, Observable, tap} from 'rxjs';
 
 import {OutboxEntry} from '../models/outbox-entry.model';
 import {OutboxStoreService} from '../core/offline/outbox-store';
+import {AuthService} from './auth.service';
 
 /**
  * The offline outbox's pending-count signal (issue #160, PRD #152,
@@ -16,13 +17,33 @@ import {OutboxStoreService} from '../core/offline/outbox-store';
  * reload/restart shows the real, durable count immediately rather than a
  * transient zero while the first read is in flight — the same pattern
  * `ReferenceCacheService` uses for its own persisted state.
+ *
+ * Tenancy (issue #160 fix): the single `outbox` IndexedDB store is shared by
+ * every account that has ever used this device, so `entries` (loaded from
+ * `OutboxStoreService.list()`) may hold more than one account's rows.
+ * `pendingCount` and `enqueue()` both scope to `AuthService.currentUser()`
+ * — reactively, not just at construction — so handing a shared/offline
+ * device to a different Mitglied (logout, then a fresh login, with no
+ * reload in between) never shows or grows another account's queue.
  */
 @Injectable({providedIn: 'root'})
 export class OutboxService {
   private readonly store = inject(OutboxStoreService);
+  private readonly auth = inject(AuthService);
 
   private readonly entries = signal<OutboxEntry[]>([]);
-  readonly pendingCount = computed(() => this.entries().length);
+
+  private readonly currentAccountKey = computed<string | null>(
+    () => this.auth.currentUser()?.username ?? null,
+  );
+
+  readonly pendingCount = computed(() => {
+    const accountKey = this.currentAccountKey();
+    if (accountKey === null) {
+      return 0;
+    }
+    return this.entries().filter((entry) => entry.accountKey === accountKey).length;
+  });
 
   readonly ready: Promise<void> = this.restore();
 
@@ -36,9 +57,12 @@ export class OutboxService {
 
   /**
    * Durably queues a capture-create payload, keyed by its own idempotency
-   * UUID (#155) so the same failed create can never be queued twice. The
-   * returned observable completes once the write to IndexedDB has landed —
-   * callers must not treat the capture as safely captured before that.
+   * UUID (#155) so the same failed create can never be queued twice, and by
+   * the currently authenticated account (issue #160 tenancy fix) so it can
+   * never be counted or, later, synced (#161) under a different Mitglied's
+   * session. The returned observable completes once the write to IndexedDB
+   * has landed — callers must not treat the capture as safely captured
+   * before that.
    *
    * Waits for `ready` first: without that, an enqueue racing the initial
    * `restore()` read (both real, unordered-relative-to-each-other IndexedDB
@@ -52,7 +76,11 @@ export class OutboxService {
     if (!id) {
       throw new Error('Cannot enqueue a capture without an idempotency_key.');
     }
-    const entry: OutboxEntry = {id, payload, queuedAt: new Date().toISOString()};
+    const accountKey = this.currentAccountKey();
+    if (!accountKey) {
+      throw new Error('Cannot enqueue a capture without an authenticated account.');
+    }
+    const entry: OutboxEntry = {id, accountKey, payload, queuedAt: new Date().toISOString()};
     return from(this.ready.then(() => this.store.add(entry))).pipe(
       tap(() => this.entries.update((current) => [...current, entry])),
     );

@@ -1,8 +1,11 @@
 import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {provideHttpClient} from '@angular/common/http';
+import {provideHttpClientTesting} from '@angular/common/http/testing';
 import {firstValueFrom} from 'rxjs';
 
 import {OutboxIndicator} from './outbox-indicator';
 import {OutboxService} from '../../service/outbox.service';
+import {AuthService} from '../../service/auth.service';
 import {IndexedDbStore} from '../../core/offline/indexed-db-store';
 
 describe('OutboxIndicator', () => {
@@ -10,7 +13,17 @@ describe('OutboxIndicator', () => {
   let outbox: OutboxService;
 
   beforeEach(async () => {
-    TestBed.configureTestingModule({imports: [OutboxIndicator]});
+    TestBed.configureTestingModule({
+      imports: [OutboxIndicator],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    TestBed.inject(AuthService).currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
     outbox = TestBed.inject(OutboxService);
     await outbox.ready;
     fixture = TestBed.createComponent(OutboxIndicator);

@@ -8,9 +8,21 @@
  * embedded in `payload.idempotency_key` — so an entry can never be queued
  * twice under two different ids, and a resubmit of the same failed create
  * simply overwrites its own outbox row instead of duplicating it.
+ *
+ * `accountKey` is a tenancy boundary, not metadata: the single `outbox`
+ * IndexedDB store is shared by every account that has ever used this
+ * device, so every entry must record which Mitglied's session queued it.
+ * `OutboxService` uses it to scope the pending count (and, later, issue
+ * #161's sync replay) to the currently authenticated account only — so a
+ * different Mitglied logging in on the same shared/offline device never
+ * inherits, sees, or (once #161 lands) syncs another account's queued
+ * captures under their own session/Organisation.
  */
 export interface OutboxEntry {
   id: string;
+  // The `AuthUser.username` of the Mitglied whose session queued this entry
+  // — see the tenancy note above.
+  accountKey: string;
   payload: Record<string, unknown>;
   // ISO 8601 timestamp of when the entry was queued — the capture order that
   // issue #161's sync replays entries in.

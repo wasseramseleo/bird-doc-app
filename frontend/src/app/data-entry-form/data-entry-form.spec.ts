@@ -27,6 +27,7 @@ import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
 import { OutboxStoreService } from '../core/offline/outbox-store';
 import { OutboxService } from '../service/outbox.service';
+import { AuthService } from '../service/auth.service';
 import { IndexedDbStore } from '../core/offline/indexed-db-store';
 
 registerLocaleData(localeDeAt);
@@ -1758,6 +1759,17 @@ describe('DataEntryFormComponent', () => {
 
     beforeEach(async () => {
       httpMock = await setupCreateMode();
+      // The outbox (issue #160) stamps every enqueued entry with the
+      // currently authenticated account (tenancy fix) — an entry can only
+      // be durably queued once someone is signed in, exactly like in the
+      // app (the capture form sits behind `authGuard`).
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
     });
 
     function fillValidWiederfang(): void {

@@ -7,6 +7,7 @@ import {OutboxEntry} from '../../models/outbox-entry.model';
 function makeEntry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
   return {
     id: 'uuid-1',
+    accountKey: 'fre',
     payload: {species_id: 's1', ring_number: '0043'},
     queuedAt: '2026-07-02T09:00:00.000Z',
     ...overrides,
@@ -67,6 +68,42 @@ describe('OutboxStoreService', () => {
     const result = await service.list();
 
     expect(result.map((e) => e.id)).toEqual(['uuid-1', 'uuid-2', 'uuid-3']);
+  });
+
+  describe('listForAccount() (issue #160 tenancy fix)', () => {
+    it('returns only the entries queued by the given account, oldest-first', async () => {
+      const mineFirst = makeEntry({
+        id: 'uuid-1',
+        accountKey: 'fre',
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      const someoneElses = makeEntry({
+        id: 'uuid-2',
+        accountKey: 'anm',
+        queuedAt: '2026-07-02T09:02:00.000Z',
+      });
+      const mineSecond = makeEntry({
+        id: 'uuid-3',
+        accountKey: 'fre',
+        queuedAt: '2026-07-02T09:05:00.000Z',
+      });
+
+      await service.add(mineFirst);
+      await service.add(someoneElses);
+      await service.add(mineSecond);
+
+      const result = await service.listForAccount('fre');
+
+      expect(result.map((e) => e.id)).toEqual(['uuid-1', 'uuid-3']);
+    });
+
+    it('returns an empty list for an account that has never queued anything', async () => {
+      await service.add(makeEntry({id: 'uuid-1', accountKey: 'fre'}));
+
+      const result = await service.listForAccount('anm');
+
+      expect(result).toEqual([]);
+    });
   });
 
   it('tolerates roughly two weeks of daily sessions worth of queued entries', async () => {

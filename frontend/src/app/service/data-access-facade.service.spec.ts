@@ -4,6 +4,7 @@ import {HttpTestingController, provideHttpClientTesting} from '@angular/common/h
 import {firstValueFrom} from 'rxjs';
 
 import {DataAccessFacadeService} from './data-access-facade.service';
+import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
 import {OutboxStoreService} from '../core/offline/outbox-store';
 import {ConnectivityService} from '../core/offline/connectivity';
@@ -70,6 +71,16 @@ describe('DataAccessFacadeService', () => {
     httpMock = TestBed.inject(HttpTestingController);
     cache = TestBed.inject(ReferenceBundleCacheService);
     connectivity = TestBed.inject(ConnectivityService);
+    // The outbox (issue #160) stamps every enqueued entry with the
+    // currently authenticated account (tenancy fix) — an entry can only be
+    // durably queued once someone is signed in, exactly like in the app.
+    TestBed.inject(AuthService).currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
   });
 
   afterEach(async () => {
