@@ -23,6 +23,7 @@ from .iwm_import import (
     build_import_preview,
     commit_import,
 )
+from .kuerzel import derive_handle
 from .models import (
     FALLBACK_BERINGER_HANDLE,
     DataEntry,
@@ -411,6 +412,33 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
             .exclude(handle=FALLBACK_BERINGER_HANDLE)
             .order_by("last_name", "first_name")
         )
+
+    def create(self, request, *args, **kwargs):
+        """Idempotent by Kürzel (issue #167, offline sync): a quick-added
+        No-Account Beringer replayed after the same Kürzel was already created
+        server-side — by an online colleague, or a retried sync of this very
+        Beringer — matches the existing one and returns it (200) rather than
+        duplicating it or failing on the unique constraint. This lets an offline
+        device's dependent captures resolve to the real id whether the Beringer
+        was created for the first time or matched. A genuinely new Kürzel is
+        created as before (201). The match is scoped to the active Organisation,
+        mirroring the tenant boundary the autocomplete and ``perform_create``
+        already enforce (ADR 0005)."""
+        organization = _require_active_organization(request.user)
+        handle = (request.data.get("handle") or "").strip()
+        if not handle:
+            handle = derive_handle(
+                request.data.get("first_name", ""), request.data.get("last_name", "")
+            )
+        existing = (
+            Scientist.objects.filter(organization=organization, handle=handle).first()
+            if handle
+            else None
+        )
+        if existing is not None:
+            serializer = self.get_serializer(existing)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         """A quick-added No-Account Beringer is org-owned, so it attaches to the
