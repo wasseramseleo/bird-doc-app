@@ -1,0 +1,24 @@
+.offline-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bd-warning) 16%, var(--bd-paper-sunk));
+  color: var(--bd-warning);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+
+  &__icon {
+    flex: none;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  &__label {
+    white-space: nowrap;
+  }
+}
