@@ -5,12 +5,12 @@ The domain language for the bird-ringing (Beringung) field-data-entry applicatio
 ## Language
 
 **Beringer**:
-A person who rings birds and is recorded as responsible for a capture. Belongs to exactly one Organisation, which owns the record. May or may not have a login account — experienced helpers ring birds too and are recorded without one. A Beringer **with** an account and a Mitgliedschaft is a **Mitglied**; one **without** an account is just an org-owned selectable name (no Mitgliedschaft, no Rolle, never an actor). Any Mitglied may quick-add a no-account Beringer mid-session (ADR 0001); deletion stays admin-only (ADR 0003).
+A person who rings birds and is recorded as responsible for a capture. Belongs to exactly one Organisation, which owns the record. May or may not have a login account — experienced helpers ring birds too and are recorded without one. A Beringer **with** an account and a Mitgliedschaft is a **Mitglied**; one **without** an account is just an org-owned selectable name (no Mitgliedschaft, no Rolle, never an actor). Any Mitglied may quick-add a no-account Beringer mid-session (ADR 0001); an Organisation's Admin otherwise manages Beringer in-app — add, edit, delete (which reassigns captures to the Gelöschter Nutzer rather than losing them, ADR 0003) and link/unlink a Beringer to a Mitgliedschaft — not only in the Django admin (ADR 0016). Deleting a Beringer that is a Mitglied goes through Mitgliedschaft (seat) management, not the Beringer surface.
 _Avoid_: Scientist, Staff, Ringer (English)
 _Code note_: the model and the `/scientists/` endpoint are historically named `Scientist` (and the form field `staff`); the domain term is **Beringer**. Renaming the code to match is a tracked follow-up.
 
 **Mitglied**:
-A Beringer who has a login account and a Mitgliedschaft in an Organisation — i.e. an *actor* who logs in, as opposed to a no-account Beringer (a mere selectable name). Every Mitglied is a Beringer; not every Beringer is a Mitglied.
+A Beringer who has a login account and a Mitgliedschaft in an Organisation — i.e. an *actor* who logs in, as opposed to a no-account Beringer (a mere selectable name). Every Mitglied is a Beringer; not every Beringer is a Mitglied. An Admin promotes a no-account Beringer to a Mitglied by linking it to a Mitgliedschaft, or demotes it back by unlinking — the latter only while the Beringer owns no captures, so a recorded identity is never stripped from its account (ADR 0016).
 _Avoid_: Member (English), user, account-Beringer
 
 **Mitgliedschaft**:
