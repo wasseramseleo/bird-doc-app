@@ -335,7 +335,8 @@ body {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
-    margin: 2.5rem 0;
+    /* No bottom margin: the opening band's own padding closes the movement. */
+    margin: 2.5rem 0 0;
 }
 
 @media (max-width: 38rem) {
@@ -492,6 +493,83 @@ body {
 .page--marketing {
     /* Widen the shared header/main/footer measure for the marketing surface. */
     --measure: 62rem;
+}
+
+/* ── Page rhythm — full-bleed bands (issue #142) ──────────────────────────
+   The marketing home's sections sit inside full-bleed background bands that
+   alternate the EXISTING surface tokens (ADR 0009) — cream paper, the sunk
+   paper, the elevated paper — so the long scroll reads as distinct movements
+   instead of one undifferentiated column. The main column therefore drops its
+   measure; each band paints edge to edge and re-centres its content on the
+   shared measure via .band__inner. Exactly one band inverts to the dark ink
+   ground (.band--ink, below): Für Organisationen & Vogelwarten. */
+
+.page--marketing .site-main {
+    max-width: none;
+    padding: 0;
+}
+
+.band__inner {
+    width: 100%;
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: 3.25rem 1.25rem;
+}
+
+.band--paper {
+    background: var(--bd-paper);
+}
+
+.band--sunk {
+    background: var(--bd-paper-sunk);
+}
+
+.band--elev {
+    background: var(--bd-paper-elev);
+    border-top: 1px solid var(--line);
+}
+
+/* The page's ONE dark-inverted band: Für Organisationen & Vogelwarten sits on
+   the ink ground with paper text — a graver institutional register. The whole
+   inversion is a re-mapping of the landing's semantic names onto the SAME
+   token set (mixes of ink + paper + the soft accent — ADR 0009, no new
+   colors); every descendant rule keyed on the semantic vars follows along. */
+.band--ink {
+    background: var(--bd-ink);
+    color: var(--bd-paper);
+    --ink: var(--bd-paper);
+    --muted: color-mix(in srgb, var(--bd-paper) 74%, var(--bd-ink));
+    --card: color-mix(in srgb, var(--bd-paper) 9%, var(--bd-ink));
+    --paper: color-mix(in srgb, var(--bd-paper) 9%, var(--bd-ink));
+    --line: color-mix(in srgb, var(--bd-paper) 28%, var(--bd-ink));
+    --accent: var(--bd-accent-soft);
+    --accent-strong: var(--bd-paper);
+    --accent-tint: color-mix(in srgb, var(--bd-accent-soft) 32%, transparent);
+}
+
+/* On ink, the primary action inverts to a paper-bright button — the most
+   prominent element in the band, so the org decision-maker's Gespräch path
+   never dims into the dark ground (nor funnels into the Beringer flow). */
+.band--ink .button {
+    color: var(--bd-ink);
+    background: var(--bd-paper);
+    border-color: var(--bd-paper);
+}
+
+.band--ink .button:hover {
+    background: var(--bd-paper-elev);
+    border-color: var(--bd-paper-elev);
+}
+
+.band--ink .button:focus-visible {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--bd-paper) 35%, transparent);
+}
+
+@media (max-width: 30rem) {
+    .band__inner {
+        padding-top: 2.25rem;
+        padding-bottom: 2.25rem;
+    }
 }
 
 /* A visible focus ring on every interactive element, not just form fields —
@@ -874,9 +952,9 @@ body {
 /* ── Audience sections (Für Beringer; Für Organisationen placeholder) ──── */
 
 .audience {
-    margin: 2.75rem 0;
-    padding-top: 2.25rem;
-    border-top: 1px solid var(--line);
+    /* The full-bleed band (issue #142) carries the section's ground and
+       breathing room; the old border-top separator is retired. */
+    margin: 0;
 }
 
 .audience__title {
@@ -1065,9 +1143,8 @@ body {
    tool, and these are the costs of keeping a ringing log by hand, not a fault
    in the software. Built on the brand's field-record cards. */
 .compare {
-    margin: 2.75rem 0;
-    padding-top: 2.25rem;
-    border-top: 1px solid var(--line);
+    /* Ground + rhythm come from the section's band (issue #142). */
+    margin: 0;
 }
 
 .compare__title {
@@ -1160,9 +1237,8 @@ body {
    specimen. Ring numbers and biometrics ride the tabular-nums data voice. */
 
 .formular-proof {
-    margin: 2.75rem 0;
-    padding-top: 2.25rem;
-    border-top: 1px solid var(--line);
+    /* Ground + rhythm come from the section's band (issue #142). */
+    margin: 0;
 }
 
 .formular-proof__title {
