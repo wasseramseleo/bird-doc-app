@@ -3,11 +3,12 @@ import {HttpErrorResponse} from '@angular/common/http';
 import {catchError, from, map, Observable, of, switchMap, tap, throwError} from 'rxjs';
 
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
+import {OfflineBundle} from '../models/offline-bundle.model';
 import {OutboxEntry} from '../models/outbox-entry.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {Project} from '../models/project.model';
+import {Ring, RingSize} from '../models/ring.model';
 import {RingingStation} from '../models/ringing-station.model';
-import {RingSize} from '../models/ring.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Species} from '../models/species.model';
 import {ApiService} from './api.service';
@@ -19,6 +20,21 @@ import {
   ReferenceBundleCacheService,
 } from '../core/offline/reference-bundle-cache';
 import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
+import {resolveQueuedEntryDisplay} from '../core/offline/queued-entry-display';
+
+/**
+ * A ring's recapture history (issue #168): the earlier captures of one ring
+ * the Wiederfang form's "Bisherige Fänge" panel shows. Online it is the
+ * server's authoritative list; offline it is assembled from what this device
+ * knows locally (queued + cached captures), which is why it carries
+ * `possiblyIncomplete` — the panel warns the Beringer the offline history may
+ * be missing captures made on other devices or before this device's cache
+ * snapshot.
+ */
+export interface RingHistory {
+  entries: DataEntry[];
+  possiblyIncomplete: boolean;
+}
 
 /**
  * The offline-aware data-access facade (issue #159, #160, PRD #152): fronts
@@ -220,6 +236,50 @@ export class DataAccessFacadeService {
   }
 
   /**
+   * A ring's recapture history for the Wiederfang "Bisherige Fänge" panel
+   * (issue #168). Online it is the server's authoritative list — passed
+   * through byte-for-byte, flagged complete. Only a connectivity failure
+   * assembles it locally instead, from what this device knows: its own queued
+   * (nicht synchronisiert) captures for that ring folded together with the
+   * cached recent captures (issue #163's "today's session" cache) for it,
+   * flagged `possiblyIncomplete` so the panel can warn the Beringer the
+   * history may be missing captures made on another device or before this
+   * device's cache snapshot. Both local reads are best-effort — a broken
+   * IndexedDB read degrades to "nothing there" rather than erroring the
+   * lookup out from under a Mitglied who is already offline. Queued captures
+   * are account-scoped (`listOwnQueued`, issue #160's tenancy boundary), so a
+   * shared/offline device never leaks another Mitglied's queue into this
+   * history.
+   */
+  getRingHistory(ringSize: RingSize, ringNumber: string): Observable<RingHistory> {
+    return this.withOfflineFallback(
+      this.api
+        .getDataEntriesByRing(ringSize, ringNumber)
+        .pipe(map((response) => ({entries: response.results, possiblyIncomplete: false}))),
+      () =>
+        this.loadCache().pipe(
+          switchMap((cached) =>
+            this.loadOwnQueued().pipe(
+              switchMap((queued) =>
+                this.loadRecentEntries().pipe(
+                  map((recent) =>
+                    assembleLocalRingHistory(
+                      ringSize,
+                      ringNumber,
+                      queued,
+                      recent,
+                      cached?.bundle ?? null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+    );
+  }
+
+  /**
    * Attempts the real server request first — the online path is byte-for-byte
    * `ApiService`'s behaviour. Only a connectivity failure
    * (`HttpErrorResponse.status === 0`) routes to `offline$`; any other error
@@ -273,10 +333,100 @@ export class DataAccessFacadeService {
       }),
     );
   }
+
+  /**
+   * Best-effort read of the cached recent captures (issue #163's "today's
+   * session" cache), mirroring {@link loadCache}/{@link loadOwnQueued}: the
+   * cached-synced half of the offline ring history (issue #168). A broken
+   * IndexedDB read degrades to "nothing cached" rather than erroring the ring
+   * lookup out from under a Mitglied who is already offline; the queued half
+   * still applies. Not Projekt-scoped here — a ring's history is global to
+   * that ring, and the cache only ever holds one Projekt's captures anyway.
+   */
+  private loadRecentEntries(): Observable<DataEntry[]> {
+    return from(this.recentEntriesCache.load()).pipe(
+      map((cached) => cached?.entries ?? []),
+      catchError((error: unknown) => {
+        console.error('Failed to read the cached recent entries', error);
+        return of([]);
+      }),
+    );
+  }
 }
 
 function toPage<T>(results: T[]): PaginatedApiResponse<T> {
   return {count: results.length, next: null, previous: null, results};
+}
+
+/**
+ * Assembles a ring's offline recapture history (issue #168) from the two
+ * things a device knows locally about it: its own queued (nicht
+ * synchronisiert) captures and the cached recent captures. Both are narrowed
+ * to the exact ring (size + number). The queued captures carry the flat
+ * write-shape payload (`species_id`/`staff_id`/…), so each is resolved back to
+ * the nested records the history table renders via the already-cached
+ * reference bundle, exactly like "today's session" renders the queue. A
+ * queued capture wins over a cached one that shares its idempotency key — the
+ * local, possibly-edited version is newer than any synced snapshot — though in
+ * practice the two never overlap (a queued capture is by definition not yet
+ * synced). Sorted oldest-first by capture time, matching how the panel reads
+ * a bird's catch history.
+ */
+function assembleLocalRingHistory(
+  ringSize: RingSize,
+  ringNumber: string,
+  queued: OutboxEntry[],
+  recent: DataEntry[],
+  bundle: OfflineBundle | null,
+): RingHistory {
+  const fromQueue = queued
+    .filter(
+      (entry) =>
+        entry.payload['ring_size'] === ringSize && entry.payload['ring_number'] === ringNumber,
+    )
+    .map((entry) => queuedEntryToHistoryEntry(entry, bundle));
+  const queuedKeys = new Set(
+    fromQueue.map((entry) => entry.idempotency_key).filter((key): key is string => !!key),
+  );
+  const fromCache = recent.filter(
+    (entry) =>
+      entry.ring?.size === ringSize &&
+      entry.ring?.number === ringNumber &&
+      !(entry.idempotency_key && queuedKeys.has(entry.idempotency_key)),
+  );
+  const entries = [...fromCache, ...fromQueue].sort((a, b) =>
+    a.date_time.localeCompare(b.date_time),
+  );
+  return {entries, possiblyIncomplete: true};
+}
+
+/**
+ * Reconstructs a display-ready `DataEntry` from a queued capture's flat
+ * write-shape payload (issue #168), so the offline ring-history table can
+ * render it exactly like a server record. Species/Station/Beringer are
+ * resolved from the cached reference bundle (via `resolveQueuedEntryDisplay`,
+ * the same lookup "today's session" uses); the ring is taken from the
+ * payload's own size + number; the id and idempotency key are the queued
+ * entry's own. The bird measurements/classifications ride along from the
+ * spread payload unchanged.
+ */
+function queuedEntryToHistoryEntry(entry: OutboxEntry, bundle: OfflineBundle | null): DataEntry {
+  const payload = entry.payload;
+  const display = resolveQueuedEntryDisplay(payload, bundle);
+  return {
+    ...(payload as Partial<DataEntry>),
+    id: entry.id,
+    idempotency_key: entry.id,
+    species: display.species as Species,
+    ringing_station: display.ringingStation as RingingStation,
+    staff: display.staff as Scientist,
+    ring: {
+      id: '',
+      size: payload['ring_size'] as RingSize,
+      number: (payload['ring_number'] as string) ?? '',
+    } as Ring,
+    date_time: (payload['date_time'] as string) ?? entry.queuedAt,
+  } as DataEntry;
 }
 
 // "Today" is the device's own local calendar date (Austrian field hardware —

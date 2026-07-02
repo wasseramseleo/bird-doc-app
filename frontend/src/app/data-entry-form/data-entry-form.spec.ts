@@ -21,6 +21,7 @@ import {
   SmallFeatherIntMoult,
 } from '../models/data-entry.model';
 import { Species } from '../models/species.model';
+import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
@@ -1410,6 +1411,83 @@ describe('DataEntryFormComponent', () => {
       expect(component.entryForm.get('species')!.value).toBeNull();
       expect(component.entryForm.get('sex')!.value).toBe(Sex.Unknown);
       expect(component.recaptureHistory()).toEqual([]);
+    });
+  });
+
+  describe('local Wiederfang history panel offline (issue #168)', () => {
+    const incompleteHint = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="offline-history-incomplete"]',
+      ) as HTMLElement | null;
+
+    const historyRow = (): DataEntry =>
+      ({
+        id: 'outbox-uuid-1',
+        date_time: '2026-07-01T08:30:00Z',
+        species: { common_name_de: 'Kohlmeise' },
+        ring: { id: '', number: '0043', size: RingSize.V },
+        bird_status: BirdStatus.ReCatch,
+        staff: { full_name: 'Filip Reiter', handle: 'FRE' },
+        age_class: AgeClass.Unknown,
+        sex: Sex.Unknown,
+      }) as unknown as DataEntry;
+
+    it('labels the history panel as possibly incomplete when it was assembled offline', () => {
+      component.recaptureHistory.set([historyRow()]);
+      component.historyPossiblyIncomplete.set(true);
+      fixture.detectChanges();
+
+      const hint = incompleteHint();
+      expect(hint).not.toBeNull();
+      expect(hint!.textContent).toContain('Offline');
+      expect(hint!.textContent).toContain('möglicherweise unvollständig');
+    });
+
+    it('does not show the incomplete label when the history came from the server (online)', () => {
+      component.recaptureHistory.set([historyRow()]);
+      component.historyPossiblyIncomplete.set(false);
+      fixture.detectChanges();
+
+      expect(incompleteHint()).toBeNull();
+    });
+
+    it('routes the ring lookup through the offline-aware facade and shows the panel + label from a locally-assembled, possibly-incomplete history', () => {
+      const facade = TestBed.inject(DataAccessFacadeService);
+      const spy = spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries: [historyRow()], possiblyIncomplete: true }),
+      );
+
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.V,
+        ring_number: '0043',
+      });
+      component.fetchRingHistory();
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.V, '0043');
+      expect(component.historyPossiblyIncomplete()).toBeTrue();
+      expect(component.recaptureHistory().length).toBe(1);
+      expect(incompleteHint()).not.toBeNull();
+    });
+
+    it('shows the panel without the incomplete label when the facade returns a complete (online) history', () => {
+      const facade = TestBed.inject(DataAccessFacadeService);
+      spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries: [historyRow()], possiblyIncomplete: false }),
+      );
+
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.V,
+        ring_number: '0043',
+      });
+      component.fetchRingHistory();
+      fixture.detectChanges();
+
+      expect(component.historyPossiblyIncomplete()).toBeFalse();
+      expect(component.recaptureHistory().length).toBe(1);
+      expect(incompleteHint()).toBeNull();
     });
   });
 

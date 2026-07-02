@@ -157,6 +157,12 @@ export class DataEntryFormComponent implements OnInit {
 
   // Recapture History State
   readonly recaptureHistory = signal<DataEntry[]>([]);
+  // Issue #168: true when the current "Bisherige Fänge" panel was assembled
+  // offline from this device's local sources (queued + cached captures) rather
+  // than fetched complete from the server — drives the "möglicherweise
+  // unvollständig" label so the Beringer knows captures made on another device
+  // or before this device's cache snapshot may be missing.
+  readonly historyPossiblyIncomplete = signal<boolean>(false);
   readonly displayedHistoryColumns: string[] = [
     'date_time', 'species', 'bird_status', 'staff', 'tarsus', 'feather_span', 'wing_span', 'weight_gram',
     'age_class', 'sex', 'actions'
@@ -753,16 +759,29 @@ export class DataEntryFormComponent implements OnInit {
       return;
     }
     this.loading.set(true);
-    this.apiService.getDataEntriesByRing(ringSize, ringNumber).subscribe({
-      next: (response) => {
-        if (response.results.length > 0) {
-          this.recaptureHistory.set(response.results);
-          this.prefillFromPriorCatch(response.results);
-          this.snackBar.open(`${response.results.length} frühere Einträge für diesen Ring gefunden.`, 'Schließen', {duration: 3000});
+    // Issue #168: route through the offline-aware facade so the lookup keeps
+    // working at a Station with no reception — it attempts the real server
+    // read first (identical to before) and only falls back to a locally
+    // assembled history (queued + cached captures) on a connectivity failure.
+    this.dataAccess.getRingHistory(ringSize, ringNumber).subscribe({
+      next: ({entries, possiblyIncomplete}) => {
+        this.historyPossiblyIncomplete.set(possiblyIncomplete);
+        if (entries.length > 0) {
+          this.recaptureHistory.set(entries);
+          this.prefillFromPriorCatch(entries);
+          this.snackBar.open(`${entries.length} frühere Einträge für diesen Ring gefunden.`, 'Schließen', {duration: 3000});
         } else {
           this.recaptureHistory.set([]);
           // Non-blocking: a bird ringed outside the app can still be recorded.
-          this.snackBar.open('Keine früheren Einträge für diesen Ring gefunden.', 'Schließen', {duration: 3000});
+          // Offline, "found nothing" only means "nothing known locally", so
+          // the message says so rather than implying a definitive answer.
+          this.snackBar.open(
+            possiblyIncomplete
+              ? 'Offline: keine lokal gespeicherten Einträge für diesen Ring auf diesem Gerät.'
+              : 'Keine früheren Einträge für diesen Ring gefunden.',
+            'Schließen',
+            {duration: 3000},
+          );
         }
         this.loading.set(false);
       },
@@ -1138,6 +1157,7 @@ export class DataEntryFormComponent implements OnInit {
 
     this.selectedSpecies.set(null);
     this.recaptureHistory.set([]);
+    this.historyPossiblyIncomplete.set(false);
     // #155: the just-saved capture "used up" this key — the next capture
     // (this same form instance, no navigation) must mint its own.
     this.idempotencyKey = crypto.randomUUID();
@@ -1157,6 +1177,7 @@ export class DataEntryFormComponent implements OnInit {
       this.resetFormTo(formValue);
       this.selectedSpecies.set((formValue['species'] as Species | null) ?? null);
       this.recaptureHistory.set([]);
+      this.historyPossiblyIncomplete.set(false);
       return;
     }
     const entry = this.loadedEntry();
@@ -1166,6 +1187,7 @@ export class DataEntryFormComponent implements OnInit {
     this.resetFormTo(this.transformToForm(entry));
     this.selectedSpecies.set(entry.species ?? null);
     this.recaptureHistory.set([]);
+    this.historyPossiblyIncomplete.set(false);
   }
 
   // #24: reset through the FormGroupDirective when it is available so the
