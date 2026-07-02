@@ -12,6 +12,7 @@ import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {ImportPreview, ImportResult} from '../models/iwm-import.model';
+import {ProjectStats, ProjectStatsRangeParams} from '../models/project-stats.model';
 import {environment} from '../../environments/environment';
 
 @Injectable({
@@ -148,6 +149,24 @@ export class ApiService {
 
   updateProject(id: string, payload: ProjectUpdatePayload): Observable<Project> {
     return this.http.patch<Project>(`${this.apiUrl}/projects/${id}/`, payload);
+  }
+
+  // Projekt-Dashboard stats (PRD #199, ADR 0017): a read-only, online-only
+  // composite of one Projekt's totals + Letzter-Tag figures over a date range.
+  // The range is a preset (default `week` server-side) or explicit from/to ISO
+  // dates; the backend aggregates in SQL and buckets by Europe/Vienna.
+  getProjectStats(projectId: string, range?: ProjectStatsRangeParams): Observable<ProjectStats> {
+    let params = new HttpParams();
+    if (range?.preset) {
+      params = params.set('preset', range.preset);
+    }
+    if (range?.from) {
+      params = params.set('from', range.from);
+    }
+    if (range?.to) {
+      params = params.set('to', range.to);
+    }
+    return this.http.get<ProjectStats>(`${this.apiUrl}/projects/${projectId}/stats/`, {params});
   }
 
   // Feedback ("Feedback / Fehler melden", issue #81) is not a /birds resource —

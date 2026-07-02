@@ -1,0 +1,64 @@
+<section class="dashboard">
+  <header class="dashboard__header">
+    <h1>{{ project().title }}</h1>
+    <p class="dashboard__org">{{ project().organization.name }}</p>
+  </header>
+
+  @if (loading()) {
+    <mat-spinner diameter="32"></mat-spinner>
+  } @else if (error()) {
+    <div class="dashboard__state">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <p>Statistiken konnten nicht geladen werden. Prüfe deine Internetverbindung.</p>
+    </div>
+  } @else if (lastFangtag(); as day) {
+    <article class="stat-card">
+      <h2 class="stat-card__title">Letzter Tag</h2>
+      <p class="stat-card__date">{{ day.date }}</p>
+
+      <div class="stat-card__figure">
+        <span class="stat-card__value">{{ day.faenge | number }}</span>
+        <span class="stat-card__label">Fänge</span>
+      </div>
+
+      <div class="stat-card__trend">
+        @if (day.trend.previous_fangtag) {
+          <span
+            class="stat-card__delta"
+            [class.stat-card__delta--up]="day.trend.delta > 0"
+            [class.stat-card__delta--down]="day.trend.delta < 0">
+            <mat-icon aria-hidden="true">
+              {{ day.trend.delta > 0 ? 'trending_up' : day.trend.delta < 0 ? 'trending_down' : 'trending_flat' }}
+            </mat-icon>
+            {{ day.trend.delta > 0 ? '+' : '' }}{{ day.trend.delta | number }}
+          </span>
+          <span class="stat-card__trend-ref">
+            gegenüber {{ day.trend.previous_fangtag }} ({{ day.trend.previous_faenge | number }})
+          </span>
+        } @else {
+          <span class="stat-card__trend-ref">Erster Fangtag im Zeitraum</span>
+        }
+      </div>
+
+      <dl class="stat-card__details">
+        @if (day.haeufigste_art; as art) {
+          <div class="stat-card__detail">
+            <dt>Häufigste Art</dt>
+            <dd>{{ art.name }} ({{ art.count | number }})</dd>
+          </div>
+        }
+        @if (day.strongest_hour; as hour) {
+          <div class="stat-card__detail">
+            <dt>Stärkste Stunde</dt>
+            <dd>{{ hour.hour }}:00 Uhr ({{ hour.count | number }})</dd>
+          </div>
+        }
+      </dl>
+    </article>
+  } @else {
+    <div class="dashboard__state">
+      <mat-icon aria-hidden="true">insights</mat-icon>
+      <p>In diesem Zeitraum gibt es noch keine Fänge.</p>
+    </div>
+  }
+</section>

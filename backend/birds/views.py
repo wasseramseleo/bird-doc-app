@@ -42,6 +42,7 @@ from .permissions import (
     IsOrgAdmin,
     IsOrgAdminOrReadOnly,
 )
+from .project_stats import compute_project_stats
 from .serializers import (
     DataEntrySerializer,
     MitgliedschaftSerializer,
@@ -98,6 +99,19 @@ def _ring_consuming_entries(organization):
         Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH)
         | Q(species__special_kind=Species.SpecialKind.RING_DESTROYED)
     )
+
+
+def _parse_iso_date(value, field):
+    """Parse an optional ``YYYY-MM-DD`` query param into a ``date`` or ``None``;
+    a malformed value is a 400 (clear German ``detail``)."""
+    if value in (None, ""):
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValidationError(
+            {field: f"Ungültiges Datum: {value!r} (erwartet JJJJ-MM-TT)."}
+        ) from exc
 
 
 def _require_active_organization(user):
@@ -507,6 +521,23 @@ class ProjectViewSet(viewsets.ModelViewSet):
         Projekt in another tenant. Without an active Organisation there is no
         tenant to own it, so creation is refused (mirrors the capture endpoint)."""
         serializer.save(organization=_require_active_organization(self.request.user))
+
+    @action(detail=True, methods=["get"], url_path="stats")
+    def stats(self, request, pk=None):
+        """Read-only Projekt-Dashboard stats over one Projekt + date range (PRD
+        #199, ADR 0017). Org-scoped through ``get_object()`` (a foreign-tenant
+        Projekt is 404, like ``export-iwm``); the counting semantics live in
+        ``project_stats.compute_project_stats``. The range is a ``preset``
+        (``week``|``month``|``year``|``all``, default ``week``) or explicit
+        ``from``/``to`` ISO dates, bucketed in Europe/Vienna."""
+        project = self.get_object()
+        preset = request.query_params.get("preset")
+        date_from = _parse_iso_date(request.query_params.get("from"), "from")
+        date_to = _parse_iso_date(request.query_params.get("to"), "to")
+        payload = compute_project_stats(
+            project, preset=preset, date_from=date_from, date_to=date_to
+        )
+        return Response(payload)
 
     @action(detail=True, methods=["get"], url_path="export-iwm")
     def export_iwm(self, request, pk=None):

@@ -11,6 +11,7 @@ import {ProjectService} from '../service/project.service';
 import {Project} from '../models/project.model';
 import {Organization} from '../models/organization.model';
 import {Scientist} from '../models/scientist.model';
+import {ProjectDashboardComponent} from './project-dashboard/project-dashboard';
 import {ProjectCreateDialogComponent, ProjectCreateDialogResult} from './project-create-dialog/project-create-dialog';
 import {
   ProjectEditDialogComponent,
@@ -41,7 +42,8 @@ function parseFilenameFromContentDisposition(header: string | null): string | nu
     MatIconModule,
     MatProgressSpinnerModule,
     MatDialogModule,
-    MatSnackBarModule
+    MatSnackBarModule,
+    ProjectDashboardComponent,
 ],
   templateUrl: './home.html',
   styleUrl: './home.scss',
@@ -55,6 +57,9 @@ export class HomeComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal<boolean>(true);
+  // ADR 0018: the home is the current Projekt's dashboard when one is set, and
+  // falls back to the project picker (below) as its no-selection state.
+  readonly currentProject = this.projectService.currentProject;
   // Rendered from the shared ProjectService list so the picker and the navbar
   // switcher can never disagree about which projects exist.
   readonly projects = this.projectService.projects;
