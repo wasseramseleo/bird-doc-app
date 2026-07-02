@@ -6,12 +6,23 @@ import {provideRouter} from '@angular/router';
 import {authInterceptor} from './auth.interceptor';
 import {AuthService} from '../../service/auth.service';
 import {IdentityCacheService} from '../offline/identity-cache';
+import {ReferenceBundleCacheService} from '../offline/reference-bundle-cache';
+
+const REFERENCE_BUNDLE = {
+  identity: {username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' as const},
+  species: [],
+  ringing_stations: [],
+  scientists: [],
+  projects: [],
+  last_consumed_ring_numbers: [],
+};
 
 describe('authInterceptor', () => {
   let http: HttpClient;
   let httpMock: HttpTestingController;
   let authService: AuthService;
   let identityCache: IdentityCacheService;
+  let referenceBundleCache: ReferenceBundleCacheService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -25,14 +36,16 @@ describe('authInterceptor', () => {
     httpMock = TestBed.inject(HttpTestingController);
     authService = TestBed.inject(AuthService);
     identityCache = TestBed.inject(IdentityCacheService);
+    referenceBundleCache = TestBed.inject(ReferenceBundleCacheService);
   });
 
   afterEach(async () => {
     httpMock.verify();
     await identityCache.clear();
+    await referenceBundleCache.clear();
   });
 
-  it('clears the cached identity when a non-auth request comes back 401 (session expired)', async () => {
+  it('clears the cached identity and reference-bundle cache when a non-auth request comes back 401 (session expired)', async () => {
     await identityCache.save({
       username: 'fre',
       handle: 'FRE',
@@ -40,6 +53,7 @@ describe('authInterceptor', () => {
       rolle: 'mitglied',
       organization: null,
     });
+    await referenceBundleCache.save({bundle: REFERENCE_BUNDLE, refreshedAt: '2026-06-01T09:00:00.000Z'});
     authService.currentUser.set({
       username: 'fre',
       handle: 'FRE',
@@ -57,5 +71,6 @@ describe('authInterceptor', () => {
 
     expect(authService.currentUser()).toBeNull();
     expect(await identityCache.load()).toBeNull();
+    expect(await referenceBundleCache.load()).toBeNull();
   });
 });

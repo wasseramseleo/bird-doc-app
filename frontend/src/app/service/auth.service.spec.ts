@@ -5,11 +5,13 @@ import { firstValueFrom } from 'rxjs';
 
 import { AuthService } from './auth.service';
 import { IdentityCacheService } from '../core/offline/identity-cache';
+import { ReferenceBundleCacheService } from '../core/offline/reference-bundle-cache';
 
 describe('AuthService', () => {
   let service: AuthService;
   let httpMock: HttpTestingController;
   let identityCache: IdentityCacheService;
+  let referenceBundleCache: ReferenceBundleCacheService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -18,11 +20,13 @@ describe('AuthService', () => {
     service = TestBed.inject(AuthService);
     httpMock = TestBed.inject(HttpTestingController);
     identityCache = TestBed.inject(IdentityCacheService);
+    referenceBundleCache = TestBed.inject(ReferenceBundleCacheService);
   });
 
   afterEach(async () => {
     httpMock.verify();
     await identityCache.clear();
+    await referenceBundleCache.clear();
   });
 
   it('exposes the active-organization Rolle and Organisation from the login payload', async () => {
@@ -116,7 +120,7 @@ describe('AuthService', () => {
     expect(service.currentUser()?.username).toBe('fre');
   });
 
-  it('does not fall back to a cached identity on a genuine 401 and clears the cache', async () => {
+  it('does not fall back to a cached identity on a genuine 401 and clears the identity and reference-bundle caches', async () => {
     await identityCache.save({
       username: 'fre',
       handle: 'FRE',
@@ -124,6 +128,7 @@ describe('AuthService', () => {
       rolle: 'mitglied',
       organization: {id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT'},
     });
+    await referenceBundleCache.save({bundle: REFERENCE_BUNDLE, refreshedAt: '2026-06-01T09:00:00.000Z'});
 
     const resultPromise = firstValueFrom(service.bootstrap());
     const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/auth/me/'));
@@ -133,9 +138,10 @@ describe('AuthService', () => {
     expect(result).toBeNull();
     expect(service.currentUser()).toBeNull();
     expect(await identityCache.load()).toBeNull();
+    expect(await referenceBundleCache.load()).toBeNull();
   });
 
-  it('clears the cached identity on logout', async () => {
+  it('clears the cached identity and reference bundle on logout', async () => {
     await identityCache.save({
       username: 'fre',
       handle: 'FRE',
@@ -143,6 +149,7 @@ describe('AuthService', () => {
       rolle: 'mitglied',
       organization: null,
     });
+    await referenceBundleCache.save({bundle: REFERENCE_BUNDLE, refreshedAt: '2026-06-01T09:00:00.000Z'});
 
     const resultPromise = firstValueFrom(service.logout());
     const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/auth/logout/'));
@@ -150,6 +157,7 @@ describe('AuthService', () => {
     await resultPromise;
 
     expect(await identityCache.load()).toBeNull();
+    expect(await referenceBundleCache.load()).toBeNull();
   });
 
   it('resolves login() with the user even when caching the identity fails', async () => {
@@ -246,4 +254,74 @@ describe('AuthService', () => {
 
     clearSpy.and.callThrough();
   });
+
+  it('still clears currentUser and the identity cache on a genuine 401 when clearing the reference-bundle cache fails', async () => {
+    const clearSpy = spyOn(referenceBundleCache, 'clear').and.returnValue(
+      Promise.reject(new Error('IndexedDB blocked')),
+    );
+    service.currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+    await identityCache.save({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+
+    const resultPromise = firstValueFrom(service.bootstrap());
+    const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/auth/me/'));
+    req.flush({detail: 'Not authenticated.'}, {status: 401, statusText: 'Unauthorized'});
+    const result = await resultPromise;
+
+    expect(result).toBeNull();
+    expect(service.currentUser()).toBeNull();
+    expect(await identityCache.load()).toBeNull();
+
+    clearSpy.and.callThrough();
+  });
+
+  it('still clears currentUser and the identity cache on logout when clearing the reference-bundle cache fails', async () => {
+    const clearSpy = spyOn(referenceBundleCache, 'clear').and.returnValue(
+      Promise.reject(new Error('IndexedDB blocked')),
+    );
+    service.currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+    await identityCache.save({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+
+    const resultPromise = firstValueFrom(service.logout());
+    const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/auth/logout/'));
+    req.flush(null);
+    await resultPromise;
+
+    expect(service.currentUser()).toBeNull();
+    expect(await identityCache.load()).toBeNull();
+
+    clearSpy.and.callThrough();
+  });
 });
+
+const REFERENCE_BUNDLE = {
+  identity: {username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' as const},
+  species: [],
+  ringing_stations: [],
+  scientists: [],
+  projects: [],
+  last_consumed_ring_numbers: [],
+};
