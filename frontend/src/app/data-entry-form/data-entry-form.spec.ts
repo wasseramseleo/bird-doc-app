@@ -1675,6 +1675,49 @@ describe('DataEntryFormComponent', () => {
       secondPost.flush({});
       tick(900);
     }));
+
+    it('#155: reuses the same idempotency_key on an unedited resubmit after a failed save (true retry)', () => {
+      fillValidWiederfang();
+      component.onSubmit();
+      const firstPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const firstKey = firstPost.request.body.idempotency_key;
+      firstPost.flush({detail: 'Netzwerkfehler'}, {status: 0, statusText: 'Unknown Error'});
+
+      // No edits — the user just hits save again after the error, exactly the
+      // flaky-connectivity retry the key exists for.
+      component.onSubmit();
+      const retryPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(retryPost.request.body.idempotency_key).toBe(firstKey);
+      retryPost.flush({});
+    });
+
+    it('#155: mints a fresh idempotency_key when the form is edited before resubmitting after a failed save', () => {
+      fillValidWiederfang();
+      component.onSubmit();
+      const firstPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const firstKey = firstPost.request.body.idempotency_key;
+      // The response never made it back — could be a lost/timed-out client
+      // response even though the server actually persisted the create.
+      firstPost.flush({detail: 'Netzwerkfehler'}, {status: 0, statusText: 'Unknown Error'});
+
+      // The user corrects a field before hitting submit again — replaying the
+      // stale key would risk create_capture() silently returning the original
+      // record instead of saving this edit.
+      component.entryForm.patchValue({ring_number: '901235'});
+      component.onSubmit();
+      const secondPost = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(secondPost.request.body.idempotency_key).not.toBe(firstKey);
+      expect(secondPost.request.body.ring_number).toBe('901235');
+      secondPost.flush({});
+    });
   });
 
   describe('inline autocomplete validation for Art/Station/Beringer (#58)', () => {

@@ -229,6 +229,19 @@ export class DataEntryFormComponent implements OnInit {
   // transformFromForm), so editing an existing capture never touches its key.
   private idempotencyKey = crypto.randomUUID();
 
+  // #155: snapshot (JSON) of the raw form value from the most recently *failed*
+  // create submit, or null when there is none to compare against. A resubmit
+  // after a failure is only safe to replay under the same idempotency_key when
+  // it is a true retry — the exact same payload, e.g. the first POST actually
+  // reached and was persisted by the server but its response was lost on a
+  // flaky connection. If the user edits the form before resubmitting, replaying
+  // the same key would make create_capture() silently hand back the original,
+  // now-stale record instead of saving the edit — so onSubmit() mints a fresh
+  // key whenever the resubmitted content differs from this snapshot. Cleared on
+  // every successful save (cleanReset()); edit mode never uses this, since it
+  // never sends an idempotency_key at all.
+  private lastFailedSubmission: string | null = null;
+
   // Autocomplete Observables
   filteredSpecies!: Observable<Species[]>;
   filteredStations!: Observable<RingingStation[]>;
@@ -746,7 +759,19 @@ export class DataEntryFormComponent implements OnInit {
     }
 
     this.loading.set(true);
-    const formValue = this.transformFromForm(this.entryForm.getRawValue());
+    const rawValue = this.entryForm.getRawValue();
+
+    // #155: only reuse the idempotency key across a resubmit when it replays the
+    // exact same content as the last failed attempt (a true retry). An edited
+    // resubmit must never risk the server treating it as the same create and
+    // silently discarding the correction — mint a fresh key instead.
+    if (!this.isEditMode() && this.lastFailedSubmission !== null) {
+      if (JSON.stringify(rawValue) !== this.lastFailedSubmission) {
+        this.idempotencyKey = crypto.randomUUID();
+      }
+    }
+
+    const formValue = this.transformFromForm(rawValue);
 
     const saveOperation = this.isEditMode()
       ? this.apiService.updateDataEntry(this.entryId()!, formValue)
@@ -755,6 +780,7 @@ export class DataEntryFormComponent implements OnInit {
     saveOperation.subscribe({
       next: () => {
         this.rememberBeringer();
+        this.lastFailedSubmission = null;
         this.snackBar.open('Beringungseintrag gespeichert.', undefined, {
           duration: 2000,
           horizontalPosition: 'center',
@@ -771,6 +797,9 @@ export class DataEntryFormComponent implements OnInit {
       },
       error: (err) => {
         console.error('Error saving data entry', err);
+        if (!this.isEditMode()) {
+          this.lastFailedSubmission = JSON.stringify(rawValue);
+        }
         this.snackBar.open(`Fehler beim Speichern: ${err.message}`, 'Schließen');
         this.loading.set(false);
       },
@@ -977,6 +1006,7 @@ export class DataEntryFormComponent implements OnInit {
     // #155: the just-saved capture "used up" this key — the next capture
     // (this same form instance, no navigation) must mint its own.
     this.idempotencyKey = crypto.randomUUID();
+    this.lastFailedSubmission = null;
   }
 
   // #24: restore the loaded record's saved values, dropping the user's edits and

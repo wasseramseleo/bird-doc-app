@@ -1,8 +1,10 @@
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
 
+from birds import capture_service
 from birds.capture_service import CaptureValidationError, create_capture
 from birds.models import DataEntry, Ring
 
@@ -166,6 +168,84 @@ def test_create_capture_aves_ignota_with_comment_keeps_bird_data(
     assert entry.age_class == DataEntry.AgeClass.THIS_YEAR
     assert entry.sex == DataEntry.Sex.MALE
     assert entry.wing_span == Decimal("73.0")
+
+
+@pytest.mark.django_db
+def test_create_capture_concurrent_replay_returns_existing_row_not_error(
+    monkeypatch, species, scientist, ringing_station, organization
+):
+    """#155 TOCTOU race: two near-simultaneous creates carrying the same
+    idempotency_key (an offline-outbox retry firing while the first request is
+    still in flight, PRD #152) can both pass the initial existence check before
+    either commits — the second call's INSERT then hits the DB's
+    ``unique_idempotency_key_per_organization`` constraint. This must return
+    the winner's row, never raise ``IntegrityError``/500.
+
+    Simulated deterministically (no real threads, no flaky SQLite
+    file-locking): a "concurrent winner" row is created first, then the initial
+    short-circuit lookup is forced to miss exactly once — reproducing the
+    losing request's view of the world at the moment it read "no existing
+    row" — before it tries to insert into an already-occupied key.
+    """
+    key = uuid.uuid4()
+    winner = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_number="900",
+            idempotency_key=key,
+        )
+    )
+
+    real_filter = DataEntry.objects.filter
+    calls = {"n": 0}
+
+    def _filter_missing_once(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return DataEntry.objects.none()
+        return real_filter(*args, **kwargs)
+
+    monkeypatch.setattr(DataEntry.objects, "filter", _filter_missing_once)
+
+    loser = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_number="900",
+            idempotency_key=key,
+        )
+    )
+
+    assert loser.id == winner.id
+    assert DataEntry.objects.count() == 1
+    assert (
+        Ring.objects.filter(number="900", size=Ring.RingSizes.V, organization=organization).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_create_capture_unrelated_integrity_error_still_raises(
+    monkeypatch, species, scientist, ringing_station, organization
+):
+    """The IntegrityError recovery is scoped to a genuine idempotency-key
+    replay: a key-less create can never hit that constraint, so an unrelated
+    IntegrityError must propagate unchanged rather than being swallowed."""
+
+    def _boom(*args, **kwargs):
+        raise capture_service.IntegrityError("unrelated constraint violation")
+
+    monkeypatch.setattr(DataEntry.objects, "create", _boom)
+
+    with pytest.raises(capture_service.IntegrityError):
+        create_capture(
+            **_capture_kwargs(species, scientist, ringing_station, organization, ring_number="901")
+        )
 
 
 @pytest.mark.django_db
