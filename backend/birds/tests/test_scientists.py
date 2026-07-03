@@ -1,7 +1,9 @@
+from datetime import UTC, datetime
+
 import pytest
 from django.contrib.auth.models import User
 
-from birds.models import Mitgliedschaft, Scientist
+from birds.models import DataEntry, Mitgliedschaft, Scientist
 
 # --- Admin-aware serializer (PRD #205, issue #206) ---------------------------
 # For an Admin request the /scientists/ list/retrieve additionally exposes the
@@ -495,3 +497,203 @@ def test_beringer_cannot_be_deleted_via_api(auth_client, membership, no_account_
     response = auth_client.delete(f"/api/birds/scientists/{no_account_beringer.id}/")
 
     assert response.status_code == 405
+
+
+# --- Link / unlink a Beringer to a seat (PRD #205, issue #209) ----------------
+# The Admin PATCH carries a write-only, Admin-only ``mitgliedschaft_id`` that
+# addresses the link BY SEAT: a seat id attaches the Beringer to that seat's
+# account (``Scientist.user = mitgliedschaft.user``), promoting a no-account
+# Beringer to a Mitglied; ``null`` detaches it. The freeze-once-captures invariant
+# guards the reversibility: attaching a currently-unlinked Beringer is always
+# allowed (even with captures — the primary workflow), but detaching or
+# re-pointing an already-linked Beringer that owns captures is refused (400).
+# Linking is refused (400) for a cross-tenant seat or one whose account already
+# has a Scientist. The idempotent quick-add create stays link-free.
+
+
+def _capture(beringer, species, ring, ringing_station):
+    """A DataEntry filed against ``beringer`` (its staff), so it 'owns captures'."""
+    return DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=beringer,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+
+
+@pytest.mark.django_db
+def test_admin_attaches_unlinked_beringer_to_seat_promotes_to_mitglied(
+    auth_client, membership, gap_seat, no_account_beringer, species, ring, ringing_station
+):
+    """An Admin attaches an unlinked Beringer to a same-org seat via
+    ``PATCH {mitgliedschaft_id}`` — allowed even when the Beringer already owns
+    captures (the primary workflow) — promoting it to a Mitglied."""
+    _capture(no_account_beringer, species, ring, ringing_station)
+
+    response = auth_client.patch(
+        f"/api/birds/scientists/{no_account_beringer.id}/",
+        {"mitgliedschaft_id": str(gap_seat.id)},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    no_account_beringer.refresh_from_db()
+    assert no_account_beringer.user_id == gap_seat.user_id
+    assert response.json()["is_member"] is True
+
+
+@pytest.mark.django_db
+def test_admin_detaches_capture_free_linked_beringer_demotes(
+    auth_client, membership, organization, gap_seat
+):
+    """An Admin detaches a capture-free linked Beringer via
+    ``PATCH {mitgliedschaft_id: null}``, demoting it back to a no-account
+    Beringer (a reversible demote)."""
+    linked = Scientist.objects.create(user=gap_seat.user, handle="LNK", organization=organization)
+
+    response = auth_client.patch(
+        f"/api/birds/scientists/{linked.id}/",
+        {"mitgliedschaft_id": None},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    linked.refresh_from_db()
+    assert linked.user_id is None
+    assert response.json()["is_member"] is False
+
+
+@pytest.mark.django_db
+def test_detach_of_capture_owner_is_refused_400(
+    auth_client, membership, organization, gap_seat, species, ring, ringing_station
+):
+    """Detaching an already-linked Beringer that owns captures is refused (400) —
+    the freeze-once-captures invariant keeps its capture history attributable."""
+    linked = Scientist.objects.create(user=gap_seat.user, handle="LNK", organization=organization)
+    _capture(linked, species, ring, ringing_station)
+
+    response = auth_client.patch(
+        f"/api/birds/scientists/{linked.id}/",
+        {"mitgliedschaft_id": None},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    linked.refresh_from_db()
+    assert linked.user_id == gap_seat.user_id
+
+
+@pytest.mark.django_db
+def test_repoint_of_capture_owner_is_refused_400(
+    auth_client, membership, organization, gap_seat, species, ring, ringing_station
+):
+    """Re-pointing an already-linked Beringer that owns captures to another seat is
+    refused (400) — the same freeze-once-captures invariant as detaching."""
+    linked = Scientist.objects.create(user=gap_seat.user, handle="LNK", organization=organization)
+    _capture(linked, species, ring, ringing_station)
+    other_seat = Mitgliedschaft.objects.create(
+        user=User.objects.create_user(username="other", password="hunter2-very-strong"),
+        organization=organization,
+        rolle=Mitgliedschaft.Rolle.MITGLIED,
+    )
+
+    response = auth_client.patch(
+        f"/api/birds/scientists/{linked.id}/",
+        {"mitgliedschaft_id": str(other_seat.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    linked.refresh_from_db()
+    assert linked.user_id == gap_seat.user_id
+
+
+@pytest.mark.django_db
+def test_link_refused_when_seat_is_cross_tenant_400(
+    auth_client, membership, no_account_beringer, organization_b
+):
+    """Linking to a seat in another Organisation is refused (400) — the tenant
+    boundary holds even though the seat resolves to a real account."""
+    foreign_seat = Mitgliedschaft.objects.create(
+        user=User.objects.create_user(username="brenda", password="hunter2-very-strong"),
+        organization=organization_b,
+        rolle=Mitgliedschaft.Rolle.MITGLIED,
+    )
+
+    response = auth_client.patch(
+        f"/api/birds/scientists/{no_account_beringer.id}/",
+        {"mitgliedschaft_id": str(foreign_seat.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    no_account_beringer.refresh_from_db()
+    assert no_account_beringer.user_id is None
+
+
+@pytest.mark.django_db
+def test_link_refused_when_seat_account_already_has_scientist_400(
+    auth_client, membership, no_account_beringer, mitglied_scientist
+):
+    """Linking to a seat whose account already has a Scientist is refused (400) —
+    the OneToOne ``Scientist.user`` must be free to attach."""
+    taken_seat = Mitgliedschaft.objects.get(user=mitglied_scientist.user)
+
+    response = auth_client.patch(
+        f"/api/birds/scientists/{no_account_beringer.id}/",
+        {"mitgliedschaft_id": str(taken_seat.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    no_account_beringer.refresh_from_db()
+    assert no_account_beringer.user_id is None
+
+
+@pytest.mark.django_db
+def test_plain_mitglied_cannot_link_beringer_to_seat_403(
+    mitglied_client, mitglied_scientist, gap_seat, no_account_beringer
+):
+    """Linking a Beringer to a seat is an Admin power (the PATCH is IsOrgAdmin-
+    gated): a plain Mitglied's attempt is refused with 403, unchanged."""
+    response = mitglied_client.patch(
+        f"/api/birds/scientists/{no_account_beringer.id}/",
+        {"mitgliedschaft_id": str(gap_seat.id)},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    no_account_beringer.refresh_from_db()
+    assert no_account_beringer.user_id is None
+
+
+@pytest.mark.django_db
+def test_cross_tenant_target_link_returns_404(
+    auth_client, membership, no_account_beringer_b, gap_seat
+):
+    """A PATCH linking a Beringer that lives in another tenant is a 404 — the
+    target is absent from the actor's tenant-scoped queryset, never a leak."""
+    response = auth_client.patch(
+        f"/api/birds/scientists/{no_account_beringer_b.id}/",
+        {"mitgliedschaft_id": str(gap_seat.id)},
+        format="json",
+    )
+
+    assert response.status_code == 404
+    no_account_beringer_b.refresh_from_db()
+    assert no_account_beringer_b.user_id is None
+
+
+@pytest.mark.django_db
+def test_quick_add_create_ignores_mitgliedschaft_id(auth_client, membership, gap_seat):
+    """The idempotent quick-add create is link-free: a ``mitgliedschaft_id`` in the
+    create payload is ignored, so the new Beringer stays a no-account Beringer."""
+    response = auth_client.post(
+        "/api/birds/scientists/",
+        {"first_name": "Filip", "last_name": "Reiter", "mitgliedschaft_id": str(gap_seat.id)},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    assert Scientist.objects.get(handle="FRE").user_id is None

@@ -10,6 +10,7 @@ import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Beringer} from '../models/beringer.model';
+import {Mitgliedschaft} from '../models/mitgliedschaft.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {ImportPreview, ImportResult} from '../models/iwm-import.model';
@@ -151,6 +152,31 @@ export class ApiService {
       params = params.set('search', searchTerm);
     }
     return this.http.get<PaginatedApiResponse<Beringer>>(`${this.apiUrl}/scientists/`, {params});
+  }
+
+  // The Organisation's seats (Mitgliedschaften), Admin-only. Used by the Beringer
+  // verwalten link picker to offer the eligible seats — those whose `handle` is
+  // null, i.e. whose account is not yet a Beringer (PRD #205, issue #209).
+  getMitgliedschaften(): Observable<PaginatedApiResponse<Mitgliedschaft>> {
+    return this.http.get<PaginatedApiResponse<Mitgliedschaft>>(`${this.apiUrl}/mitgliedschaften/`);
+  }
+
+  // Link a no-account Beringer to a seat, promoting it to a Mitglied — addressed
+  // BY SEAT via the write-only, Admin-only `mitgliedschaft_id` on the Beringer
+  // PATCH (PRD #205, issue #209).
+  linkScientistToSeat(id: string, mitgliedschaftId: string): Observable<Beringer> {
+    return this.http.patch<Beringer>(`${this.apiUrl}/scientists/${id}/`, {
+      mitgliedschaft_id: mitgliedschaftId,
+    });
+  }
+
+  // Unlink (detach) a linked Beringer, demoting it back to a no-account Beringer.
+  // `mitgliedschaft_id: null` clears `Scientist.user`; the backend refuses (400)
+  // if the Beringer already owns captures (freeze-once-captures).
+  unlinkScientist(id: string): Observable<Beringer> {
+    return this.http.patch<Beringer>(`${this.apiUrl}/scientists/${id}/`, {
+      mitgliedschaft_id: null,
+    });
   }
 
   getOrganizations(): Observable<PaginatedApiResponse<Organization>> {

@@ -13,6 +13,14 @@ import {
   BeringerFormDialogComponent,
   BeringerFormDialogData,
 } from './beringer-form-dialog/beringer-form-dialog';
+import {
+  SeatPickerDialogComponent,
+  SeatPickerDialogData,
+} from './seat-picker-dialog/seat-picker-dialog';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../shared/confirm-dialog/confirm-dialog';
 
 @Component({
   selector: 'app-beringer',
@@ -108,6 +116,81 @@ export class BeringerComponent implements OnInit {
     });
   }
 
+  // Link a no-account Beringer to a seat, promoting it to a Mitglied. The picker
+  // offers only *eligible* seats — same-org accounts that are not yet a Beringer,
+  // derived from /mitgliedschaften/ as those whose handle is null (PRD #205).
+  openLinkDialog(beringer: Beringer): void {
+    this.api.getMitgliedschaften().subscribe({
+      next: (res) => {
+        const eligible = res.results.filter((seat) => seat.handle === null);
+        const ref = this.dialog.open<SeatPickerDialogComponent, SeatPickerDialogData, string>(
+          SeatPickerDialogComponent,
+          {data: {beringerName: beringer.full_name, seats: eligible}, width: '480px'},
+        );
+        ref.afterClosed().subscribe((mitgliedschaftId) => {
+          if (!mitgliedschaftId) {
+            return;
+          }
+          this.api.linkScientistToSeat(beringer.id, mitgliedschaftId).subscribe({
+            next: (updated) => {
+              this.snackBar.open(
+                `Beringer "${updated.full_name}" wurde mit einem Konto verknüpft.`,
+                'Schließen',
+                {duration: 3000},
+              );
+              this.load();
+            },
+            error: (err: HttpErrorResponse) =>
+              this.snackBar.open(this.linkErrorMessage(err, 'verknüpft'), 'Schließen', {
+                duration: 5000,
+              }),
+          });
+        });
+      },
+      error: () =>
+        this.snackBar.open('Konten konnten nicht geladen werden.', 'Schließen', {duration: 3000}),
+    });
+  }
+
+  // Unlink (detach) a Mitglied, demoting it back to a no-account Beringer. A
+  // demote warning precedes the action: the account keeps its login + Rolle but
+  // loses its Beringer identity and Projekt visibility until re-linked. The
+  // backend refuses (400) if the Beringer already owns captures (freeze).
+  openUnlinkDialog(beringer: Beringer): void {
+    const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
+      ConfirmDialogComponent,
+      {
+        data: {
+          title: 'Konto-Verknüpfung aufheben?',
+          message:
+            `„${beringer.full_name}“ behält Login und Rolle, verliert aber die ` +
+            'Beringer-Identität und die Projekt-Sichtbarkeit, bis erneut ein Konto verknüpft wird.',
+          confirmLabel: 'Verknüpfung aufheben',
+        },
+        width: '480px',
+      },
+    );
+    ref.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) {
+        return;
+      }
+      this.api.unlinkScientist(beringer.id).subscribe({
+        next: (updated) => {
+          this.snackBar.open(
+            `Konto-Verknüpfung von "${updated.full_name}" wurde aufgehoben.`,
+            'Schließen',
+            {duration: 3000},
+          );
+          this.load();
+        },
+        error: (err: HttpErrorResponse) =>
+          this.snackBar.open(this.linkErrorMessage(err, 'aufgehoben'), 'Schließen', {
+            duration: 5000,
+          }),
+      });
+    });
+  }
+
   // Surface the server's German validation message — most importantly the
   // duplicate-Kürzel 400 on the globally-unique handle — rather than a generic
   // failure, so the Admin can disambiguate two people (issue #207).
@@ -115,6 +198,15 @@ export class BeringerComponent implements OnInit {
     const body = err.error as {handle?: string[]; detail?: string} | undefined;
     const serverMessage = body?.handle?.[0] ?? body?.detail;
     return serverMessage ?? `Beringer konnte nicht ${verb} werden.`;
+  }
+
+  // The link/unlink 400s land on the write-only `mitgliedschaft_id` field (the
+  // freeze-once-captures, cross-tenant and seat-taken refusals), so surface that
+  // German message when present; fall back to `detail` or a generic phrase.
+  private linkErrorMessage(err: HttpErrorResponse, verb: string): string {
+    const body = err.error as {mitgliedschaft_id?: string[]; detail?: string} | undefined;
+    const serverMessage = body?.mitgliedschaft_id?.[0] ?? body?.detail;
+    return serverMessage ?? `Konto konnte nicht ${verb} werden.`;
   }
 
   private load(): void {

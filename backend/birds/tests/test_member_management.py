@@ -7,7 +7,7 @@ not a 403. The Organisation can never be left without an Admin.
 
 import pytest
 
-from birds.models import Mitgliedschaft
+from birds.models import Mitgliedschaft, Scientist
 
 LIST_URL = "/api/birds/mitgliedschaften/"
 
@@ -103,6 +103,43 @@ def test_cannot_demote_the_last_admin(auth_client, scientist):
     assert response.status_code == 400
     membership.refresh_from_db()
     assert membership.rolle == Mitgliedschaft.Rolle.ADMIN
+
+
+@pytest.mark.django_db
+def test_membership_handle_flips_across_attach_then_detach(
+    auth_client, scientist, gap_seat, organization
+):
+    """The seat's ``handle`` in the members list tracks its account's Beringer
+    live: it is ``null`` while the seat has no Scientist, flips to the Beringer's
+    Kürzel when an Admin attaches one (PRD #205, issue #209), and back to ``null``
+    when the Beringer is detached — ``MitgliedschaftSerializer.handle`` reads the
+    OneToOne, so it never needs its own write."""
+    beringer = Scientist.objects.create(
+        handle="NOH", first_name="Nina", last_name="Ohnekonto", organization=organization
+    )
+
+    def seat_handle():
+        response = auth_client.get(LIST_URL)
+        row = next(r for r in response.json()["results"] if r["username"] == "gap")
+        return row["handle"]
+
+    assert seat_handle() is None
+
+    attach = auth_client.patch(
+        f"/api/birds/scientists/{beringer.id}/",
+        {"mitgliedschaft_id": str(gap_seat.id)},
+        format="json",
+    )
+    assert attach.status_code == 200, attach.json()
+    assert seat_handle() == "NOH"
+
+    detach = auth_client.patch(
+        f"/api/birds/scientists/{beringer.id}/",
+        {"mitgliedschaft_id": None},
+        format="json",
+    )
+    assert detach.status_code == 200, detach.json()
+    assert seat_handle() is None
 
 
 @pytest.mark.django_db
