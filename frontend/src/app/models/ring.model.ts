@@ -33,8 +33,14 @@ export enum RingSize {
   V = 'V',
   X = 'X',
 }
+import {Central} from './central.model';
+
 export interface Ring {
   id: string;
   number: string;
   size: RingSize;
+  // The issuing Zentrale (ADR 0019). Nested on a capture GET; the backfill
+  // guarantees it non-null server-side, but it stays optional here so pre-field
+  // cached payloads type-check.
+  central?: Central;
 }

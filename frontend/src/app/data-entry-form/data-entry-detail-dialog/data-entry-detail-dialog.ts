@@ -33,6 +33,14 @@ export class DataEntryDetailDialogComponent {
     return status === BirdStatus.FirstCatch ? 'Erstfang' : 'Wiederfang';
   }
 
+  // #232 (US 19): the ring's Zentrale, so a foreign recapture is recognizable in
+  // the record. Shows the scheme name + EURING code; an entry with no stored
+  // Zentrale (pre-field data) reads as a dash.
+  getCentralLabel(): string {
+    const central = this.entry.ring?.central;
+    return central ? `${central.name} (${central.scheme_code})` : '—';
+  }
+
   // #115: the Alter/Geschlecht labels are shared with the "Bisherige Fänge"
   // summary in the capture form via data-entry-labels — one source of truth.
   getAgeClassLabel(value: AgeClass | null): string {

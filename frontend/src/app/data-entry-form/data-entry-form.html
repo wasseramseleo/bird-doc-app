@@ -217,22 +217,53 @@
         </mat-form-field>
       }
 
-      <mat-form-field appearance="outline" floatLabel="always" class="ring-size-field">
-        <mat-label>Ringgröße</mat-label>
-        <mat-select
-          formControlName="ring_size"
-          (selectionChange)="onRingSizeSelected($event)">
-          @for (option of ringSizeOptions; track option.value) {
-            <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
+      <!-- #232: Zentrale sits between Status and Ringgröße. Disabled+forced to the
+           Projekt-Zentrale on Erstfang/Ring-vernichtet; enabled, prefilled and
+           searchable (name/country/scheme code) on a Wiederfang. -->
+      <mat-form-field appearance="outline" floatLabel="always" class="central-field">
+        <mat-label>Zentrale</mat-label>
+        <input type="text" matInput formControlName="central" [matAutocomplete]="centralAuto"
+               data-testid="central-input" selectOnTab>
+        <mat-autocomplete #centralAuto="matAutocomplete" [displayWith]="displayCentral"
+                          (optionSelected)="onAutocompleteAccepted('central', $event)">
+          @for (option of filteredCentrals | async; track option.id) {
+            <mat-option [value]="option">{{ option.name }} ({{ option.scheme_code }}) – {{ option.country }}</mat-option>
           }
-        </mat-select>
-        <mat-error>Ringgröße ist erforderlich.</mat-error>
+        </mat-autocomplete>
+        @if (entryForm.controls.central.hasError('unmatchedOption')) {
+          <mat-error>Unbekannte Zentrale – bitte aus der Liste wählen</mat-error>
+        }
       </mat-form-field>
+
+      <!-- #232: a foreign Zentrale uses free-text Größe codes; the Projekt-
+           Zentrale keeps the strict Austrian dropdown. -->
+      @if (isForeignCentral()) {
+        <mat-form-field appearance="outline" floatLabel="always" class="ring-size-field">
+          <mat-label>Ringgröße</mat-label>
+          <input matInput formControlName="ring_size" data-testid="ring-size-freetext">
+          <mat-error>Ringgröße ist erforderlich.</mat-error>
+        </mat-form-field>
+      } @else {
+        <mat-form-field appearance="outline" floatLabel="always" class="ring-size-field">
+          <mat-label>Ringgröße</mat-label>
+          <mat-select
+            formControlName="ring_size"
+            data-testid="ring-size-dropdown"
+            (selectionChange)="onRingSizeSelected($event)">
+            @for (option of ringSizeOptions; track option.value) {
+              <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
+            }
+          </mat-select>
+          <mat-error>Ringgröße ist erforderlich.</mat-error>
+        </mat-form-field>
+      }
 
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Ringnummer</mat-label>
         <span matTextPrefix class="ring-size-prefix">{{ ringSizePrefix() }}</span>
-        <input matInput formControlName="ring_number" pattern="[0-9]*" inputmode="numeric">
+        <input matInput formControlName="ring_number"
+               [attr.pattern]="isForeignCentral() ? null : '[0-9]*'"
+               [attr.inputmode]="isForeignCentral() ? null : 'numeric'">
         @if (entryForm.controls.ring_number.hasError('required')) {
           <mat-error>Ringnummer ist erforderlich.</mat-error>
         } @else if (entryForm.controls.ring_number.hasError('pattern')) {

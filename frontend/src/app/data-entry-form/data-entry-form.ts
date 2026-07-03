@@ -54,6 +54,7 @@ import {MatCheckboxModule} from '@angular/material/checkbox';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist} from '../models/scientist.model';
 import {RingSize} from '../models/ring.model';
+import {AUW_SCHEME_CODE, Central, PROJEKT_ZENTRALE} from '../models/central.model';
 import {SelectOnTabDirective} from '../core/directives/select-on-tab';
 import {MatTableModule} from '@angular/material/table';
 import {DataEntryDetailDialogComponent} from './data-entry-detail-dialog/data-entry-detail-dialog';
@@ -64,6 +65,12 @@ import {
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {selectedOptionValidator} from '../shared/validators/selected-option.validator';
 import {getAgeClassLabel, getSexLabel} from './data-entry-labels';
+
+// #232: the strict Austrian (AUW) ring-size codes. When the Zentrale switches
+// back from a foreign scheme to the Projekt-Zentrale, a free-text Größe that is
+// not one of these is cleared so the restored dropdown never carries an unlisted
+// value.
+const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
 
 @Component({
   selector: 'app-data-entry-form',
@@ -199,6 +206,12 @@ export class DataEntryFormComponent implements OnInit {
     date_time: [this.getInitialDateTime(), Validators.required],
     species: [null as Species | null, [Validators.required, selectedOptionValidator]],
     bird_status: [null as BirdStatus | null, Validators.required],
+    // #232: the ring's Zentrale (EURING scheme). Defaults to the Projekt-Zentrale
+    // (AUW today); disabled+forced to it on Erstfang/Ring-vernichtet, enabled and
+    // searchable on a Wiederfang. selectedOptionValidator (like Art/Station/
+    // Beringer) refuses a typed-but-unpicked term so a mistyped foreign Zentrale
+    // never silently saves as domestic.
+    central: [PROJEKT_ZENTRALE as Central | null, [selectedOptionValidator]],
     ring_size: [null as RingSize | null, Validators.required],
     ring_number: ['', [Validators.required, Validators.pattern('^[0-9]*$')]],
     net_location: [null as number | null],
@@ -231,6 +244,21 @@ export class DataEntryFormComponent implements OnInit {
   readonly ringSizePrefix = computed(() => this.ringSize() ?? '');
   private readonly birdStatus = toSignal(this.entryForm.get('bird_status')!.valueChanges);
   readonly isRecatch = computed(() => this.birdStatus() === BirdStatus.ReCatch);
+
+  // #232: the selected Zentrale drives the free-text switching. A foreign Zentrale
+  // is a selected Central record whose scheme code is not AUW (the Projekt-
+  // Zentrale). A half-typed search term (a raw string) or a null value counts as
+  // NOT foreign, so the strict Austrian dropdown holds until a real foreign
+  // Zentrale is actually picked.
+  private readonly centralValue = toSignal(this.entryForm.get('central')!.valueChanges, {
+    initialValue: this.entryForm.get('central')!.value,
+  });
+  readonly isForeignCentral = computed(() => {
+    const central = this.centralValue();
+    return (
+      !!central && typeof central === 'object' && (central as Central).scheme_code !== AUW_SCHEME_CODE
+    );
+  });
 
   // #26: only the Kleingefieder *Fortschritt* (small-feather moult progress,
   // J/U/M/N) is recorded for diesjährige birds (Alter = 3) alone — it tracks the
@@ -283,6 +311,7 @@ export class DataEntryFormComponent implements OnInit {
   filteredSpecies!: Observable<Species[]>;
   filteredStations!: Observable<RingingStation[]>;
   filteredScientists!: Observable<Scientist[]>;
+  filteredCentrals!: Observable<Central[]>;
 
   // Kürzel-first Beringer field: track the typed text and the matches so the
   // template can offer inline creation when an unknown Kürzel is typed.
@@ -301,7 +330,7 @@ export class DataEntryFormComponent implements OnInit {
   });
 
   private readonly focusOrder: string[] = [
-    'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'ring_size', 'ring_number',
+    'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'central', 'ring_size', 'ring_number',
     'net_location', 'net_height', 'net_direction', 'age_class', 'sex', 'fat_deposit', 'muscle_class',
     'small_feather_int', 'small_feather_app', 'hand_wing',
     'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'comment',
@@ -477,6 +506,54 @@ export class DataEntryFormComponent implements OnInit {
       }
     });
 
+    // #232: the Zentrale field's editability is decided by Status. A Wiederfang
+    // can carry a ring from a foreign Zentrale, so its Zentrale is enabled and
+    // searchable; an Erstfang or a Ring-vernichtet record always draws the
+    // Projekt-Zentrale, so the field is disabled and forced to it. This is what
+    // makes the Zentrale NON-sticky: flipping Status back to Erstfang (or
+    // selecting Ring vernichtet) resets it to the Projekt default. The current
+    // value is read imperatively (not via a signal) so forcing it never feeds
+    // back into this effect.
+    effect(() => {
+      const editable = this.isRecatch() && !this.isRingDestroyed();
+      const control = this.entryForm.get('central')!;
+      if (editable) {
+        if (control.disabled) {
+          control.enable({ emitEvent: false });
+        }
+        return;
+      }
+      const current = control.value as Central | null;
+      const isProjektZentrale =
+        !!current && typeof current === 'object' && current.scheme_code === AUW_SCHEME_CODE;
+      if (!isProjektZentrale) {
+        control.setValue(PROJEKT_ZENTRALE);
+      }
+      control.disable({ emitEvent: false });
+    });
+
+    // #232: a ring from a foreign Zentrale uses that scheme's own size codes and
+    // may carry letters in its number, so the strict Austrian Ringgröße dropdown
+    // becomes a free-text field and the Ringnummer drops its numeric-only pattern.
+    // Returning to the Projekt-Zentrale restores the strict dropdown, clearing a
+    // value that is not a valid Austrian code (a foreign free-text Größe) so the
+    // dropdown never opens on an unlisted value.
+    effect(() => {
+      const foreign = this.isForeignCentral();
+      const ringNumber = this.entryForm.get('ring_number')!;
+      const ringSize = this.entryForm.get('ring_size')!;
+      if (foreign) {
+        ringNumber.setValidators([Validators.required]);
+      } else {
+        ringNumber.setValidators([Validators.required, Validators.pattern('^[0-9]*$')]);
+        const size = ringSize.value as string | null;
+        if (size && !AUSTRIAN_RING_SIZES.has(size)) {
+          ringSize.setValue(null);
+        }
+      }
+      ringNumber.updateValueAndValidity({ emitEvent: false });
+    });
+
     effect(() => {
       const id = this.entryId();
       if (!id) {
@@ -542,6 +619,18 @@ export class DataEntryFormComponent implements OnInit {
     delete formValue['staff_id'];
     delete formValue['idempotency_key'];
     delete formValue['project_id'];
+    // #232/#163: the outbox stores a foreign Zentrale only as its bare scheme
+    // code; resolve it back to a Central object (like species/Station/Beringer)
+    // so isForeignCentral() — which requires an object — sees it. Otherwise the
+    // free-text Ringgröße never shows, the ring-size effect wipes the stored
+    // foreign size as a non-Austrian value, and the raw string trips
+    // selectedOptionValidator, blocking re-save. A domestic capture omits
+    // `central`, so drop the key and keep the form's Projekt-Zentrale default.
+    if (display.central) {
+      formValue['central'] = display.central;
+    } else {
+      delete formValue['central'];
+    }
 
     this.loadedQueuedFormValue.set(formValue);
     this.entryForm.patchValue(formValue);
@@ -591,6 +680,19 @@ export class DataEntryFormComponent implements OnInit {
       tap(term => this.staffSearchTerm.set(term)),
       switchMap(name => this.dataAccess.getScientists(name).pipe(map(response => response.results))),
       tap(results => this.staffResults.set(results)),
+    );
+
+    // #232: the Zentrale autocomplete for an ausländischer Wiederfang, fed by the
+    // /centrals/ lookup (one `search` param matches name/country/scheme code),
+    // following the species/Station pattern above. Read straight from the API —
+    // the Zentralen list is global reference data, not part of the offline
+    // reference bundle in this slice.
+    this.filteredCentrals = this.entryForm.get('central')!.valueChanges.pipe(
+      startWith(''),
+      debounceTime(300),
+      map(value => (typeof value === 'string' ? value : value?.name ?? '')),
+      distinctUntilChanged(),
+      switchMap(name => this.apiService.getCentrals(name).pipe(map(response => response.results))),
     );
 
     this.prefillRememberedBeringer();
@@ -724,7 +826,10 @@ export class DataEntryFormComponent implements OnInit {
   onSpeciesSelected(event: MatAutocompleteSelectedEvent): void {
     const species: Species = event.option.value;
     this.selectedSpecies.set(species ?? null);
-    if (species && species.ring_size) {
+    // #232: while a foreign Zentrale is selected the Ringgröße is free text, so
+    // the species' Empfohlene Ringgröße prefill is suppressed — it only applies
+    // to the strict Austrian dropdown.
+    if (species && species.ring_size && !this.isForeignCentral()) {
       this.entryForm.get('ring_size')?.setValue(species.ring_size);
     }
     this.onAutocompleteAccepted('species', event);
@@ -750,6 +855,13 @@ export class DataEntryFormComponent implements OnInit {
 
   displayScientist(scientist: Scientist): string {
     return scientist ? `${scientist.full_name} (${scientist.handle})` : '';
+  }
+
+  // #232: the Zentrale autocomplete shows the scheme's name; the option list also
+  // surfaces the country and scheme code so a foreign Zentrale is searchable by
+  // any of the three.
+  displayCentral(central: Central): string {
+    return central ? central.name : '';
   }
 
   fetchRingHistory(): void {
@@ -954,6 +1066,11 @@ export class DataEntryFormComponent implements OnInit {
       formValue.ring_size = entry.ring.size;
       formValue.ring_number = entry.ring.number;
     }
+    // #232: edit mode keys off the ring's STORED Zentrale, not UI history — an
+    // entry with a foreign ring reopens in free-text mode. A pre-field entry with
+    // no stored Zentrale falls back to the Projekt-Zentrale (the effective value
+    // the backfill gives it server-side).
+    formValue.central = entry.ring?.central ?? PROJEKT_ZENTRALE;
     formValue.date_time = this.datePipe.transform(entry.date_time, 'yyyy-MM-ddTHH:mm');
     return formValue;
   }
@@ -963,6 +1080,22 @@ export class DataEntryFormComponent implements OnInit {
     payload.species_id = formValue.species?.id;
     payload.ringing_station_id = formValue.ringing_station?.handle;
     payload.staff_id = formValue.staff?.id;
+
+    // #232: the Zentrale rides the write payload FLAT as the scheme code (like
+    // ring_size), and only when it differs from the Projekt-Zentrale. A domestic
+    // capture omits it entirely, so it submits exactly the same effective payload
+    // as before this feature — the backend defaults an absent central to the
+    // Projekt-Zentrale.
+    const central = formValue.central as Central | string | null | undefined;
+    delete payload.central;
+    if (
+      central &&
+      typeof central === 'object' &&
+      central.scheme_code &&
+      central.scheme_code !== AUW_SCHEME_CODE
+    ) {
+      payload.central = central.scheme_code;
+    }
 
     // #163: a queued edit must never re-derive project_id from the
     // *currently active* Projekt — the Mitglied may have switched Projekt
@@ -1146,6 +1279,10 @@ export class DataEntryFormComponent implements OnInit {
 
     this.resetFormTo({
       ...preserved,
+      // #232: the Zentrale is NOT sticky across saves (unlike Station/Beringer) —
+      // a foreign recapture is an exception, not session state — so each save
+      // resets it to the Projekt default.
+      central: PROJEKT_ZENTRALE,
       date_time: this.getInitialDateTime(),
       age_class: AgeClass.Unknown,
       sex: Sex.Unknown,

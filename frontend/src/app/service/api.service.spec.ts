@@ -8,6 +8,7 @@ import { DataEntry } from '../models/data-entry.model';
 import { PaginatedApiResponse } from '../models/paginated-api-response.model';
 import { RingSize } from '../models/ring.model';
 import { ProjectStats } from '../models/project-stats.model';
+import { Central } from '../models/central.model';
 
 describe('ApiService', () => {
   let service: ApiService;
@@ -57,6 +58,26 @@ describe('ApiService', () => {
     req.flush({ next_number: '0043' });
 
     expect(result).toBe('0043');
+  });
+
+  it('getCentrals searches the /centrals/ lookup by the single search term', () => {
+    const slovak: Central = {
+      id: 'c-skb',
+      scheme_code: 'SKB',
+      name: 'Slowakei Bratislava',
+      country: 'Slowakei',
+    };
+    let result: Central[] | undefined;
+
+    service.getCentrals('Slowak').subscribe((r) => (result = r.results));
+
+    const req = httpMock.expectOne(
+      (r) => r.method === 'GET' && r.url.endsWith('/birds/centrals/'),
+    );
+    expect(req.request.params.get('search')).toBe('Slowak');
+    req.flush({ count: 1, next: null, previous: null, results: [slovak] });
+
+    expect(result).toEqual([slovak]);
   });
 
   it('getNextRingNumber surfaces a null suggestion when there is none', () => {
