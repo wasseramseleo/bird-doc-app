@@ -20,7 +20,7 @@ from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
 
-from landing import seo
+from landing import seo, wissen
 
 # The headless API and the Django admin are not part of the bilingual surface —
 # they carry no language prefix.
@@ -40,6 +40,17 @@ urlpatterns += [
     path("robots.txt", seo.RobotsTxtView.as_view(), name="robots"),
     path("sitemap.xml", sitemap, {"sitemaps": seo.SITEMAPS}, name="sitemap"),
     path("og/fang-karte.svg", seo.FangKarteOgImageView.as_view(), name="og_fang_karte"),
+]
+
+# The /wissen/ reference (PRD #278, issue #280) is deliberately German-only for
+# the DACH audience, so it lives at the apex root OUTSIDE i18n_patterns: there
+# is exactly one canonical URL per page and no `/en/` variant is served.
+urlpatterns += [
+    path(
+        "wissen/ringgroessen/",
+        wissen.RinggroessenTabelleView.as_view(),
+        name="wissen_ringgroessen",
+    ),
 ]
 
 # Public, server-rendered landing served at the apex host (birddoc.eu), kept
