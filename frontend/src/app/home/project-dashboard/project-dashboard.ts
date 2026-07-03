@@ -9,8 +9,10 @@ import {
 } from '@angular/core';
 import {DecimalPipe} from '@angular/common';
 import {HttpErrorResponse} from '@angular/common/http';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {fromEvent} from 'rxjs';
 
 import {ApiService} from '../../service/api.service';
 import {Project} from '../../models/project.model';
@@ -76,6 +78,12 @@ export class ProjectDashboardComponent {
   // Whether the custom-range panel (explicit from/to) is the active selection.
   readonly customActive = computed(() => this.activePreset() === null);
 
+  // Bumped on every `online` event so the load effect re-runs on reconnect.
+  // The offline state promises the stats reload automatically once the field
+  // Beringer is back online (issue #204); this is what keeps that promise
+  // without them having to touch the range picker or switch Projekt.
+  private readonly reloadTrigger = signal(0);
+
   readonly stats = signal<ProjectStats | null>(null);
   readonly loading = signal<boolean>(true);
   // Null while loading or on success; 'offline' | 'error' once a fetch fails.
@@ -98,12 +106,23 @@ export class ProjectDashboardComponent {
   });
 
   constructor() {
+    // Regaining connectivity re-runs the load effect (via reloadTrigger) so the
+    // offline state's promise — "sobald du wieder online bist, laden die
+    // Statistiken automatisch" — is actually kept (issue #204). Same
+    // fromEvent(window,'online') pattern the outbox indicator and
+    // offline-readiness use.
+    fromEvent(window, 'online')
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.reloadTrigger.update((n) => n + 1));
+
     // Reload whenever the current Projekt changes (the nav-bar switcher swaps it
     // without leaving the home) or the selected range changes — one fetch feeds
-    // the card, the bar chart and the line chart together.
+    // the card, the bar chart and the line chart together. Also re-runs when the
+    // browser reconnects (reloadTrigger).
     effect(() => {
       const project = this.project();
       const range = this.range();
+      this.reloadTrigger();
       this.loading.set(true);
       this.failure.set(null);
       this.api.getProjectStats(project.id, range).subscribe({

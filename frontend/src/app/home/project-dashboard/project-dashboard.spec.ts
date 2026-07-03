@@ -231,6 +231,33 @@ describe('ProjectDashboardComponent', () => {
     httpMock.verify();
   });
 
+  it('auto-reloads the stats when the browser comes back online after an offline failure', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // First fetch fails with a connectivity error → offline state.
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .error(new ProgressEvent('network error'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).not.toBeNull();
+
+    // Regaining connectivity fires window 'online' — without touching the range
+    // picker or switching Projekt, the dashboard re-fetches automatically.
+    window.dispatchEvent(new Event('online'));
+    fixture.detectChanges();
+
+    const retry = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    retry.flush(makeStats());
+    fixture.detectChanges();
+
+    // The promised auto-reload landed: offline copy gone, card populated.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.stat-card')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Letzter Tag');
+    httpMock.verify();
+  });
+
   it('shows a generic error state (not the offline state) when the stats fetch fails server-side', () => {
     const { fixture, httpMock } = setup(makeProject());
     fixture.detectChanges();
