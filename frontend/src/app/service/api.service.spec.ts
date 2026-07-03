@@ -124,6 +124,13 @@ describe('ApiService', () => {
         { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
         { species_id: 'sp-2', name: 'Amsel', count: 21 },
       ],
+      series: {
+        days: ['2026-06-26', '2026-07-02'],
+        lines: [
+          { species_id: 'sp-1', name: 'Mönchsgrasmücke', counts: [16, 18] },
+          { species_id: null, name: 'Übrige', counts: [7, 10] },
+        ],
+      },
       last_fangtag: {
         date: '2026-07-02',
         faenge: 38,
@@ -166,6 +173,7 @@ describe('ApiService', () => {
       range: { from: null, to: '2026-07-03', preset: 'week' },
       totals: { faenge: 0, artenzahl: 0 },
       top_species: [],
+      series: { days: [], lines: [] },
       last_fangtag: null,
     } as ProjectStats);
   });

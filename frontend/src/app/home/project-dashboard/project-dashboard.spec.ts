@@ -6,6 +6,7 @@ import { By } from '@angular/platform-browser';
 
 import { ProjectDashboardComponent } from './project-dashboard';
 import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
+import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
 import { Project } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
 
@@ -32,6 +33,14 @@ function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
       { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
       { species_id: 'sp-2', name: 'Amsel', count: 21 },
     ],
+    series: {
+      days: ['2026-06-26', '2026-06-28', '2026-07-02'],
+      lines: [
+        { species_id: 'sp-1', name: 'Mönchsgrasmücke', counts: [10, 12, 12] },
+        { species_id: 'sp-2', name: 'Amsel', counts: [5, 8, 8] },
+        { species_id: null, name: 'Übrige', counts: [2, 3, 4] },
+      ],
+    },
     last_fangtag: {
       date: '2026-07-02',
       faenge: 38,
@@ -92,6 +101,83 @@ describe('ProjectDashboardComponent', () => {
     // The chart is fed the häufigsten Arten as labels + a single count dataset.
     expect(chartData.labels).toEqual(['Mönchsgrasmücke', 'Amsel']);
     expect(chartData.datasets[0].data).toEqual([34, 21]);
+    httpMock.verify();
+  });
+
+  it('feeds the Fänge/Fangtag line chart the sparse days + one line per Art from the series', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const chart = fixture.debugElement.query(By.directive(SpeciesLineChartComponent));
+    expect(chart).not.toBeNull();
+    const chartData = (chart.componentInstance as SpeciesLineChartComponent).chartData();
+    // The X axis is the sparse Fangtage; one dataset per Art plus Übrige.
+    expect(chartData.labels).toEqual(['2026-06-26', '2026-06-28', '2026-07-02']);
+    expect(chartData.datasets.map((d) => d.label)).toEqual(['Mönchsgrasmücke', 'Amsel', 'Übrige']);
+    expect(chartData.datasets[0].data).toEqual([10, 12, 12]);
+    httpMock.verify();
+  });
+
+  it('re-fetches on a range change and drives the card, the bar chart and the line chart together', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // Default range is Letzte Woche (preset=week).
+    const first = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    expect(first.request.params.get('preset')).toBe('week');
+    first.flush(makeStats());
+    fixture.detectChanges();
+
+    // Switch to Letzter Monat via the range selector.
+    const buttons: HTMLButtonElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.range-selector__preset'),
+    );
+    const monthButton = buttons.find((b) => b.textContent?.trim() === 'Letzter Monat');
+    expect(monthButton).toBeTruthy();
+    monthButton!.click();
+    fixture.detectChanges();
+
+    // The range change re-fetches with the new preset.
+    const second = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    expect(second.request.params.get('preset')).toBe('month');
+    second.flush(
+      makeStats({
+        range: { from: '2026-06-03', to: '2026-07-03', preset: 'month' },
+        top_species: [{ species_id: 'sp-9', name: 'Buchfink', count: 99 }],
+        series: {
+          days: ['2026-06-10', '2026-07-01'],
+          lines: [{ species_id: 'sp-9', name: 'Buchfink', counts: [40, 59] }],
+        },
+        last_fangtag: {
+          date: '2026-07-01',
+          faenge: 59,
+          trend: { previous_fangtag: '2026-06-10', previous_faenge: 40, delta: 19 },
+          haeufigste_art: { species_id: 'sp-9', name: 'Buchfink', count: 59 },
+          strongest_hour: { hour: 8, count: 20 },
+        },
+      }),
+    );
+    fixture.detectChanges();
+
+    // The card consumes the new data.
+    expect(fixture.nativeElement.textContent).toContain('2026-07-01');
+    expect(fixture.nativeElement.textContent).toContain('Buchfink');
+
+    // The bar chart consumes the new top_species.
+    const bar = fixture.debugElement.query(By.directive(SpeciesBarChartComponent));
+    expect((bar.componentInstance as SpeciesBarChartComponent).chartData().labels).toEqual([
+      'Buchfink',
+    ]);
+
+    // The line chart consumes the new sparse series.
+    const line = fixture.debugElement.query(By.directive(SpeciesLineChartComponent));
+    const lineData = (line.componentInstance as SpeciesLineChartComponent).chartData();
+    expect(lineData.labels).toEqual(['2026-06-10', '2026-07-01']);
+    expect(lineData.datasets[0].data).toEqual([40, 59]);
+
     httpMock.verify();
   });
 

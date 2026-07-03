@@ -4,6 +4,36 @@
     <p class="dashboard__org">{{ project().organization.name }}</p>
   </header>
 
+  <div class="range-selector" role="group" aria-label="Zeitraum">
+    @for (option of presets; track option.preset) {
+      <button
+        type="button"
+        class="range-selector__preset"
+        [class.range-selector__preset--active]="activePreset() === option.preset"
+        [attr.aria-pressed]="activePreset() === option.preset"
+        (click)="selectPreset(option.preset)">
+        {{ option.label }}
+      </button>
+    }
+
+    <div class="range-selector__custom" [class.range-selector__custom--active]="customActive()">
+      <label>
+        <span class="range-selector__custom-label">Von</span>
+        <input #from type="date" class="range-selector__date" aria-label="Von" />
+      </label>
+      <label>
+        <span class="range-selector__custom-label">Bis</span>
+        <input #to type="date" class="range-selector__date" aria-label="Bis" />
+      </label>
+      <button
+        type="button"
+        class="range-selector__apply"
+        (click)="applyCustomRange(from.value, to.value)">
+        Anwenden
+      </button>
+    </div>
+  </div>
+
   @if (loading()) {
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (error()) {
@@ -60,6 +90,13 @@
       <section class="chart-panel">
         <h2 class="chart-panel__title">Häufigste Arten</h2>
         <app-species-bar-chart [species]="topSpecies()" />
+      </section>
+    }
+
+    @if (hasSeries()) {
+      <section class="chart-panel">
+        <h2 class="chart-panel__title">Fänge pro Fangtag</h2>
+        <app-species-line-chart [series]="series()" />
       </section>
     }
   } @else {

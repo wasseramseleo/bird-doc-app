@@ -112,6 +112,7 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
             "artenzahl": captures.values("species_id").distinct().count(),
         },
         "top_species": _top_species(captures),
+        "series": _series(captures),
         "last_fangtag": _last_fangtag(captures),
     }
     return payload
@@ -140,6 +141,71 @@ def _top_species(captures):
         }
         for row in rows
     ]
+
+
+SERIES_TOP_N = 8
+UEBRIGE_LABEL = "Übrige"
+
+
+def _series(captures):
+    """The per-Fangtag line series for the Top-N-Liniendiagramm (issue #203).
+
+    A **sparse** day axis — only the Vienna Fangtage that actually happened in
+    range, ascending, never a padded continuous calendar — plus one counts-line
+    per Art. The **top-N** Arten by total Fänge in range (``SERIES_TOP_N``, the
+    same ``-count, name`` ordering as ``top_species``) each get their own line;
+    every remaining Art is summed into a single ``Übrige`` line
+    (``species_id: None``). Each line's ``counts`` align position-for-position to
+    ``days``. Ring vernichtet is already excluded from ``captures``, so it never
+    forms a Fangtag or a line; Aves ignota is one Species row and buckets as its
+    own labelled line.
+    """
+    days = list(
+        captures.annotate(day=TruncDate("date_time", tzinfo=VIENNA))
+        .values_list("day", flat=True)
+        .distinct()
+        .order_by("day")
+    )
+    if not days:
+        return {"days": [], "lines": []}
+
+    day_index = {day: i for i, day in enumerate(days)}
+
+    ranked = list(
+        captures.values("species_id", "species__common_name_de")
+        .annotate(c=Count("id"))
+        .order_by("-c", "species__common_name_de")
+    )
+    top = ranked[:SERIES_TOP_N]
+    top_ids = {row["species_id"] for row in top}
+    has_uebrige = len(ranked) > len(top)
+
+    per_species_day = (
+        captures.annotate(day=TruncDate("date_time", tzinfo=VIENNA))
+        .values("species_id", "day")
+        .annotate(c=Count("id"))
+    )
+    top_counts = {row["species_id"]: [0] * len(days) for row in top}
+    uebrige_counts = [0] * len(days)
+    for row in per_species_day:
+        idx = day_index[row["day"]]
+        if row["species_id"] in top_ids:
+            top_counts[row["species_id"]][idx] = row["c"]
+        else:
+            uebrige_counts[idx] += row["c"]
+
+    lines = [
+        {
+            "species_id": str(row["species_id"]),
+            "name": row["species__common_name_de"],
+            "counts": top_counts[row["species_id"]],
+        }
+        for row in top
+    ]
+    if has_uebrige:
+        lines.append({"species_id": None, "name": UEBRIGE_LABEL, "counts": uebrige_counts})
+
+    return {"days": [day.isoformat() for day in days], "lines": lines}
 
 
 def _last_fangtag(captures):
