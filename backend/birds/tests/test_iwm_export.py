@@ -8,7 +8,7 @@ from django.utils.timezone import make_aware
 
 from birds.iwm_export import SHEET_NAME, build_iwm_workbook
 from birds.iwm_import import commit_import
-from birds.models import DataEntry, Project, Ring, RingingStation
+from birds.models import Central, DataEntry, Project, Ring, RingingStation
 
 STATIONS_URL = "/api/birds/ringing-stations/"
 
@@ -318,6 +318,78 @@ def test_sentinel_entry_exports_art_and_blank_bird_columns(
     assert row["Alter"] is None
     assert row["Geschlecht"] is None
     assert row["Bemerkungen"] == "Produktionsfehler"
+
+
+# --- Per-ring Zentrale in the Ring column (issue #230, US 20/21) ---------------
+# The "Ring" column carries the ring's own EURING scheme code — never a hardcoded
+# AUW. Foreign rings (a ausländischer Wiederfang) are the scientifically most
+# valuable rows and were previously misreported as AUW. The "Ringnummer" column
+# stays the plain Größe+Nummer concatenation — exactly what was read off the ring.
+
+
+@pytest.mark.django_db
+def test_domestic_entry_exports_auw_scheme_code_in_ring_column(species, scientist, ringing_station):
+    # A domestic ring resolves to the AUW Zentrale (Ring.save() backfill), so the
+    # Ring column stays byte-identical to today's hardcoded "AUW" output. (US 20)
+    ring = Ring.objects.create(number="604", size=Ring.RingSizes.V)
+    DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Ring"] == "AUW"
+    assert row["Ringnummer"] == "V604"
+
+
+@pytest.mark.django_db
+def test_foreign_wiederfang_exports_its_own_scheme_code_in_ring_column(
+    species, scientist, ringing_station
+):
+    # A ring issued by a foreign Zentrale (here the Slovak Bratislava scheme) is
+    # recaptured domestically. Its Ring column must emit that ring's own scheme
+    # code, not AUW. (US 20)
+    skb = Central.objects.get(scheme_code="SKB")
+    ring = Ring.objects.create(number="00604", size=Ring.RingSizes.V, central=skb)
+    DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        bird_status=DataEntry.BirdStatus.RE_CATCH,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Ring"] == "SKB"
+
+
+@pytest.mark.django_db
+def test_foreign_ring_ringnummer_is_groesse_plus_nummer_verbatim(
+    species, scientist, ringing_station
+):
+    # The Ringnummer cell is the free-text Größe+Nummer concatenation exactly as
+    # recorded — the export writes precisely what was read off the ring, even when
+    # the number carries non-numeric foreign formatting. (US 21)
+    hgb = Central.objects.get(scheme_code="HGB")
+    ring = Ring.objects.create(number="AB-12345", size=Ring.RingSizes.V, central=hgb)
+    DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        bird_status=DataEntry.BirdStatus.RE_CATCH,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Ringnummer"] == "VAB-12345"
 
 
 # --- Export ↔ import round-trip (issue #126) ----------------------------------
