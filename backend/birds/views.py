@@ -82,6 +82,17 @@ STATION_HAS_CAPTURES_MESSAGE = (
 )
 
 
+# Shown when deleting a Beringer is refused because it is a linked Mitglied (PRD
+# #205, issue #208). An active member is never stripped of their Beringer identity
+# from this screen — the Admin removes the account in member management first,
+# which detaches the Beringer, and only then can the (now no-account) Beringer be
+# deleted here.
+LINKED_BERINGER_DELETE_MESSAGE = (
+    "Dieser Beringer ist mit einem Konto verknüpft (Mitglied) und kann hier nicht "
+    "gelöscht werden. Entferne zuerst das Konto in der Mitgliederverwaltung."
+)
+
+
 class SeatLimitReached(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = SEAT_LIMIT_MESSAGE
@@ -395,19 +406,38 @@ class RingingStationViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(OTHER_ORG_MESSAGE)
 
 
-class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
-    """List/retrieve plus authenticated create.
+class ScientistViewSet(
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.ReadOnlyModelViewSet,
+):
+    """List/retrieve plus authenticated create and Admin-only edit + delete.
 
     A Beringer can be created mid-session with no linked account (an unknown
-    Kürzel prompts a "Neuer Beringer" dialog); editing and deletion stay closed.
-    The reserved fallback Beringer (Kürzel ``GELÖSCHT``, which adopts a deleted
-    Beringer's captures) is excluded so no fresh capture is filed against it.
-    See ADR 0001-account-independent-beringer and ADR 0003.
+    Kürzel prompts a "Neuer Beringer" dialog); the quick-add create stays open to
+    any Mitglied (ADR 0001). Editing name + Kürzel is an Admin power (PRD #205,
+    issue #207); deleting a Beringer is likewise Admin-only (issue #208) and
+    reassigns any owned captures to the reserved ``GELÖSCHT`` fallback at the model
+    layer (``DataEntry.staff`` is ``on_delete=SET(get_fallback_beringer)``, ADR
+    0003) rather than destroying capture data. The reserved fallback Beringer
+    (Kürzel ``GELÖSCHT``) is excluded from the list so no fresh capture is filed
+    against it. See ADR 0001-account-independent-beringer and ADR 0003.
     """
 
     serializer_class = ScientistSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["handle", "first_name", "last_name"]
+
+    def get_permissions(self):
+        # Editing and deleting a Beringer are Admin-only (ADR 0005, mirroring the
+        # Stationen management gate); list/retrieve and the quick-add create stay
+        # open to any Mitglied (ADR 0001). The create endpoint is deliberately *not*
+        # gated so the mid-session "Neuer Beringer" quick-add keeps working for a
+        # plain Mitglied.
+        if self.action in ("update", "partial_update", "destroy"):
+            return [IsAuthenticated(), IsOrgAdmin()]
+        return super().get_permissions()
 
     def get_queryset(self):
         """Scope the Beringer autocomplete to the requester's active Organisation
@@ -460,6 +490,41 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
         no tenant to own it, so creation is refused (mirrors the capture
         endpoint)."""
         serializer.save(organization=_require_active_organization(self.request.user))
+
+    def perform_update(self, serializer):
+        # An edit must stay inside the Admin's own Organisation. ``get_queryset``
+        # already scopes to the active Organisation, so a cross-tenant target is a
+        # 404 before this runs; this belt-and-braces check (mirroring
+        # ``RingingStationViewSet``) also refuses moving a Beringer to another
+        # tenant were an ``organization`` ever accepted on the update path.
+        self._reject_foreign_organization(serializer.instance.organization)
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a Beringer, reassigning any owned captures — or refuse a linked
+        Mitglied.
+
+        A linked Mitglied (``user_id`` set) is refused with a clean 409 and a
+        German hint: an active member is never stripped of their Beringer identity
+        from this screen — the Admin removes the account in member management
+        first. An unlinked Beringer is hard-deleted; the model-layer
+        ``on_delete=SET(get_fallback_beringer)`` reassigns any captures it owns to
+        the reserved ``GELÖSCHT`` fallback (ADR 0003), so a normal
+        ``instance.delete()`` never loses capture data. ``get_object`` is scoped to
+        the active Organisation, so a cross-tenant target is a 404 before this runs;
+        the Admin gate (``get_permissions``) makes a non-Admin a 403."""
+        instance = self.get_object()
+        if instance.user_id is not None:
+            return Response(
+                {"detail": LINKED_BERINGER_DELETE_MESSAGE},
+                status=status.HTTP_409_CONFLICT,
+            )
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _reject_foreign_organization(self, organization):
+        if organization != active_organization(self.request.user):
+            raise PermissionDenied(OTHER_ORG_MESSAGE)
 
 
 class OrganizationViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):

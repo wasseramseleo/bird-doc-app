@@ -486,6 +486,31 @@ describe('NavBar', () => {
       .toBeFalse();
   });
 
+  it('shows "Beringer verwalten" in the user menu for an org admin, linking to /beringer', () => {
+    const ctx = setup();
+    signIn(ctx, false, 'admin');
+    activate(ctx, makeProject());
+
+    const items = openUserMenu(ctx);
+    const beringerItem = items.find((i) => (i.textContent ?? '').includes('Beringer verwalten')) as
+      | HTMLAnchorElement
+      | undefined;
+
+    expect(beringerItem).withContext('Beringer verwalten present for admin').toBeTruthy();
+    expect(beringerItem!.getAttribute('href')).toBe('/beringer');
+  });
+
+  it('never shows "Beringer verwalten" for a plain Mitglied', () => {
+    const ctx = setup();
+    signIn(ctx, false, 'mitglied');
+    activate(ctx, makeProject());
+
+    const labels = openUserMenu(ctx).map((i) => i.textContent ?? '');
+    expect(labels.some((t) => t.includes('Beringer verwalten')))
+      .withContext('no Beringer verwalten for Mitglied')
+      .toBeFalse();
+  });
+
   it('collapses "Heutige Session" into the user dropdown (linking to /heute), not the toolbar', () => {
     const ctx = setup();
     signIn(ctx, false);

@@ -2,13 +2,16 @@
 
 import {Injectable, inject} from '@angular/core';
 import {HttpClient, HttpParams, HttpResponse} from '@angular/common/http';
-import {Observable} from 'rxjs';
+import {EMPTY, Observable} from 'rxjs';
+import {expand, reduce} from 'rxjs/operators';
 import {DataEntry} from '../models/data-entry.model';
 import {Species} from '../models/species.model';
 import {RingSize} from '../models/ring.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
+import {Beringer} from '../models/beringer.model';
+import {Mitgliedschaft} from '../models/mitgliedschaft.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {ImportPreview, ImportResult} from '../models/iwm-import.model';
@@ -133,6 +136,72 @@ export class ApiService {
 
   createScientist(payload: ScientistCreatePayload): Observable<Scientist> {
     return this.http.post<Scientist>(`${this.apiUrl}/scientists/`, payload);
+  }
+
+  // Admin-only edit of a Beringer's name + Kürzel (PRD #205). A duplicate Kürzel
+  // comes back as a clean 400 (the globally-unique handle), which the caller
+  // surfaces as the server's German message.
+  updateScientist(id: string, payload: Partial<ScientistCreatePayload>): Observable<Scientist> {
+    return this.http.patch<Scientist>(`${this.apiUrl}/scientists/${id}/`, payload);
+  }
+
+  // The Org-Admin "Beringer verwalten" list (PRD #205). Same /scientists/
+  // endpoint as the autocomplete, but the server returns the Admin-aware shape
+  // (Mitglied flag + linked-account fields) for an Admin request.
+  getBeringer(searchTerm?: string): Observable<PaginatedApiResponse<Beringer>> {
+    let params = new HttpParams();
+    if (searchTerm) {
+      params = params.set('search', searchTerm);
+    }
+    return this.http.get<PaginatedApiResponse<Beringer>>(`${this.apiUrl}/scientists/`, {params});
+  }
+
+  // The Organisation's seats (Mitgliedschaften), Admin-only. Used by the Beringer
+  // verwalten link picker to offer the eligible seats — those whose `handle` is
+  // null, i.e. whose account is not yet a Beringer (PRD #205, issue #209).
+  getMitgliedschaften(): Observable<PaginatedApiResponse<Mitgliedschaft>> {
+    return this.http.get<PaginatedApiResponse<Mitgliedschaft>>(`${this.apiUrl}/mitgliedschaften/`);
+  }
+
+  // The COMPLETE set of the Organisation's seats, following DRF's `next` link
+  // through every page (the collection is paginated ~10/page). The "Mitglieder
+  // ohne Beringer-Eintrag" gap panel must list *exactly* all handle==null seats,
+  // so a first-page read would miss gaps beyond page one (PRD #205, issue #210).
+  getAllMitgliedschaften(): Observable<Mitgliedschaft[]> {
+    return this.http
+      .get<PaginatedApiResponse<Mitgliedschaft>>(`${this.apiUrl}/mitgliedschaften/`)
+      .pipe(
+        expand((res) =>
+          res.next ? this.http.get<PaginatedApiResponse<Mitgliedschaft>>(res.next) : EMPTY,
+        ),
+        reduce((acc, res) => acc.concat(res.results), [] as Mitgliedschaft[]),
+      );
+  }
+
+  // Link a no-account Beringer to a seat, promoting it to a Mitglied — addressed
+  // BY SEAT via the write-only, Admin-only `mitgliedschaft_id` on the Beringer
+  // PATCH (PRD #205, issue #209).
+  linkScientistToSeat(id: string, mitgliedschaftId: string): Observable<Beringer> {
+    return this.http.patch<Beringer>(`${this.apiUrl}/scientists/${id}/`, {
+      mitgliedschaft_id: mitgliedschaftId,
+    });
+  }
+
+  // Unlink (detach) a linked Beringer, demoting it back to a no-account Beringer.
+  // `mitgliedschaft_id: null` clears `Scientist.user`; the backend refuses (400)
+  // if the Beringer already owns captures (freeze-once-captures).
+  unlinkScientist(id: string): Observable<Beringer> {
+    return this.http.patch<Beringer>(`${this.apiUrl}/scientists/${id}/`, {
+      mitgliedschaft_id: null,
+    });
+  }
+
+  // Delete a Beringer (PRD #205, issue #208). A no-account Beringer is hard-deleted
+  // (204), reassigning any owned Fänge to the reserved „Gelöschter Nutzer" at the
+  // model layer; a linked Mitglied is refused server-side (409) — the delete is
+  // disabled in the UI for those. Mirrors deleteRingingStation.
+  deleteScientist(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/scientists/${id}/`);
   }
 
   getOrganizations(): Observable<PaginatedApiResponse<Organization>> {

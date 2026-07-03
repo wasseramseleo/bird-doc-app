@@ -1,0 +1,113 @@
+<section class="beringer">
+  <header class="beringer__header">
+    <div class="beringer__title">
+      <h1>Beringer verwalten</h1>
+      <p class="beringer__subhead">
+        Alle Beringer deiner Organisation. Ein Beringer ist entweder mit einem Konto verknüpft
+        (Mitglied) oder ohne Konto.
+      </p>
+    </div>
+    <button mat-flat-button color="primary" (click)="openCreateDialog()">
+      <mat-icon>add</mat-icon>
+      Neuer Beringer
+    </button>
+  </header>
+
+  @if (!gapLoading() && sortedGapSeats().length > 0) {
+    <section class="gap-panel" aria-label="Mitglieder ohne Beringer-Eintrag">
+      <div class="gap-panel__head">
+        <h2 class="gap-panel__title">Mitglieder ohne Beringer-Eintrag</h2>
+        <p class="gap-panel__subhead">
+          Diese Konten deiner Organisation haben noch keinen Beringer. Ordne jedem einen Beringer zu.
+        </p>
+      </div>
+      <div class="gap-panel__list">
+        @for (seat of sortedGapSeats(); track seat.id) {
+          <div class="gap-card">
+            <div class="gap-card__main">
+              <span class="gap-card__name">{{ seat.username }}</span>
+              <span class="gap-card__email">{{ seat.email }}</span>
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              color="primary"
+              (click)="openAssignDialog(seat)">
+              <mat-icon>person_add</mat-icon>
+              Beringer zuordnen
+            </button>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  @if (loading()) {
+    <mat-spinner diameter="32"></mat-spinner>
+  } @else if (sortedBeringer().length === 0) {
+    <div class="beringer__empty">
+      <p>Es sind noch keine Beringer angelegt.</p>
+    </div>
+  } @else {
+    <div class="beringer__list">
+      @for (beringer of sortedBeringer(); track beringer.id) {
+        <div class="beringer-card">
+          <div class="beringer-card__main">
+            <div class="beringer-card__heading">
+              <span class="beringer-card__name">{{ beringer.full_name }}</span>
+              @if (isMitglied(beringer)) {
+                <span class="beringer-card__badge beringer-card__badge--member">Mitglied</span>
+              } @else {
+                <span class="beringer-card__badge beringer-card__badge--no-account">Ohne Konto</span>
+              }
+            </div>
+            <span class="beringer-card__handle">{{ beringer.handle }}</span>
+          </div>
+          <div class="beringer-card__actions">
+            <button
+              mat-icon-button
+              type="button"
+              aria-label="Beringer bearbeiten"
+              title="Bearbeiten"
+              (click)="openEditDialog(beringer)">
+              <mat-icon>edit</mat-icon>
+            </button>
+            @if (isMitglied(beringer)) {
+              <button
+                mat-icon-button
+                type="button"
+                aria-label="Konto-Verknüpfung aufheben"
+                title="Konto-Verknüpfung aufheben"
+                (click)="openUnlinkDialog(beringer)">
+                <mat-icon>link_off</mat-icon>
+              </button>
+            } @else {
+              <button
+                mat-icon-button
+                type="button"
+                aria-label="Mit Konto verknüpfen"
+                title="Mit Konto verknüpfen"
+                (click)="openLinkDialog(beringer)">
+                <mat-icon>link</mat-icon>
+              </button>
+            }
+            <button
+              mat-icon-button
+              type="button"
+              color="warn"
+              aria-label="Beringer löschen"
+              [disabled]="isMitglied(beringer)"
+              [title]="
+                isMitglied(beringer)
+                  ? 'Entferne zuerst das Konto in der Mitgliederverwaltung, um diesen Beringer zu löschen.'
+                  : 'Löschen'
+              "
+              (click)="openDeleteDialog(beringer)">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</section>

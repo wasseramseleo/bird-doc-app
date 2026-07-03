@@ -4,6 +4,13 @@ status: accepted
 
 # Beringer deletion reassigns captures to a reserved fallback
 
+> **Amended by [ADR 0016](0016-org-admin-beringer-management.md).** The
+> consequence below — that "the app UI offers no delete affordance … and must not
+> gain one" and that `/scientists/` stays create/read-only — is superseded: Org
+> Admins (Rolle = ADMIN) now add, edit and delete Beringer in-app. The
+> model-layer reassignment decided here is unchanged; it is exactly what the new
+> in-app delete relies on, and the Django admin remains the ultimate authority.
+
 ## Context
 
 A Beringer ([ADR 0001](0001-account-independent-beringer.md)) is a first-class,

@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from .capture_service import (
     BIRD_DATA_FIELDS,
@@ -20,6 +21,7 @@ from .models import (
     Species,
     SpeciesList,
 )
+from .permissions import is_org_admin
 from .station_handle import derive_station_handle
 from .tenancy import active_organization
 
@@ -131,12 +133,179 @@ class RingingStationSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+# Shown when an Admin tries to detach or re-point a Beringer that already owns
+# captures — the freeze-once-captures invariant keeps a capture history
+# attributable to a stable Beringer identity (PRD #205, issue #209).
+FROZEN_BERINGER_MESSAGE = _(
+    "Dieser Beringer hat bereits Fänge erfasst und kann daher nicht mehr von "
+    "seinem Konto getrennt oder einem anderen Konto zugeordnet werden."
+)
+
+# Shown when the seat named by ``mitgliedschaft_id`` belongs to another
+# Organisation — linking never crosses the tenant boundary (ADR 0005).
+CROSS_TENANT_SEAT_MESSAGE = _("Die Mitgliedschaft gehört nicht zu deiner Organisation.")
+
+# Shown when the seat's account is already a Beringer — the OneToOne
+# ``Scientist.user`` must be free to attach.
+SEAT_ALREADY_LINKED_MESSAGE = _("Dieses Konto ist bereits mit einem Beringer verknüpft.")
+
+
 class ScientistSerializer(serializers.ModelSerializer):
+    """A Beringer, serialized Admin-aware (PRD #205, issue #206).
+
+    The base shape is the lean, leak-free autocomplete shape every Mitglied may
+    see. **Only** for an Admin request — the requester is an Admin of their
+    active Organisation, resolved from ``self.context['request']`` — are the
+    account fields added: an ``is_member`` flag and, for an account-linked
+    Beringer, an ``account`` block with the linked account's display name, email
+    and Rolle. Any non-Admin request, and crucially any use with **no request
+    context at all** (the offline reference bundle and mid-session autocomplete
+    both instantiate the serializer without a request), keeps the lean shape, so
+    no member data ever leaks. The account block is null-safe when the Beringer
+    has no account, and its Rolle is read in the actor's *active* Organisation so
+    the derivation never queries — or leaks — another tenant's data (ADR 0005).
+    """
+
     full_name = serializers.CharField(read_only=True)
+    # The Kürzel is user-facing and editable (unlike the server-owned Station
+    # handle) because it flows into the IWM export. It is globally ``unique``
+    # (models.py), so a deliberate duplicate on edit — or a cross-tenant create —
+    # must surface as a clean German 400, never an IntegrityError 500. Declaring
+    # the field with an explicit ``UniqueValidator`` (which excludes the current
+    # instance on update) gives that controlled message; ``required=False`` /
+    # ``allow_blank=True`` mirror the blank-able model field, so an omitted Kürzel
+    # on the quick-add create is still derived server-side (idempotency intact).
+    handle = serializers.CharField(
+        max_length=11,
+        required=False,
+        allow_blank=True,
+        validators=[
+            UniqueValidator(
+                queryset=Scientist.objects.all(),
+                message=_("Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel."),
+            )
+        ],
+    )
+
+    # The seat link, addressed BY SEAT (PRD #205, issue #209): a Mitgliedschaft id
+    # attaches this Beringer to that seat's account (``Scientist.user`` becomes
+    # ``mitgliedschaft.user``), ``null`` detaches it. Write-only and Admin-only —
+    # only the IsOrgAdmin-gated PATCH honours it; the open quick-add create drops
+    # it (``create`` below), keeping the create endpoint link-free. Resolved and
+    # validated in ``update`` (tenant boundary, a free OneToOne, and the
+    # freeze-once-captures invariant), so the field itself carries no ``source``:
+    # it never maps to a model attribute, it is popped and applied by hand.
+    mitgliedschaft_id = serializers.PrimaryKeyRelatedField(
+        queryset=Mitgliedschaft.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+
+    # Sentinel telling "field omitted" (leave the link untouched) apart from an
+    # explicit ``null`` (detach) after the field is popped from ``validated_data``.
+    _SEAT_UNSET = object()
 
     class Meta:
         model = Scientist
-        fields = ["id", "handle", "first_name", "last_name", "full_name"]
+        fields = ["id", "handle", "first_name", "last_name", "full_name", "mitgliedschaft_id"]
+
+    def create(self, validated_data):
+        # The quick-add create is link-free (ADR 0001): a seat is only ever
+        # attached through the Admin PATCH, so a ``mitgliedschaft_id`` that rode in
+        # on the create payload is dropped here, keeping the idempotent quick-add a
+        # pure no-account Beringer create.
+        validated_data.pop("mitgliedschaft_id", None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Resolve+validate the seat link in one place (PRD #205, issue #209).
+        seat = validated_data.pop("mitgliedschaft_id", self._SEAT_UNSET)
+        if seat is not self._SEAT_UNSET:
+            self._apply_seat_link(instance, seat)
+        return super().update(instance, validated_data)
+
+    def _apply_seat_link(self, instance, mitgliedschaft):
+        """Attach (``mitgliedschaft`` given) or detach (``None``) the Beringer's
+        account, enforcing the freeze-once-captures invariant and, on attach, the
+        tenant boundary and a free OneToOne. Sets ``instance.user``; the caller's
+        ``super().update`` persists it."""
+        # Freeze-once-captures: an already-linked Beringer that owns captures may be
+        # neither detached nor re-pointed. Attaching a currently-unlinked Beringer
+        # is always allowed, even when it owns captures (the primary workflow), so
+        # the freeze only guards a change to an *existing* link.
+        if instance.user_id is not None and self._owns_captures(instance):
+            raise serializers.ValidationError({"mitgliedschaft_id": FROZEN_BERINGER_MESSAGE})
+        if mitgliedschaft is None:
+            instance.user = None
+            return
+        self._reject_ineligible_seat(instance, mitgliedschaft)
+        instance.user = mitgliedschaft.user
+
+    def _reject_ineligible_seat(self, instance, mitgliedschaft):
+        """Refuse a cross-tenant seat, or one whose account is already a Beringer."""
+        request = self.context.get("request")
+        organization = active_organization(request.user) if request is not None else None
+        if organization is None or mitgliedschaft.organization_id != organization.pk:
+            raise serializers.ValidationError({"mitgliedschaft_id": CROSS_TENANT_SEAT_MESSAGE})
+        already_linked = (
+            Scientist.objects.filter(user=mitgliedschaft.user).exclude(pk=instance.pk).exists()
+        )
+        if already_linked:
+            raise serializers.ValidationError({"mitgliedschaft_id": SEAT_ALREADY_LINKED_MESSAGE})
+
+    @staticmethod
+    def _owns_captures(instance):
+        return DataEntry.objects.filter(staff=instance).exists()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        organization = self._admin_organization()
+        if organization is not None:
+            data["is_member"] = instance.user_id is not None
+            data["account"] = self._account_block(instance, organization)
+            # The count of Fänge this Beringer owns, so the Admin's delete
+            # confirmation can name how many captures a delete reassigns to the
+            # reserved "Gelöschter Nutzer" (PRD #205, issue #208). Admin-only —
+            # it rides the same block as ``is_member``/``account`` and so never
+            # appears on the lean, context-free autocomplete shape.
+            data["capture_count"] = DataEntry.objects.filter(staff=instance).count()
+        return data
+
+    def _admin_organization(self):
+        """The actor's active Organisation when this is an Admin request, else
+        ``None``. Memoised so a ``many=True`` list resolves it once, not per row.
+        """
+        if not hasattr(self, "_admin_org"):
+            self._admin_org = self._resolve_admin_organization()
+        return self._admin_org
+
+    def _resolve_admin_organization(self):
+        request = self.context.get("request")
+        if request is None:
+            return None
+        user = getattr(request, "user", None)
+        if user is None or not is_org_admin(user):
+            return None
+        return active_organization(user)
+
+    def _account_block(self, instance, organization):
+        """The linked account's display name / email / Rolle, or ``None`` when the
+        Beringer has no account. The Rolle is scoped to ``organization`` (the
+        actor's active Organisation) so no other tenant's Rolle is ever read."""
+        user = instance.user
+        if user is None:
+            return None
+        rolle = (
+            Mitgliedschaft.objects.filter(user=user, organization=organization)
+            .values_list("rolle", flat=True)
+            .first()
+        )
+        return {
+            "display_name": user.get_full_name() or user.username,
+            "email": user.email,
+            "rolle": rolle,
+        }
 
 
 class ProjectSerializer(serializers.ModelSerializer):

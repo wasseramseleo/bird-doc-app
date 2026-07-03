@@ -1,0 +1,36 @@
+<h2 mat-dialog-title>Beringer mit Konto verknüpfen</h2>
+<mat-dialog-content>
+  <p class="seat-picker__lead">
+    „{{ data.beringerName }}“ einem Konto zuordnen. Danach ist dieser Beringer ein Mitglied und kann
+    sich anmelden.
+  </p>
+
+  @if (data.seats.length === 0) {
+    <p class="seat-picker__empty">
+      Es gibt keine freien Konten in deiner Organisation, die noch kein Beringer sind.
+    </p>
+  } @else {
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Konto</mat-label>
+      <mat-select [formControl]="seatId">
+        @for (seat of data.seats; track seat.id) {
+          <mat-option [value]="seat.id">{{ seat.username }} ({{ seat.email }})</mat-option>
+        }
+      </mat-select>
+      @if (seatId.hasError('required') && seatId.touched) {
+        <mat-error>Bitte wähle ein Konto.</mat-error>
+      }
+    </mat-form-field>
+  }
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Abbrechen</button>
+  <button
+    mat-flat-button
+    color="primary"
+    type="button"
+    [disabled]="data.seats.length === 0"
+    (click)="submit()">
+    Verknüpfen
+  </button>
+</mat-dialog-actions>

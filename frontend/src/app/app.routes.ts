@@ -34,5 +34,10 @@ export const routes: Routes = [
     loadComponent: () => import('./stationen/stationen').then((m) => m.StationenComponent),
     canActivate: [authGuard, orgAdminGuard],
   },
+  {
+    path: 'beringer',
+    loadComponent: () => import('./beringer/beringer').then((m) => m.BeringerComponent),
+    canActivate: [authGuard, orgAdminGuard],
+  },
   {path: '**', redirectTo: ''},
 ];

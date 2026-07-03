@@ -253,6 +253,28 @@ describe('ApiService', () => {
     req.flush(null, { status: 204, statusText: 'No Content' });
   });
 
+  it('getAllMitgliedschaften follows the DRF next link across every page', () => {
+    let result: { id: string }[] | undefined;
+
+    service.getAllMitgliedschaften().subscribe((r) => (result = r as { id: string }[]));
+
+    const first = httpMock.expectOne(
+      (r) => r.method === 'GET' && r.url.endsWith('/birds/mitgliedschaften/'),
+    );
+    first.flush({
+      count: 2,
+      next: 'http://localhost:8000/api/birds/mitgliedschaften/?page=2',
+      previous: null,
+      results: [{ id: 'a' }],
+    });
+
+    const second = httpMock.expectOne((r) => r.method === 'GET' && r.urlWithParams.includes('page=2'));
+    second.flush({ count: 2, next: null, previous: null, results: [{ id: 'b' }] });
+
+    // The pages are concatenated into one flat list — nothing beyond page one is lost.
+    expect((result ?? []).map((s) => s.id)).toEqual(['a', 'b']);
+  });
+
   it('sends feedback via POST /api/feedback/ with the message (not under /birds)', () => {
     service.sendFeedback('Die Ringgröße lässt sich nicht speichern.').subscribe();
 

@@ -209,10 +209,38 @@ def scientist_b(user_b, organization_b):
 
 
 @pytest.fixture
+def no_account_beringer(organization):
+    """A no-account Beringer owned by tenant A (a selectable name, not an actor).
+
+    The tenant-A mirror of ``no_account_beringer_b`` — an org-owned Beringer with
+    no linked account, useful when a test needs an editable target in tenant A
+    without an account or Mitgliedschaft in the way.
+    """
+    return Scientist.objects.create(
+        first_name="Nina", last_name="Ohnekonto", organization=organization
+    )
+
+
+@pytest.fixture
 def no_account_beringer_b(organization_b):
     """A no-account Beringer owned by tenant B (a selectable name, not an actor)."""
     return Scientist.objects.create(
         first_name="Berta", last_name="Helfer", organization=organization_b
+    )
+
+
+@pytest.fixture
+def gap_seat(organization):
+    """A seat (Mitgliedschaft) in tenant A whose account has **no** Scientist yet.
+
+    The 'field helper who later got an account' gap (PRD #205, issue #209): an
+    account holds a Mitgliedsplatz in the Organisation but is not (yet) a Beringer,
+    so an Admin can link an existing no-account Beringer to it. Its user is a plain
+    Mitglied with no ``Scientist`` row — the free end of the OneToOne to attach to.
+    """
+    seat_user = User.objects.create_user(username="gap", password="hunter2-very-strong")
+    return Mitgliedschaft.objects.create(
+        user=seat_user, organization=organization, rolle=Mitgliedschaft.Rolle.MITGLIED
     )
 
 
