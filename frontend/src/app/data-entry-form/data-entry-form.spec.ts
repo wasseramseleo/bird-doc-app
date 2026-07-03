@@ -3025,33 +3025,20 @@ describe('DataEntryFormComponent', () => {
       expect(warningEl()).toBeNull();
     });
 
-    it('opens ONE aggregated confirm-dialog on submit when a warning is active, and writes on confirm', async () => {
+    // #266: the save-time gate is gone — onSubmit opens NO plausibility dialog and
+    // writes directly even with an active Warnung (the modal already fired on blur).
+    it('opens no plausibility dialog on submit and writes directly with an active warning', async () => {
       const httpMock = await setup();
       fillValid();
       component.entryForm.get('weight_gram')!.setValue(25);
-      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
 
       component.onSubmit();
 
-      expect(dialogMock.open).toHaveBeenCalledTimes(1);
-      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
-      expect(data.message).toContain('Gewicht 25 g liegt außerhalb');
+      expect(dialogMock.open).not.toHaveBeenCalled();
       const post = httpMock.expectOne(
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
       post.flush({});
-    });
-
-    it('returns to the form without writing when the confirm-dialog is cancelled', async () => {
-      const httpMock = await setup();
-      fillValid();
-      component.entryForm.get('weight_gram')!.setValue(25);
-      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
-
-      component.onSubmit();
-
-      expect(dialogMock.open).toHaveBeenCalledTimes(1);
-      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
     });
 
     it('opens no dialog and writes directly when no warning is active', async () => {
@@ -3086,7 +3073,7 @@ describe('DataEntryFormComponent', () => {
       post.flush({});
     });
 
-    it('applies the same warning + acknowledgment on submit in edit mode', async () => {
+    it('opens no plausibility dialog on submit in edit mode and writes directly (gate removed)', async () => {
       const routeStub = {
         snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '42' : null) } },
       };
@@ -3132,10 +3119,9 @@ describe('DataEntryFormComponent', () => {
         } as unknown as DataEntry);
       await settle();
 
-      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
       f.componentInstance.onSubmit();
 
-      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(dialogMock.open).not.toHaveBeenCalled();
       const put = httpMock.expectOne(
         (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
       );
@@ -3239,7 +3225,9 @@ describe('DataEntryFormComponent', () => {
       });
     }
 
-    it('aggregates every out-of-range measurement into ONE confirm-dialog on submit (not one per field)', async () => {
+    // #266: with several fields out of range the save is still never gated —
+    // onSubmit opens no plausibility dialog and writes directly.
+    it('opens no plausibility dialog on submit and writes directly even with several out-of-range measurements', async () => {
       const httpMock = await setup();
       fillValid();
       component.entryForm.patchValue({
@@ -3250,29 +3238,10 @@ describe('DataEntryFormComponent', () => {
         notch_f2: 12,
         inner_foot: 20,
       });
-      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
 
       component.onSubmit();
 
-      // A single dialog listing all six discrepancies — never one dialog per field.
-      expect(dialogMock.open).toHaveBeenCalledTimes(1);
-      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
-      expect(data.message).toContain('Gewicht 25 g liegt außerhalb');
-      expect(data.message).toContain(
-        'Federlänge 65 mm liegt außerhalb des erwarteten Bereichs 50,1–57,9 mm (Zaunkönig)',
-      );
-      expect(data.message).toContain(
-        'Flügellänge 90 mm liegt außerhalb des erwarteten Bereichs 68,1–77,9 mm (Zaunkönig)',
-      );
-      expect(data.message).toContain(
-        'Tarsus 25 mm liegt außerhalb des erwarteten Bereichs 17,8–20,2 mm (Zaunkönig)',
-      );
-      expect(data.message).toContain(
-        'Kerbe F2 12 mm liegt außerhalb des erwarteten Bereichs 6,6–9,4 mm (Zaunkönig)',
-      );
-      expect(data.message).toContain(
-        'Innenfuß 20 mm liegt außerhalb des erwarteten Bereichs 13,4–16,6 mm (Zaunkönig)',
-      );
+      expect(dialogMock.open).not.toHaveBeenCalled();
       const post = httpMock.expectOne(
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
@@ -3539,17 +3508,16 @@ describe('DataEntryFormComponent', () => {
       expect(wingIcon()).toBeNull();
     });
 
-    it('includes the quotient discrepancy in the aggregated save-time confirm-dialog and writes on confirm', async () => {
+    // #266: the save-time gate is gone — an active Quotient warning does not gate
+    // the save; onSubmit opens no plausibility dialog and writes directly.
+    it('opens no plausibility dialog on submit and writes directly with an active Quotient warning', async () => {
       const httpMock = await setup();
       fillValid();
       component.entryForm.patchValue({ feather_span: 60, wing_span: 70 });
-      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
 
       component.onSubmit();
 
-      expect(dialogMock.open).toHaveBeenCalledTimes(1);
-      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
-      expect(data.message).toContain(quotientMessage);
+      expect(dialogMock.open).not.toHaveBeenCalled();
       const post = httpMock.expectOne(
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
@@ -3619,11 +3587,11 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
-  // Issue #249: the two categorical-flag rules surfaced in the capture form. A
-  // determined Geschlecht against a not-sexable Artennorm, and a Handschwingen-
-  // mauser on a diesjährigen Vogel against a no-dj-moult Artennorm, each raise an
-  // inline Plausibilitätswarnung under their own field (`sex` / `hand_wing`) and
-  // join the same aggregated save-time confirm-dialog. The flag selects settle on
+  // Issue #249 (UX per #266): the two categorical-flag rules surfaced in the
+  // capture form. A determined Geschlecht against a not-sexable Artennorm, and a
+  // Handschwingenmauser on a diesjährigen Vogel against a no-dj-moult Artennorm,
+  // each mark a quiet suffix icon under their own field (`sex` / `hand_wing`) — the
+  // #266 UX — and the save is never gated. The flag selects settle on
   // selectionChange (onCategoricalChange), not an input blur. Create and edit mode.
   describe('kategorische Flag-Plausibilitätswarnungen (Artennorm, #249)', () => {
     // A Zaunkönig norm with ONLY the two categorical flags armed (all seven
@@ -3739,39 +3707,38 @@ describe('DataEntryFormComponent', () => {
       component.selectedSpecies.set(zaunkoenig);
     }
 
-    const sexWarningEl = () =>
+    const sexIcon = () =>
       fixture.nativeElement.querySelector(
-        '[data-testid="plausibility-sex-warning"]',
+        '[data-testid="plausibility-sex-icon"]',
       ) as HTMLElement | null;
-    const handWingWarningEl = () =>
+    const handWingIcon = () =>
       fixture.nativeElement.querySelector(
-        '[data-testid="plausibility-hand_wing-warning"]',
+        '[data-testid="plausibility-hand_wing-icon"]',
       ) as HTMLElement | null;
 
-    it('renders the inline Geschlecht warning when a determined sex is picked against a not-sexable norm', async () => {
+    it('marks the Geschlecht suffix icon when a determined sex is picked against a not-sexable norm', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
       component.entryForm.get('sex')!.setValue(Sex.Male);
       component.onCategoricalChange();
       fixture.detectChanges();
 
-      const el = sexWarningEl();
+      const el = sexIcon();
       expect(el).not.toBeNull();
-      expect(el!.getAttribute('role')).toBe('alert');
-      expect(el!.textContent).toContain(sexMessage);
+      expect(el!.getAttribute('title')).toContain(sexMessage);
     });
 
-    it('renders no inline Geschlecht warning for Unbekannt (fires on a claim, not an absence)', async () => {
+    it('marks no Geschlecht suffix icon for Unbekannt (fires on a claim, not an absence)', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
       component.entryForm.get('sex')!.setValue(Sex.Unknown);
       component.onCategoricalChange();
       fixture.detectChanges();
 
-      expect(sexWarningEl()).toBeNull();
+      expect(sexIcon()).toBeNull();
     });
 
-    it('renders the inline Handschwingenmauser warning for a diesjährigen Vogel with moult present', async () => {
+    it('marks the Handschwingenmauser suffix icon for a diesjährigen Vogel with moult present', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
       component.entryForm.patchValue({
@@ -3781,13 +3748,12 @@ describe('DataEntryFormComponent', () => {
       component.onCategoricalChange();
       fixture.detectChanges();
 
-      const el = handWingWarningEl();
+      const el = handWingIcon();
       expect(el).not.toBeNull();
-      expect(el!.getAttribute('role')).toBe('alert');
-      expect(el!.textContent).toContain(handWingMessage);
+      expect(el!.getAttribute('title')).toContain(handWingMessage);
     });
 
-    it('renders no inline Handschwingenmauser warning when the bird is not diesjährig', async () => {
+    it('marks no Handschwingenmauser suffix icon when the bird is not diesjährig', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
       component.entryForm.patchValue({
@@ -3797,10 +3763,10 @@ describe('DataEntryFormComponent', () => {
       component.onCategoricalChange();
       fixture.detectChanges();
 
-      expect(handWingWarningEl()).toBeNull();
+      expect(handWingIcon()).toBeNull();
     });
 
-    it('renders neither flag warning when the selected Art carries no Artennorm', async () => {
+    it('marks neither flag suffix icon when the selected Art carries no Artennorm', async () => {
       await setup();
       component.selectedSpecies.set({ ...zaunkoenig, id: 's2', common_name_de: 'Kohlmeise' });
       component.entryForm.patchValue({
@@ -3811,11 +3777,12 @@ describe('DataEntryFormComponent', () => {
       component.onCategoricalChange();
       fixture.detectChanges();
 
-      expect(sexWarningEl()).toBeNull();
-      expect(handWingWarningEl()).toBeNull();
+      expect(sexIcon()).toBeNull();
+      expect(handWingIcon()).toBeNull();
     });
 
-    it('includes BOTH flag discrepancies in ONE aggregated save-time confirm-dialog and writes on confirm', async () => {
+    // #266: the save-time gate is gone — active flag warnings do not gate the save.
+    it('opens no plausibility dialog on submit and writes directly with both flag warnings active', async () => {
       const httpMock = await setup();
       fillValid();
       component.entryForm.patchValue({
@@ -3823,21 +3790,17 @@ describe('DataEntryFormComponent', () => {
         age_class: AgeClass.ThisYear,
         hand_wing: HandWingMoult.AtLeastOne,
       });
-      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
 
       component.onSubmit();
 
-      expect(dialogMock.open).toHaveBeenCalledTimes(1);
-      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
-      expect(data.message).toContain(sexMessage);
-      expect(data.message).toContain(handWingMessage);
+      expect(dialogMock.open).not.toHaveBeenCalled();
       const post = httpMock.expectOne(
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
       post.flush({});
     });
 
-    it('surfaces both inline flag warnings in edit mode too', async () => {
+    it('marks both flag suffix icons in edit mode too', async () => {
       const routeStub = {
         snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '99' : null) } },
       };
@@ -3888,15 +3851,15 @@ describe('DataEntryFormComponent', () => {
       f.detectChanges();
 
       const sexWarning = f.nativeElement.querySelector(
-        '[data-testid="plausibility-sex-warning"]',
+        '[data-testid="plausibility-sex-icon"]',
       ) as HTMLElement | null;
       const handWingWarning = f.nativeElement.querySelector(
-        '[data-testid="plausibility-hand_wing-warning"]',
+        '[data-testid="plausibility-hand_wing-icon"]',
       ) as HTMLElement | null;
       expect(sexWarning).not.toBeNull();
-      expect(sexWarning!.textContent).toContain(sexMessage);
+      expect(sexWarning!.getAttribute('title')).toContain(sexMessage);
       expect(handWingWarning).not.toBeNull();
-      expect(handWingWarning!.textContent).toContain(handWingMessage);
+      expect(handWingWarning!.getAttribute('title')).toContain(handWingMessage);
     });
   });
 
@@ -4211,6 +4174,324 @@ describe('DataEntryFormComponent', () => {
       fixture.detectChanges();
 
       expect(dialogMock.open).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Issue #266 (PRD #261): extend the modal-on-appearance mechanism to the two
+  // CATEGORICAL flags and remove the save-time gate. A determinate Geschlecht on a
+  // not-sexable Art, and a Handschwingenmauser settling into the flagged
+  // diesjährig combination, each fire the single-„Verstanden" InfoDialog on their
+  // selectionChange and mark a quiet suffix icon (on `sex` / `hand_wing`; never on
+  // age_class). Same fire-once / re-fire / silent-clear / aggregation as the
+  // numeric slice. An Art change re-checks every field (numeric + categorical) and
+  // aggregates newly-appeared warnings into ONE modal. onSubmit opens no
+  // plausibility modal — saving is never gated on a Warnung.
+  describe('kategorisches Plausibilitäts-Modal + Suffix-Icon, Speicher-Gate entfernt (#266)', () => {
+    const norm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: false,
+      dj_grossgefiedermauser_moeglich: false,
+    };
+    // A second normed Art so an Art change re-checks against a DIFFERENT norm: its
+    // flags are armed too and 25 g is out of its 15–19 g band as well.
+    const meiseNorm: SpeciesNorm = {
+      ...norm,
+      species_id: 's2',
+      species_name: 'Kohlmeise',
+      weight_mean: '17',
+      weight_sd: '1',
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const kohlmeise: Species = { ...zaunkoenig, id: 's2', common_name_de: 'Kohlmeise' };
+    const unnormedSpecies: Species = { ...zaunkoenig, id: 's3', common_name_de: 'Amsel' };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [norm, meiseNorm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const sexMessage = 'Geschlechtsbestimmung laut Artennorm nicht möglich (Zaunkönig)';
+    const handWingMessage =
+      'Großgefiedermauser bei diesjährigem Vogel laut Artennorm nicht zu erwarten (Zaunkönig)';
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    function fillValid(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: zaunkoenig as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      component.selectedSpecies.set(zaunkoenig);
+    }
+
+    const icon = (field: string) =>
+      fixture.nativeElement.querySelector(
+        `[data-testid="plausibility-${field}-icon"]`,
+      ) as HTMLElement | null;
+    const lastDialogComponent = () => dialogMock.open.calls.mostRecent().args[0];
+    const lastDialogMessage = () =>
+      (dialogMock.open.calls.mostRecent().args[1].data as { message: string }).message;
+
+    it('opens the single-„Verstanden" modal and marks the Geschlecht suffix icon for a determinate sex on a not-sexable Art', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('sex')!.setValue(Sex.Male);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogComponent()).toBe(InfoDialogComponent);
+      expect(lastDialogMessage()).toContain(sexMessage);
+      const el = icon('sex');
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('title')).toContain(sexMessage);
+    });
+
+    it('opens no modal and marks no Geschlecht icon for Unbekannt (a claim, not an absence)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('sex')!.setValue(Sex.Unknown);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      expect(icon('sex')).toBeNull();
+    });
+
+    it('opens the modal and marks the Handschwingenmauser suffix icon for a diesjährigen Vogel with moult present', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogComponent()).toBe(InfoDialogComponent);
+      expect(lastDialogMessage()).toContain(handWingMessage);
+      const el = icon('hand_wing');
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('title')).toContain(handWingMessage);
+    });
+
+    it('marks no suffix icon on age_class; the dj-warning icon lives on hand_wing', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(icon('age_class')).toBeNull();
+      expect(icon('hand_wing')).not.toBeNull();
+    });
+
+    it('honours fire-once / re-fire-on-change / silent-clear for a categorical warning', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      component.entryForm.get('sex')!.setValue(Sex.Male);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(icon('sex')).not.toBeNull();
+
+      // Unchanged re-evaluation — the acknowledged value must not nag again.
+      component.onCategoricalChange();
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+
+      // A different determinate sex (still not tellable apart) re-fires.
+      component.entryForm.get('sex')!.setValue(Sex.Female);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(2);
+
+      // Back to Unbekannt — the warning clears silently, no modal, icon gone.
+      component.entryForm.get('sex')!.setValue(Sex.Unknown);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(2);
+      expect(icon('sex')).toBeNull();
+    });
+
+    it('re-checks every field (numeric + categorical) against the new norm on Art change and aggregates newly-appeared warnings into ONE modal', async () => {
+      await setup();
+      component.onSpeciesSelected({
+        option: { value: zaunkoenig },
+      } as MatAutocompleteSelectedEvent);
+
+      // Settle several breaching values against the first Art via their own
+      // triggers and acknowledge them, so nothing is newly-appeared any more.
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur();
+      component.entryForm.get('sex')!.setValue(Sex.Male);
+      component.onCategoricalChange();
+      component.entryForm.patchValue({
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+      dialogMock.open.calls.reset();
+
+      // Switching the Art wipes ALL signatures and re-checks every field against
+      // the new (Kohlmeise) norm — all still breach → ONE aggregated modal.
+      component.onSpeciesSelected({
+        option: { value: kohlmeise },
+      } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const message = lastDialogMessage();
+      expect(message).toContain('Gewicht 25 g liegt außerhalb');
+      expect(message).toContain('Geschlechtsbestimmung laut Artennorm nicht möglich (Kohlmeise)');
+      expect(message).toContain(
+        'Großgefiedermauser bei diesjährigem Vogel laut Artennorm nicht zu erwarten (Kohlmeise)',
+      );
+    });
+
+    it('opens no modal and marks no icons when the selected Art carries no Artennorm', async () => {
+      await setup();
+      component.selectedSpecies.set(unnormedSpecies);
+      component.entryForm.patchValue({
+        sex: Sex.Male,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      expect(icon('sex')).toBeNull();
+      expect(icon('hand_wing')).toBeNull();
+    });
+
+    it('no longer renders the inline plausibility-warning divs for sex or hand_wing', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({
+        sex: Sex.Male,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="plausibility-sex-warning"]'),
+      ).toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="plausibility-hand_wing-warning"]'),
+      ).toBeNull();
+    });
+
+    it('opens no plausibility modal on submit and writes directly even with active warnings', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.patchValue({
+        weight_gram: 25,
+        sex: Sex.Male,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
     });
   });
 });
