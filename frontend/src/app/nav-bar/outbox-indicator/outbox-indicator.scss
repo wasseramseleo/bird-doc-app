@@ -11,6 +11,13 @@
   font-weight: 600;
   line-height: 16px;
 
+  // All synced: a friendly, muted sage/forest green (the semantic --bd-success
+  // token from brand-tokens.css) rather than the neutral grey of the pending
+  // state — nothing is outstanding, so it reads as done, not as "0 left".
+  &--synced {
+    color: var(--bd-success);
+  }
+
   &__icon {
     flex: none;
     font-size: 18px;

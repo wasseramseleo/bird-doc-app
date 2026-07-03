@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, Component, inject} from '@angular/core';
+import {ChangeDetectionStrategy, Component, computed, inject} from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
@@ -13,10 +13,14 @@ import {SyncResult, SyncService} from '../../service/sync.service';
  * #160, PRD #152, CONTEXT.md's **nicht synchronisiert** glossary entry):
  * tells the Mitglied at a glance how many captures are durably queued and
  * still waiting to reach the server — shown even at zero, so a Mitglied
- * about to leave for a Station can also confirm nothing is stuck. Mounted
- * unconditionally in the nav bar, like `OfflineReadiness`. Driven by
- * `OutboxService`, whose count is restored from IndexedDB on boot so it
- * survives a reload/restart.
+ * about to leave for a Station can also confirm nothing is stuck. At zero it
+ * flips to a friendly-green "Alle Einträge synchronisiert" (the semantic
+ * `--bd-success` token) with a `check_circle` icon, and the manual button is
+ * hidden — there is nothing to sync — while staying inside the same
+ * `role="status"`/`aria-live="polite"` region so the transition is announced
+ * (issue #223). Mounted unconditionally in the nav bar, like
+ * `OfflineReadiness`. Driven by `OutboxService`, whose count is restored from
+ * IndexedDB on boot so it survives a reload/restart.
  *
  * Also owns synchronisieren (issue #161, CONTEXT.md's **synchronisieren /
  * zuletzt synchronisiert** glossary entry): triggers `SyncService.syncNow()`
@@ -46,6 +50,16 @@ export class OutboxIndicator {
 
   readonly pendingCount = this.outbox.pendingCount;
   readonly syncing = this.sync.syncing;
+
+  // Only reached while pendingCount() > 0 (the template's @else branch), so it
+  // never has to phrase the zero case — that is the friendly-green
+  // "Alle Einträge synchronisiert" state. Exactly 1 takes the singular.
+  readonly pendingLabel = computed(() => {
+    const n = this.pendingCount();
+    return n === 1
+      ? '1 nicht synchronisierter Eintrag'
+      : `${n} nicht synchronisierte Einträge`;
+  });
 
   constructor() {
     this.triggerSync();
