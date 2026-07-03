@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   OnInit,
   computed,
   effect,
@@ -612,6 +613,10 @@ export class DataEntryFormComponent implements OnInit {
       this.apiService.getDataEntry(id).subscribe(entry => {
         this.loadedEntry.set(entry);
         this.entryForm.patchValue(this.transformToForm(entry));
+        // #273: seed the "last searched ring" key so leaving the Ringnummer on a
+        // saved Wiederfang does not silently re-fetch and clobber edits. A
+        // changed Ringnummer still differs from this key and triggers a lookup.
+        this.lastSearchedRingKey = this.ringLookupKey();
         // Issue #19/#57: a loaded Sonderart entry must apply the same
         // collapse / mandatory-comment behaviour as a freshly selected one.
         this.selectedSpecies.set(entry.species ?? null);
@@ -666,6 +671,9 @@ export class DataEntryFormComponent implements OnInit {
 
     this.loadedQueuedFormValue.set(formValue);
     this.entryForm.patchValue(formValue);
+    // #273: seed the "last searched ring" key (as the server-load path does) so
+    // leaving the Ringnummer on an opened queued Wiederfang does not re-fetch.
+    this.lastSearchedRingKey = this.ringLookupKey();
     // Issue #19/#57: a loaded Sonderart entry must apply the same collapse /
     // mandatory-comment behaviour as a freshly selected one.
     this.selectedSpecies.set(display.species);
@@ -920,12 +928,49 @@ export class DataEntryFormComponent implements OnInit {
     return central ? central.name : '';
   }
 
+  // #273: the ring (Ringgröße + Ringnummer) the auto-search last ran for. The
+  // implicit blur path is idempotent against it; Enter and the button ignore it
+  // and always fire (deliberate re-search).
+  private lastSearchedRingKey: string | null = null;
+
+  // #273: the magnifying-glass search control folded into the Ringnummer field.
+  // A blur whose focus lands on it is the button's own click about to run the
+  // lookup, so the blur path stands down and lets the click own it.
+  private readonly ringSearchButton = viewChild('ringSearchButton', { read: ElementRef });
+
+  private ringLookupKey(): string {
+    const ringSize = this.entryForm.get('ring_size')?.value ?? '';
+    const ringNumber = this.entryForm.get('ring_number')?.value ?? '';
+    return `${ringSize}::${ringNumber}`;
+  }
+
+  // #273: leaving the Ringnummer field auto-runs the ring-history lookup — the
+  // Beringer's first move on a Wiederfang — without an extra Enter/click. Only
+  // on a Wiederfang; an Erstfang blur does nothing. Idempotent: a ring already
+  // searched (via blur, Enter or the button) is not looked up again on blur.
+  onRingNumberBlur(event: FocusEvent): void {
+    if (!this.isRecatch()) {
+      return;
+    }
+    // Focus moving onto the search button is its click about to fire the lookup;
+    // let the click own it so the button never double-fetches.
+    if (event.relatedTarget && event.relatedTarget === this.ringSearchButton()?.nativeElement) {
+      return;
+    }
+    if (this.ringLookupKey() === this.lastSearchedRingKey) {
+      return;
+    }
+    this.fetchRingHistory();
+  }
+
   fetchRingHistory(): void {
     const ringSize = this.entryForm.get('ring_size')?.value;
     const ringNumber = this.entryForm.get('ring_number')?.value;
     if (!ringSize || !ringNumber) {
       return;
     }
+    // #273: record the searched ring so a later blur on the same ring is a no-op.
+    this.lastSearchedRingKey = this.ringLookupKey();
     this.loading.set(true);
     // Issue #168: route through the offline-aware facade so the lookup keeps
     // working at a Station with no reception — it attempts the real server
@@ -1405,6 +1450,13 @@ export class DataEntryFormComponent implements OnInit {
       ringing_station: this.entryForm.get('ringing_station')?.value,
       staff: this.entryForm.get('staff')?.value,
     };
+
+    // #273: the focus shift below blurs the Ringnummer while it still holds the
+    // just-saved ring. Seed the "last searched ring" key with it first so that
+    // incidental blur is recognised as already-handled and the auto-search
+    // stands down — otherwise it would re-fetch the ring (now including the
+    // freshly-queued capture) and re-prefill Art over the reset.
+    this.lastSearchedRingKey = this.ringLookupKey();
 
     // Move focus to Art *before* resetting. Focusing synchronously blurs whatever
     // field was active (e.g. Ringnummer after a Strg+S save), and that blur marks
