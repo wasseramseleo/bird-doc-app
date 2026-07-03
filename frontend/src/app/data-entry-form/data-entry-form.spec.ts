@@ -2866,22 +2866,25 @@ describe('DataEntryFormComponent', () => {
   // warning routes through ONE aggregated confirm-dialog whose acknowledgment is
   // transient — never persisted. Identical in create and edit mode.
   describe('Plausibilitätswarnung (Artennorm, PRD #245)', () => {
-    // A Zaunkönig-style Gewicht norm: Ø 9,1 g, SD 0,82 g, k 1,96 → band 7,5–10,7 g.
+    // A Zaunkönig norm with all six σ-bands set (k 1,96): Gewicht Ø 9,1 g SD 0,82
+    // → 7,5–10,7 g; and the five #247 measurements (mm): Federlänge Ø 54 SD 2 →
+    // 50,1–57,9; Flügellänge Ø 73 SD 2,5 → 68,1–77,9; Tarsus Ø 19 SD 0,6 →
+    // 17,8–20,2; Kerbe F2 Ø 8 SD 0,7 → 6,6–9,4; Innenfuß Ø 15 SD 0,8 → 13,4–16,6.
     const norm: SpeciesNorm = {
       species_id: 's1',
       species_name: 'Zaunkönig',
       weight_mean: '9.1',
       weight_sd: '0.82',
-      feather_mean: null,
-      feather_sd: null,
-      wing_mean: null,
-      wing_sd: null,
-      tarsus_mean: null,
-      tarsus_sd: null,
-      notch_f2_mean: null,
-      notch_f2_sd: null,
-      inner_foot_mean: null,
-      inner_foot_sd: null,
+      feather_mean: '54',
+      feather_sd: '2',
+      wing_mean: '73',
+      wing_sd: '2.5',
+      tarsus_mean: '19',
+      tarsus_sd: '0.6',
+      notch_f2_mean: '8',
+      notch_f2_sd: '0.7',
+      inner_foot_mean: '15',
+      inner_foot_sd: '0.8',
       quotient_mean: null,
       quotient_tolerance_pct: null,
       sd_factor: '1.96',
@@ -3134,6 +3137,207 @@ describe('DataEntryFormComponent', () => {
         (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
       );
       put.flush({});
+    });
+
+    // Issue #247: the remaining five σ-measurements get the identical inline
+    // blur warning under their own field, keyed by field-specific testid, with
+    // the same optionality (in-range → none) and the same de-AT message shape.
+    interface FieldCase {
+      label: string;
+      field: string;
+      testid: string;
+      inRange: number;
+      outOfRange: number;
+      message: string;
+    }
+    const fieldCases: FieldCase[] = [
+      {
+        label: 'Federlänge',
+        field: 'feather_span',
+        testid: 'plausibility-feather_span-warning',
+        inRange: 54,
+        outOfRange: 65,
+        message:
+          'Federlänge 65 mm liegt außerhalb des erwarteten Bereichs 50,1–57,9 mm (Zaunkönig)',
+      },
+      {
+        label: 'Flügellänge',
+        field: 'wing_span',
+        testid: 'plausibility-wing_span-warning',
+        inRange: 73,
+        outOfRange: 90,
+        message:
+          'Flügellänge 90 mm liegt außerhalb des erwarteten Bereichs 68,1–77,9 mm (Zaunkönig)',
+      },
+      {
+        label: 'Tarsus',
+        field: 'tarsus',
+        testid: 'plausibility-tarsus-warning',
+        inRange: 19,
+        outOfRange: 25,
+        message: 'Tarsus 25 mm liegt außerhalb des erwarteten Bereichs 17,8–20,2 mm (Zaunkönig)',
+      },
+      {
+        label: 'Kerbe F2',
+        field: 'notch_f2',
+        testid: 'plausibility-notch_f2-warning',
+        inRange: 8,
+        outOfRange: 12,
+        message: 'Kerbe F2 12 mm liegt außerhalb des erwarteten Bereichs 6,6–9,4 mm (Zaunkönig)',
+      },
+      {
+        label: 'Innenfuß',
+        field: 'inner_foot',
+        testid: 'plausibility-inner_foot-warning',
+        inRange: 15,
+        outOfRange: 20,
+        message: 'Innenfuß 20 mm liegt außerhalb des erwarteten Bereichs 13,4–16,6 mm (Zaunkönig)',
+      },
+    ];
+
+    for (const c of fieldCases) {
+      describe(`inline warning under ${c.label} (#247)`, () => {
+        const el = () =>
+          fixture.nativeElement.querySelector(
+            `[data-testid="${c.testid}"]`,
+          ) as HTMLElement | null;
+
+        it('renders on blur for an out-of-range value, with the de-AT message', async () => {
+          await setup();
+          component.selectedSpecies.set(zaunkoenig);
+          component.entryForm.get(c.field)!.setValue(c.outOfRange);
+          component.onMeasurementBlur();
+          fixture.detectChanges();
+
+          const warning = el();
+          expect(warning).not.toBeNull();
+          expect(warning!.getAttribute('role')).toBe('alert');
+          expect(warning!.textContent).toContain(c.message);
+        });
+
+        it('renders nothing when the value is in range', async () => {
+          await setup();
+          component.selectedSpecies.set(zaunkoenig);
+          component.entryForm.get(c.field)!.setValue(c.inRange);
+          component.onMeasurementBlur();
+          fixture.detectChanges();
+
+          expect(el()).toBeNull();
+        });
+
+        it('renders nothing when the selected Art carries no Artennorm', async () => {
+          await setup();
+          component.selectedSpecies.set(unnormedSpecies);
+          component.entryForm.get(c.field)!.setValue(c.outOfRange);
+          component.onMeasurementBlur();
+          fixture.detectChanges();
+
+          expect(el()).toBeNull();
+        });
+      });
+    }
+
+    it('aggregates every out-of-range measurement into ONE confirm-dialog on submit (not one per field)', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.patchValue({
+        weight_gram: 25,
+        feather_span: 65,
+        wing_span: 90,
+        tarsus: 25,
+        notch_f2: 12,
+        inner_foot: 20,
+      });
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      // A single dialog listing all six discrepancies — never one dialog per field.
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
+      expect(data.message).toContain('Gewicht 25 g liegt außerhalb');
+      expect(data.message).toContain(
+        'Federlänge 65 mm liegt außerhalb des erwarteten Bereichs 50,1–57,9 mm (Zaunkönig)',
+      );
+      expect(data.message).toContain(
+        'Flügellänge 90 mm liegt außerhalb des erwarteten Bereichs 68,1–77,9 mm (Zaunkönig)',
+      );
+      expect(data.message).toContain(
+        'Tarsus 25 mm liegt außerhalb des erwarteten Bereichs 17,8–20,2 mm (Zaunkönig)',
+      );
+      expect(data.message).toContain(
+        'Kerbe F2 12 mm liegt außerhalb des erwarteten Bereichs 6,6–9,4 mm (Zaunkönig)',
+      );
+      expect(data.message).toContain(
+        'Innenfuß 20 mm liegt außerhalb des erwarteten Bereichs 13,4–16,6 mm (Zaunkönig)',
+      );
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('renders the inline warnings for the five fields on blur in edit mode too', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '77' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const editComponent = f.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/77/'))
+        .flush({
+          id: '77',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          feather_span: 65,
+          wing_span: 90,
+          tarsus: 25,
+          notch_f2: 12,
+          inner_foot: 20,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      editComponent.onMeasurementBlur();
+      f.detectChanges();
+
+      for (const c of fieldCases) {
+        const warning = f.nativeElement.querySelector(
+          `[data-testid="${c.testid}"]`,
+        ) as HTMLElement | null;
+        expect(warning).withContext(c.label).not.toBeNull();
+        expect(warning!.textContent).toContain(c.message);
+      }
     });
   });
 });

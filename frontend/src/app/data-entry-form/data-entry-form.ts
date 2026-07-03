@@ -307,9 +307,17 @@ export class DataEntryFormComponent implements OnInit {
   // submit from computePlausibilityWarnings — the single source shared by the
   // inline hint and the save-time acknowledgment. Transient, never persisted.
   readonly plausibilityWarnings = signal<PlausibilityWarning[]>([]);
-  readonly weightWarning = computed(
-    () => this.plausibilityWarnings().find((w) => w.field === 'weight_gram')?.message ?? null,
-  );
+  // The active Warnungen indexed by their measurement field, so the template can
+  // surface each field's inline hint by name (weight_gram, feather_span,
+  // wing_span, tarsus, notch_f2, inner_foot). Reactive: recomputed whenever
+  // plausibilityWarnings changes.
+  readonly warningByField = computed<Record<string, string>>(() => {
+    const byField: Record<string, string> = {};
+    for (const warning of this.plausibilityWarnings()) {
+      byField[warning.field] = warning.message;
+    }
+    return byField;
+  });
 
   // #155: a fresh client-generated UUID identifies this capture-create attempt
   // end-to-end, so a retried/replayed offline-outbox create is never duplicated
