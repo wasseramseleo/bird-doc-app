@@ -328,15 +328,15 @@
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
+        <!-- #266: the Geschlechtsbestimmung categorical-flag Warnung, surfaced as a
+             quiet suffix icon (its de-AT message on the hover title) that persists
+             after the „Verstanden" modal is dismissed — replacing the verbose
+             inline hint, mirroring the numeric suffix icons. -->
+        @if (suffixWarningByField()['sex']; as msg) {
+          <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
+                    data-testid="plausibility-sex-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
+        }
       </mat-form-field>
-      <!-- Issue #249: the Geschlechtsbestimmung categorical-flag Warnung, under
-           the Geschlecht field, the same role="alert" idiom as the numeric hints. -->
-      @if (warningByField()['sex']; as msg) {
-        <div class="plausibility-warning" role="alert" data-testid="plausibility-sex-warning">
-          <mat-icon aria-hidden="true">warning</mat-icon>
-          <span>{{ msg }}</span>
-        </div>
-      }
     </div>
 
     <div class="form-section">
@@ -385,15 +385,14 @@
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
+        <!-- #266: the bei-dj.-Großgefiedermauser categorical-flag Warnung (its own
+             `hand_wing` slot), surfaced as a quiet suffix icon like the numeric
+             ones. age_class only gates the rule and carries no icon of its own. -->
+        @if (suffixWarningByField()['hand_wing']; as msg) {
+          <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
+                    data-testid="plausibility-hand_wing-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
+        }
       </mat-form-field>
-      <!-- Issue #249: the bei-dj.-Großgefiedermauser categorical-flag Warnung,
-           under the Handschwingenmauser field (its own `hand_wing` slot). -->
-      @if (warningByField()['hand_wing']; as msg) {
-        <div class="plausibility-warning" role="alert" data-testid="plausibility-hand_wing-warning">
-          <mat-icon aria-hidden="true">warning</mat-icon>
-          <span>{{ msg }}</span>
-        </div>
-      }
     </div>
 
     <div class="form-section">

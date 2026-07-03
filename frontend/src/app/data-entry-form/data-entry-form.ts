@@ -85,20 +85,6 @@ import {InfoDialogComponent, InfoDialogData} from '../shared/info-dialog/info-di
 // value.
 const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
 
-// PRD #261 (#265): the numeric Plausibilitätswarnungen that raise the on-blur
-// „Verstanden" modal — the six σ-band measurements plus the derived Quotient.
-// The two categorical flags (sex, hand_wing) are deliberately excluded here:
-// their modal is #266, this slice is the numeric path only.
-const NUMERIC_MODAL_FIELDS: ReadonlySet<string> = new Set<string>([
-  'weight_gram',
-  'feather_span',
-  'wing_span',
-  'tarsus',
-  'notch_f2',
-  'inner_foot',
-  'quotient',
-]);
-
 @Component({
   selector: 'app-data-entry-form',
   standalone: true,
@@ -340,17 +326,20 @@ export class DataEntryFormComponent implements OnInit {
     return byField;
   });
 
-  // PRD #261 (#265): the quiet matSuffix warning icon that replaces the verbose
-  // inline numeric hint. A field's icon shows whenever its own σ warning is
-  // active AND — for the two Quotient operands — whenever the derived Quotient
-  // breaches: the Quotient has no field of its own, so it marks BOTH Federlänge
-  // and Flügellänge. Keyed by measurement field → its active message (used as the
-  // icon's hover title). Reactive off warningByField, so it survives a modal
-  // dismissal (the warning stays active until the value changes).
+  // PRD #261 (#265/#266): the quiet matSuffix warning icon that replaces the
+  // verbose inline hint — numeric (#265) and categorical (#266) alike. A field's
+  // icon shows whenever its own warning is active: the six σ-band fields, the two
+  // categorical flags (Geschlecht `sex`, dj-Großgefiedermauser `hand_wing`), and
+  // — for the two Quotient operands — whenever the derived Quotient breaches (the
+  // Quotient has no field of its own, so it marks BOTH Federlänge and Flügellänge).
+  // `age_class` only gates the dj rule and carries no icon of its own. Keyed by
+  // field → its active message (the icon's hover title). Reactive off
+  // warningByField, so it survives a modal dismissal (the warning stays active
+  // until the value changes).
   readonly suffixWarningByField = computed<Record<string, string>>(() => {
     const byField = this.warningByField();
     const result: Record<string, string> = {};
-    for (const field of ['weight_gram', 'tarsus', 'notch_f2', 'inner_foot']) {
+    for (const field of ['weight_gram', 'tarsus', 'notch_f2', 'inner_foot', 'sex', 'hand_wing']) {
       if (byField[field]) {
         result[field] = byField[field];
       }
@@ -942,12 +931,13 @@ export class DataEntryFormComponent implements OnInit {
     if (species && species.ring_size && !this.isForeignCentral()) {
       this.entryForm.get('ring_size')?.setValue(species.ring_size);
     }
-    // PRD #245/#261 (#265): the effective Artennorm changes with the Art, so wipe
-    // the acknowledged de-dup state (the norm changed → re-evaluate everything)
-    // and re-check every numeric field against the newly selected Art's norm,
-    // raising the modal for any value now implausible.
+    // PRD #245/#261 (#265/#266): the effective Artennorm changes with the Art, so
+    // wipe the acknowledged de-dup state — numeric AND categorical (the norm
+    // changed → re-evaluate everything) — and re-check every field against the
+    // newly selected Art's norm, aggregating every value now implausible into ONE
+    // „Verstanden" modal.
     this.acknowledgedSignatures.set(resetAcknowledgedSignatures());
-    this.evaluateNumericPlausibility();
+    this.evaluatePlausibility();
     this.onAutocompleteAccepted('species', event);
   }
 
@@ -1096,33 +1086,28 @@ export class DataEntryFormComponent implements OnInit {
   // non-modal role="alert" idiom the sex-contradiction hint rides. Also called
   // when the Art changes so a stale warning never lingers.
   onMeasurementBlur(): void {
-    this.evaluateNumericPlausibility();
+    this.evaluatePlausibility();
   }
 
-  // Issue #249: the two categorical-flag rules read the Alter, Geschlecht and
+  // Issue #249/#266: the two categorical-flag rules read the Alter, Geschlecht and
   // Handschwingenmauser selects, which settle on selectionChange rather than an
-  // input blur — recompute there so the flag Warnung surfaces the moment the
-  // value is picked, mirroring the numeric on-blur behaviour. (Alter carries no
-  // warning of its own but gates the dj-Großgefiedermauser rule.)
+  // input blur — evaluate there so the flag Warnung raises its „Verstanden" modal
+  // and marks its quiet suffix icon the moment the value is picked, mirroring the
+  // numeric on-blur behaviour. (Alter carries no warning of its own but gates the
+  // dj-Großgefiedermauser rule, whose icon lives on Handschwingenmauser.)
   onCategoricalChange(): void {
-    this.recomputePlausibility();
+    this.evaluatePlausibility();
   }
 
-  private recomputePlausibility(): void {
-    this.plausibilityWarnings.set(
-      computePlausibilityWarnings(this.currentMeasurements(), this.activeNorm()),
-    );
-  }
-
-  // PRD #261 (#265): recompute the active Plausibilitätswarnungen (refreshing the
-  // inline categorical hint and the quiet numeric suffix icons) and — routed
-  // through the „fire once, never nag" de-dup — raise ONE aggregated „Verstanden"
-  // modal listing every NEWLY-appeared NUMERIC warning (the six σ-band fields +
-  // the derived Quotient). An unchanged re-blur stays silent; a value brought
-  // back into range clears without a modal; a value corrected to a new
-  // out-of-range value re-fires. The categorical flags never raise this modal
-  // here (that is #266) — only their inline hint updates via the shared warnings.
-  private evaluateNumericPlausibility(): void {
+  // PRD #261 (#265/#266): recompute the active Plausibilitätswarnungen (refreshing
+  // the quiet suffix icons on every warnable field) and — routed through the „fire
+  // once, never nag" de-dup — raise ONE aggregated „Verstanden" modal listing
+  // every NEWLY-appeared warning, numeric (the six σ-band fields + the derived
+  // Quotient) and categorical (Geschlecht, dj-Großgefiedermauser) alike. An
+  // unchanged re-trigger stays silent; a value brought back into range clears
+  // without a modal; a value settling into a new breach re-fires. One trigger
+  // (e.g. an Art change) that trips several checks aggregates into a single modal.
+  private evaluatePlausibility(): void {
     const measurements = this.currentMeasurements();
     const warnings = computePlausibilityWarnings(measurements, this.activeNorm());
     this.plausibilityWarnings.set(warnings);
@@ -1132,16 +1117,15 @@ export class DataEntryFormComponent implements OnInit {
       computePlausibilitySignatures(measurements),
     );
     this.acknowledgedSignatures.set(nextAcknowledged);
-    const numericToShow = toShow.filter((warning) => NUMERIC_MODAL_FIELDS.has(warning.field));
-    if (numericToShow.length > 0) {
-      this.openPlausibilityInfoDialog(numericToShow);
+    if (toShow.length > 0) {
+      this.openPlausibilityInfoDialog(toShow);
     }
   }
 
-  // PRD #261 (#263/#265): the single-„Verstanden" informational modal for the
-  // newly-appeared numeric Plausibilitätswarnungen. One aggregated dialog lists
-  // them all; the acknowledgment is transient (already recorded in the signature
-  // set) and nothing is persisted.
+  // PRD #261 (#263/#265/#266): the single-„Verstanden" informational modal for the
+  // newly-appeared Plausibilitätswarnungen (numeric and categorical). One
+  // aggregated dialog lists them all; the acknowledgment is transient (already
+  // recorded in the signature set) and nothing is persisted.
   private openPlausibilityInfoDialog(warnings: PlausibilityWarning[]): void {
     this.dialog.open<InfoDialogComponent, InfoDialogData, void>(InfoDialogComponent, {
       data: {
@@ -1184,39 +1168,12 @@ export class DataEntryFormComponent implements OnInit {
       return;
     }
 
-    // PRD #245: gate the save on the Plausibilitätsprüfung. Compute the active
-    // Warnungen from the single-source pure function; if any fire, ONE aggregated
-    // Bestätigung (the shared confirm-dialog) lists the discrepancies —
-    // confirming proceeds to write/queue, cancelling returns to the form. The
-    // acknowledgment is transient and never persisted (identical in create and
-    // edit mode).
-    const warnings = computePlausibilityWarnings(this.currentMeasurements(), this.activeNorm());
-    this.plausibilityWarnings.set(warnings);
-    if (warnings.length > 0) {
-      const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
-        ConfirmDialogComponent,
-        {
-          data: {
-            title: 'Plausibilität prüfen',
-            message:
-              'Folgende Messwerte liegen außerhalb des erwarteten Bereichs:\n\n' +
-              warnings.map(w => w.message).join('\n') +
-              '\n\nTrotzdem speichern?',
-            confirmLabel: 'Trotzdem speichern',
-            cancelLabel: 'Zurück',
-          },
-          width: '480px',
-        },
-      );
-      ref.afterClosed().subscribe(confirmed => {
-        if (confirmed) {
-          this.performSave();
-        }
-        // Cancel: return to the form, nothing written or queued.
-      });
-      return;
-    }
-
+    // PRD #261 (#266): saving is never gated on a Plausibilitätswarnung. Every
+    // trigger path — a numeric blur, a categorical selectionChange, and an Art
+    // change — already raised the single-„Verstanden" InfoDialog the moment the
+    // implausible value appeared (routed through the „fire once, never nag" de-dup),
+    // so onSubmit opens NO plausibility dialog and writes/queues directly. The
+    // save-time Bestätigung (the old ConfirmDialog gate) is gone.
     this.performSave();
   }
 

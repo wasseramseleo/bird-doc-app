@@ -118,11 +118,10 @@
   }
 
   // #115: a determined-sex contradiction (both Männchen and Weibchen in the ring
-  // history). PRD #245: the inline Plausibilitätswarnung under a measurement
-  // field reuses the same alert idiom (non-modal, role="alert"); flex-basis:100%
-  // drops it onto its own row beneath the measurement fields.
-  .sex-contradiction,
-  .plausibility-warning {
+  // history) — a non-modal role="alert" hint beneath the recapture history. (The
+  // Plausibilitätswarnungen no longer share this idiom: since #265/#266 they are
+  // quiet suffix icons, so the old .plausibility-warning rules are gone.)
+  .sex-contradiction {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -138,15 +137,6 @@
     mat-icon {
       flex: none;
     }
-  }
-
-  .plausibility-warning {
-    // Drop onto its own full-width row beneath the measurement field, whether the
-    // parent lays its fields out with flex (flex-basis) or grid (grid-column) —
-    // the first form-section is a grid, so the warning must span every column.
-    flex-basis: 100%;
-    grid-column: 1 / -1;
-    margin: -0.25rem 0 0.75rem;
   }
 
   table {
