@@ -13,6 +13,35 @@
     </button>
   </header>
 
+  @if (!gapLoading() && sortedGapSeats().length > 0) {
+    <section class="gap-panel" aria-label="Mitglieder ohne Beringer-Eintrag">
+      <div class="gap-panel__head">
+        <h2 class="gap-panel__title">Mitglieder ohne Beringer-Eintrag</h2>
+        <p class="gap-panel__subhead">
+          Diese Konten deiner Organisation haben noch keinen Beringer. Ordne jedem einen Beringer zu.
+        </p>
+      </div>
+      <div class="gap-panel__list">
+        @for (seat of sortedGapSeats(); track seat.id) {
+          <div class="gap-card">
+            <div class="gap-card__main">
+              <span class="gap-card__name">{{ seat.username }}</span>
+              <span class="gap-card__email">{{ seat.email }}</span>
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              color="primary"
+              (click)="openAssignDialog(seat)">
+              <mat-icon>person_add</mat-icon>
+              Beringer zuordnen
+            </button>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
   @if (loading()) {
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (sortedBeringer().length === 0) {

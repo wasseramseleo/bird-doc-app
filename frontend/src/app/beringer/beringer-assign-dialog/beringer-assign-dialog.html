@@ -1,0 +1,55 @@
+<h2 mat-dialog-title>Beringer zuordnen</h2>
+<mat-dialog-content>
+  <p class="assign__lead">
+    „{{ seatLabel() }}“ hat noch keinen Beringer-Eintrag. Verknüpfe einen vorhandenen Beringer oder
+    lege einen neuen an — danach ist dieses Konto ein Mitglied.
+  </p>
+
+  <mat-button-toggle-group
+    class="assign__modes"
+    aria-label="Zuordnungsart"
+    [value]="mode()"
+    (change)="selectMode($event.value)">
+    <mat-button-toggle value="link" [disabled]="!hasCandidates">Vorhandenen verknüpfen</mat-button-toggle>
+    <mat-button-toggle value="create">Neu anlegen</mat-button-toggle>
+  </mat-button-toggle-group>
+
+  @if (mode() === 'link') {
+    @if (hasCandidates) {
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Beringer ohne Konto</mat-label>
+        <mat-select [formControl]="beringerId">
+          @for (candidate of data.candidates; track candidate.id) {
+            <mat-option [value]="candidate.id">
+              {{ candidate.full_name }} ({{ candidate.handle }})
+            </mat-option>
+          }
+        </mat-select>
+        @if (showLinkError() && !beringerId.value) {
+          <mat-error>Bitte wähle einen Beringer.</mat-error>
+        }
+      </mat-form-field>
+    } @else {
+      <p class="assign__empty">Es gibt keinen Beringer ohne Konto zum Verknüpfen.</p>
+    }
+  } @else {
+    <div class="assign__create" [formGroup]="createForm">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Vorname</mat-label>
+        <input matInput formControlName="first_name" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Nachname</mat-label>
+        <input matInput formControlName="last_name" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Kürzel</mat-label>
+        <input matInput formControlName="handle" />
+      </mat-form-field>
+    </div>
+  }
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Abbrechen</button>
+  <button mat-flat-button color="primary" type="button" (click)="submit()">Zuordnen</button>
+</mat-dialog-actions>

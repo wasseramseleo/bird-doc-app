@@ -10,12 +10,22 @@ import {BeringerComponent} from './beringer';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
 import {SeatPickerDialogData} from './seat-picker-dialog/seat-picker-dialog';
+import {BeringerAssignDialogData} from './beringer-assign-dialog/beringer-assign-dialog';
 import {ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 
 let httpMock: HttpTestingController;
 
 function page0<T>(results: T[]) {
   return {count: results.length, next: null, previous: null, results};
+}
+
+// ngOnInit loads BOTH the Beringer list (GET /scientists/) and the gap panel's
+// seats (GET /mitgliedschaften/). Tests that render via detectChanges() must
+// satisfy both requests; this flushes the gap read (empty unless seats given).
+function flushGaps(seats: Mitgliedschaft[] = []) {
+  httpMock
+    .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+    .flush(page0(seats));
 }
 
 function makeBeringer(overrides: Partial<Beringer> = {}): Beringer {
@@ -91,6 +101,7 @@ describe('BeringerComponent', () => {
         }),
       ]),
     );
+    flushGaps();
     fixture.detectChanges();
 
     const cards = fixture.nativeElement.querySelectorAll('.beringer-card');
@@ -138,6 +149,7 @@ describe('BeringerComponent', () => {
           }),
         ]),
       );
+    flushGaps();
     fixture.detectChanges();
 
     const member = fixture.nativeElement.querySelector(
@@ -160,6 +172,7 @@ describe('BeringerComponent', () => {
     httpMock
       .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
       .flush(page0([]));
+    flushGaps();
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.beringer-card')).toBeNull();
@@ -304,6 +317,7 @@ describe('BeringerComponent', () => {
     httpMock
       .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
       .flush(page0([makeBeringer({id: 'm', is_member: true, full_name: 'Mara Moser'})]));
+    flushGaps();
     fixture.detectChanges();
 
     const del = fixture.nativeElement.querySelector(
@@ -348,5 +362,164 @@ describe('BeringerComponent', () => {
     del.flush(null, {status: 204, statusText: 'No Content'});
     // A successful delete reloads the list.
     httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+  });
+
+  // --- "Mitglieder ohne Beringer-Eintrag" gap panel (PRD #205, issue #210) -----
+
+  it('lists exactly the handle==null seats in the gap panel', () => {
+    const {fixture} = setup();
+
+    fixture.detectChanges(); // ngOnInit → load() + loadGaps()
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+    // A mix of gap seats (handle null) and already-linked seats (handle set).
+    flushGaps([
+      makeSeat({id: 'gap-1', username: 'anna', handle: null}),
+      makeSeat({id: 'linked', username: 'mara', handle: 'MAR'}),
+      makeSeat({id: 'gap-2', username: 'bea', handle: null}),
+    ]);
+    fixture.detectChanges();
+
+    // Only the two handle==null seats surface as gap members — the linked one does not.
+    const names = Array.from(fixture.nativeElement.querySelectorAll('.gap-card__name')).map((e) =>
+      (e as HTMLElement).textContent?.trim(),
+    );
+    expect(names).toEqual(['anna', 'bea']);
+    expect(fixture.nativeElement.textContent).not.toContain('mara');
+  });
+
+  it('pages through all mitgliedschaften so a gap beyond page one still appears', () => {
+    const {fixture} = setup();
+
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+
+    // Page one carries a `next` link; the panel must follow it to find page-two gaps.
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+      .flush({
+        count: 2,
+        next: 'http://localhost:8000/api/birds/mitgliedschaften/?page=2',
+        previous: null,
+        results: [makeSeat({id: 'p1', username: 'anna', handle: null})],
+      });
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.urlWithParams.includes('page=2'))
+      .flush({
+        count: 2,
+        next: null,
+        previous: null,
+        results: [makeSeat({id: 'p2', username: 'bea', handle: null})],
+      });
+    fixture.detectChanges();
+
+    const names = Array.from(fixture.nativeElement.querySelectorAll('.gap-card__name')).map((e) =>
+      (e as HTMLElement).textContent?.trim(),
+    );
+    expect(names).toEqual(['anna', 'bea']);
+  });
+
+  it('offers only no-account Beringer as verknüpfen candidates', () => {
+    const {fixture, component} = setup();
+
+    fixture.detectChanges();
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+      .flush(
+        page0([
+          makeBeringer({id: 'free', is_member: false, full_name: 'Frei Beringer'}),
+          makeBeringer({id: 'member', is_member: true, full_name: 'Mara Moser'}),
+        ]),
+      );
+    flushGaps([makeSeat({id: 's1'})]);
+    fixture.detectChanges();
+
+    // Cancelling the dialog (afterClosed → undefined) means no write follows.
+    const dialogSpy = spyOnDialog(fixture, undefined);
+    component.openAssignDialog(makeSeat({id: 's1'}));
+
+    // The verknüpfen path is offered only the no-account Beringer, never a Mitglied.
+    const config = dialogSpy.calls.mostRecent().args[1] as {data: BeringerAssignDialogData};
+    expect(config.data.candidates.map((b) => b.id)).toEqual(['free']);
+  });
+
+  it('verknüpfen assigns an existing Beringer via a single attach PATCH', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+    spyOnDialog(fixture, {mode: 'link', beringerId: 'b1'});
+
+    component.openAssignDialog(makeSeat({id: 'seat-1'}));
+
+    // A single attach PATCH — no POST in the verknüpfen path.
+    httpMock.expectNone((r) => r.method === 'POST');
+    const patch = httpMock.expectOne(
+      (r) => r.method === 'PATCH' && r.url.endsWith('/scientists/b1/'),
+    );
+    expect(patch.request.body).toEqual({mitgliedschaft_id: 'seat-1'});
+    patch.flush(makeBeringer({id: 'b1', is_member: true, full_name: 'Frei Beringer'}));
+
+    // Both lists refresh so the reconciliation shows immediately.
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+    flushGaps();
+  });
+
+  it('neu anlegen creates then attaches in a two-call POST → PATCH chain', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+    const payload = {first_name: 'Nora', last_name: 'Neu', handle: 'NNE'};
+    spyOnDialog(fixture, {mode: 'create', payload});
+
+    component.openAssignDialog(makeSeat({id: 'seat-1'}));
+
+    // 1) The open POST creates the Beringer, link-free (no seat field).
+    const post = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/scientists/'));
+    expect(post.request.body).toEqual(payload);
+    expect('mitgliedschaft_id' in (post.request.body as object)).toBeFalse();
+    // The attach must not fire before the create resolves.
+    httpMock.expectNone((r) => r.method === 'PATCH');
+    post.flush(makeBeringer({id: 'new-9', ...payload, full_name: 'Nora Neu'}));
+
+    // 2) The Admin PATCH attaches the fresh Beringer to the seat.
+    const patch = httpMock.expectOne(
+      (r) => r.method === 'PATCH' && r.url.endsWith('/scientists/new-9/'),
+    );
+    expect(patch.request.body).toEqual({mitgliedschaft_id: 'seat-1'});
+    patch.flush(makeBeringer({id: 'new-9', is_member: true, full_name: 'Nora Neu'}));
+
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+    flushGaps();
+  });
+
+  it('drops the seat from the gap panel and shows it as Mitglied after assignment', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+    flushGaps([makeSeat({id: 's1', username: 'gap', handle: null})]);
+    fixture.detectChanges();
+
+    // The seat starts out in the gap panel.
+    expect(fixture.nativeElement.querySelector('.gap-card')).withContext('gap card shown').toBeTruthy();
+
+    spyOnDialog(fixture, {mode: 'link', beringerId: 'b1'});
+    component.openAssignDialog(makeSeat({id: 's1', username: 'gap', handle: null}));
+
+    httpMock
+      .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/b1/'))
+      .flush(makeBeringer({id: 'b1', is_member: true, full_name: 'Gap Member'}));
+
+    // Reconcile: the Beringer list now carries the Mitglied, and the seat now has a
+    // handle so it is no longer a gap.
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+      .flush(page0([makeBeringer({id: 'b1', is_member: true, full_name: 'Gap Member'})]));
+    flushGaps([makeSeat({id: 's1', username: 'gap', handle: 'GAP'})]);
+    fixture.detectChanges();
+
+    // The seat is gone from the gap panel and now shows as a Mitglied.
+    expect(fixture.nativeElement.querySelector('.gap-card')).withContext('gap card removed').toBeNull();
+    const member = fixture.nativeElement.querySelector('.beringer-card__badge--member') as HTMLElement;
+    expect(member).withContext('Mitglied badge for the promoted seat').toBeTruthy();
+    expect(member.textContent).toContain('Mitglied');
   });
 });

@@ -26,6 +26,62 @@
   color: var(--bd-ink-muted, #5a5a5a);
 }
 
+.gap-panel {
+  margin-bottom: 2rem;
+  padding: 1rem 1.1rem 1.15rem;
+  border: 1px solid color-mix(in srgb, var(--bd-accent, #2e7d5b) 35%, var(--bd-line, #e0ddd5));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bd-accent, #2e7d5b) 6%, var(--bd-paper, #fff));
+}
+
+.gap-panel__head {
+  margin-bottom: 0.85rem;
+}
+
+.gap-panel__title {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.gap-panel__subhead {
+  margin: 0;
+  color: var(--bd-ink-muted, #5a5a5a);
+  font-size: 0.9rem;
+}
+
+.gap-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.gap-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--bd-line, #e0ddd5);
+  border-radius: 10px;
+  background: var(--bd-paper, #fff);
+}
+
+.gap-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.gap-card__name {
+  font-weight: 600;
+}
+
+.gap-card__email {
+  font-size: 0.85rem;
+  color: var(--bd-ink-muted, #5a5a5a);
+}
+
 .beringer__list {
   display: flex;
   flex-direction: column;
