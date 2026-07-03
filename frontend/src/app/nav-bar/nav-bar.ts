@@ -104,7 +104,10 @@ export class NavBar {
   }
 
   goToPicker(): void {
-    this.router.navigateByUrl('/');
+    // Issue #221: "Alle Projekte …" opens the dedicated picker at /projekte. It
+    // deliberately does NOT clear the current Projekt, so the switcher stays
+    // visible and the user can return to their dashboard.
+    this.router.navigateByUrl('/projekte');
   }
 
   // Beta users report problems straight from the app (issue #81); the dialog

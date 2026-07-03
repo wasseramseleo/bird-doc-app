@@ -1,193 +1,24 @@
-import {ChangeDetectionStrategy, Component, OnInit, inject, signal} from '@angular/core';
-import {Router} from '@angular/router';
+import {ChangeDetectionStrategy, Component, inject} from '@angular/core';
 
-import {MatButtonModule} from '@angular/material/button';
-import {MatIconModule} from '@angular/material/icon';
-import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
-import {MatDialog, MatDialogModule} from '@angular/material/dialog';
-import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
-import {ApiService} from '../service/api.service';
 import {ProjectService} from '../service/project.service';
-import {Project} from '../models/project.model';
-import {Organization} from '../models/organization.model';
-import {Scientist} from '../models/scientist.model';
 import {ProjectDashboardComponent} from './project-dashboard/project-dashboard';
-import {ProjectCreateDialogComponent, ProjectCreateDialogResult} from './project-create-dialog/project-create-dialog';
-import {
-  ProjectEditDialogComponent,
-  ProjectEditDialogData,
-  ProjectEditDialogResult,
-} from './project-edit-dialog/project-edit-dialog';
 
-function parseFilenameFromContentDisposition(header: string | null): string | null {
-  if (!header) {
-    return null;
-  }
-  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(header);
-  if (utf8Match) {
-    return decodeURIComponent(utf8Match[1]);
-  }
-  const quotedMatch = /filename="([^"]+)"/i.exec(header);
-  if (quotedMatch) {
-    return quotedMatch[1];
-  }
-  const bareMatch = /filename=([^;]+)/i.exec(header);
-  return bareMatch ? bareMatch[1].trim() : null;
-}
-
+/**
+ * The logged-in home route `/`. Per ADR 0018 it is the current Projekt's
+ * dashboard. Issue #221 moved the project picker out to its own `/projekte`
+ * route (ProjectPickerComponent); a functional guard (projectSelectedGuard)
+ * redirects `/` there when no Projekt is selected, so Home only ever renders the
+ * dashboard for the active Projekt.
+ */
 @Component({
   selector: 'app-home',
-  imports: [
-    MatButtonModule,
-    MatIconModule,
-    MatProgressSpinnerModule,
-    MatDialogModule,
-    MatSnackBarModule,
-    ProjectDashboardComponent,
-],
+  imports: [ProjectDashboardComponent],
   templateUrl: './home.html',
   styleUrl: './home.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class HomeComponent implements OnInit {
-  private readonly api = inject(ApiService);
+export class HomeComponent {
   private readonly projectService = inject(ProjectService);
-  private readonly router = inject(Router);
-  private readonly dialog = inject(MatDialog);
-  private readonly snackBar = inject(MatSnackBar);
 
-  readonly loading = signal<boolean>(true);
-  // ADR 0018: the home is the current Projekt's dashboard when one is set, and
-  // falls back to the project picker (below) as its no-selection state.
   readonly currentProject = this.projectService.currentProject;
-  // Rendered from the shared ProjectService list so the picker and the navbar
-  // switcher can never disagree about which projects exist.
-  readonly projects = this.projectService.projects;
-  private readonly organizations = signal<Organization[]>([]);
-  private readonly scientists = signal<Scientist[]>([]);
-
-  ngOnInit(): void {
-    this.loadProjects();
-    this.api.getOrganizations().subscribe({
-      next: (res) => this.organizations.set(res.results),
-    });
-    this.api.getScientists().subscribe({
-      next: (res) => this.scientists.set(res.results),
-    });
-  }
-
-  selectProject(project: Project): void {
-    this.projectService.setCurrent(project);
-    // ADR 0018: the home (`/`) is the current Projekt's dashboard, so selecting a
-    // project lands there rather than jumping straight to the capture list.
-    this.router.navigateByUrl('/');
-  }
-
-  openCreateDialog(): void {
-    const orgs = this.organizations();
-    if (orgs.length === 0) {
-      this.snackBar.open('Es konnte keine Organisation geladen werden.', 'Schließen', {duration: 3000});
-      return;
-    }
-    const ref = this.dialog.open<ProjectCreateDialogComponent, {organizations: Organization[]}, ProjectCreateDialogResult>(
-      ProjectCreateDialogComponent,
-      {
-        data: {organizations: orgs},
-        width: '480px',
-      },
-    );
-    ref.afterClosed().subscribe((result) => {
-      if (!result) {
-        return;
-      }
-      this.api.createProject({
-        title: result.title,
-        description: result.description,
-        organization_id: result.organizationHandle,
-        default_station_id: result.defaultStationHandle || null,
-      }).subscribe({
-        next: (project) => {
-          this.snackBar.open(`Projekt "${project.title}" wurde erstellt.`, 'Schließen', {duration: 3000});
-          this.projectService.upsertProject(project);
-          this.selectProject(project);
-        },
-        error: () => {
-          this.snackBar.open('Projekt konnte nicht erstellt werden.', 'Schließen', {duration: 3000});
-        },
-      });
-    });
-  }
-
-  exportIwm(project: Project, event: MouseEvent): void {
-    event.stopPropagation();
-    this.api.exportIwm(project.id).subscribe({
-      next: (response) => {
-        const blob = response.body;
-        if (!blob) {
-          this.snackBar.open('Export ist leer.', 'Schließen', {duration: 3000});
-          return;
-        }
-        const filename =
-          parseFilenameFromContentDisposition(response.headers.get('Content-Disposition')) ??
-          `IWM_${project.title}.xlsx`;
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      },
-      error: () => {
-        this.snackBar.open('IWM-Export fehlgeschlagen.', 'Schließen', {duration: 3000});
-      },
-    });
-  }
-
-  openEditDialog(project: Project, event: MouseEvent): void {
-    event.stopPropagation();
-    const ref = this.dialog.open<
-      ProjectEditDialogComponent,
-      ProjectEditDialogData,
-      ProjectEditDialogResult
-    >(ProjectEditDialogComponent, {
-      data: {project, scientists: this.scientists()},
-      width: '480px',
-    });
-    ref.afterClosed().subscribe((result) => {
-      if (!result) {
-        return;
-      }
-      this.api.updateProject(project.id, {
-        title: result.title,
-        description: result.description,
-        scientist_ids: result.scientistIds,
-        show_optional_fields: result.showOptionalFields,
-        default_station_id: result.defaultStationHandle || null,
-      }).subscribe({
-        next: (updated) => {
-          this.snackBar.open(`Projekt "${updated.title}" wurde aktualisiert.`, 'Schließen', {duration: 3000});
-          this.projectService.upsertProject(updated);
-          if (this.projectService.currentProject()?.id === updated.id) {
-            this.projectService.setCurrent(updated);
-          }
-        },
-        error: () => {
-          this.snackBar.open('Projekt konnte nicht aktualisiert werden.', 'Schließen', {duration: 3000});
-        },
-      });
-    });
-  }
-
-  private loadProjects(): void {
-    this.loading.set(true);
-    this.projectService.loadProjects().subscribe({
-      next: () => this.loading.set(false),
-      error: () => {
-        this.loading.set(false);
-        this.snackBar.open('Projekte konnten nicht geladen werden.', 'Schließen', {duration: 3000});
-      },
-    });
-  }
 }

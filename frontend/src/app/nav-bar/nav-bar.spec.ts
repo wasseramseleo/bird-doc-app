@@ -249,16 +249,21 @@ describe('NavBar', () => {
     expect(navigate).toHaveBeenCalledWith('/');
   });
 
-  it('returns to the picker from the "Alle Projekte …" item', () => {
+  it('navigates to the dedicated /projekte picker from the "Alle Projekte …" item, keeping the current Projekt', () => {
     const ctx = setup();
     activate(ctx, makeProject());
     const navigate = spyOn(ctx.router, 'navigateByUrl').and.stub();
+    const clear = spyOn(ctx.projectService, 'clear').and.callThrough();
 
     const items = openSwitcher(ctx);
     const allItem = items.find((i) => (i.textContent ?? '').includes('Alle Projekte'))!;
     allItem.click();
 
-    expect(navigate).toHaveBeenCalledWith('/');
+    // Issue #221: "Alle Projekte …" goes to /projekte (no longer /) and must NOT
+    // clear the current Projekt, so the switcher stays visible for a return trip.
+    expect(navigate).toHaveBeenCalledWith('/projekte');
+    expect(clear).not.toHaveBeenCalled();
+    expect(ctx.projectService.currentProject()).not.toBeNull();
   });
 
   it('shows a "Neuer Fang" action linking to /data-entry in the workbench', () => {

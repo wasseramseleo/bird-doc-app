@@ -4,6 +4,7 @@ import {HomeComponent} from './home/home';
 import {authGuard} from './core/guards/auth.guard';
 import {guestGuard} from './core/guards/guest.guard';
 import {orgAdminGuard} from './core/guards/org-admin.guard';
+import {projectSelectedGuard} from './core/guards/project-selected.guard';
 
 export const routes: Routes = [
   {
@@ -11,7 +12,23 @@ export const routes: Routes = [
     loadComponent: () => import('./auth/login/login').then((m) => m.LoginComponent),
     canActivate: [guestGuard],
   },
-  {path: '', component: HomeComponent, canActivate: [authGuard], pathMatch: 'full'},
+  // ADR 0018 + issue #221: `/` is the current Projekt's dashboard. When no
+  // Projekt is selected, projectSelectedGuard redirects to the dedicated picker.
+  {
+    path: '',
+    component: HomeComponent,
+    canActivate: [authGuard, projectSelectedGuard],
+    pathMatch: 'full',
+  },
+  {
+    // Issue #221: the dedicated project picker (pre-Visualisierung Home), listing
+    // every Projekt visible to the user. Reached from the navbar "Alle Projekte …"
+    // switcher item and from `/` when no Projekt is selected.
+    path: 'projekte',
+    loadComponent: () =>
+      import('./project-picker/project-picker').then((m) => m.ProjectPickerComponent),
+    canActivate: [authGuard],
+  },
   {
     path: 'data-entries',
     loadComponent: () =>
