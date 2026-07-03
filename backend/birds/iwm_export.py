@@ -10,7 +10,6 @@ TEMPLATE_PATH = (
     Path(__file__).resolve().parent / "templates" / "iwm" / "Datenmeldung_Vorlage_IWM.xlsx"
 )
 SHEET_NAME = "Fangdaten"
-SCHEME_CODE = "AUW"
 
 # "No additional marking" — every authentic Datenmeldung row carries it (the
 # importer reads and discards it, having no model field to land it in).
@@ -63,7 +62,11 @@ def _build_comment(entry):
 # Headers absent from this map (Zustand, Brutfleck, Kloake) are still deferred
 # per the task brief and written as empty.
 COLUMN_MAP = {
-    "Ring": lambda e: SCHEME_CODE,
+    # The ring's own issuing Zentrale — an EURING scheme code, never free prose.
+    # The AUW backfill (ADR 0019) guarantees ``central`` is never null, so a
+    # domestic ring still emits "AUW" while a foreign ring emits its own scheme
+    # code (issue #230, US 20).
+    "Ring": lambda e: e.ring.central.scheme_code,
     "Ringnummer": lambda e: f"{e.ring.size}{e.ring.number}",
     "Ringstatus": lambda e: e.bird_status.upper() if e.bird_status else None,
     "Art": lambda e: e.species.common_name_de,
