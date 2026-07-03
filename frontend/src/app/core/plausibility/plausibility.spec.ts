@@ -216,3 +216,106 @@ describe('computePlausibilityWarnings — the five additional σ-measurements (#
     ]);
   });
 });
+
+// Issue #248: the Quotient rule. Federlänge/Flügellänge (feather_span/wing_span,
+// derived — no stored field) is tested against a RELATIVE band
+// quotient_mean ± quotient_tolerance_pct (default 3 %), not a σ band. It fires
+// only when the quotient norm is set AND BOTH operands are present — a blank
+// Federlänge or Flügellänge suppresses it — and is independent of whether the
+// σ rules for Federlänge/Flügellänge exist. The message names the computed
+// quotient and the expected band in de-AT (a dimensionless ratio, two decimals).
+describe('computePlausibilityWarnings — Quotient (relative band, #248)', () => {
+  // A Zaunkönig-style quotient norm: Ø 0,74, Toleranz 3 % → band 0,72–0,76.
+  // Only the quotient rule is set; the six σ bands are off so a Quotient case
+  // yields at most the one quotient warning.
+  const quotientNorm: SpeciesNorm = {
+    ...zaunkoenigNorm,
+    weight_mean: null,
+    weight_sd: null,
+    quotient_mean: '0.74',
+    quotient_tolerance_pct: '3',
+  };
+
+  it('produces no warning for an in-band quotient', () => {
+    // 54/73 = 0,7397 — inside 0,72–0,76.
+    expect(
+      computePlausibilityWarnings({ feather_span: 54, wing_span: 73 }, quotientNorm),
+    ).toEqual([]);
+  });
+
+  it('produces exactly one warning for an out-of-band quotient, with the de-AT message', () => {
+    // 60/70 = 0,857 — above the band; names the computed quotient and the band.
+    const warnings = computePlausibilityWarnings(
+      { feather_span: 60, wing_span: 70 },
+      quotientNorm,
+    );
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].field).toBe('quotient');
+    expect(warnings[0].message).toBe(
+      'Quotient Federlänge/Flügellänge 0,86 liegt außerhalb des erwarteten Bereichs 0,72–0,76 (Zaunkönig)',
+    );
+  });
+
+  it('warns when the quotient is below the band too', () => {
+    // 50/75 = 0,6667 — below the band.
+    const warnings = computePlausibilityWarnings(
+      { feather_span: 50, wing_span: 75 },
+      quotientNorm,
+    );
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].field).toBe('quotient');
+    expect(warnings[0].message).toBe(
+      'Quotient Federlänge/Flügellänge 0,67 liegt außerhalb des erwarteten Bereichs 0,72–0,76 (Zaunkönig)',
+    );
+  });
+
+  it('produces no warning when the quotient norm is unset (that check is off)', () => {
+    const noQuotient: SpeciesNorm = { ...quotientNorm, quotient_mean: null };
+    expect(
+      computePlausibilityWarnings({ feather_span: 60, wing_span: 70 }, noQuotient),
+    ).toEqual([]);
+  });
+
+  it('produces no warning when either operand is blank (needs both)', () => {
+    // Federlänge blank.
+    expect(computePlausibilityWarnings({ wing_span: 70 }, quotientNorm)).toEqual([]);
+    expect(
+      computePlausibilityWarnings({ feather_span: null, wing_span: 70 }, quotientNorm),
+    ).toEqual([]);
+    // Flügellänge blank.
+    expect(computePlausibilityWarnings({ feather_span: 60 }, quotientNorm)).toEqual([]);
+    expect(
+      computePlausibilityWarnings({ feather_span: 60, wing_span: undefined }, quotientNorm),
+    ).toEqual([]);
+    // Both blank.
+    expect(computePlausibilityWarnings({}, quotientNorm)).toEqual([]);
+  });
+
+  it('falls back to a 3 % tolerance when the norm carries no quotient_tolerance_pct', () => {
+    const noTolerance: SpeciesNorm = { ...quotientNorm, quotient_tolerance_pct: null };
+    // Still band 0,72–0,76; 60/70 = 0,857 is out, 54/73 = 0,7397 is in.
+    expect(
+      computePlausibilityWarnings({ feather_span: 54, wing_span: 73 }, noTolerance),
+    ).toEqual([]);
+    const warnings = computePlausibilityWarnings(
+      { feather_span: 60, wing_span: 70 },
+      noTolerance,
+    );
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].message).toBe(
+      'Quotient Federlänge/Flügellänge 0,86 liegt außerhalb des erwarteten Bereichs 0,72–0,76 (Zaunkönig)',
+    );
+  });
+
+  it('fires independently of the σ rules for Federlänge/Flügellänge', () => {
+    // The σ bands stay OFF (null) yet the quotient still fires — the rule reads
+    // the two measurement fields directly, it does not depend on those bands.
+    expect(quotientNorm.feather_mean).toBeNull();
+    expect(quotientNorm.wing_mean).toBeNull();
+    const warnings = computePlausibilityWarnings(
+      { feather_span: 60, wing_span: 70 },
+      quotientNorm,
+    );
+    expect(warnings.map((w) => w.field)).toEqual(['quotient']);
+  });
+});

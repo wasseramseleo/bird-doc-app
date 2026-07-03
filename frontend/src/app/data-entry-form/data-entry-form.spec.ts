@@ -3340,4 +3340,264 @@ describe('DataEntryFormComponent', () => {
       }
     });
   });
+
+  // Issue #248: the Quotient rule surfaced in the capture form. The derived
+  // Federlänge/Flügellänge ratio is checked against a relative band; its inline
+  // Plausibilitätswarnung sits under its own dedicated slot (keyed by the
+  // synthetic `quotient` field so it never collides with the two operands' σ
+  // warnings), and it joins the same aggregated save-time confirm-dialog. It
+  // recomputes on every operand blur. Create and edit mode.
+  describe('Quotient-Plausibilitätswarnung (Artennorm, #248)', () => {
+    // Quotient Ø 0,74, Toleranz 3 % → band 0,72–0,76. The σ bands are OFF so the
+    // only warning a Quotient case yields is the quotient one.
+    const quotientNorm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: null,
+      weight_sd: null,
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: '0.74',
+      quotient_tolerance_pct: '3',
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: null,
+      dj_grossgefiedermauser_moeglich: null,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [quotientNorm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const quotientMessage =
+      'Quotient Federlänge/Flügellänge 0,86 liegt außerhalb des erwarteten Bereichs 0,72–0,76 (Zaunkönig)';
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    function fillValid(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: zaunkoenig as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      component.selectedSpecies.set(zaunkoenig);
+    }
+
+    const warningEl = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-quotient-warning"]',
+      ) as HTMLElement | null;
+
+    it('renders the inline quotient warning on blur for an out-of-band ratio, with the de-AT message', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({ feather_span: 60, wing_span: 70 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      const el = warningEl();
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('role')).toBe('alert');
+      expect(el!.textContent).toContain(quotientMessage);
+    });
+
+    it('renders no inline quotient warning when the ratio is in band', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      // 54/73 = 0,7397 — inside 0,72–0,76.
+      component.entryForm.patchValue({ feather_span: 54, wing_span: 73 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(warningEl()).toBeNull();
+    });
+
+    it('renders no inline quotient warning while either operand is blank (needs both)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      // Only Federlänge — Flügellänge still blank → suppressed.
+      component.entryForm.patchValue({ feather_span: 60, wing_span: null });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(warningEl()).toBeNull();
+    });
+
+    it('recomputes the derived quotient as either operand changes', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      // Only Flügellänge present → no warning yet (needs both operands).
+      component.entryForm.patchValue({ wing_span: 70 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+      expect(warningEl()).toBeNull();
+
+      // Add Federlänge → the now-derivable ratio 60/70 = 0,857 is out of band.
+      component.entryForm.patchValue({ feather_span: 60 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+      expect(warningEl()).not.toBeNull();
+      expect(warningEl()!.textContent).toContain(quotientMessage);
+
+      // Change the other operand so the ratio moves back in band → warning clears.
+      // 60/82 = 0,7317 — inside 0,72–0,76.
+      component.entryForm.patchValue({ wing_span: 82 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+      expect(warningEl()).toBeNull();
+    });
+
+    it('includes the quotient discrepancy in the aggregated save-time confirm-dialog and writes on confirm', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.patchValue({ feather_span: 60, wing_span: 70 });
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
+      expect(data.message).toContain(quotientMessage);
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('surfaces the inline quotient warning on blur in edit mode too', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '88' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const editComponent = f.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/88/'))
+        .flush({
+          id: '88',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          feather_span: 60,
+          wing_span: 70,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      editComponent.onMeasurementBlur();
+      f.detectChanges();
+
+      const warning = f.nativeElement.querySelector(
+        '[data-testid="plausibility-quotient-warning"]',
+      ) as HTMLElement | null;
+      expect(warning).not.toBeNull();
+      expect(warning!.textContent).toContain(quotientMessage);
+    });
+  });
 });

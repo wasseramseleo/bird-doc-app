@@ -67,10 +67,19 @@ export interface PlausibilityWarning {
 }
 
 const DEFAULT_SD_FACTOR = 1.96;
+// Issue #248: the Quotient's relative band defaults to ±3 % when the norm sets a
+// quotient_mean but no explicit quotient_tolerance_pct.
+const DEFAULT_QUOTIENT_TOLERANCE_PCT = 3;
 
 // de-AT: comma decimal separator, at most one fraction digit (matching the
 // brief's "7,5–10,7 g").
 const deAt = new Intl.NumberFormat('de-AT', { maximumFractionDigits: 1 });
+// The Quotient is a dimensionless ratio around 0,7–0,8, so one fraction digit is
+// too coarse to name it meaningfully — it and its band always show two decimals.
+const deAtRatio = new Intl.NumberFormat('de-AT', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 function toNumber(value: Numeric): number | null {
   if (value === null || value === undefined || value === '') {
@@ -112,6 +121,44 @@ function sigmaBandWarning(
     `${label} ${deAt.format(measured)} ${unit} liegt außerhalb des erwarteten ` +
     `Bereichs ${deAt.format(low)}–${deAt.format(high)} ${unit} (${speciesName})`;
   return { field, message };
+}
+
+/**
+ * Issue #248: the Quotient Ausreißertest. The DERIVED ratio Federlänge/Flügellänge
+ * (feather_span/wing_span, no stored field) is tested against a RELATIVE band
+ * quotient_mean ± quotient_tolerance_pct (default 3 %) — catching a wing/feather
+ * transposition that leaves each value individually plausible but their ratio off.
+ * It is a distinct band type (relative, not σ) reading the two measurement fields
+ * directly, so it fires independently of whether the σ rules for Federlänge/
+ * Flügellänge exist. Fires only when the quotient norm is set AND BOTH operands
+ * are present — a blank (or a zero-division Flügellänge) suppresses it. Surfaces
+ * under its own synthetic `quotient` field so it never collides with the two
+ * operands' σ warnings.
+ */
+function quotientBandWarning(
+  featherSpan: Numeric,
+  wingSpan: Numeric,
+  quotientMean: Numeric,
+  tolerancePct: Numeric,
+  speciesName: string,
+): PlausibilityWarning | null {
+  const feather = toNumber(featherSpan);
+  const wing = toNumber(wingSpan);
+  const mean = toNumber(quotientMean);
+  if (feather === null || wing === null || mean === null || wing === 0) {
+    return null;
+  }
+  const tol = toNumber(tolerancePct) ?? DEFAULT_QUOTIENT_TOLERANCE_PCT;
+  const quotient = feather / wing;
+  const low = mean * (1 - tol / 100);
+  const high = mean * (1 + tol / 100);
+  if (quotient >= low && quotient <= high) {
+    return null;
+  }
+  const message =
+    `Quotient Federlänge/Flügellänge ${deAtRatio.format(quotient)} liegt außerhalb ` +
+    `des erwarteten Bereichs ${deAtRatio.format(low)}–${deAtRatio.format(high)} (${speciesName})`;
+  return { field: 'quotient', message };
 }
 
 export function computePlausibilityWarnings(
@@ -187,6 +234,16 @@ export function computePlausibilityWarnings(
       norm.inner_foot_mean,
       norm.inner_foot_sd,
       norm.sd_factor,
+      norm.species_name,
+    ),
+    // Issue #248: the derived Quotient (relative band). Independent of the two
+    // σ operand rules above; listed last so it trails them in the aggregated
+    // save-time dialog.
+    quotientBandWarning(
+      measurements.feather_span,
+      measurements.wing_span,
+      norm.quotient_mean,
+      norm.quotient_tolerance_pct,
       norm.species_name,
     ),
   ];
