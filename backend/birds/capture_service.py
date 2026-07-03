@@ -13,7 +13,7 @@ change."
 from django.db import IntegrityError, transaction
 from django.utils.translation import gettext_lazy as _
 
-from .models import DataEntry, Ring, Species
+from .models import DataEntry, Ring, Species, get_auw_central
 
 
 class CaptureValidationError(Exception):
@@ -61,14 +61,21 @@ RING_ALREADY_FIRST_CAUGHT = _(
 )
 
 
-def get_or_create_ring(*, number, size, organization):
-    """Find or create the Ring *within the recording Organisation*.
+def get_or_create_ring(*, number, size, organization, central=None):
+    """Find or create the Ring *within the recording Organisation and Zentrale*.
 
-    Ring uniqueness is scoped to the Organisation (ADR 0006), so the lookup is
-    org-scoped too: recording a number another Organisation owns creates a new
-    Ring in the recording Organisation rather than reusing the other's.
+    Ring uniqueness is scoped to the Organisation (ADR 0006) and, since ADR 0019,
+    the Zentrale too, so the lookup is scoped by both: recording a number another
+    Organisation owns creates a new Ring in the recording Organisation, and the
+    same Größe+Nummer under a different Zentrale is a distinct Ring. ``central``
+    is the Projekt's Zentrale on the write path (today always AUW); when it is
+    left unset it resolves to the default AUW Zentrale, so every Ring carries one.
     """
-    ring, _created = Ring.objects.get_or_create(number=number, size=size, organization=organization)
+    if central is None:
+        central = get_auw_central()
+    ring, _created = Ring.objects.get_or_create(
+        number=number, size=size, organization=organization, central=central
+    )
     return ring
 
 
@@ -130,7 +137,13 @@ def create_capture(
         for field in BIRD_DATA_FIELDS:
             fields[field] = None
 
-    ring = get_or_create_ring(number=ring_number, size=ring_size, organization=organization)
+    # The Ring is issued under the Projekt's Zentrale (ADR 0019) — today always
+    # AUW, since there is no Zentrale write path yet. A capture with no Projekt
+    # falls back to the default AUW Zentrale inside ``get_or_create_ring``.
+    central = project.central if project is not None else None
+    ring = get_or_create_ring(
+        number=ring_number, size=ring_size, organization=organization, central=central
+    )
 
     # A physical ring is applied to a bird exactly once, so at most one Erstfang
     # (first catch) may reference a ring within the Organisation — ring

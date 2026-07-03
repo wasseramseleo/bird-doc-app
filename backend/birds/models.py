@@ -10,6 +10,54 @@ from django.utils.translation import gettext_lazy as _
 
 from .kuerzel import derive_handle
 
+# EURING scheme code of the default Zentrale — the Austrian Vogelwarte. Every
+# existing Ring and Projekt is backfilled to it, and every new Projekt defaults
+# to it (ADR 0019); the capture write path creates rings under the Projekt's
+# Zentrale, which today is always AUW.
+AUW_SCHEME_CODE = "AUW"
+
+
+class Central(models.Model):
+    """A ringing centre / EURING ringing scheme — a *Zentrale* (ADR 0019).
+
+    Global reference data like ``Species``: explicitly **never** tenant-scoped.
+    Every Ring and Projekt carries one; the published EURING scheme list is
+    seeded by data migration. ``scheme_code`` is the EURING three-letter scheme
+    code (e.g. ``AUW`` for the Austrian Vogelwarte, ``SKB`` for the Slovak
+    Bratislava scheme) and is globally unique.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scheme_code = models.CharField(max_length=8, unique=True, verbose_name=_("Zentralen-Code"))
+    name = models.CharField(max_length=255, verbose_name=_("Name"))
+    country = models.CharField(max_length=64, blank=True, verbose_name=_("Land"))
+
+    class Meta:
+        verbose_name = _("Zentrale")
+        verbose_name_plural = _("Zentralen")
+        ordering = ("scheme_code",)
+
+    def __str__(self):
+        return f"{self.scheme_code} ({self.name})"
+
+
+def get_auw_central():
+    """Return the default Zentrale (EURING scheme ``AUW``), creating it
+    defensively if absent.
+
+    The Ring/Projekt Zentrale fallback: ``Ring.save()`` and ``Project.save()``
+    resolve an unset ``central`` here so every row is attributed to AUW (the
+    cutover state — ADR 0019), and the capture write path uses the Projekt's
+    Zentrale, which today is always AUW. The row normally exists via the EURING
+    seed migration; ``get_or_create`` keeps the contract safe on a fresh or
+    edge-case database.
+    """
+    central, _ = Central.objects.get_or_create(
+        scheme_code=AUW_SCHEME_CODE,
+        defaults={"name": "Österreichische Vogelwarte", "country": "Austria"},
+    )
+    return central
+
 
 class Ring(models.Model):
     class RingSizes(models.TextChoices):
@@ -63,9 +111,33 @@ class Ring(models.Model):
         blank=True,
         verbose_name=_("Organisation"),
     )
+    # The issuing Zentrale (ADR 0019). Ring uniqueness widens to
+    # (organization, central, size, number), so the same Größe+Nummer under two
+    # different Zentralen — an Austrian V 0042 and a Slovak V 0042 — are distinct
+    # physical rings within one Organisation. Nullable only as a migration safety
+    # net for legacy rows that predate the field; ``save()`` resolves an unset
+    # Zentrale to AUW, and the capture path always records the Projekt's Zentrale
+    # (today AUW), so every persisted Ring carries one.
+    central = models.ForeignKey(
+        "Central",
+        on_delete=models.PROTECT,
+        related_name="rings",
+        null=True,
+        blank=True,
+        verbose_name=_("Zentrale"),
+    )
 
     class Meta:
-        unique_together = ("organization", "size", "number")
+        unique_together = ("organization", "central", "size", "number")
+
+    def save(self, *args, **kwargs):
+        # Keep every Ring attributed to a Zentrale: when it is left unset
+        # (admin/ORM/test paths), inherit the default AUW Zentrale (ADR 0019).
+        # The capture write path sets it to the Projekt's Zentrale before saving,
+        # so this never overrides an explicit value.
+        if self.central_id is None:
+            self.central = get_auw_central()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.size} {self.number}"
@@ -454,6 +526,19 @@ class Project(models.Model):
         related_name="projects",
         verbose_name=_("Organisation"),
     )
+    # The Projekt's Zentrale (ADR 0019): the ringing scheme its rings are issued
+    # under. Defaults to AUW — backfilled for every existing Projekt and resolved
+    # in ``save()`` for new ones. There is no settings UI yet (out of scope); the
+    # follow-up slice adds the write path. Nullable only as a migration safety net
+    # for legacy rows; ``save()`` resolves an unset Zentrale to AUW.
+    central = models.ForeignKey(
+        "Central",
+        on_delete=models.PROTECT,
+        related_name="projects",
+        null=True,
+        blank=True,
+        verbose_name=_("Zentrale"),
+    )
     default_station = models.ForeignKey(
         RingingStation,
         on_delete=models.SET_NULL,
@@ -487,6 +572,14 @@ class Project(models.Model):
     )
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # A new Projekt defaults to the AUW Zentrale (ADR 0019) when none was set
+        # explicitly. There is no Zentrale write path yet, so this is the sole
+        # runtime source for a new Projekt's Zentrale.
+        if self.central_id is None:
+            self.central = get_auw_central()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title

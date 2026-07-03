@@ -26,6 +26,7 @@ from .iwm_import import (
 from .kuerzel import derive_handle
 from .models import (
     FALLBACK_BERINGER_HANDLE,
+    Central,
     DataEntry,
     Mitgliedschaft,
     Organization,
@@ -44,6 +45,7 @@ from .permissions import (
 )
 from .project_stats import compute_project_stats
 from .serializers import (
+    CentralSerializer,
     DataEntrySerializer,
     MitgliedschaftSerializer,
     OfflineSpeciesSerializer,
@@ -151,7 +153,13 @@ class DataEntryViewSet(viewsets.ModelViewSet):
     pagination_class = DataEntryPagination
     queryset = (
         DataEntry.objects.select_related(
-            "species", "ring", "staff", "ringing_station", "project", "project__organization"
+            "species",
+            "ring",
+            "ring__central",
+            "staff",
+            "ringing_station",
+            "project",
+            "project__organization",
         )
         .all()
         .order_by("-date_time")
@@ -236,6 +244,22 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             usage = Count("dataentry")
         return candidates.annotate(usage=usage).order_by("-usage", "common_name_de")
+
+
+class CentralViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only lookup of Zentralen (EURING ringing schemes) — ADR 0019.
+
+    Global reference data like ``Species``: authenticated but explicitly **not**
+    tenant-scoped, so every Mitglied of every Organisation sees the same list.
+    Lists and searches by ``name``, ``country`` and ``scheme_code``, mirroring
+    the species lookup pattern. The endpoint is read-only — the register is
+    seeded by data migration, never written through the API.
+    """
+
+    queryset = Central.objects.all().order_by("scheme_code")
+    serializer_class = CentralSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["name", "country", "scheme_code"]
 
 
 class SpeciesListViewSet(viewsets.ModelViewSet):

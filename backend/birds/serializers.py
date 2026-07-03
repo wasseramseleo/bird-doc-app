@@ -10,6 +10,7 @@ from .capture_service import (
     get_or_create_ring,
 )
 from .models import (
+    Central,
     DataEntry,
     Mitgliedschaft,
     Organization,
@@ -50,10 +51,23 @@ class OfflineSpeciesSerializer(SpeciesSerializer):
         fields = [*SpeciesSerializer.Meta.fields, "usage_count"]
 
 
+class CentralSerializer(serializers.ModelSerializer):
+    """A Zentrale (EURING ringing scheme), read-only reference data (ADR 0019).
+
+    Backs the ``/centrals/`` lookup and is nested inside a Ring on a capture GET
+    so entry details can show the issuing scheme (scheme_code + name)."""
+
+    class Meta:
+        model = Central
+        fields = ["id", "scheme_code", "name", "country"]
+
+
 class RingSerializer(serializers.ModelSerializer):
+    central = CentralSerializer(read_only=True)
+
     class Meta:
         model = Ring
-        fields = ["id", "number", "size"]
+        fields = ["id", "number", "size", "central"]
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -477,11 +491,15 @@ class DataEntrySerializer(serializers.ModelSerializer):
         (ADR 0006), storing it back on ``validated_data`` for the update path.
 
         Delegates the get-or-create itself to the shared capture service so the
-        update path uses exactly the same org-scoped lookup as ``create``."""
+        update path uses exactly the same org- and Zentrale-scoped lookup as
+        ``create``. The Ring is issued under the Projekt's Zentrale (ADR 0019) —
+        today always AUW; without a Projekt it falls back to the default AUW."""
+        project = validated_data.get("project", getattr(self.instance, "project", None))
         ring = get_or_create_ring(
             number=validated_data.pop("ring_number"),
             size=validated_data.pop("ring_size"),
             organization=organization,
+            central=project.central if project is not None else None,
         )
         validated_data["ring"] = ring
         return ring
