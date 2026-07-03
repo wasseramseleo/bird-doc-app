@@ -135,6 +135,35 @@ def test_dry_run_returns_preview_and_writes_nothing(
 
 
 @pytest.mark.django_db
+def test_commit_imports_row_with_out_of_range_weight_despite_species_norm(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    """The IWM import runs no plausibility check (PRD #245, ADR 0021): a row
+    whose Gewicht is wildly outside the species' Artennorm band imports normally
+    — historical rows may legitimately be "unusual" and must never warn or block."""
+    from birds.models import SpeciesNorm
+
+    SpeciesNorm.objects.create(
+        species=species, organization=None, weight_mean=Decimal("9.1"), weight_sd=Decimal("0.82")
+    )
+    headers = [*HEADERS, "Gewicht"]
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, **{"Gewicht": 250})],
+        headers=headers,
+    )
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body["created"] == 1
+    assert body["errors"] == []
+    assert DataEntry.objects.get().weight_gram == Decimal("250")
+
+
+@pytest.mark.django_db
 def test_commit_creates_importable_captures_scoped_to_project_org(
     auth_client, scientist, ringing_station, project, species, organization
 ):

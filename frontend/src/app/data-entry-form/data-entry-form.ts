@@ -65,6 +65,12 @@ import {
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {selectedOptionValidator} from '../shared/validators/selected-option.validator';
 import {getAgeClassLabel, getSexLabel} from './data-entry-labels';
+import {
+  computePlausibilityWarnings,
+  PlausibilityMeasurements,
+  PlausibilityWarning,
+  SpeciesNorm,
+} from '../core/plausibility/plausibility';
 
 // #232: the strict Austrian (AUW) ring-size codes. When the Zentrale switches
 // back from a foreign scheme to the Projekt-Zentrale, a free-text Größe that is
@@ -286,6 +292,24 @@ export class DataEntryFormComponent implements OnInit {
   // (the backend always includes Sonderart rows in the species list). Keyed off
   // special_kind === 'ring_destroyed', not the German name.
   private readonly ringDestroyedSpecies = signal<Species | null>(null);
+
+  // PRD #245: the per-org effective Artennormen keyed by species_id, loaded from
+  // the offline reference bundle (the same list the /species-norms/ API serves),
+  // so the plausibility lookup is identical online and offline.
+  private readonly normsBySpecies = signal<Record<string, SpeciesNorm>>({});
+  // The effective Artennorm for the currently selected Art, or null when the Art
+  // carries none (then no plausibility check fires).
+  readonly activeNorm = computed<SpeciesNorm | null>(() => {
+    const species = this.selectedSpecies();
+    return species ? (this.normsBySpecies()[species.id] ?? null) : null;
+  });
+  // The active Plausibilitätswarnungen, recomputed on measurement blur and at
+  // submit from computePlausibilityWarnings — the single source shared by the
+  // inline hint and the save-time acknowledgment. Transient, never persisted.
+  readonly plausibilityWarnings = signal<PlausibilityWarning[]>([]);
+  readonly weightWarning = computed(
+    () => this.plausibilityWarnings().find((w) => w.field === 'weight_gram')?.message ?? null,
+  );
 
   // #155: a fresh client-generated UUID identifies this capture-create attempt
   // end-to-end, so a retried/replayed offline-outbox create is never duplicated
@@ -705,6 +729,26 @@ export class DataEntryFormComponent implements OnInit {
         response.results.find(s => s.special_kind === 'ring_destroyed') ?? null,
       );
     });
+
+    // PRD #245: load the per-org Artennormen from the offline reference bundle
+    // so the plausibility lookup works the same online and offline.
+    void this.loadNorms();
+  }
+
+  // PRD #245: build the species_id → effective-Artennorm map from the cached
+  // offline reference bundle (issue #158). A bundle cached by a pre-feature app
+  // version carries no `norms` — treated as an empty map, so no check fires.
+  private async loadNorms(): Promise<void> {
+    try {
+      const bundle = (await this.referenceCache.load())?.bundle ?? null;
+      const map: Record<string, SpeciesNorm> = {};
+      for (const norm of bundle?.norms ?? []) {
+        map[norm.species_id] = norm;
+      }
+      this.normsBySpecies.set(map);
+    } catch (error) {
+      console.error('Failed to read Artennormen from the offline reference cache', error);
+    }
   }
 
   // Issue #10: in create mode, pre-fill the Beringer with the one last used on
@@ -833,6 +877,9 @@ export class DataEntryFormComponent implements OnInit {
     if (species && species.ring_size && !this.isForeignCentral()) {
       this.entryForm.get('ring_size')?.setValue(species.ring_size);
     }
+    // PRD #245: the effective Artennorm changes with the Art, so re-evaluate any
+    // active Plausibilitätswarnung against the newly selected species' norm.
+    this.recomputePlausibility();
     this.onAutocompleteAccepted('species', event);
   }
 
@@ -975,6 +1022,40 @@ export class DataEntryFormComponent implements OnInit {
     this.router.navigateByUrl(this.isQueuedEditMode() ? '/heute' : '/data-entries');
   }
 
+  // PRD #245: recompute the inline Plausibilitätswarnungen from the current form
+  // values and the selected Art's effective norm. Bound to a measurement field's
+  // blur, so the warning surfaces exactly when the value is finished — the same
+  // non-modal role="alert" idiom the sex-contradiction hint rides. Also called
+  // when the Art changes so a stale warning never lingers.
+  onMeasurementBlur(): void {
+    this.recomputePlausibility();
+  }
+
+  private recomputePlausibility(): void {
+    this.plausibilityWarnings.set(
+      computePlausibilityWarnings(this.currentMeasurements(), this.activeNorm()),
+    );
+  }
+
+  // The measurement subset the Plausibilitätsprüfung reads, pulled from the raw
+  // form value (getRawValue includes disabled controls). Shaped to match
+  // PlausibilityMeasurements so #247/#248/#249 extend the check without touching
+  // this call site.
+  private currentMeasurements(): PlausibilityMeasurements {
+    const v = this.entryForm.getRawValue();
+    return {
+      weight_gram: v.weight_gram,
+      feather_span: v.feather_span,
+      wing_span: v.wing_span,
+      tarsus: v.tarsus,
+      notch_f2: v.notch_f2,
+      inner_foot: v.inner_foot,
+      sex: v.sex,
+      age_class: v.age_class,
+      hand_wing: v.hand_wing,
+    };
+  }
+
   onSubmit(): void {
     if (this.entryForm.invalid) {
       Object.values(this.entryForm.controls).forEach(control => {
@@ -986,6 +1067,43 @@ export class DataEntryFormComponent implements OnInit {
       return;
     }
 
+    // PRD #245: gate the save on the Plausibilitätsprüfung. Compute the active
+    // Warnungen from the single-source pure function; if any fire, ONE aggregated
+    // Bestätigung (the shared confirm-dialog) lists the discrepancies —
+    // confirming proceeds to write/queue, cancelling returns to the form. The
+    // acknowledgment is transient and never persisted (identical in create and
+    // edit mode).
+    const warnings = computePlausibilityWarnings(this.currentMeasurements(), this.activeNorm());
+    this.plausibilityWarnings.set(warnings);
+    if (warnings.length > 0) {
+      const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
+        ConfirmDialogComponent,
+        {
+          data: {
+            title: 'Plausibilität prüfen',
+            message:
+              'Folgende Messwerte liegen außerhalb des erwarteten Bereichs:\n\n' +
+              warnings.map(w => w.message).join('\n') +
+              '\n\nTrotzdem speichern?',
+            confirmLabel: 'Trotzdem speichern',
+            cancelLabel: 'Zurück',
+          },
+          width: '480px',
+        },
+      );
+      ref.afterClosed().subscribe(confirmed => {
+        if (confirmed) {
+          this.performSave();
+        }
+        // Cancel: return to the form, nothing written or queued.
+      });
+      return;
+    }
+
+    this.performSave();
+  }
+
+  private performSave(): void {
     this.loading.set(true);
     const rawValue = this.entryForm.getRawValue();
 
@@ -1296,6 +1414,9 @@ export class DataEntryFormComponent implements OnInit {
     this.selectedSpecies.set(null);
     this.recaptureHistory.set([]);
     this.historyPossiblyIncomplete.set(false);
+    // PRD #245: the acknowledgment is transient — clear the inline warning so the
+    // pristine form for the next capture starts with no stale Plausibilitätshint.
+    this.plausibilityWarnings.set([]);
     // #155: the just-saved capture "used up" this key — the next capture
     // (this same form instance, no navigation) must mint its own.
     this.idempotencyKey = crypto.randomUUID();

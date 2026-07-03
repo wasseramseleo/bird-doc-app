@@ -24,5 +24,6 @@ router.register(r"mitgliedschaften", views.MitgliedschaftViewSet, basename="mitg
 # directly rather than through the router.
 urlpatterns = [
     path("offline-bundle/", views.OfflineBundleView.as_view(), name="offline-bundle"),
+    path("species-norms/", views.SpeciesNormListView.as_view(), name="species-norms"),
     path("", include(router.urls)),
 ]

@@ -18,6 +18,7 @@ from .models import (
     Scientist,
     Species,
     SpeciesList,
+    SpeciesNorm,
     Zugangscode,
 )
 
@@ -145,6 +146,19 @@ class ProjectAdmin(admin.ModelAdmin):
     search_fields = ("title",)
     ordering = ("-updated",)
     filter_horizontal = ("scientists",)
+
+
+@admin.register(SpeciesNorm)
+class SpeciesNormAdmin(admin.ModelAdmin):
+    """Where the operator edits the globale Standard-Artennormen (ADR 0021).
+
+    The in-app editor exposes only org overrides; the shared global defaults
+    (``organization IS NULL``) are edited here (or via seed migrations)."""
+
+    list_display = ("species", "organization", "weight_mean", "weight_sd", "sd_factor")
+    list_filter = ("organization",)
+    search_fields = ("species__common_name_de", "species__scientific_name")
+    autocomplete_fields = ("species",)
 
 
 @admin.register(Zugangscode)
