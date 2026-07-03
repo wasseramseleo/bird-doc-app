@@ -1,6 +1,7 @@
-import {ChangeDetectionStrategy, Component, inject} from '@angular/core';
+import {ChangeDetectionStrategy, Component, effect, inject} from '@angular/core';
 
 import {ProjectService} from '../service/project.service';
+import {ProjectActionsService} from '../service/project-actions.service';
 import {ProjectDashboardComponent} from './project-dashboard/project-dashboard';
 
 /**
@@ -19,6 +20,21 @@ import {ProjectDashboardComponent} from './project-dashboard/project-dashboard';
 })
 export class HomeComponent {
   private readonly projectService = inject(ProjectService);
+  private readonly actions = inject(ProjectActionsService);
 
   readonly currentProject = this.projectService.currentProject;
+
+  constructor() {
+    // The dashboard's Bearbeiten action opens the shared edit dialog, which needs
+    // the Organisationen/Beringer reference data the ProjectActionsService owns
+    // (issue #222). The /projekte picker loads it on its way in, but a user who
+    // reloads straight onto `/` (a persisted current Projekt) never passes through
+    // the picker — so Home loads it here whenever a Projekt is current, keeping the
+    // service the single owner of that fetch rather than duplicating it.
+    effect(() => {
+      if (this.currentProject()) {
+        this.actions.loadReferenceData();
+      }
+    });
+  }
 }

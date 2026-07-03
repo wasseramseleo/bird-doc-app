@@ -14,9 +14,68 @@
   }
 }
 
-.dashboard__org {
-  margin: 0.25rem 0 0;
+.projektdaten {
+  border: 1px solid var(--mat-sys-outline-variant, #dadce0);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.projektdaten__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-self: flex-end;
+}
+
+.projektdaten__action {
+  appearance: none;
+  border: 1px solid var(--mat-sys-outline-variant, #c3c7cf);
+  background: transparent;
+  color: var(--mat-sys-on-surface, #1a1c1e);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.projektdaten__list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  dt {
+    font-size: 0.75rem;
+  }
+
+  dd {
+    margin: 0.15rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+  }
+}
+
+// Shared uppercase micro-label (stat/chart card titles + Projektdaten terms).
+.stat-card__title,
+.chart-panel__title,
+.projektdaten__list dt {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--mat-sys-on-surface-variant, #5f6368);
+}
+
+.projektdaten__scientist:not(:last-child)::after {
+  content: ',';
+}
+
+.projektdaten__empty {
+  color: var(--mat-sys-on-surface-variant, #5f6368);
+  font-style: italic;
 }
 
 .range-selector {
@@ -121,9 +180,6 @@
 .stat-card__title {
   margin: 0;
   font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--mat-sys-on-surface-variant, #5f6368);
 }
 
 .stat-card__date {
@@ -189,9 +245,6 @@
 .chart-panel__title {
   margin: 0;
   font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--mat-sys-on-surface-variant, #5f6368);
 }
 
 .stat-card__details {
