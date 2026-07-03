@@ -516,6 +516,31 @@ describe('NavBar', () => {
       .toBeFalse();
   });
 
+  it('shows "Artennormen verwalten" in the user menu for an org admin, linking to /artennormen', () => {
+    const ctx = setup();
+    signIn(ctx, false, 'admin');
+    activate(ctx, makeProject());
+
+    const items = openUserMenu(ctx);
+    const normItem = items.find((i) => (i.textContent ?? '').includes('Artennormen verwalten')) as
+      | HTMLAnchorElement
+      | undefined;
+
+    expect(normItem).withContext('Artennormen verwalten present for admin').toBeTruthy();
+    expect(normItem!.getAttribute('href')).toBe('/artennormen');
+  });
+
+  it('never shows "Artennormen verwalten" for a plain Mitglied', () => {
+    const ctx = setup();
+    signIn(ctx, false, 'mitglied');
+    activate(ctx, makeProject());
+
+    const labels = openUserMenu(ctx).map((i) => i.textContent ?? '');
+    expect(labels.some((t) => t.includes('Artennormen verwalten')))
+      .withContext('no Artennormen verwalten for Mitglied')
+      .toBeFalse();
+  });
+
   it('collapses "Heutige Session" into the user dropdown (linking to /heute), not the toolbar', () => {
     const ctx = setup();
     signIn(ctx, false);

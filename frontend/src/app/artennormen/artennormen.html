@@ -1,0 +1,59 @@
+<section class="artennormen">
+  <header class="artennormen__header">
+    <div class="artennormen__title">
+      <h1>Artennormen verwalten</h1>
+      <p class="artennormen__subhead">
+        Die Plausibilitätsprüfung deiner Organisation. Jede Art nutzt entweder die geteilte
+        Standard-Artennorm oder eine von dir angepasste. Ein leeres Prüffeld schaltet die jeweilige
+        Prüfung ab.
+      </p>
+    </div>
+    <button mat-flat-button color="primary" (click)="openAddDialog()">
+      <mat-icon>add</mat-icon>
+      Artennorm hinzufügen
+    </button>
+  </header>
+
+  @if (loading()) {
+    <mat-spinner diameter="32"></mat-spinner>
+  } @else if (sortedRows().length === 0) {
+    <div class="artennormen__empty">
+      <p>Für deine Organisation sind noch keine Artennormen in Kraft.</p>
+    </div>
+  } @else {
+    <div class="artennormen__list">
+      @for (row of sortedRows(); track row.species_id) {
+        <div class="norm-card">
+          <div class="norm-card__main">
+            <span class="norm-card__name">{{ row.species_name }}</span>
+            @if (row.is_override) {
+              <span class="norm-card__badge norm-card__badge--override">angepasst</span>
+            } @else {
+              <span class="norm-card__badge norm-card__badge--standard">Standard</span>
+            }
+          </div>
+          <div class="norm-card__actions">
+            <button
+              mat-stroked-button
+              type="button"
+              color="primary"
+              (click)="openEditDialog(row)">
+              <mat-icon>tune</mat-icon>
+              Bearbeiten
+            </button>
+            @if (row.is_override) {
+              <button
+                mat-icon-button
+                type="button"
+                aria-label="Auf Standard zurücksetzen"
+                title="Auf Standard zurücksetzen"
+                (click)="openResetDialog(row)">
+                <mat-icon>restart_alt</mat-icon>
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+</section>

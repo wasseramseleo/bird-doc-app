@@ -17,6 +17,11 @@ import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {ImportPreview, ImportResult} from '../models/iwm-import.model';
 import {ProjectStats, ProjectStatsRangeParams} from '../models/project-stats.model';
+import {
+  EffectiveSpeciesNorm,
+  SpeciesNormOverride,
+  SpeciesNormOverridePayload,
+} from '../models/species-norm.model';
 import {environment} from '../../environments/environment';
 
 @Injectable({
@@ -249,6 +254,48 @@ export class ApiService {
       params = params.set('to', range.to);
     }
     return this.http.get<ProjectStats>(`${this.apiUrl}/projects/${projectId}/stats/`, {params});
+  }
+
+  // --- Artennormen (PRD #245, ADR 0021) --------------------------------------
+
+  // The per-org *effective* Artennormen (override ?? default per species), keyed
+  // by species_id — the #246 read API. The Org-Admin editor builds its "in force"
+  // list from these and pre-fills the per-species dialog from them.
+  getEffectiveSpeciesNorms(): Observable<{norms: EffectiveSpeciesNorm[]}> {
+    return this.http.get<{norms: EffectiveSpeciesNorm[]}>(`${this.apiUrl}/species-norms/`);
+  }
+
+  // The COMPLETE set of the Organisation's SpeciesNorm overrides, following DRF's
+  // `next` link through every page — the editor must mark *every* angepasst
+  // species, so a first-page-only read could miss overrides beyond page one
+  // (mirrors getAllMitgliedschaften). Each row carries its own id, used to reset
+  // an override back to the shared default (PRD #245, issue #251).
+  getAllSpeciesNormOverrides(): Observable<SpeciesNormOverride[]> {
+    return this.http
+      .get<PaginatedApiResponse<SpeciesNormOverride>>(`${this.apiUrl}/species-norm-overrides/`)
+      .pipe(
+        expand((res) =>
+          res.next ? this.http.get<PaginatedApiResponse<SpeciesNormOverride>>(res.next) : EMPTY,
+        ),
+        reduce((acc, res) => acc.concat(res.results), [] as SpeciesNormOverride[]),
+      );
+  }
+
+  // Save an Artennorm override (Admin-only). One POST whether the species was
+  // Standard or already angepasst: the backend upserts by species within the
+  // active Organisation, so the editor's Save never needs to distinguish create
+  // from update.
+  saveSpeciesNormOverride(payload: SpeciesNormOverridePayload): Observable<SpeciesNormOverride> {
+    return this.http.post<SpeciesNormOverride>(
+      `${this.apiUrl}/species-norm-overrides/`,
+      payload,
+    );
+  }
+
+  // "Auf Standard zurücksetzen": delete the override so the species falls back to
+  // the global default (Admin-only).
+  deleteSpeciesNormOverride(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/species-norm-overrides/${id}/`);
   }
 
   // Feedback ("Feedback / Fehler melden", issue #81) is not a /birds resource —

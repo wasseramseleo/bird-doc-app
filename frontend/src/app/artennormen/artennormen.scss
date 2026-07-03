@@ -1,0 +1,73 @@
+.artennormen {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.artennormen__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.artennormen__subhead {
+  margin: 0.25rem 0 0;
+  max-width: 42rem;
+  opacity: 0.75;
+}
+
+.artennormen__empty {
+  padding: 2rem;
+  text-align: center;
+  opacity: 0.75;
+}
+
+.artennormen__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.norm-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0.5rem;
+}
+
+.norm-card__main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.norm-card__name {
+  font-weight: 500;
+}
+
+.norm-card__badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+}
+
+.norm-card__badge--override {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.norm-card__badge--standard {
+  background: #eceff1;
+  color: #455a64;
+}
+
+.norm-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}

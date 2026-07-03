@@ -1,0 +1,20 @@
+.artennorm-dialog__species {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.artennorm-dialog__hint {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.artennorm-dialog__band {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}

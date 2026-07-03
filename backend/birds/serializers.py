@@ -92,6 +92,53 @@ class SpeciesNormSerializer(serializers.ModelSerializer):
         ]
 
 
+# The tunable rule columns of an Artennorm, shared by the read projection and the
+# override read/write serializer so the two never drift (PRD #245).
+SPECIES_NORM_RULE_FIELDS = [
+    "weight_mean",
+    "weight_sd",
+    "feather_mean",
+    "feather_sd",
+    "wing_mean",
+    "wing_sd",
+    "tarsus_mean",
+    "tarsus_sd",
+    "notch_f2_mean",
+    "notch_f2_sd",
+    "inner_foot_mean",
+    "inner_foot_sd",
+    "quotient_mean",
+    "quotient_tolerance_pct",
+    "sd_factor",
+    "geschlechtsbestimmung_moeglich",
+    "dj_grossgefiedermauser_moeglich",
+]
+
+
+class SpeciesNormOverrideSerializer(serializers.ModelSerializer):
+    """Read/write projection of an Organisation's SpeciesNorm **override** (PRD
+    #245, issue #251, ADR 0016 + ADR 0021).
+
+    Backs the Org-Admin Artennorm editor's create/update/delete. ``organization``
+    is deliberately **not** a field — the ViewSet server-sets it to the actor's
+    active Organisation, so a client can neither write another tenant's override
+    nor plant a globale Standard-Artennorm (``organization IS NULL``) through this
+    resource. ``species_id`` addresses the Art (writable on create); every rule
+    column is optional and nullable, so clearing one switches *that* check off for
+    the Organisation (whole-row semantics, ADR 0021). Carries ``id`` (for the
+    "Auf Standard zurücksetzen" delete) and the species common name for the list.
+    """
+
+    species_id = serializers.PrimaryKeyRelatedField(
+        queryset=Species.objects.all(), source="species"
+    )
+    species_name = serializers.CharField(source="species.common_name_de", read_only=True)
+
+    class Meta:
+        model = SpeciesNorm
+        fields = ["id", "species_id", "species_name", *SPECIES_NORM_RULE_FIELDS]
+
+
 class CentralSerializer(serializers.ModelSerializer):
     """A Zentrale (EURING ringing scheme), read-only reference data (ADR 0019).
 
