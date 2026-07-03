@@ -367,6 +367,35 @@ def test_rings_list_is_empty_without_active_org(auth_client, organization):
     assert response.json()["results"] == []
 
 
+# --- Ring uniqueness widened by the Zentrale (ADR 0019, issue #228) ----------
+
+
+@pytest.mark.django_db
+def test_same_size_number_coexists_under_two_zentralen(organization):
+    """Ring uniqueness widens to (organization, central, size, number) — ADR
+    0019: the same Größe+Nummer under two different Zentralen (an Austrian
+    V 0042 and a Slovak V 0042) are distinct physical rings that coexist within
+    one Organisation (US 18, model level)."""
+    from birds.models import Central
+
+    auw = Central.objects.get(scheme_code="AUW")
+    skb = Central.objects.get(scheme_code="SKB")
+
+    ring_auw = Ring.objects.create(
+        number="0042", size=Ring.RingSizes.V, organization=organization, central=auw
+    )
+    ring_skb = Ring.objects.create(
+        number="0042", size=Ring.RingSizes.V, organization=organization, central=skb
+    )
+
+    assert ring_auw.central == auw
+    assert ring_skb.central == skb
+    assert (
+        Ring.objects.filter(organization=organization, size=Ring.RingSizes.V, number="0042").count()
+        == 2
+    )
+
+
 @pytest.mark.django_db
 def test_backfill_assigns_existing_ring_its_org_from_captures(
     species, scientist, ringing_station, organization
