@@ -1,4 +1,5 @@
 import { computePlausibilityWarnings, SpeciesNorm } from './plausibility';
+import { AgeClass, HandWingMoult, Sex } from '../../models/data-entry.model';
 
 // The single source of truth for the Plausibilitätsprüfung (PRD #245, issue
 // #246): a pure function used by both the inline hint and the save-time
@@ -317,5 +318,195 @@ describe('computePlausibilityWarnings — Quotient (relative band, #248)', () =>
       quotientNorm,
     );
     expect(warnings.map((w) => w.field)).toEqual(['quotient']);
+  });
+});
+
+// Issue #249: the categorical Geschlechtsbestimmung flag. When the effective
+// norm says the sex cannot be told apart for the species
+// (geschlechtsbestimmung_moeglich === false) yet the Beringer recorded a
+// *determined* Geschlecht (Männchen/Weibchen), warn — the rule fires on a claim,
+// not an absence, so Unbekannt never warns. A null flag switches the check off.
+describe('computePlausibilityWarnings — Geschlechtsbestimmung flag (#249)', () => {
+  // Only the flag rule is armed; the six σ bands and the Quotient are off so a
+  // sex case yields at most the one flag warning.
+  const notSexableNorm: SpeciesNorm = {
+    ...zaunkoenigNorm,
+    weight_mean: null,
+    weight_sd: null,
+    geschlechtsbestimmung_moeglich: false,
+  };
+
+  it('warns for a determined Männchen with the de-AT message', () => {
+    const warnings = computePlausibilityWarnings({ sex: Sex.Male }, notSexableNorm);
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].field).toBe('sex');
+    expect(warnings[0].message).toBe(
+      'Geschlechtsbestimmung laut Artennorm nicht möglich (Zaunkönig)',
+    );
+  });
+
+  it('warns for a determined Weibchen too', () => {
+    const warnings = computePlausibilityWarnings({ sex: Sex.Female }, notSexableNorm);
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].field).toBe('sex');
+  });
+
+  it('produces no warning for Unbekannt (fires on a claim, not an absence)', () => {
+    expect(computePlausibilityWarnings({ sex: Sex.Unknown }, notSexableNorm)).toEqual([]);
+  });
+
+  it('produces no warning when the sex is blank', () => {
+    expect(computePlausibilityWarnings({ sex: null }, notSexableNorm)).toEqual([]);
+    expect(computePlausibilityWarnings({ sex: undefined }, notSexableNorm)).toEqual([]);
+    expect(computePlausibilityWarnings({}, notSexableNorm)).toEqual([]);
+  });
+
+  it('produces no warning when the flag is unset (null → check off)', () => {
+    const flagUnset: SpeciesNorm = { ...notSexableNorm, geschlechtsbestimmung_moeglich: null };
+    expect(computePlausibilityWarnings({ sex: Sex.Male }, flagUnset)).toEqual([]);
+  });
+
+  it('produces no warning when the flag is true (sexing IS possible)', () => {
+    const sexable: SpeciesNorm = { ...notSexableNorm, geschlechtsbestimmung_moeglich: true };
+    expect(computePlausibilityWarnings({ sex: Sex.Male }, sexable)).toEqual([]);
+  });
+});
+
+// Issue #249: the categorical dj-Großgefiedermauser flag. When the effective
+// norm says a diesjähriger (first-year) Vogel of this species does NOT moult its
+// Großgefieder (dj_grossgefiedermauser_moeglich === false), the bird is
+// diesjährig (Alter = 3) AND its Handschwingenmauser value indicates a moult is
+// present, warn. Not diesjährig → none; a blank or a "no moult" Handschwingen-
+// value → none; a null flag switches the check off.
+describe('computePlausibilityWarnings — dj-Großgefiedermauser flag (#249)', () => {
+  // The HandWingMoult values that count as "Handschwingenmauser vorhanden" (an
+  // active or completed Großgefiedermauser). DERIVED from the enum as the
+  // complement of the two "no moult" states —
+  //   None    (0, "keine Handschwingen wachsen")
+  //   NoneOld (1, "alle sind unvermausert")
+  // — so the "vorhanden" set is everything else:
+  //   AtLeastOne (2, "mindestens eine mausert")
+  //   All        (3, "alle vermausert")
+  //   Part       (4, "ein Teil ist vermausert")
+  const HAND_WING_NO_MOULT: HandWingMoult[] = [HandWingMoult.None, HandWingMoult.NoneOld];
+  const HAND_WING_MOULT_PRESENT: HandWingMoult[] = [
+    HandWingMoult.AtLeastOne,
+    HandWingMoult.All,
+    HandWingMoult.Part,
+  ];
+
+  it('documents the "vorhanden" set as the enum complement of the no-moult states', () => {
+    // Read the enum itself: its numeric members minus the two no-moult states
+    // must equal the documented "vorhanden" set — proving it is derived, not a
+    // hand-picked literal that could drift as the enum grows.
+    const allNumericValues = Object.values(HandWingMoult).filter(
+      (v): v is number => typeof v === 'number',
+    );
+    const derivedPresent = allNumericValues.filter((v) => !HAND_WING_NO_MOULT.includes(v));
+    expect([...derivedPresent].sort()).toEqual([...HAND_WING_MOULT_PRESENT].sort());
+  });
+
+  // Only the flag rule is armed; the σ bands and the Quotient are off.
+  const noDjMoultNorm: SpeciesNorm = {
+    ...zaunkoenigNorm,
+    weight_mean: null,
+    weight_sd: null,
+    dj_grossgefiedermauser_moeglich: false,
+  };
+
+  for (const value of HAND_WING_MOULT_PRESENT) {
+    it(`warns for a diesjähriger Vogel with Handschwingenmauser ${value} (vorhanden)`, () => {
+      const warnings = computePlausibilityWarnings(
+        { age_class: AgeClass.ThisYear, hand_wing: value },
+        noDjMoultNorm,
+      );
+      expect(warnings.length).toBe(1);
+      expect(warnings[0].field).toBe('hand_wing');
+      expect(warnings[0].message).toBe(
+        'Großgefiedermauser bei diesjährigem Vogel laut Artennorm nicht zu erwarten (Zaunkönig)',
+      );
+    });
+  }
+
+  for (const value of HAND_WING_NO_MOULT) {
+    it(`produces no warning for a "no moult" Handschwingen value ${value}`, () => {
+      expect(
+        computePlausibilityWarnings(
+          { age_class: AgeClass.ThisYear, hand_wing: value },
+          noDjMoultNorm,
+        ),
+      ).toEqual([]);
+    });
+  }
+
+  it('produces no warning when the Handschwingenmauser value is blank', () => {
+    expect(
+      computePlausibilityWarnings({ age_class: AgeClass.ThisYear, hand_wing: null }, noDjMoultNorm),
+    ).toEqual([]);
+    expect(
+      computePlausibilityWarnings(
+        { age_class: AgeClass.ThisYear, hand_wing: undefined },
+        noDjMoultNorm,
+      ),
+    ).toEqual([]);
+    expect(computePlausibilityWarnings({ age_class: AgeClass.ThisYear }, noDjMoultNorm)).toEqual([]);
+  });
+
+  it('produces no warning when the bird is not diesjährig (age class ≠ 3)', () => {
+    expect(
+      computePlausibilityWarnings(
+        { age_class: AgeClass.NotThisYear, hand_wing: HandWingMoult.AtLeastOne },
+        noDjMoultNorm,
+      ),
+    ).toEqual([]);
+    // Alter unset → not diesjährig either.
+    expect(
+      computePlausibilityWarnings({ hand_wing: HandWingMoult.AtLeastOne }, noDjMoultNorm),
+    ).toEqual([]);
+  });
+
+  it('produces no warning when the flag is unset (null → check off)', () => {
+    const flagUnset: SpeciesNorm = { ...noDjMoultNorm, dj_grossgefiedermauser_moeglich: null };
+    expect(
+      computePlausibilityWarnings(
+        { age_class: AgeClass.ThisYear, hand_wing: HandWingMoult.AtLeastOne },
+        flagUnset,
+      ),
+    ).toEqual([]);
+  });
+
+  it('produces no warning when the flag is true (dj-moult IS possible)', () => {
+    const possible: SpeciesNorm = { ...noDjMoultNorm, dj_grossgefiedermauser_moeglich: true };
+    expect(
+      computePlausibilityWarnings(
+        { age_class: AgeClass.ThisYear, hand_wing: HandWingMoult.AtLeastOne },
+        possible,
+      ),
+    ).toEqual([]);
+  });
+});
+
+// Issue #249: both categorical flags surface alongside the numeric warnings in a
+// single flat list — the source the aggregated save-time dialog lists — trailing
+// the σ measurements and the Quotient in field order.
+describe('computePlausibilityWarnings — categorical flags aggregate with the numeric ones (#249)', () => {
+  it('appends sex then hand_wing after the measurement warnings', () => {
+    const allRulesNorm: SpeciesNorm = {
+      ...zaunkoenigNorm,
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      geschlechtsbestimmung_moeglich: false,
+      dj_grossgefiedermauser_moeglich: false,
+    };
+    const warnings = computePlausibilityWarnings(
+      {
+        weight_gram: 25,
+        sex: Sex.Male,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      },
+      allRulesNorm,
+    );
+    expect(warnings.map((w) => w.field)).toEqual(['weight_gram', 'sex', 'hand_wing']);
   });
 });
