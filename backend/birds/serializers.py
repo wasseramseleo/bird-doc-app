@@ -20,6 +20,7 @@ from .models import (
     Species,
     SpeciesList,
 )
+from .permissions import is_org_admin
 from .station_handle import derive_station_handle
 from .tenancy import active_organization
 
@@ -132,11 +133,69 @@ class RingingStationSerializer(serializers.ModelSerializer):
 
 
 class ScientistSerializer(serializers.ModelSerializer):
+    """A Beringer, serialized Admin-aware (PRD #205, issue #206).
+
+    The base shape is the lean, leak-free autocomplete shape every Mitglied may
+    see. **Only** for an Admin request — the requester is an Admin of their
+    active Organisation, resolved from ``self.context['request']`` — are the
+    account fields added: an ``is_member`` flag and, for an account-linked
+    Beringer, an ``account`` block with the linked account's display name, email
+    and Rolle. Any non-Admin request, and crucially any use with **no request
+    context at all** (the offline reference bundle and mid-session autocomplete
+    both instantiate the serializer without a request), keeps the lean shape, so
+    no member data ever leaks. The account block is null-safe when the Beringer
+    has no account, and its Rolle is read in the actor's *active* Organisation so
+    the derivation never queries — or leaks — another tenant's data (ADR 0005).
+    """
+
     full_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Scientist
         fields = ["id", "handle", "first_name", "last_name", "full_name"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        organization = self._admin_organization()
+        if organization is not None:
+            data["is_member"] = instance.user_id is not None
+            data["account"] = self._account_block(instance, organization)
+        return data
+
+    def _admin_organization(self):
+        """The actor's active Organisation when this is an Admin request, else
+        ``None``. Memoised so a ``many=True`` list resolves it once, not per row.
+        """
+        if not hasattr(self, "_admin_org"):
+            self._admin_org = self._resolve_admin_organization()
+        return self._admin_org
+
+    def _resolve_admin_organization(self):
+        request = self.context.get("request")
+        if request is None:
+            return None
+        user = getattr(request, "user", None)
+        if user is None or not is_org_admin(user):
+            return None
+        return active_organization(user)
+
+    def _account_block(self, instance, organization):
+        """The linked account's display name / email / Rolle, or ``None`` when the
+        Beringer has no account. The Rolle is scoped to ``organization`` (the
+        actor's active Organisation) so no other tenant's Rolle is ever read."""
+        user = instance.user
+        if user is None:
+            return None
+        rolle = (
+            Mitgliedschaft.objects.filter(user=user, organization=organization)
+            .values_list("rolle", flat=True)
+            .first()
+        )
+        return {
+            "display_name": user.get_full_name() or user.username,
+            "email": user.email,
+            "rolle": rolle,
+        }
 
 
 class ProjectSerializer(serializers.ModelSerializer):

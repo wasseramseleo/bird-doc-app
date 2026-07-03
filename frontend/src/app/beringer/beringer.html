@@ -1,0 +1,37 @@
+<section class="beringer">
+  <header class="beringer__header">
+    <div class="beringer__title">
+      <h1>Beringer verwalten</h1>
+      <p class="beringer__subhead">
+        Alle Beringer deiner Organisation. Ein Beringer ist entweder mit einem Konto verknüpft
+        (Mitglied) oder ohne Konto.
+      </p>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <mat-spinner diameter="32"></mat-spinner>
+  } @else if (sortedBeringer().length === 0) {
+    <div class="beringer__empty">
+      <p>Es sind noch keine Beringer angelegt.</p>
+    </div>
+  } @else {
+    <div class="beringer__list">
+      @for (beringer of sortedBeringer(); track beringer.id) {
+        <div class="beringer-card">
+          <div class="beringer-card__main">
+            <div class="beringer-card__heading">
+              <span class="beringer-card__name">{{ beringer.full_name }}</span>
+              @if (isMitglied(beringer)) {
+                <span class="beringer-card__badge beringer-card__badge--member">Mitglied</span>
+              } @else {
+                <span class="beringer-card__badge beringer-card__badge--no-account">Ohne Konto</span>
+              }
+            </div>
+            <span class="beringer-card__handle">{{ beringer.handle }}</span>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</section>
