@@ -8,10 +8,12 @@
  * carrying a human-readable Austrian-German (de-AT) message stating the measured
  * value and the expected range.
  *
- * This slice (issue #246) implements the **Gewicht** σ-band (Ø ± sd_factor·SD).
- * It is deliberately shaped so #247/#248/#249 can add the other five
- * measurements, the Quotient (relative band) and the two categorical flags by
- * pushing further entries — never by reshaping the signature.
+ * Issue #246 established the **Gewicht** σ-band (Ø ± sd_factor·SD); issue #247
+ * extends it to the other five σ-measurements (Federlänge, Flügellänge, Tarsus,
+ * Kerbe F2, Innenfuß), each reusing the same sigmaBandWarning helper and
+ * optionality. It stays deliberately shaped so #248/#249 can add the Quotient
+ * (relative band) and the two categorical flags by pushing further entries —
+ * never by reshaping the signature.
  */
 
 // A DecimalField rides the wire as a string; a form control holds a number.
@@ -121,18 +123,78 @@ export function computePlausibilityWarnings(
   }
   const warnings: PlausibilityWarning[] = [];
 
-  const weight = sigmaBandWarning(
-    'weight_gram',
-    'Gewicht',
-    'g',
-    measurements.weight_gram,
-    norm.weight_mean,
-    norm.weight_sd,
-    norm.sd_factor,
-    norm.species_name,
-  );
-  if (weight) {
-    warnings.push(weight);
+  // Each σ-measurement reuses the identical sigmaBandWarning helper (Ø ±
+  // sd_factor·SD) and per-field optionality — it fires only when both the norm's
+  // Ø/SD pair and the field's value are present. The order here is the order the
+  // discrepancies appear in the aggregated save-time dialog. Gewicht is grams;
+  // the five #247 measurements are millimetres.
+  const checks: (PlausibilityWarning | null)[] = [
+    sigmaBandWarning(
+      'weight_gram',
+      'Gewicht',
+      'g',
+      measurements.weight_gram,
+      norm.weight_mean,
+      norm.weight_sd,
+      norm.sd_factor,
+      norm.species_name,
+    ),
+    sigmaBandWarning(
+      'feather_span',
+      'Federlänge',
+      'mm',
+      measurements.feather_span,
+      norm.feather_mean,
+      norm.feather_sd,
+      norm.sd_factor,
+      norm.species_name,
+    ),
+    sigmaBandWarning(
+      'wing_span',
+      'Flügellänge',
+      'mm',
+      measurements.wing_span,
+      norm.wing_mean,
+      norm.wing_sd,
+      norm.sd_factor,
+      norm.species_name,
+    ),
+    sigmaBandWarning(
+      'tarsus',
+      'Tarsus',
+      'mm',
+      measurements.tarsus,
+      norm.tarsus_mean,
+      norm.tarsus_sd,
+      norm.sd_factor,
+      norm.species_name,
+    ),
+    sigmaBandWarning(
+      'notch_f2',
+      'Kerbe F2',
+      'mm',
+      measurements.notch_f2,
+      norm.notch_f2_mean,
+      norm.notch_f2_sd,
+      norm.sd_factor,
+      norm.species_name,
+    ),
+    sigmaBandWarning(
+      'inner_foot',
+      'Innenfuß',
+      'mm',
+      measurements.inner_foot,
+      norm.inner_foot_mean,
+      norm.inner_foot_sd,
+      norm.sd_factor,
+      norm.species_name,
+    ),
+  ];
+
+  for (const check of checks) {
+    if (check) {
+      warnings.push(check);
+    }
   }
 
   return warnings;

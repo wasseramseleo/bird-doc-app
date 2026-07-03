@@ -380,24 +380,42 @@
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Tarsus (mm)</mat-label>
-        <input matInput type="number" formControlName="tarsus">
+        <input matInput type="number" formControlName="tarsus" (blur)="onMeasurementBlur()">
       </mat-form-field>
+      @if (warningByField()['tarsus']; as msg) {
+        <div class="plausibility-warning" role="alert" data-testid="plausibility-tarsus-warning">
+          <mat-icon aria-hidden="true">warning</mat-icon>
+          <span>{{ msg }}</span>
+        </div>
+      }
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Federlänge (mm)</mat-label>
-        <input matInput type="number" formControlName="feather_span">
+        <input matInput type="number" formControlName="feather_span" (blur)="onMeasurementBlur()">
       </mat-form-field>
+      @if (warningByField()['feather_span']; as msg) {
+        <div class="plausibility-warning" role="alert" data-testid="plausibility-feather_span-warning">
+          <mat-icon aria-hidden="true">warning</mat-icon>
+          <span>{{ msg }}</span>
+        </div>
+      }
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Flügellänge (mm)</mat-label>
-        <input matInput type="number" formControlName="wing_span">
+        <input matInput type="number" formControlName="wing_span" (blur)="onMeasurementBlur()">
       </mat-form-field>
+      @if (warningByField()['wing_span']; as msg) {
+        <div class="plausibility-warning" role="alert" data-testid="plausibility-wing_span-warning">
+          <mat-icon aria-hidden="true">warning</mat-icon>
+          <span>{{ msg }}</span>
+        </div>
+      }
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Gewicht (g)</mat-label>
         <input matInput type="number" formControlName="weight_gram" (blur)="onMeasurementBlur()">
       </mat-form-field>
-      @if (weightWarning()) {
+      @if (warningByField()['weight_gram']; as msg) {
         <div class="plausibility-warning" role="alert" data-testid="plausibility-weight-warning">
           <mat-icon aria-hidden="true">warning</mat-icon>
-          <span>{{ weightWarning() }}</span>
+          <span>{{ msg }}</span>
         </div>
       }
     </div>
@@ -427,14 +445,26 @@
         <div class="column">
           <mat-form-field appearance="outline" floatLabel="always">
             <mat-label>Kerbe F2 (mm)</mat-label>
-            <input matInput type="number" formControlName="notch_f2">
+            <input matInput type="number" formControlName="notch_f2" (blur)="onMeasurementBlur()">
           </mat-form-field>
+          @if (warningByField()['notch_f2']; as msg) {
+            <div class="plausibility-warning" role="alert" data-testid="plausibility-notch_f2-warning">
+              <mat-icon aria-hidden="true">warning</mat-icon>
+              <span>{{ msg }}</span>
+            </div>
+          }
         </div>
         <div class="column">
           <mat-form-field appearance="outline" floatLabel="always">
             <mat-label>Innenfuß (mm)</mat-label>
-            <input matInput type="number" formControlName="inner_foot">
+            <input matInput type="number" formControlName="inner_foot" (blur)="onMeasurementBlur()">
           </mat-form-field>
+          @if (warningByField()['inner_foot']; as msg) {
+            <div class="plausibility-warning" role="alert" data-testid="plausibility-inner_foot-warning">
+              <mat-icon aria-hidden="true">warning</mat-icon>
+              <span>{{ msg }}</span>
+            </div>
+          }
         </div>
       </div>
     }

@@ -141,7 +141,11 @@
   }
 
   .plausibility-warning {
+    // Drop onto its own full-width row beneath the measurement field, whether the
+    // parent lays its fields out with flex (flex-basis) or grid (grid-column) —
+    // the first form-section is a grid, so the warning must span every column.
     flex-basis: 100%;
+    grid-column: 1 / -1;
     margin: -0.25rem 0 0.75rem;
   }
 
