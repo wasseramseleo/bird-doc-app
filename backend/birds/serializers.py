@@ -264,6 +264,12 @@ class ScientistSerializer(serializers.ModelSerializer):
         if organization is not None:
             data["is_member"] = instance.user_id is not None
             data["account"] = self._account_block(instance, organization)
+            # The count of Fänge this Beringer owns, so the Admin's delete
+            # confirmation can name how many captures a delete reassigns to the
+            # reserved "Gelöschter Nutzer" (PRD #205, issue #208). Admin-only —
+            # it rides the same block as ``is_member``/``account`` and so never
+            # appears on the lean, context-free autocomplete shape.
+            data["capture_count"] = DataEntry.objects.filter(staff=instance).count()
         return data
 
     def _admin_organization(self):

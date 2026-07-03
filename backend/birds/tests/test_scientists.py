@@ -3,7 +3,13 @@ from datetime import UTC, datetime
 import pytest
 from django.contrib.auth.models import User
 
-from birds.models import DataEntry, Mitgliedschaft, Scientist
+from birds.models import (
+    FALLBACK_BERINGER_HANDLE,
+    DataEntry,
+    Mitgliedschaft,
+    Ring,
+    Scientist,
+)
 
 # --- Admin-aware serializer (PRD #205, issue #206) ---------------------------
 # For an Admin request the /scientists/ list/retrieve additionally exposes the
@@ -491,12 +497,15 @@ def test_editing_name_leaves_already_set_kuerzel_unchanged(
 
 
 @pytest.mark.django_db
-def test_beringer_cannot_be_deleted_via_api(auth_client, membership, no_account_beringer):
-    """Delete stays closed on /scientists/ (issue #208 owns it): a DELETE by an
-    Admin is refused 405, even though PATCH is now enabled."""
+def test_delete_unlinked_beringer_without_captures_hard_deletes(
+    auth_client, membership, no_account_beringer
+):
+    """An Admin's DELETE of an unlinked Beringer that owns no captures hard-deletes
+    it (204): the row is gone (issue #208 enables the delete #207 kept closed)."""
     response = auth_client.delete(f"/api/birds/scientists/{no_account_beringer.id}/")
 
-    assert response.status_code == 405
+    assert response.status_code == 204
+    assert not Scientist.objects.filter(id=no_account_beringer.id).exists()
 
 
 # --- Link / unlink a Beringer to a seat (PRD #205, issue #209) ----------------
@@ -697,3 +706,101 @@ def test_quick_add_create_ignores_mitgliedschaft_id(auth_client, membership, gap
 
     assert response.status_code == 201, response.json()
     assert Scientist.objects.get(handle="FRE").user_id is None
+
+
+# --- Delete a Beringer: reassign-or-block (PRD #205, issue #208) ---------------
+# Deleting a Beringer is Admin-only and reuses the ADR 0003 reassignment model
+# (``DataEntry.staff`` is ``on_delete=SET(get_fallback_beringer)``). An unlinked
+# Beringer with no captures hard-deletes (204); an unlinked Beringer that owns
+# captures deletes too (204) but its captures are reassigned to the reserved
+# "Gelöschter Nutzer" fallback rather than lost. A linked Mitglied is refused
+# server-side (409) — an active member is never stripped of their Beringer
+# identity from this screen. Cross-tenant is a 404, a non-Admin a 403. To let the
+# frontend name the Fänge count in its confirmation, the Admin-aware serializer
+# exposes an Admin-only ``capture_count`` read field (never leaked to a non-Admin
+# or context-free read).
+
+
+@pytest.mark.django_db
+def test_delete_unlinked_beringer_with_captures_reassigns_to_fallback(
+    auth_client, membership, organization, species, ring, ringing_station
+):
+    """An Admin's DELETE of an unlinked Beringer that owns captures deletes it (204)
+    but reassigns its captures to the reserved 'Gelöschter Nutzer' fallback — the
+    ADR 0003 model-layer SET, so capture data is never lost."""
+    owner = Scientist.objects.create(
+        handle="OWN", first_name="Otto", last_name="Owner", organization=organization
+    )
+    capture = _capture(owner, species, ring, ringing_station)
+
+    response = auth_client.delete(f"/api/birds/scientists/{owner.id}/")
+
+    assert response.status_code == 204
+    assert not Scientist.objects.filter(id=owner.id).exists()
+    capture.refresh_from_db()
+    assert capture.staff.handle == FALLBACK_BERINGER_HANDLE
+
+
+@pytest.mark.django_db
+def test_delete_linked_mitglied_beringer_is_refused(auth_client, membership, mitglied_scientist):
+    """Deleting a Beringer that is a linked Mitglied is refused server-side (409):
+    an active member is never stripped of their Beringer identity from this screen,
+    so the Beringer still exists afterwards."""
+    response = auth_client.delete(f"/api/birds/scientists/{mitglied_scientist.id}/")
+
+    assert response.status_code == 409
+    assert Scientist.objects.filter(id=mitglied_scientist.id).exists()
+
+
+@pytest.mark.django_db
+def test_cross_tenant_beringer_delete_returns_404(auth_client, membership, no_account_beringer_b):
+    """A cross-tenant Beringer DELETE is a 404 (the row is absent from the actor's
+    tenant-scoped queryset), never a leak (issue #74); the Beringer survives."""
+    response = auth_client.delete(f"/api/birds/scientists/{no_account_beringer_b.id}/")
+
+    assert response.status_code == 404
+    assert Scientist.objects.filter(id=no_account_beringer_b.id).exists()
+
+
+@pytest.mark.django_db
+def test_plain_mitglied_cannot_delete_beringer(
+    mitglied_client, mitglied_scientist, no_account_beringer
+):
+    """Deleting a Beringer is Admin-only (ADR 0005): a plain Mitglied's DELETE is
+    refused with 403 and the Beringer is left intact."""
+    response = mitglied_client.delete(f"/api/birds/scientists/{no_account_beringer.id}/")
+
+    assert response.status_code == 403
+    assert Scientist.objects.filter(id=no_account_beringer.id).exists()
+
+
+@pytest.mark.django_db
+def test_admin_shape_exposes_capture_count(
+    auth_client, membership, organization, species, ring, ringing_station
+):
+    """For an Admin request the serializer exposes a ``capture_count`` read field —
+    the number of Fänge the Beringer owns — so the delete confirmation can name it."""
+    owner = Scientist.objects.create(
+        handle="OWN", first_name="Otto", last_name="Owner", organization=organization
+    )
+    second_ring = Ring.objects.create(number="101", size=Ring.RingSizes.V)
+    _capture(owner, species, ring, ringing_station)
+    _capture(owner, species, second_ring, ringing_station)
+
+    response = auth_client.get(f"/api/birds/scientists/{owner.id}/")
+
+    assert response.status_code == 200
+    assert response.json()["capture_count"] == 2
+
+
+@pytest.mark.django_db
+def test_capture_count_is_not_leaked_to_non_admin(
+    mitglied_client, mitglied_scientist, organization
+):
+    """The ``capture_count`` field lives in the Admin-only block: a plain Mitglied's
+    /scientists/ read is exactly the lean shape and never carries it."""
+    response = mitglied_client.get("/api/birds/scientists/")
+
+    row = response.json()["results"][0]
+    assert "capture_count" not in row
+    assert set(row) == LEAN_FIELDS

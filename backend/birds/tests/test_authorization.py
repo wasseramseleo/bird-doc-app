@@ -457,20 +457,23 @@ def test_admin_cannot_edit_another_tenants_organisation(auth_client, scientist, 
     assert organization_b.name == "Second Org"
 
 
-# --- Beringer deletion: Admin-only, out-of-band, reassigns to the fallback ----
+# --- Beringer deletion: Admin-only over the API, reassigns to the fallback ----
 
 
 @pytest.mark.django_db
-def test_beringer_delete_is_not_exposed_on_the_api(
+def test_beringer_delete_over_the_api_is_admin_only(
     auth_client, scientist, mitglied_client, mitglied_scientist
 ):
-    """Beringer deletion is an Admin operation performed via the Django admin, not
-    the public API (ADR 0003) — /scientists/ stays create/read-only for everyone,
-    Admin and Mitglied alike, so neither can delete a Beringer over the API."""
+    """Deleting a Beringer over the API is Admin-only (PRD #205, issue #208): a
+    plain Mitglied is refused (403). An Admin may delete, but a linked Mitglied's
+    Beringer is refused (409) — an active member is never stripped of their
+    Beringer identity from this screen — so the Beringer survives either way. The
+    per-rule behaviour (no-captures hard delete, capture reassignment) is covered
+    in ``test_scientists.py``."""
     detail = f"{SCIENTISTS_URL}{scientist.id}/"
 
-    assert mitglied_client.delete(detail).status_code == 405
-    assert auth_client.delete(detail).status_code == 405
+    assert mitglied_client.delete(detail).status_code == 403
+    assert auth_client.delete(detail).status_code == 409
     assert Scientist.objects.filter(id=scientist.id).exists()
 
 

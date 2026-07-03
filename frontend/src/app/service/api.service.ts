@@ -179,6 +179,14 @@ export class ApiService {
     });
   }
 
+  // Delete a Beringer (PRD #205, issue #208). A no-account Beringer is hard-deleted
+  // (204), reassigning any owned Fänge to the reserved „Gelöschter Nutzer" at the
+  // model layer; a linked Mitglied is refused server-side (409) — the delete is
+  // disabled in the UI for those. Mirrors deleteRingingStation.
+  deleteScientist(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/scientists/${id}/`);
+  }
+
   getOrganizations(): Observable<PaginatedApiResponse<Organization>> {
     return this.http.get<PaginatedApiResponse<Organization>>(`${this.apiUrl}/organizations/`);
   }
