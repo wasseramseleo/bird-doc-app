@@ -1,0 +1,12 @@
+{% load seo_landing %}
+{% comment %}
+The hreflang alternate cluster for the bilingual marketing surface (issue #279):
+the marketing home and the two lead funnels exist in German (apex, no prefix)
+and English (/en/), so each variant advertises both plus x-default. x-default
+points at the German apex URL — German is the site's default language (issue
+#107, prefix_default_language=False). German-only pages (legal, auth flows)
+never include this: they carry only base.html's self-referential canonical.
+{% endcomment %}
+<link rel="alternate" hreflang="de" href="{% alternate_url 'de' %}">
+<link rel="alternate" hreflang="en" href="{% alternate_url 'en' %}">
+<link rel="alternate" hreflang="x-default" href="{% alternate_url 'de' %}">
