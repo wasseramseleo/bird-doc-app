@@ -954,6 +954,7 @@ describe('DataEntryFormComponent', () => {
           ringing_stations: [station],
           scientists: [staff],
           projects: [],
+          centrals: [],
           last_consumed_ring_numbers: [],
         },
         refreshedAt: '2026-07-02T08:00:00.000Z',

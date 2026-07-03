@@ -328,6 +328,10 @@ class ProjectSerializer(serializers.ModelSerializer):
     organization = OrganizationSerializer(read_only=True)
     scientists = ScientistSerializer(many=True, read_only=True)
     default_station = RingingStationSerializer(read_only=True)
+    # The Projekt's Zentrale (ADR 0019), nested read-only so the offline bundle's
+    # bundled Projekte carry the Zentrale a domestic capture defaults to (#233).
+    # There is no Zentrale write path yet — it is resolved server-side (AUW today).
+    central = CentralSerializer(read_only=True)
     organization_id = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.all(),
         source="organization",
@@ -358,6 +362,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             "show_optional_fields",
             "organization",
             "organization_id",
+            "central",
             "default_station",
             "default_station_id",
             "scientists",

@@ -192,6 +192,7 @@ describe('TodaySessionComponent', () => {
           ringing_stations: [STATION],
           scientists: [STAFF],
           projects: [],
+          centrals: [],
           last_consumed_ring_numbers: [],
         },
         refreshedAt: '2026-07-02T08:00:00.000Z',
