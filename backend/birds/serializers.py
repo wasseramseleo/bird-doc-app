@@ -8,6 +8,7 @@ from .capture_service import (
     CaptureValidationError,
     create_capture,
     get_or_create_ring,
+    normalize_ring_size,
 )
 from .models import (
     Central,
@@ -21,6 +22,7 @@ from .models import (
     Scientist,
     Species,
     SpeciesList,
+    get_auw_central,
 )
 from .permissions import is_org_admin
 from .station_handle import derive_station_handle
@@ -416,7 +418,25 @@ class DataEntrySerializer(serializers.ModelSerializer):
     project = ProjectSerializer(read_only=True)
 
     ring_number = serializers.CharField(write_only=True, max_length=64)
-    ring_size = serializers.ChoiceField(choices=Ring.RingSizes.choices, write_only=True)
+    # The Ringgröße is validated CONDITIONALLY against the resolved Zentrale by the
+    # shared capture service (strict Austrian choices under AUW, free text
+    # otherwise — ADR 0019, issue #229), not by a hard-coded choice list here, so
+    # a foreign free-text Größe passes field validation and the offline replay /
+    # IWM import enforce the same rule. Blank is still refused at the field level.
+    ring_size = serializers.CharField(write_only=True, max_length=64)
+    # The Ring's Zentrale, carried FLAT as the EURING scheme_code string — stable
+    # and offline-friendly, never a UUID (GET returns it nested inside ``ring``).
+    # Optional: an omitted central defaults to the Projekt-Zentrale in the capture
+    # service, so a pre-feature offline-outbox payload replays unchanged. An
+    # unknown code is a clean 400 (SlugRelatedField ``does_not_exist``), never a 500.
+    central = serializers.SlugRelatedField(
+        slug_field="scheme_code",
+        queryset=Central.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+        error_messages={"does_not_exist": _("Unbekannter Zentralen-Code.")},
+    )
 
     species_id = serializers.PrimaryKeyRelatedField(
         queryset=Species.objects.all(), source="species", write_only=True
@@ -451,6 +471,7 @@ class DataEntrySerializer(serializers.ModelSerializer):
             "ring",
             "ring_number",
             "ring_size",
+            "central",
             "staff",
             "staff_id",
             "ringing_station",
@@ -492,14 +513,19 @@ class DataEntrySerializer(serializers.ModelSerializer):
 
         Delegates the get-or-create itself to the shared capture service so the
         update path uses exactly the same org- and Zentrale-scoped lookup as
-        ``create``. The Ring is issued under the Projekt's Zentrale (ADR 0019) —
-        today always AUW; without a Projekt it falls back to the default AUW."""
+        ``create``. The Ring's Zentrale is the flat ``central`` from the payload
+        when given, else the Projekt's Zentrale (ADR 0019); without a Projekt it
+        falls back to the default AUW. The Größe is normalised against that
+        Zentrale (strict Austrian choices under AUW, free text otherwise)."""
         project = validated_data.get("project", getattr(self.instance, "project", None))
+        central = validated_data.pop("central", None)
+        if central is None:
+            central = project.central if project is not None else get_auw_central()
         ring = get_or_create_ring(
             number=validated_data.pop("ring_number"),
-            size=validated_data.pop("ring_size"),
+            size=normalize_ring_size(validated_data.pop("ring_size"), central),
             organization=organization,
-            central=project.central if project is not None else None,
+            central=central,
         )
         validated_data["ring"] = ring
         return ring
@@ -558,18 +584,25 @@ class DataEntrySerializer(serializers.ModelSerializer):
         # record's current content — editing an existing capture must never
         # change it, however the payload was built.
         validated_data.pop("idempotency_key", None)
-        with transaction.atomic():
-            old_ring = instance.ring
-            new_ring = self._get_or_create_ring(
-                validated_data, validated_data.get("organization", instance.organization)
-            )
-            self._null_bird_data_for_destroyed_ring(validated_data)
-            updated_instance = super().update(instance, validated_data)
-            if old_ring and old_ring != new_ring:
-                if not DataEntry.objects.filter(ring=old_ring).exists():
-                    old_ring.delete()
+        # The conditional Ringgröße validation (ADR 0019) lives in the shared
+        # service and raises ``CaptureValidationError``; translate it to a clean
+        # 400 here just as ``create`` does, so an edit with an invalid Größe is
+        # never a 500.
+        try:
+            with transaction.atomic():
+                old_ring = instance.ring
+                new_ring = self._get_or_create_ring(
+                    validated_data, validated_data.get("organization", instance.organization)
+                )
+                self._null_bird_data_for_destroyed_ring(validated_data)
+                updated_instance = super().update(instance, validated_data)
+                if old_ring and old_ring != new_ring:
+                    if not DataEntry.objects.filter(ring=old_ring).exists():
+                        old_ring.delete()
 
-            return updated_instance
+                return updated_instance
+        except CaptureValidationError as exc:
+            raise serializers.ValidationError({exc.field: exc.message}) from exc
 
 
 class SpeciesListSerializer(serializers.ModelSerializer):

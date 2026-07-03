@@ -460,3 +460,251 @@ def test_create_capture_erstfang_allowed_when_other_org_first_caught_same_number
 
     assert entry.bird_status == DataEntry.BirdStatus.FIRST_CATCH
     assert entry.ring.organization == organization
+
+
+# --- Zentrale write path (ADR 0019, issue #229) ------------------------------
+# The backend-owned rules the shared capture service enforces so offline replay
+# and the IWM import obey them identically: an explicit foreign Zentrale, the
+# Projekt-Zentrale default, status gating and conditional Ringgröße validation.
+
+
+def _central(scheme_code):
+    from birds.models import Central
+
+    return Central.objects.get(scheme_code=scheme_code)
+
+
+@pytest.mark.django_db
+def test_create_capture_foreign_wiederfang_creates_ring_under_that_zentrale(
+    species, scientist, ringing_station, organization
+):
+    """A Wiederfang carrying a known foreign Zentrale creates a Ring under that
+    Zentrale, with a free-text Größe and an alphanumeric Nummer (US 1, 6, 7)."""
+    skb = _central("SKB")
+
+    entry = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_size="6.0",
+            ring_number="SK123A",
+            central=skb,
+            bird_status=DataEntry.BirdStatus.RE_CATCH,
+        )
+    )
+
+    assert entry.ring.central == skb
+    assert entry.ring.size == "6.0"
+    assert entry.ring.number == "SK123A"
+
+
+@pytest.mark.django_db
+def test_create_capture_defaults_missing_central_to_projekt_zentrale(
+    species, scientist, ringing_station, organization, project
+):
+    """An omitted central defaults to the Projekt-Zentrale — the load-bearing
+    behaviour a pre-feature offline outbox entry relies on (US 16)."""
+    entry = create_capture(
+        **_capture_kwargs(
+            species, scientist, ringing_station, organization, ring_number="770", project=project
+        )
+    )
+
+    assert entry.ring.central == project.central
+    assert entry.ring.central.scheme_code == "AUW"
+
+
+@pytest.mark.django_db
+def test_create_capture_erstfang_with_foreign_central_is_rejected(
+    species, scientist, ringing_station, organization, project
+):
+    """An Erstfang must carry the Projekt-Zentrale; a foreign one is refused with
+    a German detail message and writes nothing (US 3)."""
+    skb = _central("SKB")
+
+    with pytest.raises(CaptureValidationError) as exc_info:
+        create_capture(
+            **_capture_kwargs(
+                species,
+                scientist,
+                ringing_station,
+                organization,
+                ring_number="771",
+                project=project,
+                central=skb,
+                bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+            )
+        )
+
+    assert exc_info.value.field == "central"
+    assert DataEntry.objects.count() == 0
+    assert not Ring.objects.filter(number="771").exists()
+
+
+@pytest.mark.django_db
+def test_create_capture_ring_destroyed_with_foreign_central_is_rejected(
+    sentinel_species, scientist, ringing_station, organization, project
+):
+    """A 'Ring vernichtet' record must carry the Projekt-Zentrale; a foreign one
+    is refused (US 4)."""
+    skb = _central("SKB")
+
+    with pytest.raises(CaptureValidationError) as exc_info:
+        create_capture(
+            **_capture_kwargs(
+                sentinel_species,
+                scientist,
+                ringing_station,
+                organization,
+                ring_number="772",
+                project=project,
+                central=skb,
+            )
+        )
+
+    assert exc_info.value.field == "central"
+
+
+@pytest.mark.django_db
+def test_create_capture_auw_rejects_invalid_ring_size(
+    species, scientist, ringing_station, organization
+):
+    """Under AUW the strict Austrian choice list still governs the Größe: a value
+    outside the 28 codes is refused (US 8)."""
+    with pytest.raises(CaptureValidationError) as exc_info:
+        create_capture(
+            **_capture_kwargs(
+                species,
+                scientist,
+                ringing_station,
+                organization,
+                ring_size="ZZ",
+                ring_number="773",
+            )
+        )
+
+    assert exc_info.value.field == "ring_size"
+
+
+@pytest.mark.django_db
+def test_create_capture_foreign_size_is_trimmed_uppercased_and_capped(
+    species, scientist, ringing_station, organization
+):
+    """A foreign Größe is free text — trimmed, uppercased and length-capped to
+    FOREIGN_RING_SIZE_MAX_LENGTH (US 12)."""
+    skb = _central("SKB")
+
+    entry = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_size="  abcdefghijklmnop  ",
+            ring_number="774",
+            central=skb,
+            bird_status=DataEntry.BirdStatus.RE_CATCH,
+        )
+    )
+
+    assert entry.ring.size == "ABCDEFGHIJ"[: capture_service.FOREIGN_RING_SIZE_MAX_LENGTH]
+    assert len(entry.ring.size) == capture_service.FOREIGN_RING_SIZE_MAX_LENGTH
+
+
+@pytest.mark.django_db
+def test_create_capture_foreign_blank_size_is_rejected(
+    species, scientist, ringing_station, organization
+):
+    """A foreign Größe is never empty: a blank (or whitespace-only) value is a
+    validation error (US 12)."""
+    skb = _central("SKB")
+
+    with pytest.raises(CaptureValidationError) as exc_info:
+        create_capture(
+            **_capture_kwargs(
+                species,
+                scientist,
+                ringing_station,
+                organization,
+                ring_size="   ",
+                ring_number="775",
+                central=skb,
+                bird_status=DataEntry.BirdStatus.RE_CATCH,
+            )
+        )
+
+    assert exc_info.value.field == "ring_size"
+
+
+@pytest.mark.django_db
+def test_create_capture_slovak_and_austrian_ring_same_number_coexist(
+    species, scientist, ringing_station, organization
+):
+    """The same (Größe, Nummer) under two Zentralen are distinct physical rings:
+    an Austrian S 0042 Erstfang and a Slovak S 0042 Wiederfang coexist (US 18)."""
+    skb = _central("SKB")
+
+    austrian = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_size=Ring.RingSizes.S,
+            ring_number="0042",
+        )
+    )
+    slovak = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_size="S",
+            ring_number="0042",
+            central=skb,
+            bird_status=DataEntry.BirdStatus.RE_CATCH,
+        )
+    )
+
+    assert austrian.ring_id != slovak.ring_id
+    assert austrian.ring.central.scheme_code == "AUW"
+    assert slovak.ring.central == skb
+    assert (
+        Ring.objects.filter(organization=organization, size=Ring.RingSizes.S, number="0042").count()
+        == 2
+    )
+
+
+@pytest.mark.django_db
+def test_create_capture_second_erstfang_same_zentrale_size_number_is_rejected(
+    species, scientist, ringing_station, organization
+):
+    """A second Erstfang on the same (Zentrale, Größe, Nummer) within the
+    Organisation is refused with the existing German message (US 17)."""
+    create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_size=Ring.RingSizes.S,
+            ring_number="0043",
+        )
+    )
+
+    with pytest.raises(CaptureValidationError) as exc_info:
+        create_capture(
+            **_capture_kwargs(
+                species,
+                scientist,
+                ringing_station,
+                organization,
+                ring_size=Ring.RingSizes.S,
+                ring_number="0043",
+            )
+        )
+
+    assert exc_info.value.message == capture_service.RING_ALREADY_FIRST_CAUGHT
