@@ -1,5 +1,5 @@
 {% extends "landing/base.html" %}
-{% load static i18n humanize %}
+{% load static i18n humanize seo_landing %}
 
 {% comment %}
 `page--marketing` carries the shared marketing surface (wide measure, top nav);
@@ -14,10 +14,12 @@ SEO + Open-Graph share baseline (issue #108): a shared BirdDoc link previews
 with a title, a description and the hero Fang-Karte as the share image, so it
 reads credibly in chat and on social. The image is a server-rendered SVG of the
 same FANG_KARTE specimen (ADR 0009). The copy is translatable like the rest of
-the bilingual marketing surface (issue #107); og:image/og:url are absolute,
-built in the view.
+the bilingual marketing surface (issue #107); og:image is absolute, built in
+the view; og:url shares the canonical_url tag with base.html's canonical link
+(issue #279) so the two can never drift apart.
 {% endcomment %}
 {% block head_meta %}
+    {% include "landing/_hreflang_alternates.html" %}
     {% blocktranslate trimmed asvar meta_description %}Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal für die Vogelberingung. Ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst, während der Vogel in der Hand ist.{% endblocktranslate %}
     {% translate "BirdDoc: Stationsjournal für die Vogelberingung" as og_title %}
     <meta name="description" content="{{ meta_description }}">
@@ -26,7 +28,7 @@ built in the view.
     <meta property="og:site_name" content="BirdDoc">
     <meta property="og:title" content="{{ og_title }}">
     <meta property="og:description" content="{{ meta_description }}">
-    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:url" content="{% canonical_url %}">
     <meta property="og:image" content="{{ og_image_url }}">
     <meta property="og:image:type" content="image/svg+xml">
     <meta property="og:image:width" content="1200">

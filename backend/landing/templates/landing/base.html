@@ -1,4 +1,4 @@
-{% load static i18n %}
+{% load static i18n seo_landing %}
 {% get_current_language as LANGUAGE_CODE %}
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE }}">
@@ -6,6 +6,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}BirdDoc{% endblock %}</title>
+    {% comment %}
+    Every public landing page is self-canonical (issue #279): the absolute URL
+    is built off the live request (ADR 0010 — the canonical domain lives in the
+    host routing, not the code). The bilingual pages add hreflang alternates in
+    head_meta; German-only pages (legal, auth flows) carry only this canonical.
+    {% endcomment %}
+    <link rel="canonical" href="{% canonical_url %}">
     {% comment %}
     SEO / Open-Graph / share tags (issue #108). The marketing home fills this
     with its meta description + OG/Twitter card; other pages leave it empty.

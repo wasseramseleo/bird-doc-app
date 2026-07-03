@@ -100,6 +100,71 @@ def test_home_open_graph_image_and_url_are_absolute(client):
         assert match.group(1).startswith("http"), f"{prop} is not absolute: {match.group(1)}"
 
 
+def test_home_renders_an_absolute_canonical_link(client):
+    # The marketing home renders a real <link rel="canonical"> pointing at the
+    # absolute canonical URL of the page — the same value that already feeds
+    # og:url (issue #279). Crawlers need the link element, not just the OG tag.
+    content = client.get("/").content.decode()
+    assert '<link rel="canonical" href="http://testserver/">' in content
+
+
+def test_home_and_both_funnels_render_hreflang_alternates(client):
+    # The bilingual pages — the marketing home and the two lead funnels — each
+    # render a full hreflang cluster (de, en, x-default), driven by the same
+    # language-switch logic as the DE/EN toggle. x-default resolves to the
+    # German apex URL: German is the default language, unprefixed (issue #279).
+    for path in ("/", "/zugang-anfragen/", "/gespraech/"):
+        content = client.get(path).content.decode()
+        de_url = f"http://testserver{path}"
+        en_url = f"http://testserver/en{path}"
+        assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content, path
+        assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content, path
+        assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content, path
+
+
+def test_en_variants_render_the_same_cluster_and_are_self_canonical(client):
+    # The /en/ variants of the bilingual pages render the SAME alternate
+    # cluster as their German counterparts, and each variant is self-canonical
+    # — /en/ canonicalises to /en/, never to the German apex (issue #279).
+    for path in ("/", "/zugang-anfragen/", "/gespraech/"):
+        content = client.get(f"/en{path}").content.decode()
+        de_url = f"http://testserver{path}"
+        en_url = f"http://testserver/en{path}"
+        assert f'<link rel="canonical" href="{en_url}">' in content, path
+        assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content, path
+        assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content, path
+        assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content, path
+
+
+def test_german_only_pages_are_self_canonical_without_alternates(client):
+    # The German-only pages — legal (Impressum, Datenschutz, AGB) and the auth
+    # flows (Registrierung, Passwort-Reset) — carry a self-referential
+    # canonical and NO hreflang alternates: they exist in one language only, so
+    # advertising a /en/ alternate would lie to crawlers (issue #279).
+    for path in (
+        "/impressum/",
+        "/datenschutz/",
+        "/agb/",
+        "/registrierung/",
+        "/passwort-zuruecksetzen/",
+    ):
+        content = client.get(path).content.decode()
+        assert f'<link rel="canonical" href="http://testserver{path}">' in content, path
+        assert '<link rel="alternate"' not in content, path
+
+
+def test_home_canonical_equals_the_og_url(client):
+    # The canonical link points at the SAME absolute URL the page already feeds
+    # og:url (issue #108) — the crawler tag and the share tag never drift apart.
+    import re
+
+    content = client.get("/").content.decode()
+    canonical = re.search(r'<link rel="canonical" href="([^"]+)">', content)
+    og_url = re.search(r'property="og:url" content="([^"]+)"', content)
+    assert canonical and og_url
+    assert canonical.group(1) == og_url.group(1)
+
+
 def test_home_carries_a_twitter_summary_large_image_card(client):
     # A Twitter/X card with the large-image layout so the Fang-Karte previews
     # prominently there too.
