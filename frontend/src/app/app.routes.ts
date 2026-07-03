@@ -56,5 +56,13 @@ export const routes: Routes = [
     loadComponent: () => import('./beringer/beringer').then((m) => m.BeringerComponent),
     canActivate: [authGuard, orgAdminGuard],
   },
+  {
+    // PRD #245, issue #251: the Org-Admin Artennorm editor. Admin-only, so it
+    // pairs authGuard with orgAdminGuard exactly like /stationen and /beringer —
+    // a non-Admin Mitglied is redirected home (the editor is hidden for them).
+    path: 'artennormen',
+    loadComponent: () => import('./artennormen/artennormen').then((m) => m.ArtennormenComponent),
+    canActivate: [authGuard, orgAdminGuard],
+  },
   {path: '**', redirectTo: ''},
 ];

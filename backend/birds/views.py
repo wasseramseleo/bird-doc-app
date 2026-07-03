@@ -37,6 +37,7 @@ from .models import (
     Scientist,
     Species,
     SpeciesList,
+    SpeciesNorm,
 )
 from .permissions import (
     OTHER_ORG_MESSAGE,
@@ -56,6 +57,7 @@ from .serializers import (
     RingSerializer,
     ScientistSerializer,
     SpeciesListSerializer,
+    SpeciesNormOverrideSerializer,
     SpeciesNormSerializer,
     SpeciesSerializer,
 )
@@ -992,3 +994,64 @@ class SpeciesNormListView(APIView):
         organization = active_organization(request.user)
         norms = effective_norms_for_organization(organization)
         return Response({"norms": SpeciesNormSerializer(norms, many=True).data})
+
+
+class SpeciesNormViewSet(viewsets.ModelViewSet):
+    """Org-Admin CRUD for an Organisation's Artennorm **overrides** (PRD #245,
+    issue #251, ADR 0016 + ADR 0021).
+
+    Backs the in-app editor: an Admin creates/updates/deletes override rows
+    (``organization`` set) for their own Organisation; a plain Mitglied is
+    read-only (``IsOrgAdminOrReadOnly``). The shared globale Standard-Artennormen
+    (``organization IS NULL``) are the operator's, never editable here — the
+    queryset is scoped to the active Organisation's overrides, so a global default
+    (or another tenant's override) is simply absent (a 404 on detail/write, never
+    a leak), and ``perform_create`` server-sets the Organisation so a create can
+    never mint a global default. Saving is idempotent by species (the editor's
+    Save is one POST whether the species was Standard or already angepasst).
+    """
+
+    serializer_class = SpeciesNormOverrideSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdminOrReadOnly]
+
+    def get_queryset(self):
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return SpeciesNorm.objects.none()
+        return (
+            SpeciesNorm.objects.filter(organization=organization)
+            .select_related("species")
+            .order_by("species__common_name_de")
+        )
+
+    def create(self, request, *args, **kwargs):
+        """Upsert the Organisation's override for a species.
+
+        Save is idempotent by species within the active Organisation: creating an
+        override for a species that already has one updates it in place (200)
+        rather than colliding on the unique ``(species, organization)`` constraint,
+        so the editor's Save is a single POST whether the species was Standard or
+        already angepasst. ``organization`` is server-set, so a global default
+        (``organization IS NULL``) can never be written through this resource.
+        """
+        organization = _require_active_organization(request.user)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # Look up the existing override by the *validated* species (a malformed
+        # species_id already fast-failed above with a clean 400), then re-bind so
+        # the save updates it in place instead of colliding on the unique index.
+        existing = SpeciesNorm.objects.filter(
+            organization=organization, species=serializer.validated_data["species"]
+        ).first()
+        if existing is not None:
+            serializer = self.get_serializer(existing, data=request.data)
+            serializer.is_valid(raise_exception=True)
+        serializer.save(organization=organization)
+        code = status.HTTP_200_OK if existing is not None else status.HTTP_201_CREATED
+        return Response(serializer.data, status=code)
+
+    def perform_update(self, serializer):
+        # An override never crosses the tenant boundary: the row is already scoped
+        # to the active Organisation by get_queryset, and the Organisation is
+        # server-owned (never a serializer field), so it stays put on update.
+        serializer.save(organization=active_organization(self.request.user))

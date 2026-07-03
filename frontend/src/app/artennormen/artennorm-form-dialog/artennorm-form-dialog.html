@@ -1,0 +1,93 @@
+<h2 mat-dialog-title>
+  {{ isEdit ? 'Artennorm bearbeiten' : 'Artennorm hinzufügen' }}
+  @if (speciesLabel()) {
+    <span class="artennorm-dialog__species">– {{ speciesLabel() }}</span>
+  }
+</h2>
+
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <mat-dialog-content>
+    <p class="artennorm-dialog__hint">
+      Ein leeres Feld schaltet die jeweilige Prüfung für deine Organisation ab.
+    </p>
+
+    @if (!isEdit) {
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Art</mat-label>
+        <input
+          matInput
+          [formControl]="speciesSearch"
+          [matAutocomplete]="speciesAuto"
+          placeholder="Art suchen …"
+          autocomplete="off" />
+        <mat-autocomplete
+          #speciesAuto="matAutocomplete"
+          [displayWith]="displaySpecies"
+          (optionSelected)="onSpeciesSelected($event)">
+          @for (option of speciesOptions(); track option.id) {
+            <mat-option [value]="option">{{ option.common_name_de }}</mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+    }
+
+    @for (band of bands; track band.mean) {
+      <div class="artennorm-dialog__band">
+        <mat-form-field appearance="outline">
+          <mat-label>{{ band.label }} Ø ({{ band.unit }})</mat-label>
+          <input matInput type="number" step="any" [formControlName]="band.mean" autocomplete="off" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>{{ band.label }} SD ({{ band.unit }})</mat-label>
+          <input matInput type="number" step="any" [formControlName]="band.sd" autocomplete="off" />
+        </mat-form-field>
+      </div>
+    }
+
+    <div class="artennorm-dialog__band">
+      <mat-form-field appearance="outline">
+        <mat-label>Quotient Ø</mat-label>
+        <input matInput type="number" step="any" formControlName="quotient_mean" autocomplete="off" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Quotient Toleranz (%)</mat-label>
+        <input
+          matInput
+          type="number"
+          step="any"
+          formControlName="quotient_tolerance_pct"
+          autocomplete="off" />
+      </mat-form-field>
+    </div>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>SD-Faktor (Standard 1,96)</mat-label>
+      <input matInput type="number" step="any" formControlName="sd_factor" autocomplete="off" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Geschlechtsbestimmung möglich</mat-label>
+      <mat-select formControlName="geschlechtsbestimmung_moeglich">
+        <mat-option value="">– keine Prüfung –</mat-option>
+        <mat-option value="true">Ja</mat-option>
+        <mat-option value="false">Nein</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Bei dj. Großgefiedermauser möglich</mat-label>
+      <mat-select formControlName="dj_grossgefiedermauser_moeglich">
+        <mat-option value="">– keine Prüfung –</mat-option>
+        <mat-option value="true">Ja</mat-option>
+        <mat-option value="false">Nein</mat-option>
+      </mat-select>
+    </mat-form-field>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" (click)="cancel()">Abbrechen</button>
+    <button mat-flat-button color="primary" type="submit" [disabled]="!isEdit && !selectedSpecies()">
+      Speichern
+    </button>
+  </mat-dialog-actions>
+</form>
