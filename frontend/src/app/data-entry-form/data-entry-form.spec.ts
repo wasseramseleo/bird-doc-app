@@ -4494,4 +4494,228 @@ describe('DataEntryFormComponent', () => {
       post.flush({});
     });
   });
+
+  // Issue #267 (PRD #261): Bearbeiten-Modus. Opening an existing capture whose
+  // STORED values already breach the Artennorm must reveal every flagged field's
+  // quiet suffix `warning` icon on load, yet raise NO „Verstanden" modal — a
+  // warning present on load has no trigger event. The modal fires only on the
+  // first real interaction — a numeric blur, a categorical selectionChange, or an
+  // Art change — through the same „fire once, never nag" de-dup as #265/#266.
+  // Load path only; nothing new persisted.
+  describe('Bearbeiten-Modus: Warnicons beim Laden ohne Modal, Modal erst bei erster Interaktion (#267)', () => {
+    // A norm arming BOTH numeric (σ-band Gewicht/Tarsus) and categorical
+    // (Geschlecht not tellable apart, no dj-Großgefiedermauser) rules.
+    const norm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      feather_mean: '54',
+      feather_sd: '2',
+      wing_mean: '73',
+      wing_sd: '2.5',
+      tarsus_mean: '19',
+      tarsus_sd: '0.6',
+      notch_f2_mean: '8',
+      notch_f2_sd: '0.7',
+      inner_foot_mean: '15',
+      inner_foot_sd: '0.8',
+      quotient_mean: '0.74',
+      quotient_tolerance_pct: '3',
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: false,
+      dj_grossgefiedermauser_moeglich: false,
+    };
+    // A second normed Art so an Art change re-checks against a DIFFERENT norm: the
+    // stored 25 g is out of its 15–19 g band too, and its flags are armed as well.
+    const kohlmeiseNorm: SpeciesNorm = {
+      ...norm,
+      species_id: 's2',
+      species_name: 'Kohlmeise',
+      weight_mean: '17',
+      weight_sd: '1',
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const kohlmeise: Species = { ...zaunkoenig, id: 's2', common_name_de: 'Kohlmeise' };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [norm, kohlmeiseNorm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    // An existing Zaunkönig capture whose STORED values are already out of range:
+    // Gewicht 25 g (band 7,5–10,7) and Tarsus 25 mm (band ~17,8–20,2) both breach
+    // their σ band, the determined Geschlecht contradicts the not-sexable flag, and
+    // the diesjährige Großgefiedermauser contradicts its flag. Federlänge/Flügellänge
+    // stay inside their σ bands (and their Quotient inside its band), so those two
+    // fields are the deliberate in-range control.
+    function outOfRangeEntry(overrides: Partial<DataEntry> = {}): DataEntry {
+      return {
+        id: '77',
+        species: zaunkoenig,
+        ring: { id: 'r1', number: '901234', size: RingSize.S },
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+        ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+        project: null,
+        weight_gram: 25,
+        tarsus: 25,
+        feather_span: 54,
+        wing_span: 73,
+        notch_f2: null,
+        inner_foot: null,
+        sex: Sex.Female,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+        bird_status: BirdStatus.ReCatch,
+        date_time: '2024-05-01T08:30:00Z',
+        has_mites: false,
+        has_hunger_stripes: false,
+        has_brood_patch: false,
+        has_cpl_plus: false,
+        ...overrides,
+      } as unknown as DataEntry;
+    }
+
+    async function loadEdit(
+      entry: DataEntry,
+    ): Promise<{ f: ComponentFixture<DataEntryFormComponent>; editComponent: DataEntryFormComponent }> {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '77' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const editComponent = f.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/77/'))
+        .flush(entry);
+      // The record and its Artennorm load independently; settle lets both finish.
+      await settle();
+      f.detectChanges();
+      return { f, editComponent };
+    }
+
+    const icon = (f: ComponentFixture<DataEntryFormComponent>, field: string) =>
+      f.nativeElement.querySelector(
+        `[data-testid="plausibility-${field}-icon"]`,
+      ) as HTMLElement | null;
+    const lastDialogComponent = () => dialogMock.open.calls.mostRecent().args[0];
+    const lastDialogMessage = () =>
+      (dialogMock.open.calls.mostRecent().args[1].data as { message: string }).message;
+
+    it('reveals a suffix warning icon on every already-out-of-range field on load', async () => {
+      const { f } = await loadEdit(outOfRangeEntry());
+
+      expect(icon(f, 'weight_gram')).withContext('Gewicht').not.toBeNull();
+      expect(icon(f, 'tarsus')).withContext('Tarsus').not.toBeNull();
+      expect(icon(f, 'sex')).withContext('Geschlecht').not.toBeNull();
+      expect(icon(f, 'hand_wing')).withContext('Handschwingenmauser').not.toBeNull();
+      // The load evaluates the Prüfung, not a blanket flag: an in-band field
+      // carries no icon.
+      expect(icon(f, 'feather_span')).withContext('Federlänge (in band)').toBeNull();
+    });
+
+    it('opens NO plausibility modal merely from loading the record', async () => {
+      await loadEdit(outOfRangeEntry());
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+
+    it('raises the single-„Verstanden" modal once when a flagged numeric field is blurred after load', async () => {
+      const { f, editComponent } = await loadEdit(outOfRangeEntry());
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      // The Beringer touches the field without changing it — its warning is still
+      // active, so the first interaction raises it.
+      editComponent.onMeasurementBlur();
+      f.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogComponent()).toBe(InfoDialogComponent);
+      expect(lastDialogMessage()).toContain('Gewicht 25 g liegt außerhalb');
+
+      // Fire-once: an unchanged re-blur must not nag again.
+      editComponent.onMeasurementBlur();
+      f.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('raises the modal once when a flagged categorical field is changed after load', async () => {
+      const { f, editComponent } = await loadEdit(outOfRangeEntry());
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      editComponent.onCategoricalChange();
+      f.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogComponent()).toBe(InfoDialogComponent);
+      expect(lastDialogMessage()).toContain(
+        'Geschlechtsbestimmung laut Artennorm nicht möglich (Zaunkönig)',
+      );
+    });
+
+    it('re-checks every field against the new norm and raises newly-implausible values when the Art changes after load', async () => {
+      const { f, editComponent } = await loadEdit(outOfRangeEntry());
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      editComponent.onSpeciesSelected({
+        option: { value: kohlmeise },
+      } as MatAutocompleteSelectedEvent);
+      f.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogComponent()).toBe(InfoDialogComponent);
+      expect(lastDialogMessage()).toContain('Gewicht 25 g liegt außerhalb');
+      expect(lastDialogMessage()).toContain('(Kohlmeise)');
+    });
+  });
 });

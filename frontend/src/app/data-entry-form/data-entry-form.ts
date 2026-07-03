@@ -662,6 +662,10 @@ export class DataEntryFormComponent implements OnInit {
         // collapse / mandatory-comment behaviour as a freshly selected one.
         this.selectedSpecies.set(entry.species ?? null);
         this.loading.set(false);
+        // PRD #261 (#267): surface the quiet suffix icons for any stored value
+        // already out of range, without a modal (the norm may still be loading;
+        // loadNorms re-seeds once it lands).
+        this.seedPlausibilityOnLoad();
       });
     });
   }
@@ -716,6 +720,10 @@ export class DataEntryFormComponent implements OnInit {
     // mandatory-comment behaviour as a freshly selected one.
     this.selectedSpecies.set(display.species);
     this.loading.set(false);
+    // PRD #261 (#267): reveal the quiet suffix icons for any queued stored value
+    // already out of range, without a modal (same load-path behaviour as a synced
+    // record).
+    this.seedPlausibilityOnLoad();
   }
 
   ngOnInit(): void {
@@ -800,6 +808,11 @@ export class DataEntryFormComponent implements OnInit {
         map[norm.species_id] = norm;
       }
       this.normsBySpecies.set(map);
+      // PRD #261 (#267): in edit mode the Artennorm may land AFTER the record, so
+      // re-seed the load-time icons now that the norm is available — still no modal.
+      if (this.isEditMode()) {
+        this.seedPlausibilityOnLoad();
+      }
     } catch (error) {
       console.error('Failed to read Artennormen from the offline reference cache', error);
     }
@@ -1120,6 +1133,24 @@ export class DataEntryFormComponent implements OnInit {
     if (toShow.length > 0) {
       this.openPlausibilityInfoDialog(toShow);
     }
+  }
+
+  // PRD #261 (#267): the edit-mode LOAD path for the Plausibilitätsprüfung. Opening
+  // an existing capture whose STORED values already breach the Artennorm must reveal
+  // every flagged field's quiet suffix icon at once (they render off
+  // suffixWarningByField ← plausibilityWarnings), yet raise NO „Verstanden" modal —
+  // a warning present on load has no trigger event. So this only RECOMPUTES the
+  // active Warnungen and seeds the „fire once, never nag" acknowledgment to a fresh
+  // empty baseline; it deliberately does NOT run reconcileAcknowledgedWarnings, so no
+  // dialog opens on load. The first real interaction — a numeric blur, a categorical
+  // selectionChange, or an Art change — then runs the de-dup helper in
+  // evaluatePlausibility and raises the still-active warnings once. Called from both
+  // edit-load paths and from loadNorms (the record and its Artennorm load
+  // independently — whichever settles last recomputes against a fully-loaded state).
+  private seedPlausibilityOnLoad(): void {
+    const warnings = computePlausibilityWarnings(this.currentMeasurements(), this.activeNorm());
+    this.plausibilityWarnings.set(warnings);
+    this.acknowledgedSignatures.set(resetAcknowledgedSignatures());
   }
 
   // PRD #261 (#263/#265/#266): the single-„Verstanden" informational modal for the
