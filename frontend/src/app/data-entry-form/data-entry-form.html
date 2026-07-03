@@ -408,6 +408,15 @@
           <span>{{ msg }}</span>
         </div>
       }
+      <!-- #248: the derived Quotient Federlänge/Flügellänge warning sits under
+           its two operands, in its own slot (synthetic `quotient` field) so it
+           never collides with the operands' own σ warnings. -->
+      @if (warningByField()['quotient']; as msg) {
+        <div class="plausibility-warning" role="alert" data-testid="plausibility-quotient-warning">
+          <mat-icon aria-hidden="true">warning</mat-icon>
+          <span>{{ msg }}</span>
+        </div>
+      }
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Gewicht (g)</mat-label>
         <input matInput type="number" formControlName="weight_gram" (blur)="onMeasurementBlur()">
