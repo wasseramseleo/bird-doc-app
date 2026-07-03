@@ -51,6 +51,13 @@ urlpatterns += [
         wissen.RinggroessenTabelleView.as_view(),
         name="wissen_ringgroessen",
     ),
+    # One page per Art (issue #282): the slug is the slugified scientific name
+    # — stable and umlaut-free — resolved in the view; no slug column exists.
+    path(
+        "wissen/art/<slug:slug>/",
+        wissen.ArtSeiteView.as_view(),
+        name="wissen_art",
+    ),
 ]
 
 # Public, server-rendered landing served at the apex host (birddoc.eu), kept

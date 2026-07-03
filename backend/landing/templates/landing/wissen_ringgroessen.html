@@ -12,21 +12,7 @@ i18n_patterns und hat bewusst keine /en/-Variante.
 {% block title %}Ringgrößen-Tabelle Österreich · BirdDoc{% endblock %}
 
 {% block content %}
-    {# Sichtbarer Brotkrümelpfad + BreadcrumbList-JSON-LD aus denselben Daten. #}
-    <nav class="breadcrumb" aria-label="Brotkrümelnavigation">
-        <ol class="breadcrumb__trail">
-            {% for name, item in breadcrumbs %}
-                <li class="breadcrumb__crumb">
-                    {% if forloop.last %}
-                        <span aria-current="page">{{ name }}</span>
-                    {% else %}
-                        <a href="{{ item }}">{{ name }}</a>
-                    {% endif %}
-                </li>
-            {% endfor %}
-        </ol>
-    </nav>
-    <script type="application/ld+json">{{ breadcrumb_jsonld|safe }}</script>
+    {% include "landing/_wissen_breadcrumb.html" %}
 
     <p class="eyebrow">Wissen</p>
     <h1>Ringgrößen-Tabelle Österreich</h1>
@@ -63,7 +49,9 @@ i18n_patterns und hat bewusst keine /en/-Variante.
         <tbody>
             {% for species in species_list %}
                 <tr>
-                    <th scope="row">{{ species.common_name_de }}</th>
+                    <th scope="row">
+                        <a href="{% url 'wissen_art' slug=species.art_slug %}">{{ species.common_name_de }}</a>
+                    </th>
                     <td><em>{{ species.scientific_name }}</em></td>
                     <td>{{ species.family_name }}</td>
                     <td>{{ species.order_name }}</td>
