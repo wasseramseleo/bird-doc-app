@@ -9,6 +9,7 @@ import {Species} from '../models/species.model';
 import {RingSize} from '../models/ring.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
+import {Central} from '../models/central.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
@@ -124,6 +125,18 @@ export class ApiService {
   // backend refuses with 409 and the caller offers archiving instead.
   deleteRingingStation(handle: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/ringing-stations/${handle}/`);
+  }
+
+  // The Zentrale (EURING scheme) lookup that feeds the capture form's Zentrale
+  // autocomplete for an ausländischer Wiederfang (ADR 0019). The single `search`
+  // param matches name, country and scheme code server-side, exactly like the
+  // species/Station pickers.
+  getCentrals(searchTerm?: string): Observable<PaginatedApiResponse<Central>> {
+    let params = new HttpParams();
+    if (searchTerm) {
+      params = params.set('search', searchTerm);
+    }
+    return this.http.get<PaginatedApiResponse<Central>>(`${this.apiUrl}/centrals/`, {params});
   }
 
   getScientists(searchTerm?: string): Observable<PaginatedApiResponse<Scientist>> {
