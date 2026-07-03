@@ -3,15 +3,18 @@ import { expectOfflineReadiness, expectOutboxIndicator } from './status-menu-hel
 
 /**
  * E2E for the Gewicht-Plausibilitätswarnung (PRD #245, issue #246 — the
- * tracer-bullet spine of the Artennorm feature).
+ * tracer-bullet spine of the Artennorm feature; numeric UX redesigned in PRD
+ * #261, issue #265).
  *
  * Drives the REAL capture form in the browser and asserts BEHAVIOUR: a Beringer
  * selects an Art that carries an effective Artennorm, enters a Gewicht outside
- * its σ-band (Ø ± sd_factor·SD), and sees the inline Plausibilitätswarnung
- * (`role="alert"`) surface under the field on blur with the de-AT message; on
- * Speichern a single aggregated confirm-dialog lists the discrepancy and, once
- * acknowledged, the capture is written (online) / queued (offline). An in-range
- * Gewicht produces neither a warning nor a dialog and writes straight through.
+ * its σ-band (Ø ± sd_factor·SD), and — per #265 — sees the single-„Verstanden"
+ * modal raised on blur with the de-AT message, then a quiet warning suffix icon
+ * that persists after the modal is dismissed. On Speichern the aggregated
+ * confirm-dialog gate still lists the discrepancy (removed later in #266) and,
+ * once acknowledged, the capture is written (online) / queued (offline). An
+ * in-range Gewicht raises neither the modal nor the suffix icon and writes
+ * straight through.
  *
  * The norm reaches the client exactly one way — via the per-org norms list the
  * offline reference bundle embeds next to the species pool (the same list the
@@ -225,7 +228,7 @@ async function fillErstfangExceptWeight(page: Page): Promise<void> {
   await expect(page.locator('input[formControlName="ring_number"]')).toHaveValue('0043');
 }
 
-// Enter the Gewicht and blur the field so the inline check runs.
+// Enter the Gewicht and blur the field so the on-blur check runs.
 async function enterWeightAndBlur(page: Page, grams: number): Promise<void> {
   const weight = page.locator('input[formControlName="weight_gram"]');
   await weight.click();
@@ -233,8 +236,16 @@ async function enterWeightAndBlur(page: Page, grams: number): Promise<void> {
   await weight.blur();
 }
 
-const warning = (page: Page) =>
-  page.locator('[data-testid="plausibility-weight-warning"]');
+// #265: the verbose inline hint is gone — a quiet warning suffix icon marks the
+// breaching field, and the newly-appeared warning is announced by the single-
+// „Verstanden" InfoDialog. Both the InfoDialog and the save-time confirm-dialog
+// render as `mat-dialog-container`; the InfoDialog is dismissed before Speichern
+// so only one is ever on screen at a time.
+const weightIcon = (page: Page) =>
+  page.locator('[data-testid="plausibility-weight_gram-icon"]');
+const infoDialog = (page: Page) =>
+  page.locator('mat-dialog-container', { hasText: 'Plausibilität prüfen' });
+const anyDialog = (page: Page) => page.locator('mat-dialog-container');
 const confirmDialog = (page: Page) => page.locator('mat-dialog-container');
 
 test.describe('Gewicht-Plausibilitätswarnung end-to-end (issue #246)', () => {
@@ -245,17 +256,18 @@ test.describe('Gewicht-Plausibilitätswarnung end-to-end (issue #246)', () => {
     await page.goto('/data-entry');
     await fillErstfangExceptWeight(page);
 
-    // Out-of-range Gewicht → inline Plausibilitätswarnung on blur, with the
-    // exact de-AT message and the role="alert" idiom.
+    // #265: leaving the field with an out-of-range Gewicht raises the single-
+    // „Verstanden" modal immediately, listing the exact de-AT message.
     await enterWeightAndBlur(page, 25);
-    await expect(warning(page)).toBeVisible();
-    await expect(warning(page)).toHaveAttribute('role', 'alert');
-    await expect(warning(page)).toContainText(OUT_OF_RANGE_MESSAGE);
+    await expect(infoDialog(page)).toBeVisible();
+    await expect(infoDialog(page)).toContainText(OUT_OF_RANGE_MESSAGE);
+    await page.getByRole('button', { name: 'Verstanden' }).click();
+    await expect(anyDialog(page)).toHaveCount(0);
 
-    // No dialog yet — the inline hint is non-modal.
-    await expect(confirmDialog(page)).toHaveCount(0);
+    // The quiet warning suffix icon persists after the modal is dismissed.
+    await expect(weightIcon(page)).toBeVisible();
 
-    // Speichern opens ONE aggregated confirm-dialog that lists the discrepancy.
+    // Speichern still opens the aggregated confirm-dialog gate (removed in #266).
     await page.locator('button[type="submit"]').click();
     await expect(confirmDialog(page)).toBeVisible();
     await expect(confirmDialog(page)).toContainText('Plausibilität prüfen');
@@ -283,9 +295,10 @@ test.describe('Gewicht-Plausibilitätswarnung end-to-end (issue #246)', () => {
     await page.goto('/data-entry');
     await fillErstfangExceptWeight(page);
 
-    // In-range Gewicht → no inline warning.
+    // In-range Gewicht → no modal on blur and no suffix icon.
     await enterWeightAndBlur(page, 9);
-    await expect(warning(page)).toHaveCount(0);
+    await expect(anyDialog(page)).toHaveCount(0);
+    await expect(weightIcon(page)).toHaveCount(0);
 
     // Speichern writes directly, with no confirm-dialog.
     const post = page.waitForRequest(
@@ -317,9 +330,13 @@ test.describe('Gewicht-Plausibilitätswarnung end-to-end (issue #246)', () => {
     // Out-of-range Gewicht → the identical inline Plausibilitätswarnung, driven
     // entirely off the cached bundle's `norms` with no network.
     await enterWeightAndBlur(page, 25);
-    await expect(warning(page)).toBeVisible();
-    await expect(warning(page)).toHaveAttribute('role', 'alert');
-    await expect(warning(page)).toContainText(OUT_OF_RANGE_MESSAGE);
+    // #265: the identical on-blur modal, driven entirely off the cached bundle
+    // norm with no network; the suffix icon persists after dismissal.
+    await expect(infoDialog(page)).toBeVisible();
+    await expect(infoDialog(page)).toContainText(OUT_OF_RANGE_MESSAGE);
+    await page.getByRole('button', { name: 'Verstanden' }).click();
+    await expect(anyDialog(page)).toHaveCount(0);
+    await expect(weightIcon(page)).toBeVisible();
 
     // Speichern opens the same aggregated confirm-dialog.
     await page.locator('button[type="submit"]').click();
