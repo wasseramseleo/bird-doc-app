@@ -36,6 +36,7 @@ import { ReferenceBundleCacheService } from '../core/offline/reference-bundle-ca
 import { Scientist } from '../models/scientist.model';
 import { SpeciesNorm } from '../core/plausibility/plausibility';
 import { OfflineBundle } from '../models/offline-bundle.model';
+import { InfoDialogComponent } from '../shared/info-dialog/info-dialog';
 
 registerLocaleData(localeDeAt);
 
@@ -2983,12 +2984,14 @@ describe('DataEntryFormComponent', () => {
       component.selectedSpecies.set(zaunkoenig);
     }
 
+    // #265: the verbose inline div is replaced by a quiet warning suffix icon
+    // whose de-AT message rides its hover `title`.
     const warningEl = () =>
       fixture.nativeElement.querySelector(
-        '[data-testid="plausibility-weight-warning"]',
+        '[data-testid="plausibility-weight_gram-icon"]',
       ) as HTMLElement | null;
 
-    it('renders the inline warning on blur for an out-of-range Gewicht, with the de-AT message', async () => {
+    it('shows the quiet warning suffix icon on blur for an out-of-range Gewicht, carrying the de-AT message', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
       component.entryForm.get('weight_gram')!.setValue(25);
@@ -2997,8 +3000,7 @@ describe('DataEntryFormComponent', () => {
 
       const el = warningEl();
       expect(el).not.toBeNull();
-      expect(el!.getAttribute('role')).toBe('alert');
-      expect(el!.textContent).toContain(
+      expect(el!.getAttribute('title')).toContain(
         'Gewicht 25 g liegt außerhalb des erwarteten Bereichs 7,5–10,7 g (Zaunkönig)',
       );
     });
@@ -3155,7 +3157,7 @@ describe('DataEntryFormComponent', () => {
       {
         label: 'Federlänge',
         field: 'feather_span',
-        testid: 'plausibility-feather_span-warning',
+        testid: 'plausibility-feather_span-icon',
         inRange: 54,
         outOfRange: 65,
         message:
@@ -3164,7 +3166,7 @@ describe('DataEntryFormComponent', () => {
       {
         label: 'Flügellänge',
         field: 'wing_span',
-        testid: 'plausibility-wing_span-warning',
+        testid: 'plausibility-wing_span-icon',
         inRange: 73,
         outOfRange: 90,
         message:
@@ -3173,7 +3175,7 @@ describe('DataEntryFormComponent', () => {
       {
         label: 'Tarsus',
         field: 'tarsus',
-        testid: 'plausibility-tarsus-warning',
+        testid: 'plausibility-tarsus-icon',
         inRange: 19,
         outOfRange: 25,
         message: 'Tarsus 25 mm liegt außerhalb des erwarteten Bereichs 17,8–20,2 mm (Zaunkönig)',
@@ -3181,7 +3183,7 @@ describe('DataEntryFormComponent', () => {
       {
         label: 'Kerbe F2',
         field: 'notch_f2',
-        testid: 'plausibility-notch_f2-warning',
+        testid: 'plausibility-notch_f2-icon',
         inRange: 8,
         outOfRange: 12,
         message: 'Kerbe F2 12 mm liegt außerhalb des erwarteten Bereichs 6,6–9,4 mm (Zaunkönig)',
@@ -3189,7 +3191,7 @@ describe('DataEntryFormComponent', () => {
       {
         label: 'Innenfuß',
         field: 'inner_foot',
-        testid: 'plausibility-inner_foot-warning',
+        testid: 'plausibility-inner_foot-icon',
         inRange: 15,
         outOfRange: 20,
         message: 'Innenfuß 20 mm liegt außerhalb des erwarteten Bereichs 13,4–16,6 mm (Zaunkönig)',
@@ -3197,13 +3199,13 @@ describe('DataEntryFormComponent', () => {
     ];
 
     for (const c of fieldCases) {
-      describe(`inline warning under ${c.label} (#247)`, () => {
+      describe(`suffix icon under ${c.label} (#247/#265)`, () => {
         const el = () =>
           fixture.nativeElement.querySelector(
             `[data-testid="${c.testid}"]`,
           ) as HTMLElement | null;
 
-        it('renders on blur for an out-of-range value, with the de-AT message', async () => {
+        it('shows the quiet suffix icon on blur for an out-of-range value, carrying the de-AT message', async () => {
           await setup();
           component.selectedSpecies.set(zaunkoenig);
           component.entryForm.get(c.field)!.setValue(c.outOfRange);
@@ -3212,8 +3214,7 @@ describe('DataEntryFormComponent', () => {
 
           const warning = el();
           expect(warning).not.toBeNull();
-          expect(warning!.getAttribute('role')).toBe('alert');
-          expect(warning!.textContent).toContain(c.message);
+          expect(warning!.getAttribute('title')).toContain(c.message);
         });
 
         it('renders nothing when the value is in range', async () => {
@@ -3278,7 +3279,7 @@ describe('DataEntryFormComponent', () => {
       post.flush({});
     });
 
-    it('renders the inline warnings for the five fields on blur in edit mode too', async () => {
+    it('shows the suffix icons for the five fields on blur in edit mode too', async () => {
       const routeStub = {
         snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '77' : null) } },
       };
@@ -3337,7 +3338,7 @@ describe('DataEntryFormComponent', () => {
           `[data-testid="${c.testid}"]`,
         ) as HTMLElement | null;
         expect(warning).withContext(c.label).not.toBeNull();
-        expect(warning!.textContent).toContain(c.message);
+        expect(warning!.getAttribute('title')).toContain(c.message);
       }
     });
   });
@@ -3461,25 +3462,32 @@ describe('DataEntryFormComponent', () => {
       component.selectedSpecies.set(zaunkoenig);
     }
 
-    const warningEl = () =>
+    // #265: the Quotient has no field of its own, so a breach marks the quiet
+    // suffix icon on BOTH operands (Federlänge and Flügellänge); its message
+    // rides each icon's hover `title`.
+    const featherIcon = () =>
       fixture.nativeElement.querySelector(
-        '[data-testid="plausibility-quotient-warning"]',
+        '[data-testid="plausibility-feather_span-icon"]',
+      ) as HTMLElement | null;
+    const wingIcon = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-wing_span-icon"]',
       ) as HTMLElement | null;
 
-    it('renders the inline quotient warning on blur for an out-of-band ratio, with the de-AT message', async () => {
+    it('marks BOTH operand suffix icons on blur for an out-of-band ratio, carrying the de-AT message', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
       component.entryForm.patchValue({ feather_span: 60, wing_span: 70 });
       component.onMeasurementBlur();
       fixture.detectChanges();
 
-      const el = warningEl();
-      expect(el).not.toBeNull();
-      expect(el!.getAttribute('role')).toBe('alert');
-      expect(el!.textContent).toContain(quotientMessage);
+      expect(featherIcon()).not.toBeNull();
+      expect(wingIcon()).not.toBeNull();
+      expect(featherIcon()!.getAttribute('title')).toContain(quotientMessage);
+      expect(wingIcon()!.getAttribute('title')).toContain(quotientMessage);
     });
 
-    it('renders no inline quotient warning when the ratio is in band', async () => {
+    it('marks no operand suffix icon when the ratio is in band', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
       // 54/73 = 0,7397 — inside 0,72–0,76.
@@ -3487,10 +3495,11 @@ describe('DataEntryFormComponent', () => {
       component.onMeasurementBlur();
       fixture.detectChanges();
 
-      expect(warningEl()).toBeNull();
+      expect(featherIcon()).toBeNull();
+      expect(wingIcon()).toBeNull();
     });
 
-    it('renders no inline quotient warning while either operand is blank (needs both)', async () => {
+    it('marks no operand suffix icon while either operand is blank (needs both)', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
       // Only Federlänge — Flügellänge still blank → suppressed.
@@ -3498,7 +3507,8 @@ describe('DataEntryFormComponent', () => {
       component.onMeasurementBlur();
       fixture.detectChanges();
 
-      expect(warningEl()).toBeNull();
+      expect(featherIcon()).toBeNull();
+      expect(wingIcon()).toBeNull();
     });
 
     it('recomputes the derived quotient as either operand changes', async () => {
@@ -3509,21 +3519,24 @@ describe('DataEntryFormComponent', () => {
       component.entryForm.patchValue({ wing_span: 70 });
       component.onMeasurementBlur();
       fixture.detectChanges();
-      expect(warningEl()).toBeNull();
+      expect(featherIcon()).toBeNull();
+      expect(wingIcon()).toBeNull();
 
       // Add Federlänge → the now-derivable ratio 60/70 = 0,857 is out of band.
       component.entryForm.patchValue({ feather_span: 60 });
       component.onMeasurementBlur();
       fixture.detectChanges();
-      expect(warningEl()).not.toBeNull();
-      expect(warningEl()!.textContent).toContain(quotientMessage);
+      expect(featherIcon()).not.toBeNull();
+      expect(wingIcon()).not.toBeNull();
+      expect(featherIcon()!.getAttribute('title')).toContain(quotientMessage);
 
       // Change the other operand so the ratio moves back in band → warning clears.
       // 60/82 = 0,7317 — inside 0,72–0,76.
       component.entryForm.patchValue({ wing_span: 82 });
       component.onMeasurementBlur();
       fixture.detectChanges();
-      expect(warningEl()).toBeNull();
+      expect(featherIcon()).toBeNull();
+      expect(wingIcon()).toBeNull();
     });
 
     it('includes the quotient discrepancy in the aggregated save-time confirm-dialog and writes on confirm', async () => {
@@ -3543,7 +3556,7 @@ describe('DataEntryFormComponent', () => {
       post.flush({});
     });
 
-    it('surfaces the inline quotient warning on blur in edit mode too', async () => {
+    it('marks both operand suffix icons for a Quotient breach on blur in edit mode too', async () => {
       const routeStub = {
         snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '88' : null) } },
       };
@@ -3594,11 +3607,15 @@ describe('DataEntryFormComponent', () => {
       editComponent.onMeasurementBlur();
       f.detectChanges();
 
-      const warning = f.nativeElement.querySelector(
-        '[data-testid="plausibility-quotient-warning"]',
+      const featherWarning = f.nativeElement.querySelector(
+        '[data-testid="plausibility-feather_span-icon"]',
       ) as HTMLElement | null;
-      expect(warning).not.toBeNull();
-      expect(warning!.textContent).toContain(quotientMessage);
+      const wingWarning = f.nativeElement.querySelector(
+        '[data-testid="plausibility-wing_span-icon"]',
+      ) as HTMLElement | null;
+      expect(featherWarning).not.toBeNull();
+      expect(wingWarning).not.toBeNull();
+      expect(featherWarning!.getAttribute('title')).toContain(quotientMessage);
     });
   });
 
@@ -3880,6 +3897,320 @@ describe('DataEntryFormComponent', () => {
       expect(sexWarning!.textContent).toContain(sexMessage);
       expect(handWingWarning).not.toBeNull();
       expect(handWingWarning!.textContent).toContain(handWingMessage);
+    });
+  });
+
+  // Issue #265 (PRD #261): the numeric Plausibilitäts-UX redesign. Leaving a
+  // measurement field whose value NEWLY breaches its Artennorm raises the single-
+  // „Verstanden" InfoDialog (#263), routed through the „fire once, never nag"
+  // de-dup (#264) so an acknowledged value never nags again, and one blur
+  // tripping several checks yields ONE aggregated modal. The verbose inline
+  // numeric hint is replaced by a quiet warning suffix icon that persists after
+  // the modal is dismissed. An Art change wipes the acknowledgment and re-checks
+  // every numeric field against the new norm. Numeric path only — the categorical
+  // sex/hand_wing modal is #266, and the save-time confirm-dialog gate stays.
+  describe('Plausibilitäts-Modal beim Auftreten + Suffix-Icon (numeric, #265)', () => {
+    const norm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      feather_mean: '54',
+      feather_sd: '2',
+      wing_mean: '73',
+      wing_sd: '2.5',
+      tarsus_mean: '19',
+      tarsus_sd: '0.6',
+      notch_f2_mean: '8',
+      notch_f2_sd: '0.7',
+      inner_foot_mean: '15',
+      inner_foot_sd: '0.8',
+      quotient_mean: '0.74',
+      quotient_tolerance_pct: '3',
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: null,
+      dj_grossgefiedermauser_moeglich: null,
+    };
+    // A second normed Art so an Art change re-checks against a DIFFERENT norm:
+    // 25 g is out of Kohlmeise's 15–19 g band too. Its Quotient rule is off.
+    const kohlmeiseNorm: SpeciesNorm = {
+      ...norm,
+      species_id: 's2',
+      species_name: 'Kohlmeise',
+      weight_mean: '17',
+      weight_sd: '1',
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const kohlmeise: Species = { ...zaunkoenig, id: 's2', common_name_de: 'Kohlmeise' };
+    const unnormedSpecies: Species = { ...zaunkoenig, id: 's3', common_name_de: 'Amsel' };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [norm, kohlmeiseNorm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    function blur(field: string, value: number | null): void {
+      component.entryForm.get(field)!.setValue(value);
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+    }
+
+    const icon = (field: string) =>
+      fixture.nativeElement.querySelector(
+        `[data-testid="plausibility-${field}-icon"]`,
+      ) as HTMLElement | null;
+
+    const lastDialogComponent = () => dialogMock.open.calls.mostRecent().args[0];
+    const lastDialogMessage = () =>
+      (dialogMock.open.calls.mostRecent().args[1].data as { message: string }).message;
+
+    it('opens the single-„Verstanden" InfoDialog when a σ-band field is left out of range', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      blur('weight_gram', 25);
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogComponent()).toBe(InfoDialogComponent);
+      expect(lastDialogMessage()).toContain(
+        'Gewicht 25 g liegt außerhalb des erwarteten Bereichs 7,5–10,7 g (Zaunkönig)',
+      );
+    });
+
+    it('opens no modal when the value is left in range', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      blur('weight_gram', 9);
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      expect(icon('weight_gram')).toBeNull();
+    });
+
+    it('opens no modal when the selected Art carries no Artennorm', async () => {
+      await setup();
+      component.selectedSpecies.set(unnormedSpecies);
+      blur('weight_gram', 25);
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      expect(icon('weight_gram')).toBeNull();
+    });
+
+    it('opens the modal for a Quotient breach and attributes the warning to the Quotient', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      // 56/69 = 0,81 is out of the 0,72–0,76 band, while each operand is inside
+      // its own σ band — so the only warning is the Quotient's.
+      component.entryForm.patchValue({ feather_span: 56, wing_span: 69 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogComponent()).toBe(InfoDialogComponent);
+      expect(lastDialogMessage()).toContain('Quotient Federlänge/Flügellänge');
+      expect(lastDialogMessage()).toContain('liegt außerhalb');
+    });
+
+    it('produces ONE aggregated modal (not a stack) when a blur trips several checks', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      // Flügellänge 90 breaches its own σ band (68,1–77,9) AND the Quotient
+      // (54/90 = 0,60) in a single blur.
+      component.entryForm.patchValue({ feather_span: 54, wing_span: 90 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const message = lastDialogMessage();
+      expect(message).toContain('Flügellänge 90 mm liegt außerhalb');
+      expect(message).toContain('Quotient Federlänge/Flügellänge');
+    });
+
+    it('does not re-open the modal on an unchanged re-blur, but re-fires for a new out-of-range value', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      blur('weight_gram', 25);
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+
+      // Unchanged re-blur — the acknowledged value must not nag again.
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+
+      // Corrected to a NEW out-of-range value — re-fires.
+      blur('weight_gram', 30);
+      expect(dialogMock.open).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears the warning with no modal when a field is brought back into range', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      blur('weight_gram', 25);
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(icon('weight_gram')).not.toBeNull();
+
+      blur('weight_gram', 9);
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(icon('weight_gram')).toBeNull();
+    });
+
+    it('re-checks every numeric field against the new norm on Art change and raises newly-implausible values', async () => {
+      await setup();
+      component.onSpeciesSelected({
+        option: { value: zaunkoenig },
+      } as MatAutocompleteSelectedEvent);
+      blur('weight_gram', 25);
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogMessage()).toContain('Zaunkönig');
+
+      // Switching the Art wipes the acknowledgment and re-checks 25 g against the
+      // new (Kohlmeise) norm, where it is also out of range → re-raised.
+      component.onSpeciesSelected({
+        option: { value: kohlmeise },
+      } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(2);
+      expect(lastDialogMessage()).toContain('Kohlmeise');
+    });
+
+    it('shows the quiet warning suffix icon on the breaching σ-band field and keeps it after dismissal', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      blur('tarsus', 25);
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(icon('tarsus')).not.toBeNull();
+
+      // The icon persists after the modal is dismissed: a later unchanged re-blur
+      // does not re-open the modal, yet the icon stays.
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(icon('tarsus')).not.toBeNull();
+    });
+
+    it('shows the suffix icon on BOTH Federlänge and Flügellänge for a Quotient breach', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({ feather_span: 56, wing_span: 69 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(icon('feather_span')).not.toBeNull();
+      expect(icon('wing_span')).not.toBeNull();
+    });
+
+    it('no longer renders the inline plausibility-warning divs for the numeric fields or the Quotient', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({
+        weight_gram: 25,
+        feather_span: 65,
+        wing_span: 90,
+        tarsus: 25,
+        notch_f2: 12,
+        inner_foot: 20,
+      });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      for (const testid of [
+        'plausibility-weight-warning',
+        'plausibility-feather_span-warning',
+        'plausibility-wing_span-warning',
+        'plausibility-quotient-warning',
+        'plausibility-tarsus-warning',
+        'plausibility-notch_f2-warning',
+        'plausibility-inner_foot-warning',
+      ]) {
+        expect(fixture.nativeElement.querySelector(`[data-testid="${testid}"]`))
+          .withContext(testid)
+          .toBeNull();
+      }
+    });
+
+    it('never raises the numeric modal on a categorical change (that is #266)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      blur('weight_gram', 25);
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+
+      component.entryForm.get('sex')!.setValue(Sex.Male);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
     });
   });
 });
