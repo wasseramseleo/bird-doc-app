@@ -1,6 +1,113 @@
 import pytest
+from django.contrib.auth.models import User
 
-from birds.models import Scientist
+from birds.models import Mitgliedschaft, Scientist
+
+# --- Admin-aware serializer (PRD #205, issue #206) ---------------------------
+# For an Admin request the /scientists/ list/retrieve additionally exposes the
+# Mitglied flag and the linked account's display name / email / Rolle. For any
+# non-Admin request — and crucially when there is *no* Admin request context at
+# all (offline reference bundle, mid-session autocomplete) — it returns exactly
+# today's lean, leak-free shape. The account-field derivation is null-safe when
+# the Beringer has no account and is scoped to the actor's active Organisation
+# so it never leaks another tenant's data.
+
+LEAN_FIELDS = {"id", "handle", "first_name", "last_name", "full_name"}
+
+
+@pytest.mark.django_db
+def test_admin_request_exposes_account_fields_for_mitglied_beringer(
+    auth_client, membership, organization, mitglied_scientist, mitglied_user
+):
+    """An Admin listing /scientists/ sees, on an account-linked Beringer, the
+    Mitglied flag and the linked account's display name / email / Rolle."""
+    mitglied_user.first_name = "Mara"
+    mitglied_user.last_name = "Moser"
+    mitglied_user.email = "mara@example.org"
+    mitglied_user.save()
+
+    response = auth_client.get("/api/birds/scientists/")
+
+    row = next(r for r in response.json()["results"] if r["handle"] == "MAR")
+    assert row["is_member"] is True
+    assert row["account"] == {
+        "display_name": "Mara Moser",
+        "email": "mara@example.org",
+        "rolle": "mitglied",
+    }
+
+
+@pytest.mark.django_db
+def test_admin_request_marks_no_account_beringer(auth_client, membership, organization):
+    """A no-account Beringer is flagged is_member=False with a null account
+    block (null-safe when Scientist.user is None)."""
+    Scientist.objects.create(
+        handle="FRE", first_name="Filip", last_name="Reiter", organization=organization
+    )
+
+    response = auth_client.get("/api/birds/scientists/")
+
+    row = response.json()["results"][0]
+    assert row["is_member"] is False
+    assert row["account"] is None
+
+
+@pytest.mark.django_db
+def test_admin_retrieve_exposes_account_fields(
+    auth_client, membership, organization, mitglied_scientist
+):
+    """The Admin-aware shape is on retrieve too, not just list."""
+    response = auth_client.get(f"/api/birds/scientists/{mitglied_scientist.id}/")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["is_member"] is True
+    assert body["account"]["rolle"] == "mitglied"
+
+
+@pytest.mark.django_db
+def test_non_admin_request_returns_lean_shape_without_account_fields(
+    mitglied_client, mitglied_scientist, organization
+):
+    """A plain Mitglied's /scientists/ list is exactly the lean shape — the
+    account fields never leak to a non-Admin."""
+    response = mitglied_client.get("/api/birds/scientists/")
+
+    row = response.json()["results"][0]
+    assert set(row) == LEAN_FIELDS
+
+
+@pytest.mark.django_db
+def test_offline_bundle_beringer_is_lean_even_for_admin(auth_client, scientist, organization):
+    """With no Admin request context (the offline reference bundle instantiates
+    the serializer without a request) the Beringer shape is the lean, leak-free
+    one even though the requester is an Admin and the Beringer is account-linked."""
+    payload = auth_client.get("/api/birds/offline-bundle/").json()
+
+    row = next(r for r in payload["scientists"] if r["handle"] == scientist.handle)
+    assert set(row) == LEAN_FIELDS
+
+
+@pytest.mark.django_db
+def test_admin_account_rolle_is_scoped_to_actors_organisation(
+    auth_client, membership, organization, organization_b
+):
+    """The account's Rolle is read in the *actor's* active Organisation, never
+    another tenant's: a Beringer's linked account that is an Admin in another
+    Organisation is still reported with its Rolle *here* — no cross-tenant leak."""
+    dual = User.objects.create_user(username="dual", password="hunter2-very-strong")
+    Mitgliedschaft.objects.create(
+        user=dual, organization=organization, rolle=Mitgliedschaft.Rolle.MITGLIED
+    )
+    Mitgliedschaft.objects.create(
+        user=dual, organization=organization_b, rolle=Mitgliedschaft.Rolle.ADMIN
+    )
+    Scientist.objects.create(user=dual, handle="DUL", organization=organization)
+
+    response = auth_client.get("/api/birds/scientists/")
+
+    row = next(r for r in response.json()["results"] if r["handle"] == "DUL")
+    assert row["account"]["rolle"] == "mitglied"
 
 
 @pytest.mark.django_db

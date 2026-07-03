@@ -9,6 +9,7 @@ import {RingSize} from '../models/ring.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
+import {Beringer} from '../models/beringer.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {ImportPreview, ImportResult} from '../models/iwm-import.model';
@@ -132,6 +133,17 @@ export class ApiService {
 
   createScientist(payload: ScientistCreatePayload): Observable<Scientist> {
     return this.http.post<Scientist>(`${this.apiUrl}/scientists/`, payload);
+  }
+
+  // The Org-Admin "Beringer verwalten" list (PRD #205). Same /scientists/
+  // endpoint as the autocomplete, but the server returns the Admin-aware shape
+  // (Mitglied flag + linked-account fields) for an Admin request.
+  getBeringer(searchTerm?: string): Observable<PaginatedApiResponse<Beringer>> {
+    let params = new HttpParams();
+    if (searchTerm) {
+      params = params.set('search', searchTerm);
+    }
+    return this.http.get<PaginatedApiResponse<Beringer>>(`${this.apiUrl}/scientists/`, {params});
   }
 
   getOrganizations(): Observable<PaginatedApiResponse<Organization>> {
