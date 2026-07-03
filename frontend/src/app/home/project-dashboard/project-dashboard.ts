@@ -15,6 +15,7 @@ import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {fromEvent} from 'rxjs';
 
 import {ApiService} from '../../service/api.service';
+import {ProjectActionsService} from '../../service/project-actions.service';
 import {Project} from '../../models/project.model';
 import {
   ProjectStats,
@@ -61,6 +62,7 @@ interface RangePresetOption {
 })
 export class ProjectDashboardComponent {
   private readonly api = inject(ApiService);
+  private readonly actions = inject(ProjectActionsService);
 
   readonly project = input.required<Project>();
 
@@ -138,6 +140,20 @@ export class ProjectDashboardComponent {
         },
       });
     });
+  }
+
+  // Bearbeiten/Export delegate to the shared ProjectActionsService (issue #221) —
+  // the single source of truth for Projekt edit/IWM-Export. No dialog wiring,
+  // updateProject, exportIwm or blob-download logic is duplicated here. On a
+  // successful edit the service upserts and setCurrents the updated Projekt, so
+  // the `currentProject` signal changes and this dashboard's `project` input (and
+  // its stats effect) refresh reactively — no manual reload, no navigation.
+  edit(): void {
+    this.actions.edit(this.project());
+  }
+
+  exportIwm(): void {
+    this.actions.exportIwm(this.project());
   }
 
   selectPreset(preset: StatsRangePreset): void {

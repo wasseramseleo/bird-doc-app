@@ -9,6 +9,7 @@ import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart'
 import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
 import { Project } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
+import { ProjectActionsService } from '../../service/project-actions.service';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -53,15 +54,28 @@ function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
 }
 
 function setup(project: Project) {
+  // The dashboard delegates Bearbeiten/Export to the shared ProjectActionsService
+  // (issue #222); the real one wires MatDialog/Router/HTTP, so stub it. Tests that
+  // assert delegation read the spy; the rest just need it to not blow up.
+  const actions = jasmine.createSpyObj<ProjectActionsService>('ProjectActionsService', [
+    'edit',
+    'exportIwm',
+    'loadReferenceData',
+  ]);
   TestBed.configureTestingModule({
     imports: [ProjectDashboardComponent],
-    providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations()],
+    providers: [
+      provideHttpClient(),
+      provideHttpClientTesting(),
+      provideNoopAnimations(),
+      { provide: ProjectActionsService, useValue: actions },
+    ],
   });
   const fixture: ComponentFixture<ProjectDashboardComponent> =
     TestBed.createComponent(ProjectDashboardComponent);
   fixture.componentRef.setInput('project', project);
   const httpMock = TestBed.inject(HttpTestingController);
-  return { fixture, httpMock };
+  return { fixture, httpMock, actions };
 }
 
 describe('ProjectDashboardComponent', () => {
@@ -255,6 +269,138 @@ describe('ProjectDashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
     expect(fixture.nativeElement.querySelector('.stat-card')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Letzter Tag');
+    httpMock.verify();
+  });
+
+  it('renders a Projektdaten card with Beschreibung, Organisation, each Wissenschaftler and the Standard-Station', () => {
+    const project = makeProject({
+      description: 'Reedbed-Monitoring am Nordufer',
+      organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
+      scientists: [
+        { id: 's1', handle: 'a.huber', full_name: 'Anna Huber' },
+        { id: 's2', handle: 'b.mayer', full_name: 'Bernd Mayer' },
+      ],
+      default_station: { handle: 'st-nord', name: 'Station Nordufer' } as Project['default_station'],
+    });
+    const { fixture, httpMock } = setup(project);
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const card = fixture.nativeElement.querySelector('.projektdaten');
+    expect(card).not.toBeNull();
+    const text: string = card.textContent;
+    expect(text).toContain('Beschreibung');
+    expect(text).toContain('Reedbed-Monitoring am Nordufer');
+    expect(text).toContain('Organisation');
+    expect(text).toContain('IWM Linz');
+    expect(text).toContain('Wissenschaftler');
+    expect(text).toContain('Anna Huber');
+    expect(text).toContain('Bernd Mayer');
+    expect(text).toContain('Standard-Station');
+    expect(text).toContain('Station Nordufer');
+    httpMock.verify();
+  });
+
+  it('renders neutral German placeholders for an empty Beschreibung, empty Wissenschaftler list and missing Standard-Station', () => {
+    // makeProject() defaults: description '', scientists [], default_station null.
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const card = fixture.nativeElement.querySelector('.projektdaten');
+    const text: string = card.textContent;
+    expect(text).toContain('Keine Beschreibung hinterlegt');
+    expect(text).toContain('Keine Wissenschaftler zugeordnet');
+    expect(text).toContain('Keine Standard-Station festgelegt');
+    httpMock.verify();
+  });
+
+  it('delegates Bearbeiten to ProjectActionsService.edit with the current Projekt', () => {
+    const project = makeProject();
+    const { fixture, httpMock, actions } = setup(project);
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const buttons: HTMLButtonElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.projektdaten__action'),
+    );
+    const editButton = buttons.find((b) => b.textContent?.trim() === 'Bearbeiten');
+    expect(editButton).toBeTruthy();
+    editButton!.click();
+
+    expect(actions.edit).toHaveBeenCalledOnceWith(project);
+    httpMock.verify();
+  });
+
+  it('delegates Export to ProjectActionsService.exportIwm with the current Projekt', () => {
+    const project = makeProject();
+    const { fixture, httpMock, actions } = setup(project);
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const exportButton: HTMLButtonElement | null = fixture.nativeElement.querySelector(
+      '.projektdaten__action[aria-label="Als IWM Excel exportieren"]',
+    );
+    expect(exportButton).toBeTruthy();
+    exportButton!.click();
+
+    expect(actions.exportIwm).toHaveBeenCalledOnceWith(project);
+    httpMock.verify();
+  });
+
+  it('shows the Organisation exactly once: in the Projektdaten card, not as a header subhead', () => {
+    const project = makeProject({
+      organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
+    });
+    const { fixture, httpMock } = setup(project);
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    // The old subhead under the <h1> is gone; the <h1> title itself stays.
+    expect(fixture.nativeElement.querySelector('.dashboard__org')).toBeNull();
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Schilfgürtel Linz');
+
+    // The Organisation name appears exactly once across the whole dashboard.
+    const full: string = fixture.nativeElement.textContent;
+    const occurrences = full.split('IWM Linz').length - 1;
+    expect(occurrences).toBe(1);
+    httpMock.verify();
+  });
+
+  it('refreshes the Projektdaten card when the project input changes (currentProject signal after an edit)', () => {
+    const project = makeProject({ description: 'Alte Beschreibung' });
+    const { fixture, httpMock } = setup(project);
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.projektdaten').textContent).toContain(
+      'Alte Beschreibung',
+    );
+
+    // A successful edit upserts + setCurrents the updated Projekt in ProjectService;
+    // that currentProject signal feeds this component's `project` input. Simulate
+    // that new input value — the card must reflect it with no manual reload.
+    fixture.componentRef.setInput(
+      'project',
+      makeProject({
+        description: 'Neue Beschreibung',
+        scientists: [{ id: 's9', handle: 'c.nova', full_name: 'Carla Nova' }],
+      }),
+    );
+    fixture.detectChanges();
+    // The stats effect also re-runs on the input change (same currentProject path).
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const card: string = fixture.nativeElement.querySelector('.projektdaten').textContent;
+    expect(card).toContain('Neue Beschreibung');
+    expect(card).toContain('Carla Nova');
+    expect(card).not.toContain('Alte Beschreibung');
     httpMock.verify();
   });
 

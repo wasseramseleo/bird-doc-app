@@ -6,6 +6,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { HomeComponent } from './home';
 import { ProjectService } from '../service/project.service';
+import { ProjectActionsService } from '../service/project-actions.service';
 import { Project } from '../models/project.model';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
@@ -24,6 +25,14 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 }
 
 function setup() {
+  // The edit dialog's Wissenschaftler options come from reference data the shared
+  // ProjectActionsService loads; Home triggers that load for the current Projekt
+  // (issue #222). Stub the service so no real dialog/HTTP wiring is exercised.
+  const actions = jasmine.createSpyObj<ProjectActionsService>('ProjectActionsService', [
+    'loadReferenceData',
+    'edit',
+    'exportIwm',
+  ]);
   TestBed.configureTestingModule({
     imports: [HomeComponent],
     providers: [
@@ -31,12 +40,13 @@ function setup() {
       provideHttpClient(),
       provideHttpClientTesting(),
       provideNoopAnimations(),
+      { provide: ProjectActionsService, useValue: actions },
     ],
   });
   const fixture: ComponentFixture<HomeComponent> = TestBed.createComponent(HomeComponent);
   const projectService = TestBed.inject(ProjectService);
   const httpMock = TestBed.inject(HttpTestingController);
-  return { fixture, projectService, httpMock };
+  return { fixture, projectService, httpMock, actions };
 }
 
 describe('HomeComponent', () => {
@@ -71,6 +81,24 @@ describe('HomeComponent', () => {
     expect(text).toContain('Mönchsgrasmücke');
     // The picker is not part of Home anymore — it must never render here.
     expect(fixture.nativeElement.querySelector('.project-card')).toBeNull();
+  });
+
+  it('loads the shared reference data (Organisationen/Beringer) once a Projekt is current, so edit-from-dashboard has Wissenschaftler options on a direct landing', () => {
+    const { fixture, projectService, actions } = setup();
+    projectService.setCurrent(makeProject());
+
+    fixture.detectChanges();
+
+    expect(actions.loadReferenceData).toHaveBeenCalled();
+  });
+
+  it('does not load reference data when no Projekt is current', () => {
+    const { fixture, actions, httpMock } = setup();
+
+    fixture.detectChanges();
+
+    expect(actions.loadReferenceData).not.toHaveBeenCalled();
+    httpMock.verify();
   });
 
   it('renders neither a dashboard nor a picker when no Projekt is current', () => {
