@@ -26,6 +26,7 @@ import { ProjectService } from '../service/project.service';
 import { Project } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
+import { AUW_SCHEME_CODE, Central, PROJEKT_ZENTRALE } from '../models/central.model';
 import { OutboxStoreService } from '../core/offline/outbox-store';
 import { OutboxService } from '../service/outbox.service';
 import { AuthService } from '../service/auth.service';
@@ -953,6 +954,7 @@ describe('DataEntryFormComponent', () => {
           ringing_stations: [station],
           scientists: [staff],
           projects: [],
+          centrals: [],
           last_consumed_ring_numbers: [],
         },
         refreshedAt: '2026-07-02T08:00:00.000Z',
@@ -1085,6 +1087,64 @@ describe('DataEntryFormComponent', () => {
       const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
       expect(stored.length).toBe(1);
       expect(stored[0].payload['project_id']).toBeUndefined();
+    });
+
+    // #232/#163, US 13: the outbox carries a foreign Zentrale only as its bare
+    // scheme code. Reopening the queued entry must rebuild it into a Central
+    // object so the capture reopens in free-text mode, the stored foreign
+    // Ringgröße survives, and re-save is not blocked by an unmatchedOption.
+    it('reopens a queued foreign recapture in free-text mode with the Zentrale rebuilt from its scheme code', async () => {
+      const { f } = await setupQueuedEditMode(
+        'outbox-uuid-1',
+        queuedPayload({
+          bird_status: BirdStatus.ReCatch,
+          central: 'SKB',
+          ring_size: 'SA',
+          ring_number: 'AB1234',
+        }),
+      );
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      const form = f.componentInstance.entryForm;
+      // The bare scheme-code string is resolved back to a Central object.
+      expect(f.componentInstance.isForeignCentral()).toBe(true);
+      expect((form.get('central')!.value as Central).scheme_code).toBe('SKB');
+      // The stored foreign Ringgröße survives the ring-size effect (not wiped as
+      // a non-Austrian value) and the free-text field — not the strict dropdown
+      // — is shown.
+      expect(form.get('ring_size')!.value as unknown as string).toBe('SA');
+      expect(f.nativeElement.querySelector('[data-testid="ring-size-freetext"]')).not.toBeNull();
+      expect(f.nativeElement.querySelector('[data-testid="ring-size-dropdown"]')).toBeNull();
+      // The Zentrale carries no unmatchedOption error that would block re-save.
+      expect(form.get('central')!.hasError('unmatchedOption')).toBe(false);
+    });
+
+    it('re-queues a foreign recapture edit with the Zentrale scheme code preserved', async () => {
+      const { f } = await setupQueuedEditMode(
+        'outbox-uuid-1',
+        queuedPayload({
+          bird_status: BirdStatus.ReCatch,
+          central: 'SKB',
+          ring_size: 'SA',
+          ring_number: 'AB1234',
+        }),
+      );
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Tippfehler korrigiert');
+      f.componentInstance.onSubmit();
+      await settle();
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].payload['central']).toBe('SKB');
+      expect(stored[0].payload['ring_size']).toBe('SA');
+      expect(stored[0].payload['ring_number']).toBe('AB1234');
+      expect(stored[0].payload['comment']).toBe('Tippfehler korrigiert');
     });
   });
 
@@ -2425,6 +2485,376 @@ describe('DataEntryFormComponent', () => {
       httpMock.expectNone((r) => r.method === 'POST');
       // The typed text stays so the Beringer fixes the spelling instead of retyping.
       expect(component.entryForm.get('species')!.value as unknown).toBe('Kohlmeisx');
+    });
+  });
+
+  describe('Zentrale field in the ring block — ausländischer Wiederfang (#232)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    const SLOVAK: Central = {
+      id: 'c-skb',
+      scheme_code: 'SKB',
+      name: 'Slowakei Bratislava',
+      country: 'Slowakei',
+    };
+
+    const RING_VERNICHTET: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      special_kind: 'ring_destroyed',
+    };
+
+    const central = () => component.entryForm.get('central')!;
+    const has = (selector: string) => fixture.nativeElement.querySelector(selector) !== null;
+
+    function setStatus(status: BirdStatus): void {
+      component.entryForm.get('bird_status')!.setValue(status);
+      fixture.detectChanges();
+    }
+
+    function chooseForeignCentral(): void {
+      setStatus(BirdStatus.ReCatch);
+      central().setValue(SLOVAK as never);
+      fixture.detectChanges();
+    }
+
+    // The Erstfang next-number effect fires a GET the instant Status is Erstfang
+    // with a Ringgröße set; these Zentrale tests do not care about it, so drain
+    // any pending suggestion request so it never masks a real assertion.
+    function drainNextNumber(): void {
+      httpMock
+        .match((r) => r.url.endsWith('/birds/rings/next-number/'))
+        .forEach((req) => req.flush({ next_number: null }));
+    }
+
+    // --- field gating by Status (US 2, 3, 4, 5) ---
+
+    it('disables the Zentrale and forces it to the Projekt-Zentrale on Erstfang', () => {
+      setStatus(BirdStatus.FirstCatch);
+
+      expect(central().disabled).toBe(true);
+      expect((central().value as Central).scheme_code).toBe(AUW_SCHEME_CODE);
+      expect(component.isForeignCentral()).toBe(false);
+      // Visible but disabled — never removed from the ring block.
+      expect(has('[formControlName="central"]')).toBe(true);
+    });
+
+    it('enables the Zentrale and prefills it with the Projekt-Zentrale on Wiederfang', () => {
+      setStatus(BirdStatus.ReCatch);
+
+      expect(central().enabled).toBe(true);
+      expect((central().value as Central).scheme_code).toBe(AUW_SCHEME_CODE);
+      expect(has('[formControlName="central"]')).toBe(true);
+    });
+
+    it('disables the Zentrale and forces the Projekt-Zentrale on a Ring-vernichtet record', () => {
+      component.onSpeciesSelected({
+        option: { value: RING_VERNICHTET },
+      } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+
+      expect(component.isRingDestroyed()).toBe(true);
+      expect(central().disabled).toBe(true);
+      expect((central().value as Central).scheme_code).toBe(AUW_SCHEME_CODE);
+      expect(has('[formControlName="central"]')).toBe(true);
+    });
+
+    it('places the Zentrale between Status and Ringgröße in the ring block', () => {
+      setStatus(BirdStatus.ReCatch);
+
+      const order = Array.from(
+        fixture.nativeElement.querySelectorAll('[formControlName]'),
+      ).map((el) => (el as HTMLElement).getAttribute('formControlName'));
+      const statusIdx = order.indexOf('bird_status');
+      const centralIdx = order.indexOf('central');
+      const sizeIdx = order.indexOf('ring_size');
+
+      expect(statusIdx).toBeGreaterThanOrEqual(0);
+      expect(centralIdx).toBeGreaterThan(statusIdx);
+      expect(sizeIdx).toBeGreaterThan(centralIdx);
+    });
+
+    // --- free-text switching in both directions (US 6, 7, 8, 11, 12) ---
+
+    it('switches Ringgröße to free-text and drops the Ringnummer numeric pattern for a foreign Zentrale', () => {
+      chooseForeignCentral();
+
+      expect(component.isForeignCentral()).toBe(true);
+      expect(has('[data-testid="ring-size-freetext"]')).toBe(true);
+      expect(has('[data-testid="ring-size-dropdown"]')).toBe(false);
+
+      // A ring number with letters is now accepted (no pattern error).
+      component.entryForm.get('ring_number')!.setValue('SA12345');
+      expect(component.entryForm.get('ring_number')!.hasError('pattern')).toBe(false);
+    });
+
+    it('restores the strict dropdown and clears a non-Austrian Größe when switching back to the Projekt-Zentrale', () => {
+      chooseForeignCentral();
+      component.entryForm.get('ring_size')!.setValue('12A' as never);
+      component.entryForm.get('ring_number')!.setValue('SA123');
+      fixture.detectChanges();
+
+      central().setValue(PROJEKT_ZENTRALE as never);
+      fixture.detectChanges();
+
+      expect(component.isForeignCentral()).toBe(false);
+      expect(has('[data-testid="ring-size-dropdown"]')).toBe(true);
+      expect(has('[data-testid="ring-size-freetext"]')).toBe(false);
+      // The non-Austrian free-text size is cleared so the restored dropdown never
+      // opens on an unlisted value.
+      expect(component.entryForm.get('ring_size')!.value).toBeNull();
+      // The numeric-only pattern is back.
+      component.entryForm.get('ring_number')!.setValue('SA123');
+      expect(component.entryForm.get('ring_number')!.hasError('pattern')).toBe(true);
+    });
+
+    it('keeps the strict Austrian dropdown throughout a domestic Wiederfang of an AUW ring', () => {
+      setStatus(BirdStatus.ReCatch);
+      component.entryForm.get('ring_size')!.setValue(RingSize.S);
+      fixture.detectChanges();
+
+      expect(component.isForeignCentral()).toBe(false);
+      expect(has('[data-testid="ring-size-dropdown"]')).toBe(true);
+      expect(has('[data-testid="ring-size-freetext"]')).toBe(false);
+      expect(component.entryForm.get('ring_size')!.value).toBe(RingSize.S);
+    });
+
+    // --- Empfohlene-Ringgröße prefill suppression (US 8) ---
+
+    it('suppresses the Empfohlene-Ringgröße prefill while a foreign Zentrale is selected', () => {
+      chooseForeignCentral();
+      const speciesWithSize: Species = {
+        id: 's1',
+        common_name_de: 'Kohlmeise',
+        common_name_en: '',
+        scientific_name: 'Parus major',
+        family_name: '',
+        order_name: '',
+        ring_size: RingSize.S,
+        special_kind: '',
+      };
+
+      component.onSpeciesSelected({
+        option: { value: speciesWithSize },
+      } as MatAutocompleteSelectedEvent);
+
+      expect(component.entryForm.get('ring_size')!.value).not.toBe(RingSize.S);
+    });
+
+    it('still prefills the Empfohlene-Ringgröße for a domestic capture', () => {
+      setStatus(BirdStatus.ReCatch);
+      const speciesWithSize: Species = {
+        id: 's1',
+        common_name_de: 'Kohlmeise',
+        common_name_en: '',
+        scientific_name: 'Parus major',
+        family_name: '',
+        order_name: '',
+        ring_size: RingSize.S,
+        special_kind: '',
+      };
+
+      component.onSpeciesSelected({
+        option: { value: speciesWithSize },
+      } as MatAutocompleteSelectedEvent);
+
+      expect(component.entryForm.get('ring_size')!.value).toBe(RingSize.S);
+    });
+
+    // --- resets: status flip + after save (US 9, 10) ---
+
+    it('resets the Zentrale to the Projekt default when Status flips back to Erstfang', () => {
+      chooseForeignCentral();
+      component.entryForm.get('ring_size')!.setValue('12A' as never);
+      fixture.detectChanges();
+      expect(component.isForeignCentral()).toBe(true);
+
+      setStatus(BirdStatus.FirstCatch);
+      drainNextNumber();
+
+      expect((central().value as Central).scheme_code).toBe(AUW_SCHEME_CODE);
+      expect(central().disabled).toBe(true);
+      expect(component.isForeignCentral()).toBe(false);
+      // The foreign free-text Größe is dropped when the strict dropdown returns.
+      expect(component.entryForm.get('ring_size')!.value).toBeNull();
+    });
+
+    function fillValidForeignWiederfang(): void {
+      setStatus(BirdStatus.ReCatch);
+      central().setValue(SLOVAK as never);
+      fixture.detectChanges();
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        ring_size: 'SA' as never,
+        ring_number: 'AB1234',
+      });
+    }
+
+    it('submits a foreign Wiederfang with the Zentrale carried flat as its scheme code', () => {
+      fillValidForeignWiederfang();
+
+      component.onSubmit();
+
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(post.request.body.central).toBe('SKB');
+      expect(post.request.body.ring_number).toBe('AB1234');
+      post.flush({});
+    });
+
+    it('resets the Zentrale to the Projekt default after a save (not sticky across saves)', fakeAsync(() => {
+      fillValidForeignWiederfang();
+
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+
+      expect((central().value as Central).scheme_code).toBe(AUW_SCHEME_CODE);
+      expect(component.isForeignCentral()).toBe(false);
+
+      tick(900); // drain the brief "Gespeichert ✓" timer
+    }));
+
+    it('omits the Zentrale from a domestic capture payload (same effective semantics as today)', () => {
+      setStatus(BirdStatus.ReCatch);
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+
+      component.onSubmit();
+
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect('central' in post.request.body).toBe(false);
+      post.flush({});
+    });
+
+    it('blocks submitting a typed-but-unpicked Zentrale (selectedOptionValidator)', () => {
+      setStatus(BirdStatus.ReCatch);
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      // Free text typed into the Zentrale field, never confirmed from the list.
+      central().setValue('Slowak' as never);
+
+      expect(central().hasError('unmatchedOption')).toBe(true);
+      component.onSubmit();
+
+      httpMock.expectNone((r) => r.method === 'POST');
+    });
+  });
+
+  describe('edit mode with a foreign ring keys off the stored Zentrale (#232, US 13)', () => {
+    const SLOVAK: Central = {
+      id: 'c-skb',
+      scheme_code: 'SKB',
+      name: 'Slowakei Bratislava',
+      country: 'Slowakei',
+    };
+
+    function foreignEntry(): DataEntry {
+      return {
+        id: '77',
+        species: {
+          id: 's1',
+          common_name_de: 'Kohlmeise',
+          scientific_name: 'Parus major',
+          ring_size: RingSize.S,
+        },
+        ring: { id: 'r1', number: 'AB123', size: 'SA' as RingSize, central: SLOVAK },
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+        ringing_station: {
+          handle: 'STAMT',
+          name: 'Linz, Botanischer Garten',
+          organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+        },
+        project: null,
+        net_location: null,
+        net_height: null,
+        net_direction: null,
+        feather_span: null,
+        wing_span: null,
+        tarsus: null,
+        notch_f2: null,
+        inner_foot: null,
+        weight_gram: null,
+        bird_status: BirdStatus.ReCatch,
+        fat_deposit: null,
+        muscle_class: null,
+        age_class: AgeClass.ThisYear,
+        sex: Sex.Female,
+        small_feather_int: null,
+        small_feather_app: null,
+        hand_wing: null,
+        date_time: '2024-05-01T08:30:00Z',
+        created: '2024-05-01T08:30:00Z',
+        updated: '2024-05-01T08:30:00Z',
+        comment: null,
+        has_mites: false,
+        has_hunger_stripes: false,
+        has_brood_patch: false,
+        has_cpl_plus: false,
+      } as unknown as DataEntry;
+    }
+
+    async function setupEditMode(entryId: string) {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? entryId : null) } },
+      };
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+        ],
+      }).compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      return { f, httpMock };
+    }
+
+    it('reopens a foreign-ring entry in free-text mode with the stored Zentrale', async () => {
+      const { f, httpMock } = await setupEditMode('77');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/77/'))
+        .flush(foreignEntry());
+      f.detectChanges();
+
+      const form = f.componentInstance.entryForm;
+      expect(f.componentInstance.isForeignCentral()).toBe(true);
+      expect((form.get('central')!.value as Central).scheme_code).toBe('SKB');
+      expect(form.get('ring_size')!.value as unknown as string).toBe('SA');
+      expect(f.nativeElement.querySelector('[data-testid="ring-size-freetext"]')).not.toBeNull();
+      expect(f.nativeElement.querySelector('[data-testid="ring-size-dropdown"]')).toBeNull();
     });
   });
 });

@@ -3,6 +3,7 @@ import {HttpErrorResponse} from '@angular/common/http';
 import {catchError, from, map, Observable, of, switchMap, tap, throwError} from 'rxjs';
 
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
+import {Central} from '../models/central.model';
 import {OfflineBundle} from '../models/offline-bundle.model';
 import {OutboxEntry} from '../models/outbox-entry.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
@@ -128,6 +129,30 @@ export class DataAccessFacadeService {
   getProjects(): Observable<PaginatedApiResponse<Project>> {
     return this.withOfflineFallback(this.api.getProjects(), () =>
       this.loadCache().pipe(map((cached) => toPage(cached?.bundle.projects ?? []))),
+    );
+  }
+
+  /**
+   * The offline-capable Zentrale (EURING scheme) lookup (#233): attempts the
+   * real `/centrals/` search first — the online path is `ApiService`'s
+   * behaviour unchanged — and only a connectivity failure falls back to the
+   * cached Zentralen register the offline bundle carries (issue #157/#233).
+   * The offline search matches the same fields the server's `SearchFilter`
+   * does for the online dropdown from #232: name, country and scheme code, all
+   * case-insensitively; an empty term returns the whole register. This is what
+   * lets a Beringer pick a foreign Zentrale for an ausländischer Wiederfang
+   * while standing at a Station with no reception.
+   */
+  getCentrals(searchTerm?: string): Observable<PaginatedApiResponse<Central>> {
+    return this.withOfflineFallback(this.api.getCentrals(searchTerm), () =>
+      this.loadCache().pipe(
+        map((cached) => {
+          const register = cached?.bundle.centrals ?? [];
+          return toPage(
+            filterBySearch(register, searchTerm, (c) => [c.name, c.country, c.scheme_code]),
+          );
+        }),
+      ),
     );
   }
 

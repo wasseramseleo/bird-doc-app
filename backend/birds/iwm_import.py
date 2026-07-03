@@ -53,7 +53,16 @@ from django.db import transaction
 from django.utils.timezone import make_aware
 
 from .capture_service import CaptureValidationError, create_capture, validate_capture
-from .models import DataEntry, Ring, RingingStation, Scientist, Species
+from .models import (
+    AUW_SCHEME_CODE,
+    Central,
+    DataEntry,
+    Ring,
+    RingingStation,
+    Scientist,
+    Species,
+    get_auw_central,
+)
 from .station_handle import derive_station_handle
 
 SHEET_NAME = "Fangdaten"
@@ -272,6 +281,11 @@ class _Resolver:
         self.project = project
         self.org = project.organization
         self.create = create
+        # The full EURING Zentralen list (global reference data, ~60 rows), loaded
+        # once so the "Ring" column resolves without re-querying per row. AUW is
+        # the fallback for an absent/blank cell (backward compatible).
+        self.centrals = {c.scheme_code: c for c in Central.objects.all()}
+        self.auw = self.centrals.get(AUW_SCHEME_CODE) or get_auw_central()
         self.beringer = {
             s.handle: s for s in Scientist.objects.filter(organization=self.org) if s.handle
         }
@@ -294,6 +308,25 @@ class _Resolver:
                 common_name_de=common_name_de
             ).first()
         return self._species_cache[common_name_de]
+
+    def central_for(self, code):
+        """Resolve the ``Ring`` column's EURING scheme code to a ``Central``.
+
+        An absent column or a blank cell means the domestic Austrian Vogelwarte
+        (``AUW``) — old sheets and existing import workflows stay unbroken (US 25).
+        A known seeded scheme code (matched case-insensitively — EURING codes are
+        canonically upper-case) resolves to that Zentrale. An unknown code is
+        returned as ``(None, message)`` so the row is rejected with a clear German
+        message, surfacing a typo instead of corrupting data (US 24).
+
+        Returns ``(central, None)`` on success or ``(None, error_message)``.
+        """
+        if not code:
+            return self.auw, None
+        central = self.centrals.get(code.strip().upper())
+        if central is None:
+            return None, _unknown_scheme_message(code)
+        return central, None
 
     def beringer_for(self, kuerzel):
         """Resolve a Kürzel to its Beringer, auto-creating an unfamiliar one.
@@ -526,9 +559,23 @@ def _resolve_row(values, header_index, row_num, project, resolver):
     ringnummer = text("Ringnummer")
     if not ringnummer:
         return _ResolvedRow(row_num, error="Ringnummer fehlt.")
-    parsed = _parse_ringnummer(ringnummer)
+    # The "Ring" column names the ring's issuing Zentrale (an EURING scheme code);
+    # absent/blank means the domestic AUW (backward compatible). An unknown code is
+    # rejected so a typo surfaces instead of corrupting data (US 24).
+    central, central_error = resolver.central_for(text("Ring"))
+    if central_error is not None:
+        return _ResolvedRow(row_num, error=central_error)
+    parsed = _split_ringnummer(ringnummer, central)
     if parsed is None:
-        return _ResolvedRow(row_num, error=f"Ungültige Ringnummer: {ringnummer!r}.")
+        # AUW keeps its historical message; a foreign row whose Ringnummer cannot
+        # be split by the generic letters+digits regex (an exotic format) is
+        # rejected with guidance to record it manually — never a silent
+        # mis-import (US 23).
+        if central.scheme_code == AUW_SCHEME_CODE:
+            return _ResolvedRow(row_num, error=f"Ungültige Ringnummer: {ringnummer!r}.")
+        return _ResolvedRow(
+            row_num, error=_foreign_unsplittable_message(ringnummer, central.scheme_code)
+        )
     ring_size, ring_number = parsed
 
     datum = _cell(values, header_index, "Datum")
@@ -577,6 +624,11 @@ def _resolve_row(values, header_index, row_num, project, resolver):
         "species": species,
         "ring_size": ring_size,
         "ring_number": ring_number,
+        # The ring's issuing Zentrale, resolved from the "Ring" column. The shared
+        # capture service (#229) normalises the Größe against it (strict Austrian
+        # under AUW, free text otherwise) and gates the status — no divergent
+        # validation between the import and the capture write path (ADR 0019).
+        "central": central,
         "staff": staff,
         "ringing_station": station,
         # Server-authoritative: the capture lands in the Projekt's Organisation,
@@ -633,18 +685,43 @@ def _is_blank(value):
     return value is None or (isinstance(value, str) and not value.strip())
 
 
-def _parse_ringnummer(value):
-    """Split an authentic Ringnummer (``V00604``) into ``(size, number)``.
+def _unknown_scheme_message(code):
+    """The rejection for an unknown ``Ring`` scheme code — a typo the Admin must
+    fix, never a silent mis-import (US 24)."""
+    return (
+        f"Unbekannter Zentralen-Code {code!r} in der Spalte „Ring“. Bitte den Code "
+        "prüfen oder den Eintrag manuell erfassen."
+    )
+
+
+def _foreign_unsplittable_message(ringnummer, scheme_code):
+    """The rejection for a foreign Ringnummer the generic letters+digits regex
+    cannot split — an exotic format the Admin must record by hand (US 23)."""
+    return (
+        f"Die Ringnummer {ringnummer!r} der Zentrale {scheme_code} konnte nicht "
+        "automatisch in Ringgröße und Nummer aufgeteilt werden (ungewöhnliches "
+        "Format). Bitte den Eintrag manuell erfassen."
+    )
+
+
+def _split_ringnummer(value, central):
+    """Split a Ringnummer into ``(size, number)`` against its Zentrale, or ``None``.
 
     The size is the leading alphabetic run (matched greedily, so two-letter sizes
     like ``SA`` win over ``S``); the number is the trailing digits, kept as a
-    string so leading zeros survive (ADR 0006). Returns ``None`` when the format
-    is unparseable or the size is not a known Austrian ring size."""
+    string so leading zeros survive (ADR 0006). Under the Austrian Vogelwarte
+    (``AUW``) the size must additionally be a known Austrian ring size — strict
+    Austrian parsing, exactly as before the Zentrale slice. Under any other
+    (foreign) Zentrale the generic letters+digits split alone governs: the leading
+    letters become the free-text Größe (normalised against the Zentrale by the
+    shared capture service) and the trailing digits the Nummer. Returns ``None``
+    when the value does not match the generic letters+digits shape, or — for AUW —
+    the size is not a known Austrian code."""
     match = _RINGNUMMER_RE.match(value)
     if not match:
         return None
     size = match.group(1).upper()
-    if size not in _VALID_RING_SIZES:
+    if central.scheme_code == AUW_SCHEME_CODE and size not in _VALID_RING_SIZES:
         return None
     return size, match.group(2)
 

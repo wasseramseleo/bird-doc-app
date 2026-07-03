@@ -13,7 +13,7 @@ change."
 from django.db import IntegrityError, transaction
 from django.utils.translation import gettext_lazy as _
 
-from .models import DataEntry, Ring, Species
+from .models import AUW_SCHEME_CODE, DataEntry, Ring, Species, get_auw_central
 
 
 class CaptureValidationError(Exception):
@@ -60,15 +60,62 @@ RING_ALREADY_FIRST_CAUGHT = _(
     "Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang."
 )
 
+# The maximum length of a free-text foreign Ringgröße (ADR 0019). AUW keeps its
+# short Austrian scheme codes; any other Zentrale records free text capped here.
+# Must not exceed the ``Ring.size`` column width (migration 0058).
+FOREIGN_RING_SIZE_MAX_LENGTH = 10
 
-def get_or_create_ring(*, number, size, organization):
-    """Find or create the Ring *within the recording Organisation*.
+# An Erstfang or a 'Ring vernichtet' record consumes a fresh number from the
+# Projekt's own rope, so it may only be issued under the Projekt-Zentrale; a
+# central differing from it on those statuses is refused (ADR 0019).
+STATUS_REQUIRES_PROJEKT_ZENTRALE = _(
+    "Erstfänge und vernichtete Ringe müssen unter der Projekt-Zentrale erfasst werden."
+)
 
-    Ring uniqueness is scoped to the Organisation (ADR 0006), so the lookup is
-    org-scoped too: recording a number another Organisation owns creates a new
-    Ring in the recording Organisation rather than reusing the other's.
+# An AUW Größe outside the strict Austrian choice list is refused.
+INVALID_AUSTRIAN_RING_SIZE = _("Keine gültige österreichische Ringgröße.")
+
+# A foreign Größe is free text but never empty.
+FOREIGN_RING_SIZE_REQUIRED = _("Für eine ausländische Zentrale ist eine Ringgröße erforderlich.")
+
+
+def normalize_ring_size(size, central):
+    """Validate and normalise a Ringgröße against its Zentrale (ADR 0019).
+
+    This rule is backend-owned — it lives here, not in a UI gesture, so the DRF
+    write path, an offline outbox replay and the IWM import all enforce it
+    identically. Under the Austrian Vogelwarte (``AUW``) the strict Austrian
+    choice list governs: a Größe outside the 28 codes is refused. Under any other
+    Zentrale the Größe is free text — trimmed, uppercased and length-capped to
+    ``FOREIGN_RING_SIZE_MAX_LENGTH`` — and never empty (a blank/whitespace-only
+    value is refused). The single ``size`` column carries both. Raises
+    ``CaptureValidationError`` (field ``ring_size``) on violation.
     """
-    ring, _created = Ring.objects.get_or_create(number=number, size=size, organization=organization)
+    if central is not None and central.scheme_code == AUW_SCHEME_CODE:
+        if size not in Ring.RingSizes.values:
+            raise CaptureValidationError("ring_size", INVALID_AUSTRIAN_RING_SIZE)
+        return size
+    normalized = (size or "").strip().upper()[:FOREIGN_RING_SIZE_MAX_LENGTH]
+    if not normalized:
+        raise CaptureValidationError("ring_size", FOREIGN_RING_SIZE_REQUIRED)
+    return normalized
+
+
+def get_or_create_ring(*, number, size, organization, central=None):
+    """Find or create the Ring *within the recording Organisation and Zentrale*.
+
+    Ring uniqueness is scoped to the Organisation (ADR 0006) and, since ADR 0019,
+    the Zentrale too, so the lookup is scoped by both: recording a number another
+    Organisation owns creates a new Ring in the recording Organisation, and the
+    same Größe+Nummer under a different Zentrale is a distinct Ring. ``central``
+    is the Projekt's Zentrale on the write path (today always AUW); when it is
+    left unset it resolves to the default AUW Zentrale, so every Ring carries one.
+    """
+    if central is None:
+        central = get_auw_central()
+    ring, _created = Ring.objects.get_or_create(
+        number=number, size=size, organization=organization, central=central
+    )
     return ring
 
 
@@ -82,6 +129,7 @@ def create_capture(
     date_time,
     organization=None,
     project=None,
+    central=None,
     comment=None,
     idempotency_key=None,
     **bird_data,
@@ -125,12 +173,39 @@ def create_capture(
 
     validate_capture(species, comment)
 
+    # Resolve the Ring's Zentrale (ADR 0019). An omitted ``central`` defaults to
+    # the Projekt-Zentrale — today always AUW — so a pre-feature payload (no
+    # central) behaves exactly as before: the load-bearing offline-replay
+    # invariant. A capture with no Projekt falls back to the default AUW Zentrale.
+    projekt_zentrale = project.central if project is not None else get_auw_central()
+    if central is None:
+        central = projekt_zentrale
+
+    # Status gating (ADR 0019): an Erstfang or a 'Ring vernichtet' record draws a
+    # fresh number from the Projekt's own rope, so it must be issued under the
+    # Projekt-Zentrale; only a Wiederfang (recapture) may reference a foreign
+    # Zentrale. A mismatch on those statuses is refused before anything is written.
+    is_ring_destroyed = (
+        species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED
+    )
+    requested_bird_status = bird_data.get("bird_status", DataEntry.BirdStatus.FIRST_CATCH)
+    is_erstfang = requested_bird_status == DataEntry.BirdStatus.FIRST_CATCH
+    if (is_erstfang or is_ring_destroyed) and central != projekt_zentrale:
+        raise CaptureValidationError("central", STATUS_REQUIRES_PROJEKT_ZENTRALE)
+
+    # Conditional Ringgröße validation keyed to the resolved Zentrale: strict
+    # Austrian choices under AUW, free text (trimmed/uppercased/capped/non-empty)
+    # otherwise. Shared so offline replay and the IWM import enforce it identically.
+    ring_size = normalize_ring_size(ring_size, central)
+
     fields = dict(bird_data)
-    if species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED:
+    if is_ring_destroyed:
         for field in BIRD_DATA_FIELDS:
             fields[field] = None
 
-    ring = get_or_create_ring(number=ring_number, size=ring_size, organization=organization)
+    ring = get_or_create_ring(
+        number=ring_number, size=ring_size, organization=organization, central=central
+    )
 
     # A physical ring is applied to a bird exactly once, so at most one Erstfang
     # (first catch) may reference a ring within the Organisation — ring

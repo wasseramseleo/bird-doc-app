@@ -207,6 +207,65 @@ def test_update_keeps_old_ring_when_still_referenced(
     assert Ring.objects.filter(id=old_ring.id).exists()
 
 
+# --- Flat central write field (ADR 0019, issue #229) ------------------------
+# GET keeps returning the Zentrale nested inside the Ring (previous slice); the
+# WRITE payload carries it flat, as the EURING scheme_code string, alongside
+# ring_size/ring_number.
+
+
+@pytest.mark.django_db
+def test_flat_central_scheme_code_creates_ring_under_that_zentrale(
+    species, scientist, ringing_station
+):
+    """The write payload carries the central flat as the EURING scheme_code
+    string; a known foreign code creates the Ring under that Zentrale (US 1)."""
+    from birds.models import Central
+
+    skb = Central.objects.get(scheme_code="SKB")
+    payload = _entry_payload(
+        species, scientist, ringing_station, ring_number="SK1A", ring_size="6.0"
+    )
+    payload["central"] = "SKB"
+    payload["bird_status"] = DataEntry.BirdStatus.RE_CATCH
+
+    serializer = DataEntrySerializer(data=payload)
+    assert serializer.is_valid(), serializer.errors
+    entry = serializer.save()
+
+    assert entry.ring.central == skb
+    assert entry.ring.size == "6.0"
+    assert entry.ring.number == "SK1A"
+
+
+@pytest.mark.django_db
+def test_flat_central_unknown_scheme_code_is_a_validation_error(
+    species, scientist, ringing_station
+):
+    """An unknown scheme code in the payload is a clean validation error, never a
+    500."""
+    payload = _entry_payload(species, scientist, ringing_station, ring_number="SK2A")
+    payload["central"] = "ZZZ"
+    payload["bird_status"] = DataEntry.BirdStatus.RE_CATCH
+
+    serializer = DataEntrySerializer(data=payload)
+
+    assert not serializer.is_valid()
+    assert "central" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_flat_central_omitted_defaults_to_auw_with_strict_size(species, scientist, ringing_station):
+    """Omitting the central defaults it to the Projekt-Zentrale (AUW without a
+    Projekt) and keeps the strict Austrian size validation (US 16)."""
+    payload = _entry_payload(species, scientist, ringing_station, ring_number="0500", ring_size="V")
+
+    serializer = DataEntrySerializer(data=payload)
+    assert serializer.is_valid(), serializer.errors
+    entry = serializer.save()
+
+    assert entry.ring.central.scheme_code == "AUW"
+
+
 @pytest.mark.django_db
 def test_project_create_appends_creator_scientist(user, scientist, organization):
     request = MagicMock()

@@ -7,6 +7,7 @@ from django.utils.timezone import localtime
 from django.utils.translation import gettext_lazy as _
 
 from .models import (
+    Central,
     DataEntry,
     Mitgliedschaft,
     Organization,
@@ -203,11 +204,18 @@ class SpeciesAdmin(admin.ModelAdmin):
     list_filter = ("ring_size", "special_kind")
 
 
+@admin.register(Central)
+class CentralAdmin(admin.ModelAdmin):
+    list_display = ("scheme_code", "name", "country")
+    search_fields = ("scheme_code", "name", "country")
+    ordering = ("scheme_code",)
+
+
 @admin.register(Ring)
 class RingAdmin(admin.ModelAdmin):
-    list_display = ("size", "number", "organization")
+    list_display = ("size", "number", "organization", "central")
     search_fields = ("number",)
-    list_filter = ("size", "organization")
+    list_filter = ("size", "organization", "central")
     ordering = (
         "size",
         "number",
