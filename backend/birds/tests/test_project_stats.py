@@ -19,9 +19,21 @@ from itertools import count
 
 import pytest
 
-from birds.models import DataEntry, Ring
+from birds.models import DataEntry, Ring, Species
 
 _ring_seq = count(1)
+
+
+def _make_species(name):
+    """A plain (non-Sonderart) Species row for series/top-N tests."""
+    return Species.objects.create(
+        common_name_de=name,
+        common_name_en=name,
+        scientific_name=name,
+        family_name="Testidae",
+        order_name="Testiformes",
+        ring_size=Ring.RingSizes.V,
+    )
 
 
 def stats_url(project_id, **params):
@@ -311,6 +323,118 @@ def test_top_species_empty_when_range_has_no_captures(auth_client, scientist, pr
     response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-06-30"}))
     assert response.status_code == 200
     assert response.data["top_species"] == []
+
+
+# --- series (issue #203, Top-N-Liniendiagramm Fänge/Fangtag) -----------------
+
+
+@pytest.mark.django_db
+def test_series_is_sparse_top_n_lines_and_folds_rest_into_uebrige(
+    auth_client, scientist, project, ringing_station
+):
+    """The per-Fangtag ``series`` is a sparse day axis (only Fangtage, never a
+    padded calendar) and one counts-line per top-N Art, with every remaining Art
+    folded into a single ``Übrige`` line (``species_id: null``), aligned to the
+    days.
+
+    Ten species across three Fangtage with a multi-day calendar gap between them.
+    The top eight (a server constant) by total Fänge in range each get their own
+    line; the two smallest fold into Übrige.
+    """
+    from birds.project_stats import SERIES_TOP_N
+
+    assert SERIES_TOP_N == 8
+
+    # Three Vienna Fangtage; the calendar days between them are empty and must be
+    # skipped (never padded into the axis).
+    d1 = datetime(2026, 6, 26, 5, 0, tzinfo=UTC)  # → 2026-06-26 Vienna (CEST)
+    d2 = datetime(2026, 6, 28, 5, 0, tzinfo=UTC)  # → 2026-06-28 Vienna
+    d3 = datetime(2026, 7, 2, 5, 0, tzinfo=UTC)  # → 2026-07-02 Vienna
+
+    species = [_make_species(f"Art {i:02d}") for i in range(10)]
+
+    def seed(sp, when, n):
+        for _ in range(n):
+            _capture(project, sp, ringing_station, scientist, when)
+
+    # S0: total 10 — spans day 1 and day 3 (counts must align to the axis).
+    seed(species[0], d1, 2)
+    seed(species[0], d3, 8)
+    # S1: total 9 — spans day 2 and day 3.
+    seed(species[1], d2, 3)
+    seed(species[1], d3, 6)
+    # S2..S9 all on day 3, with strictly descending totals so ordering is by
+    # count alone: 8, 7, 6, 5, 4, 3, 2, 1.
+    for i in range(2, 10):
+        seed(species[i], d3, 10 - i)
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    assert response.status_code == 200
+    series = response.data["series"]
+
+    # Sparse day axis — exactly the three Fangtage, ascending, no padded gap.
+    assert series["days"] == ["2026-06-26", "2026-06-28", "2026-07-02"]
+
+    lines = series["lines"]
+    # Eight top-N lines + one Übrige line.
+    assert len(lines) == 9
+
+    # Ordered by total Fänge desc; each line's counts align to ``days``.
+    assert lines[0]["species_id"] == str(species[0].id)
+    assert lines[0]["name"] == species[0].common_name_de
+    assert lines[0]["counts"] == [2, 0, 8]
+
+    assert lines[1]["species_id"] == str(species[1].id)
+    assert lines[1]["counts"] == [0, 3, 6]
+
+    # The top eight are exactly S0..S7 (each with its own line).
+    top_ids = [line["species_id"] for line in lines[:8]]
+    assert top_ids == [str(species[i].id) for i in range(8)]
+
+    # The remaining two Arten (S8=2, S9=1) fold into one Übrige line, null id.
+    uebrige = lines[-1]
+    assert uebrige["species_id"] is None
+    assert uebrige["name"] == "Übrige"
+    assert uebrige["counts"] == [0, 0, 3]  # both fell on day 3
+
+
+@pytest.mark.django_db
+def test_series_excludes_ring_vernichtet_and_has_no_uebrige_when_within_top_n(
+    auth_client, scientist, project, ringing_station, species, species_other, sentinel_species
+):
+    """With fewer distinct Arten than the top-N cap there is no Übrige line, and
+    Ring vernichtet never appears in the series or forms a Fangtag of its own."""
+    when = datetime(2026, 7, 2, 5, 0, tzinfo=UTC)
+    _capture(project, species, ringing_station, scientist, when)
+    _capture(project, species_other, ringing_station, scientist, when)
+    # Ring vernichtet on a day with no real capture — must not become a Fangtag.
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 1, 5, 0, tzinfo=UTC),
+    )
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-07-01", "to": "2026-07-03"}))
+    series = response.data["series"]
+
+    # Only July 2 is a Fangtag — the Ring-vernichtet-only July 1 is excluded.
+    assert series["days"] == ["2026-07-02"]
+    # Two Arten, both under the top-N cap: two lines, no Übrige. Equal counts
+    # (1 each) tie-break by name ascending — Beta ("Yyy…") before Alpha ("Zzz…").
+    assert [line["name"] for line in series["lines"]] == [
+        species_other.common_name_de,
+        species.common_name_de,
+    ]
+    assert all(line["species_id"] is not None for line in series["lines"])
+
+
+@pytest.mark.django_db
+def test_series_empty_when_range_has_no_captures(auth_client, scientist, project):
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-06-30"}))
+    assert response.status_code == 200
+    assert response.data["series"] == {"days": [], "lines": []}
 
 
 @pytest.mark.django_db

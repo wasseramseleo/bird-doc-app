@@ -54,10 +54,29 @@ export interface TopSpecies {
   count: number;
 }
 
+// One line of the per-Fangtag series (issue #203). `counts` aligns
+// position-for-position to `StatsSeries.days`. The top-N Arten each get a line
+// keyed by their `species_id`; every remaining Art is folded into a single
+// `Übrige` line with `species_id: null`.
+export interface SeriesLine {
+  species_id: string | null;
+  name: string;
+  counts: number[];
+}
+
+// The Top-N-Liniendiagramm data (issue #203): a sparse day axis (only Fangtage
+// in range, never a padded calendar) and one counts-line per Art plus Übrige.
+export interface StatsSeries {
+  // Sparse ISO dates (`YYYY-MM-DD`) — the actual Fangtage, ascending.
+  days: string[];
+  lines: SeriesLine[];
+}
+
 export interface ProjectStats {
   range: ProjectStatsRange;
   totals: ProjectStatsTotals;
   top_species: TopSpecies[];
+  series: StatsSeries;
   // Null when the range holds no captures (empty payload, no error).
   last_fangtag: LastFangtag | null;
 }
