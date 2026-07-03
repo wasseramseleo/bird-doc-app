@@ -58,15 +58,19 @@ A Station retired from use but preserved. Archiving hides it from the capture pi
 _Avoid_: Deleted station, inactive site, disabled station
 
 **Organisation**:
-A **local** ringing body/group — the level that owns data (e.g. IWM Linz). Also the **tenant** — the unit of data ownership and isolation: members of one Organisation see each other's captures; members of different Organisations never see each other's data. Every capture, Station and Projekt belongs to exactly one Organisation. A **national ringing authority** (e.g. the Österreichische Vogelwarte) is **not** an Organisation: it sits *above* the tenant layer as an external scheme/endorser, and the model holds **no** parent-of-Organisations entity — addressing such a body is a positioning/sales concern, not a modelled tier.
-_Avoid_: Org, institution, Mandant (German for tenant — say Organisation), Tenant (English), Vogelwarte/Beringungszentrale (the national authority — not an Organisation)
+A **local** ringing body/group — the level that owns data (e.g. IWM Linz). Also the **tenant** — the unit of data ownership and isolation: members of one Organisation see each other's captures; members of different Organisations never see each other's data. Every capture, Station and Projekt belongs to exactly one Organisation. A **national ringing authority** (e.g. the Österreichische Vogelwarte) is **not** an Organisation: it is a **Zentrale** — a ring-issuing scheme above the tenant layer, not a tenant tier — and the model still holds **no** parent-of-Organisations entity.
+_Avoid_: Org, institution, Mandant (German for tenant — say Organisation), Tenant (English), Vogelwarte/Beringungszentrale (a Zentrale, not an Organisation)
+
+**Zentrale**:
+A national ringing authority that issues rings and defines their numbering and size conventions — precisely one **EURING ringing scheme**, identified by its EURING scheme code (e.g. AUW = Österreichische Vogelwarte; Germany has three schemes). The set of Zentralen is the published EURING scheme list — global reference data shared by all Organisations (like Species, never tenant-scoped), so a Beringer can always pick the correct foreign Zentrale at capture time; identifying it is on the Beringer, and "scheme unknown" is not a modelled state. Every ring belongs to the Zentrale of its original Beringung, for its whole life — a foreign Wiederfang keeps its foreign Zentrale. A Zentrale is neither an Organisation nor a tenant.
+_Avoid_: Central (English — code name only), Beringungszentrale, Vogelwarte (names one body, not the concept), Ringing scheme (English)
 
 **Projekt**:
-A named campaign that groups captures, scoped to one Organisation and a set of Beringer.
+A named campaign that groups captures, scoped to one Organisation and a set of Beringer. Carries the **Zentrale** under which the Projekt rings: every Erstfang belongs to it (today always AUW), and it is the default a Wiederfang starts from.
 _Avoid_: Campaign
 
 **Erstfang / Wiederfang**:
-First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird. A physical ring is applied to a bird exactly once, so within an Organisation a given ring (Ringgröße + number) may be the subject of **at most one Erstfang** — a second Erstfang on the same number is a genuine ring-uniqueness collision (ADR 0006) and is refused (`capture_service.create_capture`), while any number of Wiederfänge of that ring are expected. This is what turns two concurrent offline devices that record the same Erstfang into exactly one flagged sync error on the losing device, never a silent duplicate (issue #164).
+First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird. A physical ring is applied to a bird exactly once, so within an Organisation a given ring (Zentrale + Ringgröße + Nummer) may be the subject of **at most one Erstfang** — a second Erstfang on the same number is a genuine ring-uniqueness collision (ADR 0006, ADR 0019) and is refused (`capture_service.create_capture`), while any number of Wiederfänge of that ring are expected. This is what turns two concurrent offline devices that record the same Erstfang into exactly one flagged sync error on the losing device, never a silent duplicate (issue #164).
 _Avoid_: First catch / recatch (English), recapture
 
 **Fangtag**:
@@ -88,6 +92,10 @@ _Avoid_: Season (English); year (as a synonym — a calendar year is only a roug
 **Diesjährig**:
 A bird hatched in the current calendar year (age class 3). Diesjährig gates a single field — the Kleingefieder *Fortschritt* (post-juvenile small-feather moult progress, J/U/M/N), recorded for diesjährige birds alone because only a this-year bird undergoes its first post-juvenile moult. The Kleingefieder *Intensität* and the Handschwingenmauser are recorded for **all** age classes.
 _Avoid_: Juvenile, first-year
+
+**Ringgröße**:
+The size code inscribed on a ring — a convention of the ring's **Zentrale**, not a universal scale: the same physical size carries different codes in different schemes (an Austrian "V" is a Slovak "S"). Only the AUW's convention (the 28 Austrian codes) is modelled and validated; a ring of any other Zentrale has its Größe recorded free-form as read off the ring — but never empty. An Erstfang always carries the Projekt-Zentrale's convention, so free-form Größen exist only on Wiederfängen.
+_Avoid_: Ring size (English), size class
 
 **Empfohlene Ringgröße**:
 The ring size suggested by default for a species. May be absent — e.g. for species whose sexes take different sizes — and may be overridden for an individual bird when its leg dictates otherwise.
