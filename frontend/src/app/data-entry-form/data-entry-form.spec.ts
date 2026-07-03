@@ -858,6 +858,52 @@ describe('DataEntryFormComponent', () => {
       f.componentInstance.onBackToList();
       expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
     });
+
+    // #273: opening a saved Wiederfang seeds the "last searched ring" key, so
+    // merely leaving the Ringnummer field must not silently re-fetch and clobber
+    // in-progress edits; changing the ring still triggers a fresh lookup.
+    it('does not re-fetch the ring history when the loaded Ringnummer is left unchanged', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      const facade = TestBed.inject(DataAccessFacadeService);
+      const spy = spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries: [], possiblyIncomplete: false }),
+      );
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      const input = f.nativeElement.querySelector(
+        'input[formControlName="ring_number"]',
+      ) as HTMLInputElement;
+      input.dispatchEvent(new FocusEvent('blur'));
+      f.detectChanges();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('looks up the ring history when the Ringnummer is changed and then left', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      const facade = TestBed.inject(DataAccessFacadeService);
+      const spy = spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries: [], possiblyIncomplete: false }),
+      );
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      f.componentInstance.entryForm.get('ring_number')!.setValue('901299');
+      const input = f.nativeElement.querySelector(
+        'input[formControlName="ring_number"]',
+      ) as HTMLInputElement;
+      input.dispatchEvent(new FocusEvent('blur'));
+      f.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.S, '901299');
+    });
   });
 
   describe('queued edit mode (opening a queued outbox entry via /data-entry/:id) (issue #163)', () => {
@@ -1475,6 +1521,150 @@ describe('DataEntryFormComponent', () => {
       expect(component.entryForm.get('species')!.value).toBeNull();
       expect(component.entryForm.get('sex')!.value).toBe(Sex.Unknown);
       expect(component.recaptureHistory()).toEqual([]);
+    });
+  });
+
+  describe('auto-search the Ringhistorie on Ringnummer blur (#273)', () => {
+    const historyRow = (): DataEntry =>
+      ({
+        id: 'prior-1',
+        date_time: '2026-07-01T08:30:00Z',
+        species: { id: 's1', common_name_de: 'Kohlmeise' },
+        bird_status: BirdStatus.ReCatch,
+        staff: { full_name: 'Filip Reiter', handle: 'FRE' },
+        age_class: AgeClass.Unknown,
+        sex: Sex.Female,
+      }) as unknown as DataEntry;
+
+    function spyGetRingHistory(entries: DataEntry[] = [historyRow()]) {
+      const facade = TestBed.inject(DataAccessFacadeService);
+      return spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries, possiblyIncomplete: false }),
+      );
+    }
+
+    function ringNumberInput(): HTMLInputElement {
+      return fixture.nativeElement.querySelector('input[formControlName="ring_number"]');
+    }
+
+    function blurRingNumber(relatedTarget: EventTarget | null = null) {
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget }));
+      fixture.detectChanges();
+    }
+
+    function pressEnterOnRingNumber() {
+      ringNumberInput().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      fixture.detectChanges();
+    }
+
+    function enterWiederfangRing(ringNumber = '0043') {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.V,
+        ring_number: ringNumber,
+      });
+      fixture.detectChanges();
+    }
+
+    it('runs the lookup and shows the history panel when leaving the Ringnummer field on a Wiederfang', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing();
+
+      blurRingNumber();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.V, '0043');
+      expect(component.recaptureHistory().length).toBe(1);
+    });
+
+    it('does not look up when leaving the Ringnummer field on an Erstfang', () => {
+      const spy = spyGetRingHistory();
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.FirstCatch,
+        ring_size: RingSize.V,
+        ring_number: '0043',
+      });
+      fixture.detectChanges();
+
+      blurRingNumber();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('does not look up when the Ringnummer is empty (only a Ringgröße set)', () => {
+      const spy = spyGetRingHistory();
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.V,
+        ring_number: '',
+      });
+      fixture.detectChanges();
+
+      blurRingNumber();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('does not re-run the lookup when the field is left twice without changing the ring', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing();
+
+      blurRingNumber();
+      blurRingNumber();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs the lookup once when Enter is pressed and the field is then left unchanged', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing();
+
+      pressEnterOnRingNumber();
+      blurRingNumber();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire on blur when focus moves to the search button (the click owns the lookup)', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing();
+      const searchButton = fixture.nativeElement.querySelector(
+        'button[aria-label="Ringhistorie suchen"]',
+      ) as HTMLButtonElement;
+      expect(searchButton).not.toBeNull();
+
+      blurRingNumber(searchButton);
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('re-runs the lookup on every Enter even when the ring is unchanged (deliberate re-search stays explicit)', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing();
+
+      pressEnterOnRingNumber();
+      pressEnterOnRingNumber();
+
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    // Regression: a reset (as after a save) shifts focus off the Ringnummer,
+    // synchronously blurring it while it still holds the just-handled ring. That
+    // incidental blur must not auto-search and re-prefill Art over the reset.
+    it('does not auto-search when a reset shifts focus off the Ringnummer', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing();
+      ringNumberInput().focus();
+      fixture.detectChanges();
+
+      // A pristine form resets straight through cleanReset(), whose focusField
+      // ('species') blurs the Ringnummer.
+      component.onReset();
+      fixture.detectChanges();
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(component.entryForm.get('species')!.value).toBeFalsy();
     });
   });
 
