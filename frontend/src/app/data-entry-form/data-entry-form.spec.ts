@@ -33,6 +33,8 @@ import { AuthService } from '../service/auth.service';
 import { IndexedDbStore } from '../core/offline/indexed-db-store';
 import { ReferenceBundleCacheService } from '../core/offline/reference-bundle-cache';
 import { Scientist } from '../models/scientist.model';
+import { SpeciesNorm } from '../core/plausibility/plausibility';
+import { OfflineBundle } from '../models/offline-bundle.model';
 
 registerLocaleData(localeDeAt);
 
@@ -2855,6 +2857,283 @@ describe('DataEntryFormComponent', () => {
       expect(form.get('ring_size')!.value as unknown as string).toBe('SA');
       expect(f.nativeElement.querySelector('[data-testid="ring-size-freetext"]')).not.toBeNull();
       expect(f.nativeElement.querySelector('[data-testid="ring-size-dropdown"]')).toBeNull();
+    });
+  });
+
+  // PRD #245, issue #246: the client-side Plausibilitätsprüfung. A normed Art
+  // plus an out-of-range Gewicht raises an inline Plausibilitätswarnung under the
+  // field on blur (the sex-contradiction role="alert" idiom); on submit an active
+  // warning routes through ONE aggregated confirm-dialog whose acknowledgment is
+  // transient — never persisted. Identical in create and edit mode.
+  describe('Plausibilitätswarnung (Artennorm, PRD #245)', () => {
+    // A Zaunkönig-style Gewicht norm: Ø 9,1 g, SD 0,82 g, k 1,96 → band 7,5–10,7 g.
+    const norm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: null,
+      dj_grossgefiedermauser_moeglich: null,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const unnormedSpecies: Species = { ...zaunkoenig, id: 's2', common_name_de: 'Kohlmeise' };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [norm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      // Let loadNorms() resolve from the (mocked) reference cache.
+      await settle();
+      return httpMock;
+    }
+
+    // Fill the required fields for a valid Wiederfang (no ring-number auto-fetch,
+    // which only fires for an Erstfang), so onSubmit reaches the save gate.
+    function fillValid(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: zaunkoenig as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      component.selectedSpecies.set(zaunkoenig);
+    }
+
+    const warningEl = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-weight-warning"]',
+      ) as HTMLElement | null;
+
+    it('renders the inline warning on blur for an out-of-range Gewicht, with the de-AT message', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      const el = warningEl();
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('role')).toBe('alert');
+      expect(el!.textContent).toContain(
+        'Gewicht 25 g liegt außerhalb des erwarteten Bereichs 7,5–10,7 g (Zaunkönig)',
+      );
+    });
+
+    it('renders no inline warning when the Gewicht is in range', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(9);
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(warningEl()).toBeNull();
+    });
+
+    it('renders no inline warning when the selected Art carries no Artennorm', async () => {
+      await setup();
+      component.selectedSpecies.set(unnormedSpecies);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(warningEl()).toBeNull();
+    });
+
+    it('opens ONE aggregated confirm-dialog on submit when a warning is active, and writes on confirm', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.get('weight_gram')!.setValue(25);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
+      expect(data.message).toContain('Gewicht 25 g liegt außerhalb');
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('returns to the form without writing when the confirm-dialog is cancelled', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.get('weight_gram')!.setValue(25);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+    });
+
+    it('opens no dialog and writes directly when no warning is active', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.get('weight_gram')!.setValue(9);
+
+      component.onSubmit();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('never persists the acknowledgment (no ack field on the write payload; the value rides unchanged)', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.get('weight_gram')!.setValue(25);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      expect('acknowledged' in body).toBe(false);
+      expect('plausibility_acknowledged' in body).toBe(false);
+      expect(body['weight_gram']).toBe(25);
+      post.flush({});
+    });
+
+    it('applies the same warning + acknowledgment on submit in edit mode', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '42' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush({
+          id: '42',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          weight_gram: 25,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      f.componentInstance.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const put = httpMock.expectOne(
+        (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
+      );
+      put.flush({});
     });
   });
 });

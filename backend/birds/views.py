@@ -56,8 +56,10 @@ from .serializers import (
     RingSerializer,
     ScientistSerializer,
     SpeciesListSerializer,
+    SpeciesNormSerializer,
     SpeciesSerializer,
 )
+from .species_norms import effective_norms_for_organization
 from .tenancy import active_organization, active_organization_rolle
 
 # Shown when an invite would push the Organisation past its Seat-Limit. The
@@ -856,9 +858,18 @@ class OfflineBundleView(APIView):
                 "scientists": self._scientists(organization),
                 "projects": self._projects(request.user),
                 "centrals": self._centrals(),
+                "norms": self._norms(organization),
                 "last_consumed_ring_numbers": self._last_consumed_ring_numbers(organization),
             }
         )
+
+    @staticmethod
+    def _norms(organization):
+        # The per-org effective Artennormen (override ?? default per species,
+        # ADR 0021), keyed by species_id — the same list the /species-norms/
+        # read API serves, embedded here so the client's plausibility lookup is
+        # identical online and offline (PRD #245). Empty with no tenant.
+        return SpeciesNormSerializer(effective_norms_for_organization(organization), many=True).data
 
     @staticmethod
     def _identity(user, organization):
@@ -961,3 +972,23 @@ class OfflineBundleView(APIView):
                 }
             )
         return results
+
+
+class SpeciesNormListView(APIView):
+    """The per-org effective Artennormen (PRD #245, ADR 0021).
+
+    Resolves ``override ?? default`` per species (whole-row, ADR 0021) for the
+    requester's active Organisation and returns the list keyed by
+    ``species_id``. The client caches it and looks up ``norms[species.id]`` on
+    species selection to drive the client-side Plausibilitätsprüfung — the same
+    list the offline bundle embeds, so the lookup is identical online and
+    offline. With no resolvable active Organisation the list is empty (mirrors
+    the other org-scoped endpoints — never a 403 or another tenant's norms).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        organization = active_organization(request.user)
+        norms = effective_norms_for_organization(organization)
+        return Response({"norms": SpeciesNormSerializer(norms, many=True).data})

@@ -392,8 +392,14 @@
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Gewicht (g)</mat-label>
-        <input matInput type="number" formControlName="weight_gram">
+        <input matInput type="number" formControlName="weight_gram" (blur)="onMeasurementBlur()">
       </mat-form-field>
+      @if (weightWarning()) {
+        <div class="plausibility-warning" role="alert" data-testid="plausibility-weight-warning">
+          <mat-icon aria-hidden="true">warning</mat-icon>
+          <span>{{ weightWarning() }}</span>
+        </div>
+      }
     </div>
     }
 

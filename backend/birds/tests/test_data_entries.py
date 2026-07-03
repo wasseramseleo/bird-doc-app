@@ -115,6 +115,31 @@ def test_editing_time_saves_vienna_without_drift(auth_client, species, scientist
 
 
 @pytest.mark.django_db
+def test_server_never_enforces_plausibility_out_of_range_weight_persists(
+    auth_client, species, scientist, ringing_station, organization
+):
+    """Plausibility is a purely client-side concern (PRD #245, ADR 0021): the
+    server runs no Ausreißertest and never blocks. A capture with a wildly
+    out-of-range Gewicht persists with the value it was sent — even when a
+    global-default Artennorm exists for the species."""
+    from decimal import Decimal
+
+    from birds.models import SpeciesNorm
+
+    SpeciesNorm.objects.create(
+        species=species, organization=None, weight_mean=Decimal("9.1"), weight_sd=Decimal("0.82")
+    )
+    payload = _payload(species, scientist, ringing_station, ring_number="777")
+    payload["weight_gram"] = "250.0"  # ~30 SD outside the band
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get(id=response.json()["id"])
+    assert entry.weight_gram == Decimal("250.0")
+
+
+@pytest.mark.django_db
 def test_create_creates_ring_when_missing(auth_client, species, scientist, ringing_station):
     response = auth_client.post(
         LIST_URL,
