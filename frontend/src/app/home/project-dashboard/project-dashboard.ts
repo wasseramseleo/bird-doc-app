@@ -8,8 +8,11 @@ import {
   signal,
 } from '@angular/core';
 import {DecimalPipe} from '@angular/common';
+import {HttpErrorResponse} from '@angular/common/http';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {fromEvent} from 'rxjs';
 
 import {ApiService} from '../../service/api.service';
 import {Project} from '../../models/project.model';
@@ -20,6 +23,14 @@ import {
 } from '../../models/project-stats.model';
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 import {SpeciesLineChartComponent} from './species-line-chart/species-line-chart';
+import {classifyStatsFailure, DashboardFailure} from './dashboard-state';
+
+// The state the dashboard body renders. `loading` covers the in-flight fetch (no
+// empty/broken flash); `offline` and `error` are the two failure branches, kept
+// distinct so an offline field Beringer reads "needs connection" rather than
+// "broken" (ADR 0017); `empty` is a capture-less range; `populated` is the card
+// + charts. (Issue #204.)
+type DashboardViewState = 'loading' | DashboardFailure | 'empty' | 'populated';
 
 // A range preset plus its German label, owned by the dashboard's range selector
 // (issue #203). "per Saison" is served by *Dieses Jahr* / a custom range — no
@@ -67,32 +78,62 @@ export class ProjectDashboardComponent {
   // Whether the custom-range panel (explicit from/to) is the active selection.
   readonly customActive = computed(() => this.activePreset() === null);
 
+  // Bumped on every `online` event so the load effect re-runs on reconnect.
+  // The offline state promises the stats reload automatically once the field
+  // Beringer is back online (issue #204); this is what keeps that promise
+  // without them having to touch the range picker or switch Projekt.
+  private readonly reloadTrigger = signal(0);
+
   readonly stats = signal<ProjectStats | null>(null);
   readonly loading = signal<boolean>(true);
-  readonly error = signal<boolean>(false);
+  // Null while loading or on success; 'offline' | 'error' once a fetch fails.
+  // Distinguishing the two is the whole point of the online-only offline state
+  // (ADR 0017, issue #204).
+  readonly failure = signal<DashboardFailure | null>(null);
 
   readonly lastFangtag = computed(() => this.stats()?.last_fangtag ?? null);
   readonly topSpecies = computed(() => this.stats()?.top_species ?? []);
   readonly series = computed(() => this.stats()?.series ?? {days: [], lines: []});
   readonly hasSeries = computed(() => this.series().days.length > 0);
 
+  // The single source of truth the template switches on: exactly one of the five
+  // dashboard states, resolved from the fetch lifecycle.
+  readonly viewState = computed<DashboardViewState>(() => {
+    if (this.loading()) return 'loading';
+    const failure = this.failure();
+    if (failure) return failure;
+    return this.lastFangtag() ? 'populated' : 'empty';
+  });
+
   constructor() {
+    // Regaining connectivity re-runs the load effect (via reloadTrigger) so the
+    // offline state's promise — "sobald du wieder online bist, laden die
+    // Statistiken automatisch" — is actually kept (issue #204). Same
+    // fromEvent(window,'online') pattern the outbox indicator and
+    // offline-readiness use.
+    fromEvent(window, 'online')
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.reloadTrigger.update((n) => n + 1));
+
     // Reload whenever the current Projekt changes (the nav-bar switcher swaps it
     // without leaving the home) or the selected range changes — one fetch feeds
-    // the card, the bar chart and the line chart together.
+    // the card, the bar chart and the line chart together. Also re-runs when the
+    // browser reconnects (reloadTrigger).
     effect(() => {
       const project = this.project();
       const range = this.range();
+      this.reloadTrigger();
       this.loading.set(true);
-      this.error.set(false);
+      this.failure.set(null);
       this.api.getProjectStats(project.id, range).subscribe({
         next: (stats) => {
           this.stats.set(stats);
           this.loading.set(false);
         },
-        error: () => {
+        error: (err: unknown) => {
+          const status = err instanceof HttpErrorResponse ? err.status : null;
           this.stats.set(null);
-          this.error.set(true);
+          this.failure.set(classifyStatsFailure(status, navigator.onLine));
           this.loading.set(false);
         },
       });

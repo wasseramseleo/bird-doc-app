@@ -78,7 +78,9 @@ export class HomeComponent implements OnInit {
 
   selectProject(project: Project): void {
     this.projectService.setCurrent(project);
-    this.router.navigateByUrl('/data-entries');
+    // ADR 0018: the home (`/`) is the current Projekt's dashboard, so selecting a
+    // project lands there rather than jumping straight to the capture list.
+    this.router.navigateByUrl('/');
   }
 
   openCreateDialog(): void {

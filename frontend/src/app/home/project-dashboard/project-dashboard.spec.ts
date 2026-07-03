@@ -195,17 +195,83 @@ describe('ProjectDashboardComponent', () => {
     httpMock.verify();
   });
 
-  it('shows a needs-connection state when the stats request errors (online-only, ADR 0017)', () => {
+  it('shows a loading state (spinner, no card/empty/error flash) while the stats request is in flight', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges(); // fires the load effect; the request is now pending
+
+    // Loading branch: a spinner, and none of the terminal states leaks through.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--loading')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('mat-spinner')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--empty')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--error')).toBeNull();
+
+    // Clean up the in-flight request.
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    httpMock.verify();
+  });
+
+  it('shows a needs-connection state (not an error) when the stats fetch cannot reach the server (offline, ADR 0017)', () => {
     const { fixture, httpMock } = setup(makeProject());
     fixture.detectChanges();
 
+    // A connectivity failure surfaces as an HttpErrorResponse with status 0.
     httpMock
       .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
       .error(new ProgressEvent('network error'));
     fixture.detectChanges();
 
+    // Offline branch: a clear "needs connection" state, distinguishable from the
+    // generic error state, and no populated card.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--error')).toBeNull();
     expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Internetverbindung');
+    httpMock.verify();
+  });
+
+  it('auto-reloads the stats when the browser comes back online after an offline failure', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // First fetch fails with a connectivity error → offline state.
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .error(new ProgressEvent('network error'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).not.toBeNull();
+
+    // Regaining connectivity fires window 'online' — without touching the range
+    // picker or switching Projekt, the dashboard re-fetches automatically.
+    window.dispatchEvent(new Event('online'));
+    fixture.detectChanges();
+
+    const retry = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    retry.flush(makeStats());
+    fixture.detectChanges();
+
+    // The promised auto-reload landed: offline copy gone, card populated.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.stat-card')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Letzter Tag');
+    httpMock.verify();
+  });
+
+  it('shows a generic error state (not the offline state) when the stats fetch fails server-side', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // A reachable-but-failing server: a non-zero status, browser online.
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .flush('boom', { status: 500, statusText: 'Server Error' });
+    fixture.detectChanges();
+
+    // Error branch: distinguishable from the offline "needs connection" state.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--error')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
     httpMock.verify();
   });
 });

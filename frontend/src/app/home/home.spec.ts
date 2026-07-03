@@ -124,14 +124,16 @@ describe('HomeComponent', () => {
     httpMock.verify();
   });
 
-  it('lands on the data-entry hub when a project is selected', () => {
+  it('lands on the home dashboard when a project is selected (ADR 0018)', () => {
     const { component, router, projectService } = setup();
     const navigate = spyOn(router, 'navigateByUrl').and.stub();
     const project = makeProject();
 
     component.selectProject(project);
 
-    expect(navigate).toHaveBeenCalledWith('/data-entries');
+    // ADR 0018: selecting a Projekt lands on the home dashboard (`/`), which now
+    // renders that project's charts, not the capture list.
+    expect(navigate).toHaveBeenCalledWith('/');
     expect(projectService.currentProject()?.id).toBe('p1');
   });
 });

@@ -34,14 +34,35 @@
     </div>
   </div>
 
-  @if (loading()) {
-    <mat-spinner diameter="32"></mat-spinner>
-  } @else if (error()) {
-    <div class="dashboard__state">
-      <mat-icon aria-hidden="true">cloud_off</mat-icon>
-      <p>Statistiken konnten nicht geladen werden. Prüfe deine Internetverbindung.</p>
-    </div>
-  } @else if (lastFangtag(); as day) {
+  @switch (viewState()) {
+    @case ('loading') {
+      <div class="dashboard__state dashboard__state--loading">
+        <mat-spinner diameter="32"></mat-spinner>
+      </div>
+    }
+    @case ('offline') {
+      <div class="dashboard__state dashboard__state--offline">
+        <mat-icon aria-hidden="true">cloud_off</mat-icon>
+        <p>
+          Für die Auswertung wird eine Internetverbindung benötigt. Sobald du wieder
+          online bist, laden die Statistiken automatisch.
+        </p>
+      </div>
+    }
+    @case ('error') {
+      <div class="dashboard__state dashboard__state--error">
+        <mat-icon aria-hidden="true">error_outline</mat-icon>
+        <p>Statistiken konnten nicht geladen werden. Bitte versuche es später erneut.</p>
+      </div>
+    }
+    @case ('empty') {
+      <div class="dashboard__state dashboard__state--empty">
+        <mat-icon aria-hidden="true">insights</mat-icon>
+        <p>In diesem Zeitraum gibt es noch keine Fänge.</p>
+      </div>
+    }
+    @case ('populated') {
+      @if (lastFangtag(); as day) {
     <article class="stat-card">
       <h2 class="stat-card__title">Letzter Tag</h2>
       <p class="stat-card__date">{{ day.date }}</p>
@@ -99,10 +120,7 @@
         <app-species-line-chart [series]="series()" />
       </section>
     }
-  } @else {
-    <div class="dashboard__state">
-      <mat-icon aria-hidden="true">insights</mat-icon>
-      <p>In diesem Zeitraum gibt es noch keine Fänge.</p>
-    </div>
+      }
+    }
   }
 </section>

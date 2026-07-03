@@ -230,7 +230,7 @@ describe('NavBar', () => {
     expect(activeItem?.textContent).toContain('Schilfgürtel Linz');
   });
 
-  it('switches to another project via setCurrent and routes to the hub', () => {
+  it('switches to another project via setCurrent and lands on the home dashboard (ADR 0018)', () => {
     const ctx = setup();
     const active = makeProject({ id: 'p1', title: 'Schilfgürtel Linz' });
     const other = makeProject({ id: 'p2', title: 'Donau-Auen' });
@@ -243,8 +243,10 @@ describe('NavBar', () => {
     const otherItem = items.find((i) => (i.textContent ?? '').includes('Donau-Auen'))!;
     otherItem.click();
 
+    // ADR 0018: switching a Projekt lands on the home dashboard (`/`), which
+    // re-renders for the newly-active project, not the capture list.
     expect(setCurrent).toHaveBeenCalledWith(other);
-    expect(navigate).toHaveBeenCalledWith('/data-entries');
+    expect(navigate).toHaveBeenCalledWith('/');
   });
 
   it('returns to the picker from the "Alle Projekte …" item', () => {
