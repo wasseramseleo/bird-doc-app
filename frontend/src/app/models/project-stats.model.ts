@@ -45,9 +45,19 @@ export interface LastFangtag {
   strongest_hour: StrongestHour | null;
 }
 
+// The häufigsten Arten over the selected range (issue #202), ordered by total
+// Fänge (desc). Same counting as the card: Ring vernichtet excluded, Aves ignota
+// its own labelled entry. Feeds the häufigste-Arten bar chart.
+export interface TopSpecies {
+  species_id: string;
+  name: string;
+  count: number;
+}
+
 export interface ProjectStats {
   range: ProjectStatsRange;
   totals: ProjectStatsTotals;
+  top_species: TopSpecies[];
   // Null when the range holds no captures (empty payload, no error).
   last_fangtag: LastFangtag | null;
 }

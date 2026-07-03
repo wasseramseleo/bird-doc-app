@@ -55,6 +55,13 @@
         }
       </dl>
     </article>
+
+    @if (topSpecies().length > 0) {
+      <section class="chart-panel">
+        <h2 class="chart-panel__title">Häufigste Arten</h2>
+        <app-species-bar-chart [species]="topSpecies()" />
+      </section>
+    }
   } @else {
     <div class="dashboard__state">
       <mat-icon aria-hidden="true">insights</mat-icon>

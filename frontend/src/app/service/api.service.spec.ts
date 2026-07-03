@@ -120,6 +120,10 @@ describe('ApiService', () => {
     const stats: ProjectStats = {
       range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
       totals: { faenge: 142, artenzahl: 17 },
+      top_species: [
+        { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
+        { species_id: 'sp-2', name: 'Amsel', count: 21 },
+      ],
       last_fangtag: {
         date: '2026-07-02',
         faenge: 38,
@@ -144,6 +148,9 @@ describe('ApiService', () => {
 
     expect(result).toEqual(stats);
     expect(result?.last_fangtag?.haeufigste_art?.name).toBe('Mönchsgrasmücke');
+    // top_species maps through, preserving the häufigste-Arten order.
+    expect(result?.top_species.map((s) => s.name)).toEqual(['Mönchsgrasmücke', 'Amsel']);
+    expect(result?.top_species[0].count).toBe(34);
   });
 
   it('getProjectStats omits range params when none are given', () => {
@@ -158,6 +165,7 @@ describe('ApiService', () => {
     req.flush({
       range: { from: null, to: '2026-07-03', preset: 'week' },
       totals: { faenge: 0, artenzahl: 0 },
+      top_species: [],
       last_fangtag: null,
     } as ProjectStats);
   });
