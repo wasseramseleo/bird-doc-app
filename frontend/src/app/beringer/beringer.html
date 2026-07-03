@@ -43,6 +43,25 @@
               (click)="openEditDialog(beringer)">
               <mat-icon>edit</mat-icon>
             </button>
+            @if (isMitglied(beringer)) {
+              <button
+                mat-icon-button
+                type="button"
+                aria-label="Konto-Verknüpfung aufheben"
+                title="Konto-Verknüpfung aufheben"
+                (click)="openUnlinkDialog(beringer)">
+                <mat-icon>link_off</mat-icon>
+              </button>
+            } @else {
+              <button
+                mat-icon-button
+                type="button"
+                aria-label="Mit Konto verknüpfen"
+                title="Mit Konto verknüpfen"
+                (click)="openLinkDialog(beringer)">
+                <mat-icon>link</mat-icon>
+              </button>
+            }
           </div>
         </div>
       }

@@ -230,6 +230,21 @@ def no_account_beringer_b(organization_b):
 
 
 @pytest.fixture
+def gap_seat(organization):
+    """A seat (Mitgliedschaft) in tenant A whose account has **no** Scientist yet.
+
+    The 'field helper who later got an account' gap (PRD #205, issue #209): an
+    account holds a Mitgliedsplatz in the Organisation but is not (yet) a Beringer,
+    so an Admin can link an existing no-account Beringer to it. Its user is a plain
+    Mitglied with no ``Scientist`` row — the free end of the OneToOne to attach to.
+    """
+    seat_user = User.objects.create_user(username="gap", password="hunter2-very-strong")
+    return Mitgliedschaft.objects.create(
+        user=seat_user, organization=organization, rolle=Mitgliedschaft.Rolle.MITGLIED
+    )
+
+
+@pytest.fixture
 def auth_client_b(user_b):
     # An independent client so a test can act as tenant A and tenant B at once.
     client = APIClient()

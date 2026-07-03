@@ -8,6 +8,9 @@ import {of} from 'rxjs';
 
 import {BeringerComponent} from './beringer';
 import {Beringer} from '../models/beringer.model';
+import {Mitgliedschaft} from '../models/mitgliedschaft.model';
+import {SeatPickerDialogData} from './seat-picker-dialog/seat-picker-dialog';
+import {ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 
 let httpMock: HttpTestingController;
 
@@ -24,6 +27,18 @@ function makeBeringer(overrides: Partial<Beringer> = {}): Beringer {
     full_name: 'Filip Reiter',
     is_member: false,
     account: null,
+    ...overrides,
+  };
+}
+
+function makeSeat(overrides: Partial<Mitgliedschaft> = {}): Mitgliedschaft {
+  return {
+    id: 's1',
+    username: 'gap',
+    email: 'gap@example.org',
+    handle: null,
+    rolle: 'mitglied',
+    created: '2026-01-01T00:00:00Z',
     ...overrides,
   };
 }
@@ -200,5 +215,83 @@ describe('BeringerComponent', () => {
     expect(snack).toHaveBeenCalled();
     expect(snack.calls.mostRecent().args[0] as string).toContain('Kürzel');
     // A rejected save does not reload the list — nothing changed, so no GET.
+  });
+
+  // --- Link / unlink a Beringer to a seat (PRD #205, issue #209) -------------
+
+  it('offers only eligible (handle==null) seats to the link picker', () => {
+    const {fixture, component} = setup();
+    // Cancelling the picker (afterClosed → undefined) means no PATCH follows.
+    const dialogSpy = spyOnDialog(fixture, undefined);
+
+    component.openLinkDialog(makeBeringer({id: '7', is_member: false}));
+
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+      .flush(
+        page0([
+          makeSeat({id: 'free', handle: null}),
+          makeSeat({id: 'taken', username: 'mara', handle: 'MAR'}),
+        ]),
+      );
+
+    // The picker is offered only the seat whose account is not yet a Beringer.
+    expect(dialogSpy).toHaveBeenCalled();
+    const config = dialogSpy.calls.mostRecent().args[1] as {data: SeatPickerDialogData};
+    expect(config.data.seats.map((s) => s.id)).toEqual(['free']);
+  });
+
+  it('links a no-account Beringer to the chosen seat via PATCH {mitgliedschaft_id}', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+    // The picker resolves to the chosen seat id.
+    spyOnDialog(fixture, 'seat-1');
+
+    component.openLinkDialog(makeBeringer({id: '7', is_member: false}));
+
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+      .flush(page0([makeSeat({id: 'seat-1', handle: null})]));
+
+    const patch = httpMock.expectOne(
+      (r) => r.method === 'PATCH' && r.url.endsWith('/scientists/7/'),
+    );
+    expect(patch.request.body).toEqual({mitgliedschaft_id: 'seat-1'});
+    patch.flush(makeBeringer({id: '7', is_member: true}));
+    // A successful link reloads the list.
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+  });
+
+  it('shows the demote warning then unlinks via PATCH {mitgliedschaft_id: null}', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+    // The confirm (demote-warning) dialog resolves to true.
+    const dialogSpy = spyOnDialog(fixture, true);
+
+    component.openUnlinkDialog(makeBeringer({id: '42', is_member: true, full_name: 'Mara Moser'}));
+
+    // The demote warning is shown before unlinking: it spells out that the account
+    // keeps login + Rolle but loses Beringer identity and Projekt visibility.
+    const config = dialogSpy.calls.mostRecent().args[1] as {data: ConfirmDialogData};
+    expect(config.data.message).toContain('Rolle');
+    expect(config.data.message).toContain('Projekt');
+
+    const patch = httpMock.expectOne(
+      (r) => r.method === 'PATCH' && r.url.endsWith('/scientists/42/'),
+    );
+    expect(patch.request.body).toEqual({mitgliedschaft_id: null});
+    patch.flush(makeBeringer({id: '42', is_member: false}));
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+  });
+
+  it('does not unlink when the demote warning is cancelled', () => {
+    const {fixture, component} = setup();
+    const dialogSpy = spyOnDialog(fixture, false);
+
+    component.openUnlinkDialog(makeBeringer({id: '42', is_member: true}));
+
+    // The warning was shown, but a cancelled demote makes no PATCH and no reload —
+    // httpMock.verify() (afterEach) would fail on any unexpected request.
+    expect(dialogSpy).toHaveBeenCalled();
   });
 });

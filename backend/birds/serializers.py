@@ -133,6 +133,23 @@ class RingingStationSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+# Shown when an Admin tries to detach or re-point a Beringer that already owns
+# captures — the freeze-once-captures invariant keeps a capture history
+# attributable to a stable Beringer identity (PRD #205, issue #209).
+FROZEN_BERINGER_MESSAGE = _(
+    "Dieser Beringer hat bereits Fänge erfasst und kann daher nicht mehr von "
+    "seinem Konto getrennt oder einem anderen Konto zugeordnet werden."
+)
+
+# Shown when the seat named by ``mitgliedschaft_id`` belongs to another
+# Organisation — linking never crosses the tenant boundary (ADR 0005).
+CROSS_TENANT_SEAT_MESSAGE = _("Die Mitgliedschaft gehört nicht zu deiner Organisation.")
+
+# Shown when the seat's account is already a Beringer — the OneToOne
+# ``Scientist.user`` must be free to attach.
+SEAT_ALREADY_LINKED_MESSAGE = _("Dieses Konto ist bereits mit einem Beringer verknüpft.")
+
+
 class ScientistSerializer(serializers.ModelSerializer):
     """A Beringer, serialized Admin-aware (PRD #205, issue #206).
 
@@ -170,9 +187,76 @@ class ScientistSerializer(serializers.ModelSerializer):
         ],
     )
 
+    # The seat link, addressed BY SEAT (PRD #205, issue #209): a Mitgliedschaft id
+    # attaches this Beringer to that seat's account (``Scientist.user`` becomes
+    # ``mitgliedschaft.user``), ``null`` detaches it. Write-only and Admin-only —
+    # only the IsOrgAdmin-gated PATCH honours it; the open quick-add create drops
+    # it (``create`` below), keeping the create endpoint link-free. Resolved and
+    # validated in ``update`` (tenant boundary, a free OneToOne, and the
+    # freeze-once-captures invariant), so the field itself carries no ``source``:
+    # it never maps to a model attribute, it is popped and applied by hand.
+    mitgliedschaft_id = serializers.PrimaryKeyRelatedField(
+        queryset=Mitgliedschaft.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+
+    # Sentinel telling "field omitted" (leave the link untouched) apart from an
+    # explicit ``null`` (detach) after the field is popped from ``validated_data``.
+    _SEAT_UNSET = object()
+
     class Meta:
         model = Scientist
-        fields = ["id", "handle", "first_name", "last_name", "full_name"]
+        fields = ["id", "handle", "first_name", "last_name", "full_name", "mitgliedschaft_id"]
+
+    def create(self, validated_data):
+        # The quick-add create is link-free (ADR 0001): a seat is only ever
+        # attached through the Admin PATCH, so a ``mitgliedschaft_id`` that rode in
+        # on the create payload is dropped here, keeping the idempotent quick-add a
+        # pure no-account Beringer create.
+        validated_data.pop("mitgliedschaft_id", None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Resolve+validate the seat link in one place (PRD #205, issue #209).
+        seat = validated_data.pop("mitgliedschaft_id", self._SEAT_UNSET)
+        if seat is not self._SEAT_UNSET:
+            self._apply_seat_link(instance, seat)
+        return super().update(instance, validated_data)
+
+    def _apply_seat_link(self, instance, mitgliedschaft):
+        """Attach (``mitgliedschaft`` given) or detach (``None``) the Beringer's
+        account, enforcing the freeze-once-captures invariant and, on attach, the
+        tenant boundary and a free OneToOne. Sets ``instance.user``; the caller's
+        ``super().update`` persists it."""
+        # Freeze-once-captures: an already-linked Beringer that owns captures may be
+        # neither detached nor re-pointed. Attaching a currently-unlinked Beringer
+        # is always allowed, even when it owns captures (the primary workflow), so
+        # the freeze only guards a change to an *existing* link.
+        if instance.user_id is not None and self._owns_captures(instance):
+            raise serializers.ValidationError({"mitgliedschaft_id": FROZEN_BERINGER_MESSAGE})
+        if mitgliedschaft is None:
+            instance.user = None
+            return
+        self._reject_ineligible_seat(instance, mitgliedschaft)
+        instance.user = mitgliedschaft.user
+
+    def _reject_ineligible_seat(self, instance, mitgliedschaft):
+        """Refuse a cross-tenant seat, or one whose account is already a Beringer."""
+        request = self.context.get("request")
+        organization = active_organization(request.user) if request is not None else None
+        if organization is None or mitgliedschaft.organization_id != organization.pk:
+            raise serializers.ValidationError({"mitgliedschaft_id": CROSS_TENANT_SEAT_MESSAGE})
+        already_linked = (
+            Scientist.objects.filter(user=mitgliedschaft.user).exclude(pk=instance.pk).exists()
+        )
+        if already_linked:
+            raise serializers.ValidationError({"mitgliedschaft_id": SEAT_ALREADY_LINKED_MESSAGE})
+
+    @staticmethod
+    def _owns_captures(instance):
+        return DataEntry.objects.filter(staff=instance).exists()
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
