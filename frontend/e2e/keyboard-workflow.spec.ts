@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 
 /**
  * E2E happy-path for the keyboard-driven field workflow (#23):
@@ -90,9 +91,7 @@ test.describe('Keyboard workflow happy-path (#23)', () => {
 
   test('records a Wiederfang via Enter-search and saves with Strg+S', async ({ page }) => {
     // Selecting the project persists it, so the form route does not redirect home.
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
 
     await page.goto('/data-entry');
 

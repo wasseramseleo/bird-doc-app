@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
@@ -170,7 +171,15 @@ async function saveAndAwaitFailedPost(page: Page): Promise<void> {
 }
 
 async function expectPendingCount(page: Page, count: number): Promise<void> {
-  await expectOutboxIndicator(page, `${count} nicht synchronisierte Einträge`);
+  // Mirror the outbox indicator's own phrasing: zero flips to the friendly-green
+  // "Alle Einträge synchronisiert" (#223); exactly one takes the singular.
+  const label =
+    count === 0
+      ? 'Alle Einträge synchronisiert'
+      : count === 1
+        ? '1 nicht synchronisierter Eintrag'
+        : `${count} nicht synchronisierte Einträge`;
+  await expectOutboxIndicator(page, label);
 }
 
 test.describe('Offline Wiederfang + Sonderarten (issue #162)', () => {
@@ -180,9 +189,7 @@ test.describe('Offline Wiederfang + Sonderarten (issue #162)', () => {
     // Prepare online: sign in, pick the Projekt (caches the reference bundle
     // via the nav bar's Offline-Bereitschaft indicator), open the form.
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
     await page.goto('/data-entry');
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,

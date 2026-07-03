@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 
 /**
  * E2E for #42: the next-number suggestion is the last-consumed number + 1,
@@ -56,9 +57,7 @@ async function stubApi(page: Page, nextNumber: string | null): Promise<void> {
 }
 
 async function selectProjectThenSpecies(page: Page): Promise<void> {
-  await page.goto('/');
-  await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-  await expect(page).toHaveURL(/\/data-entries$/);
+  await selectProject(page, PROJECT.title);
 
   await page.goto('/data-entry');
 

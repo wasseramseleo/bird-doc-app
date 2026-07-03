@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 
 /**
  * E2E for the compact Ringgröße field width (#45, parent #41).
@@ -47,9 +48,7 @@ async function stubApi(page: Page): Promise<void> {
 test.describe('Compact Ringgröße field width (#45)', () => {
   test.beforeEach(async ({ page }) => {
     await stubApi(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
     await page.goto('/data-entry');
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,

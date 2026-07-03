@@ -78,8 +78,9 @@ test.describe('Beringer verwalten (Org-Admin)', () => {
     await page.locator('.user-trigger').click();
     await expect(page.getByRole('menuitem', {name: 'Beringer verwalten'})).toHaveCount(0);
 
-    // A direct hit on the guarded route is bounced back to the home picker.
+    // A direct hit on the guarded route is bounced away to the /projekte picker
+    // (no Projekt selected, so home redirects there too — #221).
     await page.goto('/beringer');
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/projekte$/);
   });
 });

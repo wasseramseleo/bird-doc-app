@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
@@ -157,14 +158,12 @@ test.describe('Offline outbox sync (issue #161)', () => {
   }) => {
     // Prepare online: sign in, pick the Projekt, open the capture form.
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
     await page.goto('/data-entry');
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,
     );
-    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, 'Alle Einträge synchronisiert');
 
     // Go offline and record an Erstfang — it lands in the durable outbox
     // (issue #160), never reaching the server.
@@ -178,7 +177,7 @@ test.describe('Offline outbox sync (issue #161)', () => {
     await page.keyboard.press('Control+s');
     await failedPost;
 
-    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, '1 nicht synchronisierter Eintrag');
 
     // Reconnect: the app auto-syncs with no manual action (issue #161).
     const syncedPost = page.waitForRequest(
@@ -192,6 +191,6 @@ test.describe('Offline outbox sync (issue #161)', () => {
     expect(body.idempotency_key).toBeTruthy();
 
     // The queue empties and the pending count reflects it.
-    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, 'Alle Einträge synchronisiert');
   });
 });

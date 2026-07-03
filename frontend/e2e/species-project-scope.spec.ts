@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 
 /**
  * E2E for #27: once a Projekt is selected, the species autocomplete must scope
@@ -64,9 +65,7 @@ test.describe('Species project-scoped ordering (#27)', () => {
 
   test('species autocomplete query carries the current project', async ({ page }) => {
     // Selecting the project persists it as the current project.
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
 
     await page.goto('/data-entry');
 

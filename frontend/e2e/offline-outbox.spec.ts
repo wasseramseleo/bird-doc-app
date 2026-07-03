@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
@@ -140,16 +141,14 @@ test.describe('Offline durable outbox (issue #160)', () => {
     // Offline-Bereitschaft indicator fetches and caches the reference
     // bundle automatically), then open the capture form.
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
     await page.goto('/data-entry');
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,
     );
 
     // The always-visible pending count starts at zero while online.
-    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, 'Alle Einträge synchronisiert');
 
     await goOffline(page);
     await fillErstfang(page);
@@ -188,12 +187,12 @@ test.describe('Offline durable outbox (issue #160)', () => {
 
     // The pending count now shows the queued capture — the durable outbox
     // entry, not a server record, is what the failed POST above resulted in.
-    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, '1 nicht synchronisierter Eintrag');
 
     // Queued entries survive a full reload while still offline.
     await page.reload();
 
     await expect(page).toHaveURL(/\/data-entry$/);
-    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, '1 nicht synchronisierter Eintrag');
   });
 });
