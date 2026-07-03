@@ -2,6 +2,9 @@ import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {provideHttpClient} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
 import {provideNoopAnimations} from '@angular/platform-browser/animations';
+import {MatDialog} from '@angular/material/dialog';
+import {MatSnackBar} from '@angular/material/snack-bar';
+import {of} from 'rxjs';
 
 import {BeringerComponent} from './beringer';
 import {Beringer} from '../models/beringer.model';
@@ -33,6 +36,18 @@ function setup() {
   const fixture: ComponentFixture<BeringerComponent> = TestBed.createComponent(BeringerComponent);
   httpMock = TestBed.inject(HttpTestingController);
   return {fixture, component: fixture.componentInstance};
+}
+
+// Material services resolve through the component's own injector, so spy on the
+// instance the component actually holds (not TestBed.inject, which can differ).
+function spyOnSnackBar(fixture: ComponentFixture<BeringerComponent>) {
+  return spyOn(fixture.debugElement.injector.get(MatSnackBar), 'open');
+}
+
+function spyOnDialog(fixture: ComponentFixture<BeringerComponent>, afterClosed: unknown) {
+  return spyOn(fixture.debugElement.injector.get(MatDialog), 'open').and.returnValue({
+    afterClosed: () => of(afterClosed),
+  } as never);
 }
 
 describe('BeringerComponent', () => {
@@ -134,5 +149,56 @@ describe('BeringerComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.beringer-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Beringer');
+  });
+
+  it('adds a Beringer from the dialog result via POST /scientists/ and reloads', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+    const payload = {first_name: 'Nora', last_name: 'Neu', handle: 'NNE'};
+    spyOnDialog(fixture, payload);
+
+    component.openCreateDialog();
+
+    const post = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/scientists/'));
+    expect(post.request.body).toEqual(payload);
+    post.flush(makeBeringer({id: 'x', ...payload, full_name: 'Nora Neu'}));
+    // A successful add reloads the list.
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+  });
+
+  it('edits a Beringer from the dialog result via PATCH /scientists/<id>/ and reloads', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+    const payload = {first_name: 'Nora', last_name: 'Neu', handle: 'NNE'};
+    spyOnDialog(fixture, payload);
+
+    component.openEditDialog(makeBeringer({id: '42', handle: 'FRE'}));
+
+    const patch = httpMock.expectOne(
+      (r) => r.method === 'PATCH' && r.url.endsWith('/scientists/42/'),
+    );
+    expect(patch.request.body).toEqual(payload);
+    patch.flush(makeBeringer({id: '42', ...payload, full_name: 'Nora Neu'}));
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+  });
+
+  it('surfaces the German duplicate-Kürzel 400 message and does not reload', () => {
+    const {fixture, component} = setup();
+    const snack = spyOnSnackBar(fixture);
+    const payload = {first_name: 'Nora', last_name: 'Neu', handle: 'FRE'};
+    spyOnDialog(fixture, payload);
+
+    component.openEditDialog(makeBeringer({id: '42', handle: 'NNE'}));
+
+    httpMock
+      .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/42/'))
+      .flush(
+        {handle: ['Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.']},
+        {status: 400, statusText: 'Bad Request'},
+      );
+
+    expect(snack).toHaveBeenCalled();
+    expect(snack.calls.mostRecent().args[0] as string).toContain('Kürzel');
+    // A rejected save does not reload the list — nothing changed, so no GET.
   });
 });

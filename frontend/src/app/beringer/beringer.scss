@@ -83,3 +83,10 @@
   font-size: 0.85rem;
   color: var(--bd-ink-muted, #5a5a5a);
 }
+
+.beringer-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}

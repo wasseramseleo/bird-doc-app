@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from .capture_service import (
     BIRD_DATA_FIELDS,
@@ -149,6 +150,25 @@ class ScientistSerializer(serializers.ModelSerializer):
     """
 
     full_name = serializers.CharField(read_only=True)
+    # The Kürzel is user-facing and editable (unlike the server-owned Station
+    # handle) because it flows into the IWM export. It is globally ``unique``
+    # (models.py), so a deliberate duplicate on edit — or a cross-tenant create —
+    # must surface as a clean German 400, never an IntegrityError 500. Declaring
+    # the field with an explicit ``UniqueValidator`` (which excludes the current
+    # instance on update) gives that controlled message; ``required=False`` /
+    # ``allow_blank=True`` mirror the blank-able model field, so an omitted Kürzel
+    # on the quick-add create is still derived server-side (idempotency intact).
+    handle = serializers.CharField(
+        max_length=11,
+        required=False,
+        allow_blank=True,
+        validators=[
+            UniqueValidator(
+                queryset=Scientist.objects.all(),
+                message=_("Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel."),
+            )
+        ],
+    )
 
     class Meta:
         model = Scientist

@@ -388,11 +388,110 @@ def test_search_never_matches_reserved_fallback_beringer(auth_client, membership
     assert response.json()["results"] == []
 
 
-@pytest.mark.django_db
-def test_beringer_cannot_be_edited_or_deleted_via_api(auth_client):
-    beringer = Scientist.objects.create(handle="FRE", first_name="Filip", last_name="Reiter")
-    detail = f"/api/birds/scientists/{beringer.id}/"
+# --- Add & edit a Beringer (PRD #205, issue #207) ----------------------------
+# Add reuses the open, idempotent-by-Kürzel create (covered above). Edit is a new
+# Admin-only PATCH of the Beringer's name + Kürzel; a plain Mitglied is refused
+# (403) and a cross-tenant target is invisible (404). The globally-unique Kürzel
+# surfaces a duplicate as a clean German 400, never a 500, and editing a name
+# leaves an already-set Kürzel untouched. Delete stays closed (issue #208).
 
-    assert auth_client.put(detail, {"handle": "XXX"}, format="json").status_code == 405
-    assert auth_client.patch(detail, {"handle": "XXX"}, format="json").status_code == 405
-    assert auth_client.delete(detail).status_code == 405
+
+@pytest.mark.django_db
+def test_admin_can_edit_beringer_name_and_kuerzel(auth_client, membership, no_account_beringer):
+    """An Admin edits a Beringer's first name, last name and Kürzel via PATCH."""
+    response = auth_client.patch(
+        f"/api/birds/scientists/{no_account_beringer.id}/",
+        {"first_name": "Nora", "last_name": "Neu", "handle": "NNE"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    no_account_beringer.refresh_from_db()
+    assert no_account_beringer.first_name == "Nora"
+    assert no_account_beringer.last_name == "Neu"
+    assert no_account_beringer.handle == "NNE"
+
+
+@pytest.mark.django_db
+def test_plain_mitglied_cannot_edit_beringer(
+    mitglied_client, mitglied_scientist, no_account_beringer
+):
+    """Editing a Beringer is Admin-only (ADR 0005): a plain Mitglied's PATCH is
+    refused with 403 and the Beringer is left unchanged. The quick-add create
+    stays open to the same Mitglied (covered above)."""
+    response = mitglied_client.patch(
+        f"/api/birds/scientists/{no_account_beringer.id}/",
+        {"first_name": "Hacked"},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    no_account_beringer.refresh_from_db()
+    assert no_account_beringer.first_name == "Nina"
+
+
+@pytest.mark.django_db
+def test_cross_tenant_beringer_patch_returns_404(auth_client, membership, no_account_beringer_b):
+    """A cross-tenant Beringer PATCH is a 404 (the row is absent from the actor's
+    tenant-scoped queryset), never a leak (issue #74)."""
+    response = auth_client.patch(
+        f"/api/birds/scientists/{no_account_beringer_b.id}/",
+        {"first_name": "Hacked"},
+        format="json",
+    )
+
+    assert response.status_code == 404
+    no_account_beringer_b.refresh_from_db()
+    assert no_account_beringer_b.first_name == "Berta"
+
+
+@pytest.mark.django_db
+def test_duplicate_kuerzel_edit_returns_clean_400_with_german_message(
+    auth_client, membership, organization, no_account_beringer
+):
+    """Editing a Beringer to a Kürzel another Beringer already owns is a clean
+    400 with a German validation message — the global unique constraint is
+    surfaced gracefully, never as an IntegrityError 500."""
+    Scientist.objects.create(
+        handle="FRE", first_name="Filip", last_name="Reiter", organization=organization
+    )
+
+    response = auth_client.patch(
+        f"/api/birds/scientists/{no_account_beringer.id}/",
+        {"handle": "FRE"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "Kürzel" in str(response.json()["handle"])
+    no_account_beringer.refresh_from_db()
+    assert no_account_beringer.handle != "FRE"
+
+
+@pytest.mark.django_db
+def test_editing_name_leaves_already_set_kuerzel_unchanged(
+    auth_client, membership, no_account_beringer
+):
+    """Editing a Beringer's name without touching the Kürzel leaves an already-set
+    Kürzel untouched — it is not re-derived from the new name (model behaviour)."""
+    original_handle = no_account_beringer.handle
+
+    response = auth_client.patch(
+        f"/api/birds/scientists/{no_account_beringer.id}/",
+        {"first_name": "Ganz", "last_name": "Anders"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    no_account_beringer.refresh_from_db()
+    assert no_account_beringer.handle == original_handle
+    assert no_account_beringer.first_name == "Ganz"
+
+
+@pytest.mark.django_db
+def test_beringer_cannot_be_deleted_via_api(auth_client, membership, no_account_beringer):
+    """Delete stays closed on /scientists/ (issue #208 owns it): a DELETE by an
+    Admin is refused 405, even though PATCH is now enabled."""
+    response = auth_client.delete(f"/api/birds/scientists/{no_account_beringer.id}/")
+
+    assert response.status_code == 405

@@ -135,6 +135,13 @@ export class ApiService {
     return this.http.post<Scientist>(`${this.apiUrl}/scientists/`, payload);
   }
 
+  // Admin-only edit of a Beringer's name + Kürzel (PRD #205). A duplicate Kürzel
+  // comes back as a clean 400 (the globally-unique handle), which the caller
+  // surfaces as the server's German message.
+  updateScientist(id: string, payload: Partial<ScientistCreatePayload>): Observable<Scientist> {
+    return this.http.patch<Scientist>(`${this.apiUrl}/scientists/${id}/`, payload);
+  }
+
   // The Org-Admin "Beringer verwalten" list (PRD #205). Same /scientists/
   // endpoint as the autocomplete, but the server returns the Admin-aware shape
   // (Mitglied flag + linked-account fields) for an Admin request.
