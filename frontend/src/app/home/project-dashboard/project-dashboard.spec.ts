@@ -1,0 +1,277 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
+
+import { ProjectDashboardComponent } from './project-dashboard';
+import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
+import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
+import { Project } from '../../models/project.model';
+import { ProjectStats } from '../../models/project-stats.model';
+
+function makeProject(overrides: Partial<Project> = {}): Project {
+  return {
+    id: 'p1',
+    title: 'Schilfgürtel Linz',
+    description: '',
+    show_optional_fields: false,
+    organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
+    default_station: null,
+    scientists: [],
+    created: '2026-06-01T00:00:00Z',
+    updated: '2026-06-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
+  return {
+    range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
+    totals: { faenge: 142, artenzahl: 17 },
+    top_species: [
+      { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
+      { species_id: 'sp-2', name: 'Amsel', count: 21 },
+    ],
+    series: {
+      days: ['2026-06-26', '2026-06-28', '2026-07-02'],
+      lines: [
+        { species_id: 'sp-1', name: 'Mönchsgrasmücke', counts: [10, 12, 12] },
+        { species_id: 'sp-2', name: 'Amsel', counts: [5, 8, 8] },
+        { species_id: null, name: 'Übrige', counts: [2, 3, 4] },
+      ],
+    },
+    last_fangtag: {
+      date: '2026-07-02',
+      faenge: 38,
+      trend: { previous_fangtag: '2026-06-28', previous_faenge: 25, delta: 13 },
+      haeufigste_art: { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 12 },
+      strongest_hour: { hour: 6, count: 9 },
+    },
+    ...overrides,
+  };
+}
+
+function setup(project: Project) {
+  TestBed.configureTestingModule({
+    imports: [ProjectDashboardComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations()],
+  });
+  const fixture: ComponentFixture<ProjectDashboardComponent> =
+    TestBed.createComponent(ProjectDashboardComponent);
+  fixture.componentRef.setInput('project', project);
+  const httpMock = TestBed.inject(HttpTestingController);
+  return { fixture, httpMock };
+}
+
+describe('ProjectDashboardComponent', () => {
+  it('fetches stats for the current project and renders the Letzter Tag card', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges(); // fires the load effect
+
+    const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    req.flush(makeStats());
+    fixture.detectChanges();
+
+    const text: string = fixture.nativeElement.textContent;
+    expect(text).toContain('Letzter Tag');
+    expect(text).toContain('2026-07-02');
+    expect(text).toContain('38'); // Fänge
+    expect(text).toContain('Mönchsgrasmücke');
+    expect(text).toContain('12'); // häufigste Art count
+    expect(text).toContain('6:00 Uhr'); // stärkste Stunde
+    expect(text).toContain('9'); // strongest-hour count
+    // Trend vs the previous Fangtag (delta +13 against 2026-06-28).
+    expect(text).toContain('13');
+    expect(text).toContain('2026-06-28');
+
+    httpMock.verify();
+  });
+
+  it('feeds the häufigste-Arten bar chart the top_species from the stats response', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const chart = fixture.debugElement.query(By.directive(SpeciesBarChartComponent));
+    expect(chart).not.toBeNull();
+    const chartData = (chart.componentInstance as SpeciesBarChartComponent).chartData();
+    // The chart is fed the häufigsten Arten as labels + a single count dataset.
+    expect(chartData.labels).toEqual(['Mönchsgrasmücke', 'Amsel']);
+    expect(chartData.datasets[0].data).toEqual([34, 21]);
+    httpMock.verify();
+  });
+
+  it('feeds the Fänge/Fangtag line chart the sparse days + one line per Art from the series', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const chart = fixture.debugElement.query(By.directive(SpeciesLineChartComponent));
+    expect(chart).not.toBeNull();
+    const chartData = (chart.componentInstance as SpeciesLineChartComponent).chartData();
+    // The X axis is the sparse Fangtage; one dataset per Art plus Übrige.
+    expect(chartData.labels).toEqual(['2026-06-26', '2026-06-28', '2026-07-02']);
+    expect(chartData.datasets.map((d) => d.label)).toEqual(['Mönchsgrasmücke', 'Amsel', 'Übrige']);
+    expect(chartData.datasets[0].data).toEqual([10, 12, 12]);
+    httpMock.verify();
+  });
+
+  it('re-fetches on a range change and drives the card, the bar chart and the line chart together', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // Default range is Letzte Woche (preset=week).
+    const first = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    expect(first.request.params.get('preset')).toBe('week');
+    first.flush(makeStats());
+    fixture.detectChanges();
+
+    // Switch to Letzter Monat via the range selector.
+    const buttons: HTMLButtonElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.range-selector__preset'),
+    );
+    const monthButton = buttons.find((b) => b.textContent?.trim() === 'Letzter Monat');
+    expect(monthButton).toBeTruthy();
+    monthButton!.click();
+    fixture.detectChanges();
+
+    // The range change re-fetches with the new preset.
+    const second = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    expect(second.request.params.get('preset')).toBe('month');
+    second.flush(
+      makeStats({
+        range: { from: '2026-06-03', to: '2026-07-03', preset: 'month' },
+        top_species: [{ species_id: 'sp-9', name: 'Buchfink', count: 99 }],
+        series: {
+          days: ['2026-06-10', '2026-07-01'],
+          lines: [{ species_id: 'sp-9', name: 'Buchfink', counts: [40, 59] }],
+        },
+        last_fangtag: {
+          date: '2026-07-01',
+          faenge: 59,
+          trend: { previous_fangtag: '2026-06-10', previous_faenge: 40, delta: 19 },
+          haeufigste_art: { species_id: 'sp-9', name: 'Buchfink', count: 59 },
+          strongest_hour: { hour: 8, count: 20 },
+        },
+      }),
+    );
+    fixture.detectChanges();
+
+    // The card consumes the new data.
+    expect(fixture.nativeElement.textContent).toContain('2026-07-01');
+    expect(fixture.nativeElement.textContent).toContain('Buchfink');
+
+    // The bar chart consumes the new top_species.
+    const bar = fixture.debugElement.query(By.directive(SpeciesBarChartComponent));
+    expect((bar.componentInstance as SpeciesBarChartComponent).chartData().labels).toEqual([
+      'Buchfink',
+    ]);
+
+    // The line chart consumes the new sparse series.
+    const line = fixture.debugElement.query(By.directive(SpeciesLineChartComponent));
+    const lineData = (line.componentInstance as SpeciesLineChartComponent).chartData();
+    expect(lineData.labels).toEqual(['2026-06-10', '2026-07-01']);
+    expect(lineData.datasets[0].data).toEqual([40, 59]);
+
+    httpMock.verify();
+  });
+
+  it('renders an empty state (no card) when the range has no Fangtag', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .flush(makeStats({ totals: { faenge: 0, artenzahl: 0 }, last_fangtag: null }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('keine Fänge');
+    httpMock.verify();
+  });
+
+  it('shows a loading state (spinner, no card/empty/error flash) while the stats request is in flight', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges(); // fires the load effect; the request is now pending
+
+    // Loading branch: a spinner, and none of the terminal states leaks through.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--loading')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('mat-spinner')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--empty')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--error')).toBeNull();
+
+    // Clean up the in-flight request.
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    httpMock.verify();
+  });
+
+  it('shows a needs-connection state (not an error) when the stats fetch cannot reach the server (offline, ADR 0017)', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // A connectivity failure surfaces as an HttpErrorResponse with status 0.
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .error(new ProgressEvent('network error'));
+    fixture.detectChanges();
+
+    // Offline branch: a clear "needs connection" state, distinguishable from the
+    // generic error state, and no populated card.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--error')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Internetverbindung');
+    httpMock.verify();
+  });
+
+  it('auto-reloads the stats when the browser comes back online after an offline failure', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // First fetch fails with a connectivity error → offline state.
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .error(new ProgressEvent('network error'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).not.toBeNull();
+
+    // Regaining connectivity fires window 'online' — without touching the range
+    // picker or switching Projekt, the dashboard re-fetches automatically.
+    window.dispatchEvent(new Event('online'));
+    fixture.detectChanges();
+
+    const retry = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    retry.flush(makeStats());
+    fixture.detectChanges();
+
+    // The promised auto-reload landed: offline copy gone, card populated.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.stat-card')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Letzter Tag');
+    httpMock.verify();
+  });
+
+  it('shows a generic error state (not the offline state) when the stats fetch fails server-side', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // A reachable-but-failing server: a non-zero status, browser online.
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .flush('boom', { status: 500, statusText: 'Server Error' });
+    fixture.detectChanges();
+
+    // Error branch: distinguishable from the offline "needs connection" state.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--error')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    httpMock.verify();
+  });
+});

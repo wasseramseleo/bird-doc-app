@@ -98,7 +98,9 @@ export class NavBar {
 
   switchProject(project: Project): void {
     this.projectService.setCurrent(project);
-    this.router.navigateByUrl('/data-entries');
+    // ADR 0018: switching a Projekt lands on the home dashboard (`/`), which
+    // re-renders for the newly-active project, not the capture list.
+    this.router.navigateByUrl('/');
   }
 
   goToPicker(): void {

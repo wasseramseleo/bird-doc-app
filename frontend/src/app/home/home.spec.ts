@@ -73,14 +73,67 @@ describe('HomeComponent', () => {
     expect(titles).toEqual(['Schilfgürtel Linz', 'Donau-Auen']);
   });
 
-  it('lands on the data-entry hub when a project is selected', () => {
+  it('renders the current project dashboard (Letzter Tag card), not the picker, when a project is current', () => {
+    const { fixture, projectService, httpMock } = setup();
+    const project = makeProject({ id: 'p1', title: 'Schilfgürtel Linz' });
+    // A persisted current Projekt (as after a reload — ADR 0018).
+    projectService.setCurrent(project);
+
+    fixture.detectChanges(); // ngOnInit loads projects/orgs/scientists; dashboard loads stats
+
+    httpMock.expectOne((r) => r.url.endsWith('/projects/') && !r.url.includes('stats')).flush(
+      page0([project]),
+    );
+    httpMock.expectOne((r) => r.url.endsWith('/organizations/')).flush(page0([]));
+    httpMock.expectOne((r) => r.url.endsWith('/scientists/')).flush(page0([]));
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush({
+      range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
+      totals: { faenge: 142, artenzahl: 17 },
+      top_species: [{ species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 12 }],
+      last_fangtag: {
+        date: '2026-07-02',
+        faenge: 38,
+        trend: { previous_fangtag: '2026-06-28', previous_faenge: 25, delta: 13 },
+        haeufigste_art: { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 12 },
+        strongest_hour: { hour: 6, count: 9 },
+      },
+    });
+    fixture.detectChanges();
+
+    const text: string = fixture.nativeElement.textContent;
+    expect(text).toContain('Letzter Tag');
+    expect(text).toContain('Mönchsgrasmücke');
+    // The picker is the home's no-selection state — it must not show here.
+    expect(fixture.nativeElement.querySelector('.project-card')).toBeNull();
+  });
+
+  it('shows the project picker (no dashboard) when no project is current', () => {
+    const { fixture, projectService, httpMock } = setup();
+    expect(projectService.currentProject()).toBeNull();
+
+    fixture.detectChanges();
+
+    httpMock.expectOne((r) => r.url.endsWith('/projects/')).flush(page0([makeProject()]));
+    httpMock.expectOne((r) => r.url.endsWith('/organizations/')).flush(page0([]));
+    httpMock.expectOne((r) => r.url.endsWith('/scientists/')).flush(page0([]));
+    fixture.detectChanges();
+
+    // No dashboard, and no stray stats request (online-only, only when a project is current).
+    expect(fixture.nativeElement.querySelector('app-project-dashboard')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.project-card')).not.toBeNull();
+    httpMock.verify();
+  });
+
+  it('lands on the home dashboard when a project is selected (ADR 0018)', () => {
     const { component, router, projectService } = setup();
     const navigate = spyOn(router, 'navigateByUrl').and.stub();
     const project = makeProject();
 
     component.selectProject(project);
 
-    expect(navigate).toHaveBeenCalledWith('/data-entries');
+    // ADR 0018: selecting a Projekt lands on the home dashboard (`/`), which now
+    // renders that project's charts, not the capture list.
+    expect(navigate).toHaveBeenCalledWith('/');
     expect(projectService.currentProject()?.id).toBe('p1');
   });
 });
