@@ -209,6 +209,19 @@ def scientist_b(user_b, organization_b):
 
 
 @pytest.fixture
+def no_account_beringer(organization):
+    """A no-account Beringer owned by tenant A (a selectable name, not an actor).
+
+    The tenant-A mirror of ``no_account_beringer_b`` — an org-owned Beringer with
+    no linked account, useful when a test needs an editable target in tenant A
+    without an account or Mitgliedschaft in the way.
+    """
+    return Scientist.objects.create(
+        first_name="Nina", last_name="Ohnekonto", organization=organization
+    )
+
+
+@pytest.fixture
 def no_account_beringer_b(organization_b):
     """A no-account Beringer owned by tenant B (a selectable name, not an actor)."""
     return Scientist.objects.create(

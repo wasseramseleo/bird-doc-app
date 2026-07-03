@@ -1,20 +1,35 @@
 import {ChangeDetectionStrategy, Component, OnInit, computed, inject, signal} from '@angular/core';
+import {HttpErrorResponse} from '@angular/common/http';
+import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
 import {ApiService} from '../service/api.service';
 import {Beringer} from '../models/beringer.model';
+import {ScientistCreatePayload} from '../models/scientist.model';
+import {
+  BeringerFormDialogComponent,
+  BeringerFormDialogData,
+} from './beringer-form-dialog/beringer-form-dialog';
 
 @Component({
   selector: 'app-beringer',
-  imports: [MatIconModule, MatProgressSpinnerModule, MatSnackBarModule],
+  imports: [
+    MatButtonModule,
+    MatIconModule,
+    MatProgressSpinnerModule,
+    MatDialogModule,
+    MatSnackBarModule,
+  ],
   templateUrl: './beringer.html',
   styleUrl: './beringer.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BeringerComponent implements OnInit {
   private readonly api = inject(ApiService);
+  private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal<boolean>(true);
@@ -39,6 +54,67 @@ export class BeringerComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+  }
+
+  // Add reuses the open, idempotent-by-Kürzel create endpoint (the same one the
+  // mid-session quick-add uses); the Kürzel is derived from the name in the dialog
+  // but stays editable.
+  openCreateDialog(): void {
+    const ref = this.dialog.open<
+      BeringerFormDialogComponent,
+      BeringerFormDialogData,
+      ScientistCreatePayload
+    >(BeringerFormDialogComponent, {data: {}, width: '480px'});
+    ref.afterClosed().subscribe((result) => {
+      if (!result) {
+        return;
+      }
+      this.api.createScientist(result).subscribe({
+        next: (created) => {
+          this.snackBar.open(`Beringer "${created.full_name}" wurde angelegt.`, 'Schließen', {
+            duration: 3000,
+          });
+          this.load();
+        },
+        error: (err: HttpErrorResponse) =>
+          this.snackBar.open(this.saveErrorMessage(err, 'angelegt'), 'Schließen', {duration: 5000}),
+      });
+    });
+  }
+
+  // Edit is the Admin-only PATCH of name + Kürzel.
+  openEditDialog(beringer: Beringer): void {
+    const ref = this.dialog.open<
+      BeringerFormDialogComponent,
+      BeringerFormDialogData,
+      ScientistCreatePayload
+    >(BeringerFormDialogComponent, {data: {beringer}, width: '480px'});
+    ref.afterClosed().subscribe((result) => {
+      if (!result) {
+        return;
+      }
+      this.api.updateScientist(beringer.id, result).subscribe({
+        next: (updated) => {
+          this.snackBar.open(`Beringer "${updated.full_name}" wurde aktualisiert.`, 'Schließen', {
+            duration: 3000,
+          });
+          this.load();
+        },
+        error: (err: HttpErrorResponse) =>
+          this.snackBar.open(this.saveErrorMessage(err, 'aktualisiert'), 'Schließen', {
+            duration: 5000,
+          }),
+      });
+    });
+  }
+
+  // Surface the server's German validation message — most importantly the
+  // duplicate-Kürzel 400 on the globally-unique handle — rather than a generic
+  // failure, so the Admin can disambiguate two people (issue #207).
+  private saveErrorMessage(err: HttpErrorResponse, verb: string): string {
+    const body = err.error as {handle?: string[]; detail?: string} | undefined;
+    const serverMessage = body?.handle?.[0] ?? body?.detail;
+    return serverMessage ?? `Beringer konnte nicht ${verb} werden.`;
   }
 
   private load(): void {

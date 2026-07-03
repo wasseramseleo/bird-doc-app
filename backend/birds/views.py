@@ -381,19 +381,33 @@ class RingingStationViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(OTHER_ORG_MESSAGE)
 
 
-class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
-    """List/retrieve plus authenticated create.
+class ScientistViewSet(
+    mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet
+):
+    """List/retrieve plus authenticated create and Admin-only edit.
 
     A Beringer can be created mid-session with no linked account (an unknown
-    Kürzel prompts a "Neuer Beringer" dialog); editing and deletion stay closed.
-    The reserved fallback Beringer (Kürzel ``GELÖSCHT``, which adopts a deleted
-    Beringer's captures) is excluded so no fresh capture is filed against it.
-    See ADR 0001-account-independent-beringer and ADR 0003.
+    Kürzel prompts a "Neuer Beringer" dialog); the quick-add create stays open to
+    any Mitglied (ADR 0001). Editing name + Kürzel is an Admin power (PRD #205,
+    issue #207); deletion stays closed (issue #208 owns it). The reserved fallback
+    Beringer (Kürzel ``GELÖSCHT``, which adopts a deleted Beringer's captures) is
+    excluded so no fresh capture is filed against it. See
+    ADR 0001-account-independent-beringer and ADR 0003.
     """
 
     serializer_class = ScientistSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["handle", "first_name", "last_name"]
+
+    def get_permissions(self):
+        # Editing a Beringer is Admin-only (ADR 0005, mirroring the Stationen
+        # management gate); list/retrieve and the quick-add create stay open to any
+        # Mitglied (ADR 0001). The create endpoint is deliberately *not* gated so
+        # the mid-session "Neuer Beringer" quick-add keeps working for a plain
+        # Mitglied.
+        if self.action in ("update", "partial_update"):
+            return [IsAuthenticated(), IsOrgAdmin()]
+        return super().get_permissions()
 
     def get_queryset(self):
         """Scope the Beringer autocomplete to the requester's active Organisation
@@ -446,6 +460,19 @@ class ScientistViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
         no tenant to own it, so creation is refused (mirrors the capture
         endpoint)."""
         serializer.save(organization=_require_active_organization(self.request.user))
+
+    def perform_update(self, serializer):
+        # An edit must stay inside the Admin's own Organisation. ``get_queryset``
+        # already scopes to the active Organisation, so a cross-tenant target is a
+        # 404 before this runs; this belt-and-braces check (mirroring
+        # ``RingingStationViewSet``) also refuses moving a Beringer to another
+        # tenant were an ``organization`` ever accepted on the update path.
+        self._reject_foreign_organization(serializer.instance.organization)
+        serializer.save()
+
+    def _reject_foreign_organization(self, organization):
+        if organization != active_organization(self.request.user):
+            raise PermissionDenied(OTHER_ORG_MESSAGE)
 
 
 class OrganizationViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):

@@ -7,6 +7,10 @@
         (Mitglied) oder ohne Konto.
       </p>
     </div>
+    <button mat-flat-button color="primary" (click)="openCreateDialog()">
+      <mat-icon>add</mat-icon>
+      Neuer Beringer
+    </button>
   </header>
 
   @if (loading()) {
@@ -29,6 +33,16 @@
               }
             </div>
             <span class="beringer-card__handle">{{ beringer.handle }}</span>
+          </div>
+          <div class="beringer-card__actions">
+            <button
+              mat-icon-button
+              type="button"
+              aria-label="Beringer bearbeiten"
+              title="Bearbeiten"
+              (click)="openEditDialog(beringer)">
+              <mat-icon>edit</mat-icon>
+            </button>
           </div>
         </div>
       }
