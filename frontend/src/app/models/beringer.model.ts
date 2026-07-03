@@ -22,4 +22,8 @@ export interface Beringer {
   full_name: string;
   is_member?: boolean;
   account?: BeringerAccount | null;
+  // The number of Fänge this Beringer owns, present only on an Admin request. The
+  // delete confirmation names it: deleting a capture-owning Beringer reassigns its
+  // captures to „Gelöschter Nutzer" (PRD #205, issue #208).
+  capture_count?: number;
 }

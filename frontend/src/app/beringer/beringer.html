@@ -62,6 +62,20 @@
                 <mat-icon>link</mat-icon>
               </button>
             }
+            <button
+              mat-icon-button
+              type="button"
+              color="warn"
+              aria-label="Beringer löschen"
+              [disabled]="isMitglied(beringer)"
+              [title]="
+                isMitglied(beringer)
+                  ? 'Entferne zuerst das Konto in der Mitgliederverwaltung, um diesen Beringer zu löschen.'
+                  : 'Löschen'
+              "
+              (click)="openDeleteDialog(beringer)">
+              <mat-icon>delete</mat-icon>
+            </button>
           </div>
         </div>
       }

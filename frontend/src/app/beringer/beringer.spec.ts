@@ -294,4 +294,59 @@ describe('BeringerComponent', () => {
     // httpMock.verify() (afterEach) would fail on any unexpected request.
     expect(dialogSpy).toHaveBeenCalled();
   });
+
+  // --- Delete a Beringer: reassign-or-block (PRD #205, issue #208) ------------
+
+  it('disables the delete action for a Mitglied with a hint to remove the account first', () => {
+    const {fixture} = setup();
+
+    fixture.detectChanges();
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+      .flush(page0([makeBeringer({id: 'm', is_member: true, full_name: 'Mara Moser'})]));
+    fixture.detectChanges();
+
+    const del = fixture.nativeElement.querySelector(
+      'button[aria-label="Beringer löschen"]',
+    ) as HTMLButtonElement;
+    expect(del).withContext('delete button rendered for the Mitglied row').toBeTruthy();
+    // A Mitglied is never deleted from this screen — the action is disabled and the
+    // hint points the Admin at member management.
+    expect(del.disabled).toBeTrue();
+    expect(del.getAttribute('title')).toContain('Mitgliederverwaltung');
+  });
+
+  it('names the Fänge count in the delete confirmation for a capture-owning Beringer', () => {
+    const {fixture, component} = setup();
+    // Cancel the confirm (afterClosed → false) so no DELETE follows.
+    const dialogSpy = spyOnDialog(fixture, false);
+
+    component.openDeleteDialog(
+      makeBeringer({id: '9', is_member: false, full_name: 'Otto Owner', capture_count: 3}),
+    );
+
+    // The confirmation names how many Fänge will be reassigned to „Gelöschter Nutzer".
+    const config = dialogSpy.calls.mostRecent().args[1] as {data: ConfirmDialogData};
+    expect(config.data.message).toContain('3');
+    expect(config.data.message).toContain('Fänge');
+    expect(config.data.message).toContain('Gelöschter Nutzer');
+  });
+
+  it('deletes a no-account Beringer via DELETE /scientists/<id>/ and reloads', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+    // Confirm the delete (afterClosed → true).
+    spyOnDialog(fixture, true);
+
+    component.openDeleteDialog(
+      makeBeringer({id: '9', is_member: false, full_name: 'Otto Owner', capture_count: 0}),
+    );
+
+    const del = httpMock.expectOne(
+      (r) => r.method === 'DELETE' && r.url.endsWith('/scientists/9/'),
+    );
+    del.flush(null, {status: 204, statusText: 'No Content'});
+    // A successful delete reloads the list.
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
+  });
 });

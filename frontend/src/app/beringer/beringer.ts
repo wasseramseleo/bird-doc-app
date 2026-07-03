@@ -191,6 +191,59 @@ export class BeringerComponent implements OnInit {
     });
   }
 
+  // Delete a Beringer (PRD #205, issue #208). A Mitglied cannot be deleted here —
+  // the action is disabled in the template with a hint to remove the account in
+  // member management first; this guard is belt-and-braces. For a capture-owning
+  // Beringer the confirmation NAMES how many Fänge will be reassigned to
+  // „Gelöschter Nutzer"; a no-capture Beringer gets a plain confirm. On success
+  // the list reloads.
+  openDeleteDialog(beringer: Beringer): void {
+    if (this.isMitglied(beringer)) {
+      return;
+    }
+    const count = beringer.capture_count ?? 0;
+    const message =
+      count > 0
+        ? `„${beringer.full_name}“ wird gelöscht und ${this.faengeSummary(count)} ` +
+          'werden „Gelöschter Nutzer“ zugeordnet. Diese Aktion kann nicht rückgängig gemacht werden.'
+        : `„${beringer.full_name}“ wird endgültig gelöscht. ` +
+          'Diese Aktion kann nicht rückgängig gemacht werden.';
+    const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
+      ConfirmDialogComponent,
+      {
+        data: {title: 'Beringer löschen?', message, confirmLabel: 'Löschen'},
+        width: '480px',
+      },
+    );
+    ref.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) {
+        return;
+      }
+      this.api.deleteScientist(beringer.id).subscribe({
+        next: () => {
+          this.snackBar.open(`Beringer „${beringer.full_name}“ wurde gelöscht.`, 'Schließen', {
+            duration: 3000,
+          });
+          this.load();
+        },
+        error: (err: HttpErrorResponse) =>
+          this.snackBar.open(this.deleteErrorMessage(err), 'Schließen', {duration: 5000}),
+      });
+    });
+  }
+
+  // Singular/plural Fänge count for the delete confirmation.
+  private faengeSummary(count: number): string {
+    return count === 1 ? '1 Fang' : `${count} Fänge`;
+  }
+
+  // Surface the server's German refusal (e.g. the 409 for a still-linked Mitglied)
+  // rather than a generic failure.
+  private deleteErrorMessage(err: HttpErrorResponse): string {
+    const body = err.error as {detail?: string} | undefined;
+    return body?.detail ?? 'Beringer konnte nicht gelöscht werden.';
+  }
+
   // Surface the server's German validation message — most importantly the
   // duplicate-Kürzel 400 on the globally-unique handle — rather than a generic
   // failure, so the Admin can disambiguate two people (issue #207).
