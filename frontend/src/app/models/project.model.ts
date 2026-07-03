@@ -1,3 +1,4 @@
+import {Central} from './central.model';
 import {Organization} from './organization.model';
 import {RingingStation} from './ringing-station.model';
 import {Scientist} from './scientist.model';
@@ -8,6 +9,10 @@ export interface Project {
   description: string;
   show_optional_fields: boolean;
   organization: Organization;
+  // The Projekt's Zentrale (ADR 0019), carried on the GET/bundle shape (#233) so
+  // a bundled Projekt knows the Zentrale a domestic capture defaults to. Optional
+  // because there is no per-Projekt Zentrale selector yet (today always AUW).
+  central?: Central;
   default_station: RingingStation | null;
   scientists: Scientist[];
   created: string;

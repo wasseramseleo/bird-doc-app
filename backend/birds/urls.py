@@ -8,6 +8,7 @@ from . import views
 router = DefaultRouter()
 router.register(r"data-entries", views.DataEntryViewSet, basename="dataentry")
 router.register(r"species", views.SpeciesViewSet, basename="species")
+router.register(r"centrals", views.CentralViewSet, basename="central")
 router.register(r"rings", views.RingViewSet, basename="ring")
 router.register(r"ringing-stations", views.RingingStationViewSet, basename="ringingstation")
 router.register(r"scientists", views.ScientistViewSet, basename="scientist")

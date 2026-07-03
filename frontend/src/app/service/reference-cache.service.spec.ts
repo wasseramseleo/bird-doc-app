@@ -13,6 +13,7 @@ const BUNDLE: OfflineBundle = {
   ringing_stations: [],
   scientists: [],
   projects: [],
+  centrals: [],
   last_consumed_ring_numbers: [],
 };
 

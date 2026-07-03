@@ -1,4 +1,5 @@
 import {OrganizationRolle} from './auth-user.model';
+import {Central} from './central.model';
 import {Organization} from './organization.model';
 import {Project} from './project.model';
 import {RingSize} from './ring.model';
@@ -40,5 +41,9 @@ export interface OfflineBundle {
   ringing_stations: RingingStation[];
   scientists: Scientist[];
   projects: Project[];
+  // The full EURING Zentralen register (#233) — global reference data like the
+  // species pool, never tenant-scoped. The offline Zentrale dropdown searches
+  // this cached list (name, country, scheme code) with no network.
+  centrals: Central[];
   last_consumed_ring_numbers: LastConsumedRingNumber[];
 }

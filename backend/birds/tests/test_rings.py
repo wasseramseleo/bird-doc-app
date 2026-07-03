@@ -247,6 +247,46 @@ def test_other_project_consumption_is_ignored(
 
 
 @pytest.mark.django_db
+def test_foreign_wiederfang_does_not_derail_next_number(
+    auth_client, species, scientist, ringing_station, project
+):
+    """Regression (US 14): a foreign Wiederfang is a recapture, so it consumes no
+    rope number and never derails the next-number suggestion — it still follows
+    the last genuine Austrian consumption (+1). The next-number rule is unchanged
+    by the Zentrale write path (ADR 0019)."""
+    # A genuine Austrian first catch consumes 0042.
+    _catch(
+        number="0042",
+        species=species,
+        scientist=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        created=_at(1),
+    )
+    # A later foreign Wiederfang of a high Slovak number in the same project+size.
+    foreign = auth_client.post(
+        "/api/birds/data-entries/",
+        {
+            "species_id": str(species.id),
+            "staff_id": scientist.id,
+            "ringing_station_id": ringing_station.handle,
+            "ring_number": "SK900000",
+            "ring_size": "V",
+            "central": "SKB",
+            "project_id": str(project.id),
+            "bird_status": DataEntry.BirdStatus.RE_CATCH,
+            "date_time": "2026-03-02T12:00:00Z",
+        },
+        format="json",
+    )
+    assert foreign.status_code == 201, foreign.json()
+
+    response = auth_client.get(NEXT_NUMBER_URL, {"size": "V", "project": str(project.id)})
+    assert response.status_code == 200
+    assert response.json() == {"next_number": "0043"}
+
+
+@pytest.mark.django_db
 def test_rings_endpoint_is_read_only(auth_client):
     response = auth_client.post(LIST_URL, {"number": "1", "size": "V"}, format="json")
     assert response.status_code == 405
@@ -365,6 +405,35 @@ def test_rings_list_is_empty_without_active_org(auth_client, organization):
     response = auth_client.get(LIST_URL)
     assert response.status_code == 200
     assert response.json()["results"] == []
+
+
+# --- Ring uniqueness widened by the Zentrale (ADR 0019, issue #228) ----------
+
+
+@pytest.mark.django_db
+def test_same_size_number_coexists_under_two_zentralen(organization):
+    """Ring uniqueness widens to (organization, central, size, number) — ADR
+    0019: the same Größe+Nummer under two different Zentralen (an Austrian
+    V 0042 and a Slovak V 0042) are distinct physical rings that coexist within
+    one Organisation (US 18, model level)."""
+    from birds.models import Central
+
+    auw = Central.objects.get(scheme_code="AUW")
+    skb = Central.objects.get(scheme_code="SKB")
+
+    ring_auw = Ring.objects.create(
+        number="0042", size=Ring.RingSizes.V, organization=organization, central=auw
+    )
+    ring_skb = Ring.objects.create(
+        number="0042", size=Ring.RingSizes.V, organization=organization, central=skb
+    )
+
+    assert ring_auw.central == auw
+    assert ring_skb.central == skb
+    assert (
+        Ring.objects.filter(organization=organization, size=Ring.RingSizes.V, number="0042").count()
+        == 2
+    )
 
 
 @pytest.mark.django_db

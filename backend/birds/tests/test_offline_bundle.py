@@ -400,3 +400,144 @@ def test_bundle_last_consumed_is_scoped_to_requester_org(
     assert len(entries) == 1
     assert entries[0]["project_id"] == str(project.id)
     assert entries[0]["number"] == "0050"
+
+
+# --- Zentralen register + Projekt Zentrale + offline replay (issue #233) ------
+# The offline foreign-Wiederfang story (PRD #226): the bundle must carry the
+# full Zentralen register (so the offline Zentrale dropdown can search it with
+# no network) and each Projekt's Zentrale (the default a domestic capture
+# carries), and the API must accept an outbox replay both with the central flat
+# (a foreign scheme code) and — for a capture queued before this feature — with
+# no central field at all (the server defaults it, #229).
+
+
+@pytest.mark.django_db
+def test_bundle_includes_the_full_zentralen_register(auth_client, scientist, organization):
+    """The offline bundle carries the whole EURING Zentralen register — global
+    reference data like Species, not an org-scoped subset — so the offline
+    Zentrale dropdown searches it with no network (US 15)."""
+    from birds.models import Central
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    codes = {row["scheme_code"] for row in payload["centrals"]}
+    assert "AUW" in codes
+    assert "SKB" in codes
+    assert len(payload["centrals"]) == Central.objects.count()
+
+
+@pytest.mark.django_db
+def test_bundle_central_row_carries_scheme_code_name_and_country(
+    auth_client, scientist, organization
+):
+    """Each bundled Zentrale carries the fields the offline dropdown searches and
+    shows: scheme code, name and country (US 15)."""
+    payload = auth_client.get(BUNDLE_URL).json()
+    auw = next(row for row in payload["centrals"] if row["scheme_code"] == "AUW")
+    assert auw["name"] == "Österreichische Vogelwarte"
+    assert auw["country"] == "Austria"
+    assert "id" in auw
+
+
+@pytest.mark.django_db
+def test_bundle_project_carries_its_zentrale(auth_client, scientist, project, organization):
+    """Each bundled Projekt carries its Zentrale, so the offline capture form
+    knows the Projekt-Zentrale a domestic capture defaults to (US 15)."""
+    payload = auth_client.get(BUNDLE_URL).json()
+    row = next(row for row in payload["projects"] if row["title"] == project.title)
+    assert row["central"]["scheme_code"] == "AUW"
+
+
+@pytest.mark.django_db
+def test_offline_replay_with_flat_central_is_accepted(
+    auth_client, species, scientist, ringing_station, project, organization
+):
+    """The outbox replays a queued ausländischer Wiederfang verbatim: the
+    Zentrale rides the write payload flat, as the EURING scheme_code string (no
+    ID mapping). The API accepts it and the ring lands under that Zentrale
+    (US 15)."""
+    response = auth_client.post(
+        "/api/birds/data-entries/",
+        {
+            "species_id": str(species.id),
+            "staff_id": scientist.id,
+            "ringing_station_id": ringing_station.handle,
+            "ring_number": "SK1A",
+            "ring_size": "6.0",
+            "central": "SKB",
+            "bird_status": DataEntry.BirdStatus.RE_CATCH,
+            "project_id": str(project.id),
+            "date_time": "2026-03-01T12:00:00Z",
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.json()
+    assert response.json()["ring"]["central"]["scheme_code"] == "SKB"
+
+
+@pytest.mark.django_db
+def test_pre_feature_offline_replay_without_central_syncs(
+    auth_client, species, scientist, ringing_station, project, organization
+):
+    """A capture queued BEFORE this feature shipped has no ``central`` in its
+    payload; replaying it after deploy must still be accepted, the server
+    defaulting the Zentrale to the Projekt-Zentrale (#229) — no data loss on the
+    pre-feature outbox (US 16)."""
+    response = auth_client.post(
+        "/api/birds/data-entries/",
+        {
+            "species_id": str(species.id),
+            "staff_id": scientist.id,
+            "ringing_station_id": ringing_station.handle,
+            "ring_number": "0500",
+            "ring_size": "V",
+            "bird_status": DataEntry.BirdStatus.FIRST_CATCH,
+            "project_id": str(project.id),
+            "date_time": "2026-03-01T12:00:00Z",
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.json()
+    assert response.json()["ring"]["central"]["scheme_code"] == "AUW"
+
+
+@pytest.mark.django_db
+def test_bundle_last_consumed_ignores_foreign_wiederfang(
+    auth_client, species, scientist, ringing_station, project, organization
+):
+    """A foreign ausländischer Wiederfang consumes no Ringserie number, so it
+    never derails the bundle's last-consumed suggestion source: only fresh-number
+    captures (Erstfang/Ring-vernichtet) drive the numbering (US 14)."""
+    from birds.models import Central
+
+    _capture(
+        species=species,
+        scientist=scientist,
+        ringing_station=ringing_station,
+        ring_number="0042",
+        project=project,
+        created=_at(1),
+    )
+    # A later foreign Wiederfang under a different Zentrale, with a free-text Größe.
+    skb = Central.objects.get(scheme_code="SKB")
+    foreign_ring = Ring.objects.create(
+        number="SK9", size="6.0", organization=organization, central=skb
+    )
+    entry = DataEntry.objects.create(
+        species=species,
+        ring=foreign_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        bird_status=DataEntry.BirdStatus.RE_CATCH,
+        date_time=_at(3),
+    )
+    DataEntry.objects.filter(pk=entry.pk).update(created=_at(3))
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    entries = payload["last_consumed_ring_numbers"]
+    v_entry = next(
+        e for e in entries if e["size"] == Ring.RingSizes.V and e["project_id"] == str(project.id)
+    )
+    assert v_entry["number"] == "0042"
+    # The foreign Wiederfang's free-text size never contributes a last-consumed row.
+    assert not any(e["size"] == "6.0" for e in entries)

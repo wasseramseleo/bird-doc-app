@@ -19,6 +19,7 @@ import {Species} from '../models/species.model';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist} from '../models/scientist.model';
 import {Project} from '../models/project.model';
+import {Central} from '../models/central.model';
 import {RingSize} from '../models/ring.model';
 
 function page0<T>(results: T[]) {
@@ -57,6 +58,7 @@ const EMPTY_BUNDLE: OfflineBundle = {
   ringing_stations: [],
   scientists: [],
   projects: [],
+  centrals: [],
   last_consumed_ring_numbers: [],
 };
 
@@ -309,6 +311,94 @@ describe('DataAccessFacadeService', () => {
     });
   });
 
+  describe('getCentrals()', () => {
+    const AUW: Central = {
+      id: 'c-auw',
+      scheme_code: 'AUW',
+      name: 'Österreichische Vogelwarte',
+      country: 'Österreich',
+    };
+    const SLOVAK: Central = {
+      id: 'c-skb',
+      scheme_code: 'SKB',
+      name: 'Bratislava',
+      country: 'Slowakei',
+    };
+
+    it('passes the server response through unchanged while online', async () => {
+      const resultPromise = firstValueFrom(service.getCentrals('Bratislava'));
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/centrals/'),
+      );
+      expect(req.request.params.get('search')).toBe('Bratislava');
+      req.flush(page0([SLOVAK]));
+
+      const result = await resultPromise;
+      expect(result.results).toEqual([SLOVAK]);
+    });
+
+    it('falls back to the cached Zentralen register, searching by name, when offline', async () => {
+      await cache.save({
+        bundle: {...EMPTY_BUNDLE, centrals: [AUW, SLOVAK]},
+        refreshedAt: '2026-06-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getCentrals('Bratislava'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/centrals/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.results).toEqual([SLOVAK]);
+    });
+
+    it('searches the cached register by scheme code when offline', async () => {
+      await cache.save({
+        bundle: {...EMPTY_BUNDLE, centrals: [AUW, SLOVAK]},
+        refreshedAt: '2026-06-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getCentrals('SKB'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/centrals/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.results).toEqual([SLOVAK]);
+    });
+
+    it('searches the cached register by country when offline', async () => {
+      await cache.save({
+        bundle: {...EMPTY_BUNDLE, centrals: [AUW, SLOVAK]},
+        refreshedAt: '2026-06-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getCentrals('Slowakei'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/centrals/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.results).toEqual([SLOVAK]);
+    });
+
+    it('returns the whole cached register unfiltered when the search term is empty, offline', async () => {
+      await cache.save({
+        bundle: {...EMPTY_BUNDLE, centrals: [AUW, SLOVAK]},
+        refreshedAt: '2026-06-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getCentrals());
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/centrals/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.results).toEqual([AUW, SLOVAK]);
+    });
+  });
+
   describe('getNextRingNumber()', () => {
     it('passes the server response through unchanged while online', async () => {
       const resultPromise = firstValueFrom(service.getNextRingNumber(RingSize.V, 'p1'));
@@ -477,6 +567,37 @@ describe('DataAccessFacadeService', () => {
         const result = await resultPromise;
         // The cached last-consumed alone ("0042" + 1) — the Wiederfang never
         // moved the rope forward.
+        expect(result.next_number).toBe('0043');
+      });
+
+      it('never lets a queued foreign ausländischer Wiederfang derail the Ringserie numbering (#233, US 14)', async () => {
+        await cache.save({
+          bundle: {
+            ...EMPTY_BUNDLE,
+            last_consumed_ring_numbers: [{project_id: 'p1', size: RingSize.V, number: '0042'}],
+          },
+          refreshedAt: '2026-06-01T09:00:00.000Z',
+        });
+        // A queued ausländischer Wiederfang: a recatch carrying a foreign
+        // Zentrale flat (scheme code) and a foreign free-text Ringgröße. It must
+        // consume nothing, exactly like any Wiederfang — the foreign scheme is
+        // irrelevant to the domestic Ringserie suggestion.
+        await queueEntry({
+          bird_status: 'w',
+          ring_size: '6.0',
+          ring_number: 'SK9A',
+          central: 'SKB',
+          project_id: 'p1',
+        });
+
+        const resultPromise = firstValueFrom(service.getNextRingNumber(RingSize.V, 'p1'));
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'))
+          .error(new ProgressEvent('error'));
+
+        const result = await resultPromise;
+        // Unmoved: the cached last-consumed V "0042" + 1, untouched by the
+        // foreign Wiederfang.
         expect(result.next_number).toBe('0043');
       });
 

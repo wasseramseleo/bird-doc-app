@@ -26,8 +26,9 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils.timezone import localtime, make_aware
 
-from birds.iwm_import import _parse_decimal
-from birds.models import DataEntry, Project, Ring, RingingStation, Scientist
+from birds.iwm_export import build_iwm_workbook
+from birds.iwm_import import _parse_decimal, commit_import
+from birds.models import Central, DataEntry, Project, Ring, RingingStation, Scientist
 
 PROJECTS_URL = "/api/birds/projects/"
 
@@ -1275,3 +1276,293 @@ def test_parse_decimal_is_lenient(raw, expected):
     # Direct unit coverage of the lenient decimal parser (issue #176 AC): numerics
     # and strings, both separators, quantized to two places; blank/junk → None.
     assert _parse_decimal(raw) == expected
+
+
+# --- The "Ring" column: foreign Zentralen, clear rejections, round-trip -------
+# (issue #231, PRD #226). The importer reads the "Ring" column to attribute each
+# row to its issuing Zentrale, fixing the silent corruption where a foreign ring
+# imported as an Austrian one. The Zentrale/Ringgröße rules are the shared
+# backend-owned rules of the capture write path (#229) — no divergent logic.
+#
+# - "Ring" absent or blank → AUW (old sheets stay unbroken).
+# - "Ring" = AUW → strict Austrian parsing, exactly as before.
+# - "Ring" = a known foreign scheme code → the ring is created under that
+#   Zentrale, the Ringnummer split by the generic letters+digits regex into
+#   free-text Größe + Nummer.
+# - an unsplittable foreign Ringnummer or an unknown scheme code rejects the row
+#   with a clear German message — never a silent mis-import.
+
+
+@pytest.mark.django_db
+def test_known_foreign_scheme_imports_under_that_zentrale_with_split_ringnummer(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    # A Wiederfang of a Slovak-ringed bird: Ring="SKB", Ringnummer "S1234". The row
+    # imports under the Slovak Bratislava Zentrale, and the Ringnummer is split by
+    # the generic letters+digits regex into free-text Größe "S" + Nummer "1234". (US 22)
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                Ring="SKB",
+                Ringnummer="S1234",
+                Ringstatus="W",
+            )
+        ]
+    )
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["created"] == 1
+    entry = DataEntry.objects.get()
+    assert entry.ring.central.scheme_code == "SKB"
+    assert entry.ring.size == "S"
+    assert entry.ring.number == "1234"
+    assert entry.ring.organization == organization
+
+
+@pytest.mark.django_db
+def test_sheet_without_ring_column_imports_as_auw(
+    auth_client, scientist, ringing_station, project, species
+):
+    # An old sheet that predates the "Ring" column: the importer defaults every
+    # row to the domestic AUW Zentrale, so existing import workflows stay unbroken. (US 25)
+    headers = [h for h in HEADERS if h != "Ring"]
+    content = _workbook([_valid_row(species, scientist, ringing_station)], headers=headers)
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["created"] == 1
+    entry = DataEntry.objects.get()
+    assert entry.ring.central.scheme_code == "AUW"
+    assert entry.ring.size == "V"
+    assert entry.ring.number == "00604"
+
+
+@pytest.mark.django_db
+def test_blank_ring_cell_imports_as_auw(auth_client, scientist, ringing_station, project, species):
+    # The "Ring" column is present but the cell is blank: still AUW, just like an
+    # absent column (US 25).
+    content = _workbook([_valid_row(species, scientist, ringing_station, Ring="")])
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["created"] == 1
+    entry = DataEntry.objects.get()
+    assert entry.ring.central.scheme_code == "AUW"
+
+
+@pytest.mark.django_db
+def test_auw_row_keeps_strict_austrian_size_parsing(
+    auth_client, scientist, ringing_station, project, species
+):
+    # An explicit Ring="AUW" keeps the strict Austrian parse: a Ringnummer whose
+    # leading letters are not one of the 28 Austrian codes is rejected exactly as
+    # before the Zentrale slice — free text is only for foreign Zentralen. (US 22)
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, Ring="AUW", Ringnummer="ZZ123")]
+    )
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+
+    assert preview["importable"] == 0
+    assert [e["row"] for e in preview["errors"]] == [2]
+    assert "Ungültige Ringnummer" in preview["errors"][0]["reason"]
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_unknown_scheme_code_rejects_the_row_with_a_clear_message(
+    auth_client, scientist, ringing_station, project, species
+):
+    # A typo in the "Ring" column (ZZZ is not a seeded EURING scheme) must surface
+    # as a blocking error instead of corrupting data — reported already in the
+    # dry-run preview and skipped on commit, alongside a good AUW row. (US 24)
+    rows = [
+        _valid_row(species, scientist, ringing_station),  # row 2 — AUW, importable
+        _valid_row(
+            species, scientist, ringing_station, Ring="ZZZ", Ringnummer="V00777", Ringstatus="W"
+        ),  # row 3 — unknown scheme code
+    ]
+    content = _workbook(rows)
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+
+    assert preview["importable"] == 1
+    assert [e["row"] for e in preview["errors"]] == [3]
+    assert "Unbekannter Zentralen-Code" in preview["errors"][0]["reason"]
+    assert "ZZZ" in preview["errors"][0]["reason"]
+    assert DataEntry.objects.count() == 0
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert result["created"] == 1
+    assert [e["row"] for e in result["errors"]] == [3]
+    assert "Unbekannter Zentralen-Code" in result["errors"][0]["reason"]
+    assert DataEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_unsplittable_foreign_ringnummer_rejects_with_manual_entry_message(
+    auth_client, scientist, ringing_station, project, species
+):
+    # A foreign Ringnummer the generic letters+digits regex cannot split (an exotic
+    # hyphenated format) is rejected with a German message telling the Admin to
+    # record it manually — never a silent mis-import. Reported in preview and
+    # skipped on commit. (US 23)
+    rows = [
+        _valid_row(species, scientist, ringing_station),  # row 2 — AUW, importable
+        _valid_row(
+            species,
+            scientist,
+            ringing_station,
+            Ring="HGB",
+            Ringnummer="AB-12345",
+            Ringstatus="W",
+        ),  # row 3 — unsplittable foreign Ringnummer
+    ]
+    content = _workbook(rows)
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+
+    assert preview["importable"] == 1
+    assert [e["row"] for e in preview["errors"]] == [3]
+    reason = preview["errors"][0]["reason"]
+    assert "AB-12345" in reason
+    assert "manuell" in reason  # points the Admin at manual entry
+    assert DataEntry.objects.count() == 0
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert result["created"] == 1
+    assert [e["row"] for e in result["errors"]] == [3]
+    assert "manuell" in result["errors"][0]["reason"]
+    assert DataEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_slovak_s_ring_lands_under_skb_and_coexists_with_austrian_s(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    # The bug this slice fixes: a Slovak "S 1234" used to import silently as an
+    # Austrian S ring (both use the letter "S"). Now the "Ring" column routes each
+    # to its own Zentrale, so an Austrian S 1234 Erstfang and a Slovak S 1234
+    # Wiederfang are two distinct physical rings that coexist without colliding
+    # (US 18). The datetimes differ so neither is a duplicate of the other.
+    rows = [
+        _valid_row(
+            species,
+            scientist,
+            ringing_station,
+            Ring="AUW",
+            Ringnummer="S1234",
+            Ringstatus="E",
+            Uhrzeit=time(8, 15),
+        ),
+        _valid_row(
+            species,
+            scientist,
+            ringing_station,
+            Ring="SKB",
+            Ringnummer="S1234",
+            Ringstatus="W",
+            Uhrzeit=time(9, 30),
+        ),
+    ]
+    content = _workbook(rows)
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["created"] == 2
+
+    rings = Ring.objects.filter(size="S", number="1234", organization=organization)
+    assert rings.count() == 2  # distinct physical rings, keyed per Zentrale
+    schemes = {r.central.scheme_code for r in rings}
+    assert schemes == {"AUW", "SKB"}
+
+
+@pytest.mark.django_db
+def test_reimporting_our_own_export_with_foreign_rows_round_trips(
+    auth_client, scientist, ringing_station, project, species, organization
+):
+    # Export → import is a faithful loop even for the foreign rows #230 emits: a
+    # domestic AUW Erstfang and a Slovak (SKB) Wiederfang exported to a
+    # Datenmeldung and re-imported reconstruct equivalent captures, each under its
+    # own Zentrale. (US 26)
+    ringing_station.place_code = "AU03"
+    ringing_station.region = "Oberösterreich"
+    ringing_station.country = "Austria"
+    ringing_station.save()
+
+    skb = Central.objects.get(scheme_code="SKB")
+    auw = Central.objects.get(scheme_code="AUW")
+
+    domestic_ring = Ring.objects.create(
+        number="00604", size="V", organization=organization, central=auw
+    )
+    DataEntry.objects.create(
+        species=species,
+        ring=domestic_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        organization=organization,
+        bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+        date_time=make_aware(datetime(2026, 6, 30, 8, 15)),
+    )
+    foreign_ring = Ring.objects.create(
+        number="1234", size="S", organization=organization, central=skb
+    )
+    DataEntry.objects.create(
+        species=species,
+        ring=foreign_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        organization=organization,
+        bird_status=DataEntry.BirdStatus.RE_CATCH,
+        date_time=make_aware(datetime(2026, 7, 15, 9, 0)),
+    )
+
+    content = build_iwm_workbook(DataEntry.objects.filter(project=project).order_by("date_time"))
+
+    # Remove the source captures so the re-import is not skipped as a duplicate of
+    # the very data it round-trips, then re-import into a fresh Projekt in the same
+    # Organisation (so the Beringer/Station re-resolve, no auto-creation).
+    DataEntry.objects.filter(project=project).delete()
+    fresh_project = Project.objects.create(title="Round-Trip", organization=organization)
+
+    result = commit_import(content, fresh_project)
+
+    assert result["created"] == 2
+    assert result["errors"] == []
+    assert result["createdBeringer"] == []
+    assert result["createdStationen"] == []
+
+    clones = {
+        (e.ring.central.scheme_code, e.ring.size, e.ring.number)
+        for e in DataEntry.objects.filter(project=fresh_project)
+    }
+    assert clones == {("AUW", "V", "00604"), ("SKB", "S", "1234")}

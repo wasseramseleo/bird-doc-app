@@ -650,6 +650,133 @@ def test_duplicate_erstfang_across_devices_is_rejected_not_silently_duplicated(
     )
 
 
+# --- Zentrale write path (ADR 0019, issue #229) ------------------------------
+# The capture WRITE payload carries the central flat (EURING scheme_code string)
+# alongside ring_size/ring_number; GET keeps returning it nested inside the Ring.
+
+
+@pytest.mark.django_db
+def test_foreign_wiederfang_creates_ring_under_zentrale_and_get_returns_it_nested(
+    auth_client, species, scientist, ringing_station
+):
+    """A Wiederfang carrying a known foreign scheme code creates a Ring under
+    that Zentrale with a free-text Größe and an alphanumeric Nummer; the GET
+    detail returns the Zentrale nested inside the Ring (US 1, 6, 7)."""
+    payload = {
+        **_payload(species, scientist, ringing_station, ring_number="SK99A", ring_size="6.0"),
+        "central": "SKB",
+        "bird_status": DataEntry.BirdStatus.RE_CATCH,
+    }
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+    assert response.status_code == 201, response.json()
+
+    entry = DataEntry.objects.get(id=response.json()["id"])
+    assert entry.ring.central.scheme_code == "SKB"
+    assert entry.ring.size == "6.0"
+    assert entry.ring.number == "SK99A"
+
+    detail = auth_client.get(_detail_url(entry.id)).json()
+    assert detail["ring"]["central"]["scheme_code"] == "SKB"
+
+
+@pytest.mark.django_db
+def test_payload_without_central_defaults_to_projekt_zentrale_auw(
+    auth_client, species, scientist, ringing_station
+):
+    """The pre-feature outbox shape (no central) replays cleanly: the Ring lands
+    under the Projekt-Zentrale — AUW without a Projekt (US 16)."""
+    response = auth_client.post(
+        LIST_URL,
+        _payload(species, scientist, ringing_station, ring_number="0800"),
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get(id=response.json()["id"])
+    assert entry.ring.central.scheme_code == "AUW"
+
+
+@pytest.mark.django_db
+def test_unknown_scheme_code_is_a_clean_400_not_500(
+    auth_client, species, scientist, ringing_station
+):
+    """An unknown scheme code in the payload is a clean validation error, never
+    a 500."""
+    payload = {
+        **_payload(species, scientist, ringing_station, ring_number="0801"),
+        "central": "ZZZ",
+        "bird_status": DataEntry.BirdStatus.RE_CATCH,
+    }
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert "central" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_erstfang_with_foreign_central_is_rejected_400(
+    auth_client, species, scientist, ringing_station
+):
+    """An Erstfang must carry the Projekt-Zentrale; a foreign central on it is a
+    400 with a German detail (US 3)."""
+    payload = {
+        **_payload(species, scientist, ringing_station, ring_number="0802"),
+        "central": "SKB",
+        "bird_status": DataEntry.BirdStatus.FIRST_CATCH,
+    }
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert "central" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_auw_invalid_size_is_rejected_400(auth_client, species, scientist, ringing_station):
+    """Omitting the central keeps the strict Austrian size validation: a Größe
+    outside the 28 codes is a 400 (US 8, 16)."""
+    payload = _payload(species, scientist, ringing_station, ring_number="0803", ring_size="ZZ")
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert "ring_size" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_foreign_wiederfang_ring_coexists_with_austrian_ring_same_size_number(
+    auth_client, species, scientist, ringing_station, organization
+):
+    """US 18: an Austrian S 0044 Erstfang and a Slovak S 0044 Wiederfang create
+    two distinct rings that coexist within the Organisation."""
+    austrian = auth_client.post(
+        LIST_URL,
+        _payload(species, scientist, ringing_station, ring_number="0044", ring_size="S"),
+        format="json",
+    )
+    assert austrian.status_code == 201, austrian.json()
+
+    slovak = auth_client.post(
+        LIST_URL,
+        {
+            **_payload(species, scientist, ringing_station, ring_number="0044", ring_size="S"),
+            "central": "SKB",
+            "bird_status": DataEntry.BirdStatus.RE_CATCH,
+        },
+        format="json",
+    )
+    assert slovak.status_code == 201, slovak.json()
+
+    rings = Ring.objects.filter(organization=organization, size="S", number="0044")
+    assert rings.count() == 2
+    assert set(rings.values_list("central__scheme_code", flat=True)) == {"AUW", "SKB"}
+
+
 @pytest.mark.django_db
 def test_replaying_the_same_erstfang_create_is_idempotent_not_a_collision(
     auth_client, species, scientist, ringing_station

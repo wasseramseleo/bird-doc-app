@@ -25,6 +25,8 @@
       </dd>
       <dt>Datum & Uhrzeit</dt>
       <dd>{{ entry.date_time | date:'dd.MM.yyyy HH:mm' }}</dd>
+      <dt>Zentrale</dt>
+      <dd data-testid="detail-zentrale">{{ getCentralLabel() }}</dd>
       <dt>Station</dt>
       <dd>{{ entry.ringing_station.name }}</dd>
       <dt>Beringer</dt>
