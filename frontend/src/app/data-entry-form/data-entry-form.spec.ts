@@ -16,6 +16,7 @@ import {
   AgeClass,
   BirdStatus,
   DataEntry,
+  HandWingMoult,
   Sex,
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
@@ -3598,6 +3599,287 @@ describe('DataEntryFormComponent', () => {
       ) as HTMLElement | null;
       expect(warning).not.toBeNull();
       expect(warning!.textContent).toContain(quotientMessage);
+    });
+  });
+
+  // Issue #249: the two categorical-flag rules surfaced in the capture form. A
+  // determined Geschlecht against a not-sexable Artennorm, and a Handschwingen-
+  // mauser on a diesjährigen Vogel against a no-dj-moult Artennorm, each raise an
+  // inline Plausibilitätswarnung under their own field (`sex` / `hand_wing`) and
+  // join the same aggregated save-time confirm-dialog. The flag selects settle on
+  // selectionChange (onCategoricalChange), not an input blur. Create and edit mode.
+  describe('kategorische Flag-Plausibilitätswarnungen (Artennorm, #249)', () => {
+    // A Zaunkönig norm with ONLY the two categorical flags armed (all seven
+    // numeric rules off), so a flag case yields at most its own flag warning.
+    const flagNorm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: null,
+      weight_sd: null,
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: false,
+      dj_grossgefiedermauser_moeglich: false,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [flagNorm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const sexMessage = 'Geschlechtsbestimmung laut Artennorm nicht möglich (Zaunkönig)';
+    const handWingMessage =
+      'Großgefiedermauser bei diesjährigem Vogel laut Artennorm nicht zu erwarten (Zaunkönig)';
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    function fillValid(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: zaunkoenig as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      component.selectedSpecies.set(zaunkoenig);
+    }
+
+    const sexWarningEl = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-sex-warning"]',
+      ) as HTMLElement | null;
+    const handWingWarningEl = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-hand_wing-warning"]',
+      ) as HTMLElement | null;
+
+    it('renders the inline Geschlecht warning when a determined sex is picked against a not-sexable norm', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('sex')!.setValue(Sex.Male);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      const el = sexWarningEl();
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('role')).toBe('alert');
+      expect(el!.textContent).toContain(sexMessage);
+    });
+
+    it('renders no inline Geschlecht warning for Unbekannt (fires on a claim, not an absence)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('sex')!.setValue(Sex.Unknown);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(sexWarningEl()).toBeNull();
+    });
+
+    it('renders the inline Handschwingenmauser warning for a diesjährigen Vogel with moult present', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      const el = handWingWarningEl();
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('role')).toBe('alert');
+      expect(el!.textContent).toContain(handWingMessage);
+    });
+
+    it('renders no inline Handschwingenmauser warning when the bird is not diesjährig', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({
+        age_class: AgeClass.NotThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(handWingWarningEl()).toBeNull();
+    });
+
+    it('renders neither flag warning when the selected Art carries no Artennorm', async () => {
+      await setup();
+      component.selectedSpecies.set({ ...zaunkoenig, id: 's2', common_name_de: 'Kohlmeise' });
+      component.entryForm.patchValue({
+        sex: Sex.Male,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(sexWarningEl()).toBeNull();
+      expect(handWingWarningEl()).toBeNull();
+    });
+
+    it('includes BOTH flag discrepancies in ONE aggregated save-time confirm-dialog and writes on confirm', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.patchValue({
+        sex: Sex.Male,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
+      expect(data.message).toContain(sexMessage);
+      expect(data.message).toContain(handWingMessage);
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('surfaces both inline flag warnings in edit mode too', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '99' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const editComponent = f.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/99/'))
+        .flush({
+          id: '99',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Male,
+          hand_wing: HandWingMoult.AtLeastOne,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      editComponent.onCategoricalChange();
+      f.detectChanges();
+
+      const sexWarning = f.nativeElement.querySelector(
+        '[data-testid="plausibility-sex-warning"]',
+      ) as HTMLElement | null;
+      const handWingWarning = f.nativeElement.querySelector(
+        '[data-testid="plausibility-hand_wing-warning"]',
+      ) as HTMLElement | null;
+      expect(sexWarning).not.toBeNull();
+      expect(sexWarning!.textContent).toContain(sexMessage);
+      expect(handWingWarning).not.toBeNull();
+      expect(handWingWarning!.textContent).toContain(handWingMessage);
     });
   });
 });

@@ -14,7 +14,13 @@
  * optionality. It stays deliberately shaped so #248/#249 can add the Quotient
  * (relative band) and the two categorical flags by pushing further entries —
  * never by reshaping the signature.
+ *
+ * Issue #249 completes it with the two categorical-flag rules
+ * (Geschlechtsbestimmung möglich, bei dj. Großgefiedermauser möglich), each a
+ * further entry pushed onto the same flat warning list.
  */
+
+import { AgeClass, HandWingMoult, Sex } from '../../models/data-entry.model';
 
 // A DecimalField rides the wire as a string; a form control holds a number.
 // Both (and null/'' for "not set") are accepted and coerced.
@@ -80,6 +86,28 @@ const deAtRatio = new Intl.NumberFormat('de-AT', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+// Issue #249: the sexes that count as a *determined* Geschlecht — a positive
+// claim the Geschlechtsbestimmung flag can contradict. Sex.Unknown is excluded,
+// so leaving Geschlecht at Unbekannt never warns.
+const DETERMINED_SEXES: ReadonlySet<number> = new Set<number>([Sex.Male, Sex.Female]);
+
+// Issue #249: the HandWingMoult states that evidence a Handschwingen-
+// (Großgefieder-)mauser being present — an active or completed moult. DERIVED
+// from the enum (pre-implementation item 2, artenattribute.md §10) as the
+// complement of the two "no moult" states — None ("keine Handschwingen wachsen")
+// and NoneOld ("alle sind unvermausert") — so it is everything else (AtLeastOne,
+// All, Part) and tracks new enum members automatically rather than hard-coding a
+// literal that could drift.
+const HAND_WING_NO_MOULT: ReadonlySet<number> = new Set<number>([
+  HandWingMoult.None,
+  HandWingMoult.NoneOld,
+]);
+const HAND_WING_MOULT_PRESENT: ReadonlySet<number> = new Set<number>(
+  (Object.values(HandWingMoult).filter((v) => typeof v === 'number') as number[]).filter(
+    (v) => !HAND_WING_NO_MOULT.has(v),
+  ),
+);
 
 function toNumber(value: Numeric): number | null {
   if (value === null || value === undefined || value === '') {
@@ -159,6 +187,57 @@ function quotientBandWarning(
     `Quotient Federlänge/Flügellänge ${deAtRatio.format(quotient)} liegt außerhalb ` +
     `des erwarteten Bereichs ${deAtRatio.format(low)}–${deAtRatio.format(high)} (${speciesName})`;
   return { field: 'quotient', message };
+}
+
+/**
+ * Issue #249: the Geschlechtsbestimmung categorical flag. When the norm says the
+ * sex cannot be told apart for the species (geschlechtsbestimmung_moeglich ===
+ * false) yet a DETERMINED Geschlecht (Männchen/Weibchen) was recorded, warn. The
+ * rule fires on a claim, not on an absence — Unbekannt (or a blank sex) never
+ * warns — and a null flag switches the check off. Surfaces under the `sex` field.
+ */
+function geschlechtsbestimmungWarning(
+  sex: number | null | undefined,
+  flag: boolean | null,
+  speciesName: string,
+): PlausibilityWarning | null {
+  if (flag !== false || sex === null || sex === undefined || !DETERMINED_SEXES.has(sex)) {
+    return null;
+  }
+  return {
+    field: 'sex',
+    message: `Geschlechtsbestimmung laut Artennorm nicht möglich (${speciesName})`,
+  };
+}
+
+/**
+ * Issue #249: the bei-dj.-Großgefiedermauser categorical flag. When the norm says
+ * a diesjähriger (first-year) Vogel of this species does NOT moult its Großgefieder
+ * (dj_grossgefiedermauser_moeglich === false), the bird is diesjährig (Alter = 3)
+ * AND its Handschwingenmauser value is one of the "vorhanden" states (moult
+ * present, see HAND_WING_MOULT_PRESENT), warn. Not diesjährig, a blank Handschwingen-
+ * value, or a "no moult" value → no warning; a null flag switches the check off.
+ * Surfaces under the `hand_wing` field.
+ */
+function djGrossgefiedermauserWarning(
+  ageClass: number | null | undefined,
+  handWing: number | null | undefined,
+  flag: boolean | null,
+  speciesName: string,
+): PlausibilityWarning | null {
+  if (
+    flag !== false ||
+    ageClass !== AgeClass.ThisYear ||
+    handWing === null ||
+    handWing === undefined ||
+    !HAND_WING_MOULT_PRESENT.has(handWing)
+  ) {
+    return null;
+  }
+  return {
+    field: 'hand_wing',
+    message: `Großgefiedermauser bei diesjährigem Vogel laut Artennorm nicht zu erwarten (${speciesName})`,
+  };
 }
 
 export function computePlausibilityWarnings(
@@ -244,6 +323,19 @@ export function computePlausibilityWarnings(
       measurements.wing_span,
       norm.quotient_mean,
       norm.quotient_tolerance_pct,
+      norm.species_name,
+    ),
+    // Issue #249: the two categorical flags, trailing the numeric rules so they
+    // appear last (sex, then hand_wing) in the aggregated save-time dialog.
+    geschlechtsbestimmungWarning(
+      measurements.sex,
+      norm.geschlechtsbestimmung_moeglich,
+      norm.species_name,
+    ),
+    djGrossgefiedermauserWarning(
+      measurements.age_class,
+      measurements.hand_wing,
+      norm.dj_grossgefiedermauser_moeglich,
       norm.species_name,
     ),
   ];

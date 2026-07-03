@@ -311,6 +311,7 @@
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Alter</mat-label>
         <mat-select formControlName="age_class" #ageClassSelect
+                    (selectionChange)="onCategoricalChange()"
                     (keydown)="onSelectKeydown($event, 'age_class', ageClassOptions, ageClassSelect)">
           @for (option of ageClassOptions; track option.value) {
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
@@ -321,12 +322,21 @@
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Geschlecht</mat-label>
         <mat-select formControlName="sex" #sexSelect
+                    (selectionChange)="onCategoricalChange()"
                     (keydown)="onSelectKeydown($event, 'sex', sexOptions, sexSelect)">
           @for (option of sexOptions; track option.value) {
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
       </mat-form-field>
+      <!-- Issue #249: the Geschlechtsbestimmung categorical-flag Warnung, under
+           the Geschlecht field, the same role="alert" idiom as the numeric hints. -->
+      @if (warningByField()['sex']; as msg) {
+        <div class="plausibility-warning" role="alert" data-testid="plausibility-sex-warning">
+          <mat-icon aria-hidden="true">warning</mat-icon>
+          <span>{{ msg }}</span>
+        </div>
+      }
     </div>
 
     <div class="form-section">
@@ -369,12 +379,21 @@
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Handschwingenmauser</mat-label>
         <mat-select formControlName="hand_wing" #handWingSelect
+                    (selectionChange)="onCategoricalChange()"
                     (keydown)="onSelectKeydown($event, 'hand_wing', handWingMoultOptions, handWingSelect)">
           @for (option of handWingMoultOptions; track option.value) {
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
       </mat-form-field>
+      <!-- Issue #249: the bei-dj.-Großgefiedermauser categorical-flag Warnung,
+           under the Handschwingenmauser field (its own `hand_wing` slot). -->
+      @if (warningByField()['hand_wing']; as msg) {
+        <div class="plausibility-warning" role="alert" data-testid="plausibility-hand_wing-warning">
+          <mat-icon aria-hidden="true">warning</mat-icon>
+          <span>{{ msg }}</span>
+        </div>
+      }
     </div>
 
     <div class="form-section">

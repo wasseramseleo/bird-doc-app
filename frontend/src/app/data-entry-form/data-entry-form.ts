@@ -1039,6 +1039,15 @@ export class DataEntryFormComponent implements OnInit {
     this.recomputePlausibility();
   }
 
+  // Issue #249: the two categorical-flag rules read the Alter, Geschlecht and
+  // Handschwingenmauser selects, which settle on selectionChange rather than an
+  // input blur — recompute there so the flag Warnung surfaces the moment the
+  // value is picked, mirroring the numeric on-blur behaviour. (Alter carries no
+  // warning of its own but gates the dj-Großgefiedermauser rule.)
+  onCategoricalChange(): void {
+    this.recomputePlausibility();
+  }
+
   private recomputePlausibility(): void {
     this.plausibilityWarnings.set(
       computePlausibilityWarnings(this.currentMeasurements(), this.activeNorm()),
