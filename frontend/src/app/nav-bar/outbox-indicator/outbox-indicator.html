@@ -1,14 +1,24 @@
-<div class="outbox-indicator" role="status" aria-live="polite">
-  <mat-icon class="outbox-indicator__icon" aria-hidden="true">outbox</mat-icon>
-  <span class="outbox-indicator__label">{{ pendingCount() }} nicht synchronisierte Einträge</span>
-  <button
-    mat-icon-button
-    type="button"
-    class="outbox-indicator__sync"
-    aria-label="Jetzt synchronisieren"
-    [disabled]="syncing()"
-    (click)="syncNow()"
-  >
-    <mat-icon>sync</mat-icon>
-  </button>
+<div
+  class="outbox-indicator"
+  [class.outbox-indicator--synced]="pendingCount() === 0"
+  role="status"
+  aria-live="polite"
+>
+  @if (pendingCount() === 0) {
+    <mat-icon class="outbox-indicator__icon" aria-hidden="true">check_circle</mat-icon>
+    <span class="outbox-indicator__label">Alle Einträge synchronisiert</span>
+  } @else {
+    <mat-icon class="outbox-indicator__icon" aria-hidden="true">outbox</mat-icon>
+    <span class="outbox-indicator__label">{{ pendingLabel() }}</span>
+    <button
+      mat-icon-button
+      type="button"
+      class="outbox-indicator__sync"
+      aria-label="Jetzt synchronisieren"
+      [disabled]="syncing()"
+      (click)="syncNow()"
+    >
+      <mat-icon>sync</mat-icon>
+    </button>
+  }
 </div>
