@@ -54,3 +54,15 @@ survives as a state of the home, not as the home's identity.
   nav switcher, not an accident.
 - The picker's behaviour is preserved for new users and users with no current
   project, so nobody loses the ability to choose a project.
+
+## Update (ADR 0020, issue #221)
+
+Keeping the picker only as this page's no-selection state turned out to have a
+sharp edge: because `currentProject` persists, `/` always re-rendered the
+dashboard once a Projekt was selected, so the nav-bar "Alle Projekte …" item
+(which pointed at `/`) appeared to do nothing. **ADR 0020** refines this decision:
+the picker now also lives at a dedicated **`/projekte`** route
+(`ProjectPickerComponent`), "Alle Projekte …" navigates there without clearing
+`currentProject`, and `/` **redirects to `/projekte`** (via `projectSelectedGuard`)
+when no Projekt is selected. The picker is no longer only the home's no-selection
+state.
