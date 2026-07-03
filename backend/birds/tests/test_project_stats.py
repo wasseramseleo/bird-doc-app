@@ -233,6 +233,86 @@ def test_strongest_hour_buckets_across_vienna_day_boundary(
     assert last["strongest_hour"]["count"] == 2
 
 
+# --- top_species (issue #202, häufigste-Arten bar chart) ---------------------
+
+
+@pytest.mark.django_db
+def test_top_species_ordered_labelled_and_excludes_ring_vernichtet(
+    auth_client,
+    scientist,
+    project,
+    ringing_station,
+    species,
+    species_other,
+    aves_ignota_species,
+    sentinel_species,
+):
+    """``top_species`` lists the häufigsten Arten over the whole range ordered by
+    total Fänge (desc). Aves ignota is its own labelled entry (its
+    ``common_name_de``); Ring vernichtet is excluded entirely — same counting
+    semantics as the card."""
+    # Alpha: 4 Fänge, spread across two Vienna days (still one species bucket).
+    for when in (
+        datetime(2026, 7, 1, 5, 0, tzinfo=UTC),
+        datetime(2026, 7, 1, 6, 0, tzinfo=UTC),
+        datetime(2026, 7, 2, 5, 0, tzinfo=UTC),
+        datetime(2026, 7, 2, 6, 0, tzinfo=UTC),
+    ):
+        _capture(project, species, ringing_station, scientist, when)
+    # Aves ignota: 3 Fänge — its own labelled bucket.
+    for minute in (0, 10, 20):
+        _capture(
+            project,
+            aves_ignota_species,
+            ringing_station,
+            scientist,
+            datetime(2026, 7, 2, 7, minute, tzinfo=UTC),
+        )
+    # Beta: 2 Fänge.
+    for minute in (0, 10):
+        _capture(
+            project,
+            species_other,
+            ringing_station,
+            scientist,
+            datetime(2026, 7, 2, 8, minute, tzinfo=UTC),
+        )
+    # Ring vernichtet: 5 records — excluded from top_species entirely.
+    for minute in range(5):
+        _capture(
+            project,
+            sentinel_species,
+            ringing_station,
+            scientist,
+            datetime(2026, 7, 2, 9, minute, tzinfo=UTC),
+        )
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-07-01", "to": "2026-07-03"}))
+    assert response.status_code == 200
+    top = response.data["top_species"]
+
+    # Ordered by total Fänge desc: Alpha (4), Aves ignota (3), Beta (2).
+    assert [row["count"] for row in top] == [4, 3, 2]
+    assert [row["name"] for row in top] == [
+        species.common_name_de,
+        aves_ignota_species.common_name_de,
+        species_other.common_name_de,
+    ]
+    assert top[0]["species_id"] == str(species.id)
+    assert top[1]["species_id"] == str(aves_ignota_species.id)
+
+    # Ring vernichtet never appears.
+    assert str(sentinel_species.id) not in [row["species_id"] for row in top]
+    assert sentinel_species.common_name_de not in [row["name"] for row in top]
+
+
+@pytest.mark.django_db
+def test_top_species_empty_when_range_has_no_captures(auth_client, scientist, project):
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-06-30"}))
+    assert response.status_code == 200
+    assert response.data["top_species"] == []
+
+
 @pytest.mark.django_db
 def test_single_fangtag_has_null_previous(
     auth_client, scientist, project, ringing_station, species

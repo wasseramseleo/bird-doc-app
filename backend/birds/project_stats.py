@@ -111,9 +111,35 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
             "faenge": captures.count(),
             "artenzahl": captures.values("species_id").distinct().count(),
         },
+        "top_species": _top_species(captures),
         "last_fangtag": _last_fangtag(captures),
     }
     return payload
+
+
+TOP_SPECIES_LIMIT = 10
+
+
+def _top_species(captures):
+    """The häufigsten Arten over the whole range (issue #202), each
+    ``{species_id, name, count}`` ordered by total Fänge (desc, name as
+    tie-break). Same counting as the card: Ring vernichtet is already excluded
+    from ``captures``; Aves ignota is one Species row, so it buckets as its own
+    labelled entry (its ``common_name_de``). Capped to the top N for the bar
+    chart."""
+    rows = (
+        captures.values("species_id", "species__common_name_de")
+        .annotate(c=Count("id"))
+        .order_by("-c", "species__common_name_de")[:TOP_SPECIES_LIMIT]
+    )
+    return [
+        {
+            "species_id": str(row["species_id"]),
+            "name": row["species__common_name_de"],
+            "count": row["c"],
+        }
+        for row in rows
+    ]
 
 
 def _last_fangtag(captures):

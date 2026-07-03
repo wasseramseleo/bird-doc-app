@@ -2,8 +2,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
 
 import { ProjectDashboardComponent } from './project-dashboard';
+import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
 import { Project } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
 
@@ -26,6 +28,10 @@ function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
   return {
     range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
     totals: { faenge: 142, artenzahl: 17 },
+    top_species: [
+      { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
+      { species_id: 'sp-2', name: 'Amsel', count: 21 },
+    ],
     last_fangtag: {
       date: '2026-07-02',
       faenge: 38,
@@ -70,6 +76,22 @@ describe('ProjectDashboardComponent', () => {
     expect(text).toContain('13');
     expect(text).toContain('2026-06-28');
 
+    httpMock.verify();
+  });
+
+  it('feeds the häufigste-Arten bar chart the top_species from the stats response', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const chart = fixture.debugElement.query(By.directive(SpeciesBarChartComponent));
+    expect(chart).not.toBeNull();
+    const chartData = (chart.componentInstance as SpeciesBarChartComponent).chartData();
+    // The chart is fed the häufigsten Arten as labels + a single count dataset.
+    expect(chartData.labels).toEqual(['Mönchsgrasmücke', 'Amsel']);
+    expect(chartData.datasets[0].data).toEqual([34, 21]);
     httpMock.verify();
   });
 

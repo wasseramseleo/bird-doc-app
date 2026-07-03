@@ -14,6 +14,7 @@ import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {ApiService} from '../../service/api.service';
 import {Project} from '../../models/project.model';
 import {ProjectStats} from '../../models/project-stats.model';
+import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 
 // The current Projekt's dashboard (ADR 0018). For this slice it renders only the
 // pure-text "Letzter Tag" stat card — charts arrive in later slices. Stats are
@@ -22,7 +23,7 @@ import {ProjectStats} from '../../models/project-stats.model';
 // the typed response onto the card.
 @Component({
   selector: 'app-project-dashboard',
-  imports: [DecimalPipe, MatIconModule, MatProgressSpinnerModule],
+  imports: [DecimalPipe, MatIconModule, MatProgressSpinnerModule, SpeciesBarChartComponent],
   templateUrl: './project-dashboard.html',
   styleUrl: './project-dashboard.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -37,6 +38,7 @@ export class ProjectDashboardComponent {
   readonly error = signal<boolean>(false);
 
   readonly lastFangtag = computed(() => this.stats()?.last_fangtag ?? null);
+  readonly topSpecies = computed(() => this.stats()?.top_species ?? []);
 
   constructor() {
     // Reload whenever the current Projekt changes (the nav-bar switcher swaps it
