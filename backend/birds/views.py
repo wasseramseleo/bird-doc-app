@@ -855,6 +855,7 @@ class OfflineBundleView(APIView):
                 "ringing_stations": self._ringing_stations(organization),
                 "scientists": self._scientists(organization),
                 "projects": self._projects(request.user),
+                "centrals": self._centrals(),
                 "last_consumed_ring_numbers": self._last_consumed_ring_numbers(organization),
             }
         )
@@ -925,11 +926,18 @@ class OfflineBundleView(APIView):
             return []
         projects = (
             Project.objects.filter(scientists=scientist)
-            .select_related("organization", "default_station__organization")
+            .select_related("organization", "central", "default_station__organization")
             .prefetch_related("scientists__user")
             .order_by("-updated")
         )
         return ProjectSerializer(projects, many=True).data
+
+    @staticmethod
+    def _centrals():
+        # The Zentralen register is global reference data like Species (ADR 0019),
+        # never tenant-scoped — the offline Zentrale dropdown searches this cached
+        # list with no network (#233). The whole EURING list, not an org subset.
+        return CentralSerializer(Central.objects.all().order_by("scheme_code"), many=True).data
 
     @staticmethod
     def _last_consumed_ring_numbers(organization):

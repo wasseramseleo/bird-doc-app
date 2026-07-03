@@ -14,6 +14,7 @@ const REFERENCE_BUNDLE = {
   ringing_stations: [],
   scientists: [],
   projects: [],
+  centrals: [],
   last_consumed_ring_numbers: [],
 };
 

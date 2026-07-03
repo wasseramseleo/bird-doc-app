@@ -682,17 +682,18 @@ export class DataEntryFormComponent implements OnInit {
       tap(results => this.staffResults.set(results)),
     );
 
-    // #232: the Zentrale autocomplete for an ausländischer Wiederfang, fed by the
-    // /centrals/ lookup (one `search` param matches name/country/scheme code),
-    // following the species/Station pattern above. Read straight from the API —
-    // the Zentralen list is global reference data, not part of the offline
-    // reference bundle in this slice.
+    // #232/#233: the Zentrale autocomplete for an ausländischer Wiederfang, fed
+    // by the /centrals/ lookup (one `search` param matches name/country/scheme
+    // code), following the species/Station pattern above. Routed through the
+    // offline-aware facade (#233): online it hits the server unchanged, while
+    // offline it searches the cached Zentralen register the bundle carries — the
+    // same searchable UX with no network.
     this.filteredCentrals = this.entryForm.get('central')!.valueChanges.pipe(
       startWith(''),
       debounceTime(300),
       map(value => (typeof value === 'string' ? value : value?.name ?? '')),
       distinctUntilChanged(),
-      switchMap(name => this.apiService.getCentrals(name).pipe(map(response => response.results))),
+      switchMap(name => this.dataAccess.getCentrals(name).pipe(map(response => response.results))),
     );
 
     this.prefillRememberedBeringer();
