@@ -1,5 +1,6 @@
 import {ChangeDetectionStrategy, Component, OnInit, computed, inject, signal} from '@angular/core';
 import {HttpErrorResponse} from '@angular/common/http';
+import {switchMap} from 'rxjs/operators';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
@@ -8,11 +9,17 @@ import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
 import {ApiService} from '../service/api.service';
 import {Beringer} from '../models/beringer.model';
+import {Mitgliedschaft} from '../models/mitgliedschaft.model';
 import {ScientistCreatePayload} from '../models/scientist.model';
 import {
   BeringerFormDialogComponent,
   BeringerFormDialogData,
 } from './beringer-form-dialog/beringer-form-dialog';
+import {
+  BeringerAssignDialogComponent,
+  BeringerAssignDialogData,
+  BeringerAssignResult,
+} from './beringer-assign-dialog/beringer-assign-dialog';
 import {
   SeatPickerDialogComponent,
   SeatPickerDialogData,
@@ -43,6 +50,18 @@ export class BeringerComponent implements OnInit {
   readonly loading = signal<boolean>(true);
   private readonly beringer = signal<Beringer[]>([]);
 
+  // "Mitglieder ohne Beringer-Eintrag": the Organisation's seats that have no
+  // Beringer yet. Gap detection is free — a Mitgliedschaft whose `handle` is null
+  // IS a member-without-a-Beringer (PRD #205, issue #210).
+  readonly gapLoading = signal<boolean>(true);
+  private readonly gapSeats = signal<Mitgliedschaft[]>([]);
+
+  // Stable order for the gap panel: by the seat's username so the reconciliation
+  // list reads predictably regardless of the order the server pages return.
+  readonly sortedGapSeats = computed(() =>
+    [...this.gapSeats()].sort((a, b) => a.username.localeCompare(b.username)),
+  );
+
   // Surname, then first name (falling back to the Kürzel for a stable order when
   // a name is blank), so the management list reads predictably regardless of the
   // order the server returns.
@@ -62,6 +81,71 @@ export class BeringerComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    this.loadGaps();
+  }
+
+  // A gap member gets ONE "Beringer zuordnen" action offering two paths:
+  //   verknüpfen — attach an existing no-account Beringer to the seat (the #209
+  //     attach: PATCH /scientists/<id>/ {mitgliedschaft_id}), or
+  //   neu anlegen — create a fresh Beringer AND link it. Because create stays
+  //     link-free, this is a client-side create → attach chain: the open POST
+  //     first, then the Admin PATCH {mitgliedschaft_id}.
+  // On success the seat drops out of the gap panel and shows as "Mitglied" in the
+  // Beringer list (both are reloaded), so the Admin sees the reconciliation land.
+  openAssignDialog(seat: Mitgliedschaft): void {
+    const candidates = this.beringer().filter((b) => !this.isMitglied(b));
+    const ref = this.dialog.open<
+      BeringerAssignDialogComponent,
+      BeringerAssignDialogData,
+      BeringerAssignResult
+    >(BeringerAssignDialogComponent, {data: {seat, candidates}, width: '480px'});
+    ref.afterClosed().subscribe((result) => {
+      if (!result) {
+        return;
+      }
+      if (result.mode === 'link') {
+        this.assignExistingBeringer(seat, result.beringerId);
+      } else {
+        this.assignNewBeringer(seat, result.payload);
+      }
+    });
+  }
+
+  // verknüpfen: a single attach PATCH on the chosen existing Beringer.
+  private assignExistingBeringer(seat: Mitgliedschaft, beringerId: string): void {
+    this.api.linkScientistToSeat(beringerId, seat.id).subscribe({
+      next: (updated) => this.onAssigned(updated),
+      error: (err: HttpErrorResponse) =>
+        this.snackBar.open(this.linkErrorMessage(err, 'zugeordnet'), 'Schließen', {duration: 5000}),
+    });
+  }
+
+  // neu anlegen: create → attach, two calls in order (open POST, then the Admin
+  // PATCH {mitgliedschaft_id} that links the fresh Beringer to the seat).
+  private assignNewBeringer(seat: Mitgliedschaft, payload: ScientistCreatePayload): void {
+    this.api
+      .createScientist(payload)
+      .pipe(switchMap((created) => this.api.linkScientistToSeat(created.id, seat.id)))
+      .subscribe({
+        next: (updated) => this.onAssigned(updated),
+        error: (err: HttpErrorResponse) =>
+          this.snackBar.open(this.saveErrorMessage(err, 'zugeordnet'), 'Schließen', {
+            duration: 5000,
+          }),
+      });
+  }
+
+  // Give the Admin feedback the reconciliation worked, then refresh BOTH lists:
+  // the Beringer list (the member now shows as "Mitglied") and the gap panel (the
+  // seat now has a handle, so it drops out).
+  private onAssigned(updated: Beringer): void {
+    this.snackBar.open(
+      `„${updated.full_name}“ wurde als Mitglied zugeordnet.`,
+      'Schließen',
+      {duration: 3000},
+    );
+    this.load();
+    this.loadGaps();
   }
 
   // Add reuses the open, idempotent-by-Kürzel create endpoint (the same one the
@@ -120,9 +204,9 @@ export class BeringerComponent implements OnInit {
   // offers only *eligible* seats — same-org accounts that are not yet a Beringer,
   // derived from /mitgliedschaften/ as those whose handle is null (PRD #205).
   openLinkDialog(beringer: Beringer): void {
-    this.api.getMitgliedschaften().subscribe({
-      next: (res) => {
-        const eligible = res.results.filter((seat) => seat.handle === null);
+    this.api.getAllMitgliedschaften().subscribe({
+      next: (seats) => {
+        const eligible = seats.filter((seat) => seat.handle === null);
         const ref = this.dialog.open<SeatPickerDialogComponent, SeatPickerDialogData, string>(
           SeatPickerDialogComponent,
           {data: {beringerName: beringer.full_name, seats: eligible}, width: '480px'},
@@ -272,6 +356,23 @@ export class BeringerComponent implements OnInit {
       error: () => {
         this.loading.set(false);
         this.snackBar.open('Beringer konnten nicht geladen werden.', 'Schließen', {duration: 3000});
+      },
+    });
+  }
+
+  // Reads the COMPLETE, paged-through seat list and keeps only the gaps
+  // (handle === null). Paging matters: an AC requires the panel to list exactly
+  // ALL handle==null seats, so a first-page-only read could miss gaps.
+  private loadGaps(): void {
+    this.gapLoading.set(true);
+    this.api.getAllMitgliedschaften().subscribe({
+      next: (seats) => {
+        this.gapSeats.set(seats.filter((seat) => seat.handle === null));
+        this.gapLoading.set(false);
+      },
+      error: () => {
+        this.gapLoading.set(false);
+        this.snackBar.open('Konten konnten nicht geladen werden.', 'Schließen', {duration: 3000});
       },
     });
   }

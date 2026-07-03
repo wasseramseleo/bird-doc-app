@@ -2,7 +2,8 @@
 
 import {Injectable, inject} from '@angular/core';
 import {HttpClient, HttpParams, HttpResponse} from '@angular/common/http';
-import {Observable} from 'rxjs';
+import {EMPTY, Observable} from 'rxjs';
+import {expand, reduce} from 'rxjs/operators';
 import {DataEntry} from '../models/data-entry.model';
 import {Species} from '../models/species.model';
 import {RingSize} from '../models/ring.model';
@@ -159,6 +160,21 @@ export class ApiService {
   // null, i.e. whose account is not yet a Beringer (PRD #205, issue #209).
   getMitgliedschaften(): Observable<PaginatedApiResponse<Mitgliedschaft>> {
     return this.http.get<PaginatedApiResponse<Mitgliedschaft>>(`${this.apiUrl}/mitgliedschaften/`);
+  }
+
+  // The COMPLETE set of the Organisation's seats, following DRF's `next` link
+  // through every page (the collection is paginated ~10/page). The "Mitglieder
+  // ohne Beringer-Eintrag" gap panel must list *exactly* all handle==null seats,
+  // so a first-page read would miss gaps beyond page one (PRD #205, issue #210).
+  getAllMitgliedschaften(): Observable<Mitgliedschaft[]> {
+    return this.http
+      .get<PaginatedApiResponse<Mitgliedschaft>>(`${this.apiUrl}/mitgliedschaften/`)
+      .pipe(
+        expand((res) =>
+          res.next ? this.http.get<PaginatedApiResponse<Mitgliedschaft>>(res.next) : EMPTY,
+        ),
+        reduce((acc, res) => acc.concat(res.results), [] as Mitgliedschaft[]),
+      );
   }
 
   // Link a no-account Beringer to a seat, promoting it to a Mitglied — addressed
