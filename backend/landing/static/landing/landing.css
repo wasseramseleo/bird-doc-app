@@ -1503,3 +1503,93 @@ body {
         transform: none;
     }
 }
+
+/* Wissen reference — the public Ringgrößen-Tabelle (issue #280, PRD #278).
+   A server-rendered, script-free reference page (ADR 0009) reusing the brand
+   tokens: hairline rows like the Fang-Karte's field lines, mono codes for the
+   Ringgrößen, and the eyebrow voice for the breadcrumb + column labels. */
+.breadcrumb {
+    margin-bottom: 1.4rem;
+}
+
+.breadcrumb__trail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+}
+
+.breadcrumb__crumb + .breadcrumb__crumb::before {
+    content: "›";
+    margin-right: 0.45rem;
+    color: var(--line);
+}
+
+/* The table itself scrolls inside its own container on narrow screens so the
+   page body never scrolls horizontally. */
+.wissen-table-scroll {
+    overflow-x: auto;
+    margin-top: 1.6rem;
+}
+
+.wissen-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.wissen-table caption {
+    text-align: left;
+    margin-bottom: 0.8rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.wissen-table th,
+.wissen-table td {
+    padding: 0.55rem 0.9rem 0.55rem 0;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+}
+
+.wissen-table thead th {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+    white-space: nowrap;
+}
+
+.wissen-table tbody th {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.wissen-table td {
+    color: var(--muted);
+}
+
+/* The Ringgröße is a code — it reads in the mono field-record voice. */
+.wissen-table__size {
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--ink);
+}
+
+/* The honest empty state: quiet, explicit, never a fabricated value. */
+.wissen-table__empty {
+    font-style: italic;
+    font-size: 0.85rem;
+    color: var(--muted);
+}

@@ -1,0 +1,83 @@
+{% extends "landing/base_destination.html" %}
+
+{% comment %}
+Die öffentliche Ringgrößen-Tabelle Österreich (issue #280, PRD #278): eine
+server-gerenderte, skriptfreie Referenzseite (ADR 0009), erzeugt direkt aus der
+globalen Species-Referenz. Deutsch-only — die Seite liegt außerhalb der
+i18n_patterns und hat bewusst keine /en/-Variante.
+{% endcomment %}
+
+{% block body_class %}page--marketing{% endblock %}
+
+{% block title %}Ringgrößen-Tabelle Österreich · BirdDoc{% endblock %}
+
+{% block content %}
+    {# Sichtbarer Brotkrümelpfad + BreadcrumbList-JSON-LD aus denselben Daten. #}
+    <nav class="breadcrumb" aria-label="Brotkrümelnavigation">
+        <ol class="breadcrumb__trail">
+            {% for name, item in breadcrumbs %}
+                <li class="breadcrumb__crumb">
+                    {% if forloop.last %}
+                        <span aria-current="page">{{ name }}</span>
+                    {% else %}
+                        <a href="{{ item }}">{{ name }}</a>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ol>
+    </nav>
+    <script type="application/ld+json">{{ breadcrumb_jsonld|safe }}</script>
+
+    <p class="eyebrow">Wissen</p>
+    <h1>Ringgrößen-Tabelle Österreich</h1>
+    <p>
+        Die Ringgrößen-Tabelle Österreich listet die Empfohlene Ringgröße für
+        jede Art der österreichischen Artenliste — mit deutschem Namen,
+        wissenschaftlichem Namen, Familie und Ordnung. Die Tabelle wird direkt
+        aus derselben Artenliste erzeugt, mit der BirdDoc bei der Beringung
+        arbeitet, und kann daher nicht von ihr abweichen.
+    </p>
+
+    {# Warteliste-CTA: die Referenz führt in den bestehenden Funnel (issue #80). #}
+    <p class="wissen-cta">
+        BirdDoc schlägt die Ringgröße automatisch vor —
+        <a class="button" href="{% url 'landing:warteliste' %}">Zugang anfragen</a>
+    </p>
+
+    {# Die Tabelle scrollt auf schmalen Screens im eigenen Container. #}
+    <div class="wissen-table-scroll">
+    <table class="wissen-table">
+        <caption>
+            Alle Arten der österreichischen Artenliste mit ihrer
+            Empfohlenen Ringgröße.
+        </caption>
+        <thead>
+            <tr>
+                <th scope="col">Art</th>
+                <th scope="col">Wissenschaftlicher Name</th>
+                <th scope="col">Familie</th>
+                <th scope="col">Ordnung</th>
+                <th scope="col">Empfohlene Ringgröße</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for species in species_list %}
+                <tr>
+                    <th scope="row">{{ species.common_name_de }}</th>
+                    <td><em>{{ species.scientific_name }}</em></td>
+                    <td>{{ species.family_name }}</td>
+                    <td>{{ species.order_name }}</td>
+                    <td>
+                        {% if species.ring_size %}
+                            <span class="wissen-table__size">{{ species.ring_size }}</span>
+                        {% else %}
+                            {# Ehrlicher Leerzustand — nie ein erfundener Wert. #}
+                            <span class="wissen-table__empty">Keine Standard-Empfehlung</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+{% endblock %}
