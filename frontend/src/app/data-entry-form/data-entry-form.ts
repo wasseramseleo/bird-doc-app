@@ -619,6 +619,18 @@ export class DataEntryFormComponent implements OnInit {
     delete formValue['staff_id'];
     delete formValue['idempotency_key'];
     delete formValue['project_id'];
+    // #232/#163: the outbox stores a foreign Zentrale only as its bare scheme
+    // code; resolve it back to a Central object (like species/Station/Beringer)
+    // so isForeignCentral() — which requires an object — sees it. Otherwise the
+    // free-text Ringgröße never shows, the ring-size effect wipes the stored
+    // foreign size as a non-Austrian value, and the raw string trips
+    // selectedOptionValidator, blocking re-save. A domestic capture omits
+    // `central`, so drop the key and keep the form's Projekt-Zentrale default.
+    if (display.central) {
+      formValue['central'] = display.central;
+    } else {
+      delete formValue['central'];
+    }
 
     this.loadedQueuedFormValue.set(formValue);
     this.entryForm.patchValue(formValue);

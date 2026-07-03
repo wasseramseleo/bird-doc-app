@@ -1087,6 +1087,64 @@ describe('DataEntryFormComponent', () => {
       expect(stored.length).toBe(1);
       expect(stored[0].payload['project_id']).toBeUndefined();
     });
+
+    // #232/#163, US 13: the outbox carries a foreign Zentrale only as its bare
+    // scheme code. Reopening the queued entry must rebuild it into a Central
+    // object so the capture reopens in free-text mode, the stored foreign
+    // Ringgröße survives, and re-save is not blocked by an unmatchedOption.
+    it('reopens a queued foreign recapture in free-text mode with the Zentrale rebuilt from its scheme code', async () => {
+      const { f } = await setupQueuedEditMode(
+        'outbox-uuid-1',
+        queuedPayload({
+          bird_status: BirdStatus.ReCatch,
+          central: 'SKB',
+          ring_size: 'SA',
+          ring_number: 'AB1234',
+        }),
+      );
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      const form = f.componentInstance.entryForm;
+      // The bare scheme-code string is resolved back to a Central object.
+      expect(f.componentInstance.isForeignCentral()).toBe(true);
+      expect((form.get('central')!.value as Central).scheme_code).toBe('SKB');
+      // The stored foreign Ringgröße survives the ring-size effect (not wiped as
+      // a non-Austrian value) and the free-text field — not the strict dropdown
+      // — is shown.
+      expect(form.get('ring_size')!.value as unknown as string).toBe('SA');
+      expect(f.nativeElement.querySelector('[data-testid="ring-size-freetext"]')).not.toBeNull();
+      expect(f.nativeElement.querySelector('[data-testid="ring-size-dropdown"]')).toBeNull();
+      // The Zentrale carries no unmatchedOption error that would block re-save.
+      expect(form.get('central')!.hasError('unmatchedOption')).toBe(false);
+    });
+
+    it('re-queues a foreign recapture edit with the Zentrale scheme code preserved', async () => {
+      const { f } = await setupQueuedEditMode(
+        'outbox-uuid-1',
+        queuedPayload({
+          bird_status: BirdStatus.ReCatch,
+          central: 'SKB',
+          ring_size: 'SA',
+          ring_number: 'AB1234',
+        }),
+      );
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Tippfehler korrigiert');
+      f.componentInstance.onSubmit();
+      await settle();
+
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
+      expect(stored[0].payload['central']).toBe('SKB');
+      expect(stored[0].payload['ring_size']).toBe('SA');
+      expect(stored[0].payload['ring_number']).toBe('AB1234');
+      expect(stored[0].payload['comment']).toBe('Tippfehler korrigiert');
+    });
   });
 
   describe('auto-filling the next ring number (#42)', () => {
