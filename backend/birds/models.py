@@ -95,8 +95,15 @@ class Ring(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     number = models.CharField(max_length=64)
+    # Widened from 3 to 10 for the Zentrale write path (ADR 0019): an AUW ring
+    # keeps a short Austrian scheme code (``choices``, enforced conditionally in
+    # the capture write path — never at the DB), while a foreign Zentrale records
+    # a free-text Größe capped at ``FOREIGN_RING_SIZE_MAX_LENGTH``. The single
+    # ``size`` column carries both; ``choices`` stays for the Austrian admin
+    # dropdown and never restricts a stored free-text value (``save()`` runs no
+    # full_clean).
     size = models.CharField(
-        max_length=3, choices=RingSizes.choices, default=RingSizes.V, verbose_name=_("Ringgröße")
+        max_length=10, choices=RingSizes.choices, default=RingSizes.V, verbose_name=_("Ringgröße")
     )
     # The owning Organisation — the tenant boundary (ADR 0006). Ring uniqueness is
     # scoped to it, so two Organisations may each own the same (size, number): an
