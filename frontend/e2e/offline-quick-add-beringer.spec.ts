@@ -1,4 +1,5 @@
 import { expect, Page, Request, test } from '@playwright/test';
+import { selectProject } from './select-project';
 import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
@@ -147,9 +148,7 @@ test.describe('Offline quick-add Beringer + Kürzel-matched sync (issue #167)', 
   }) => {
     // Online: sign in, pick the Projekt, open the capture form.
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
     await page.goto('/data-entry');
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,
@@ -186,7 +185,7 @@ test.describe('Offline quick-add Beringer + Kürzel-matched sync (issue #167)', 
     await page.keyboard.press('Control+s');
     await failedCapture;
 
-    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, '1 nicht synchronisierter Eintrag');
 
     // Reconnect: the app auto-syncs. Record the order of the two POSTs and the
     // capture's staff_id so we can assert Beringer-before-capture + resolution.
@@ -209,7 +208,7 @@ test.describe('Offline quick-add Beringer + Kürzel-matched sync (issue #167)', 
     await syncedCapture;
 
     // The queue empties once both are synced.
-    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, 'Alle Einträge synchronisiert');
 
     const beringerIndex = posts.findIndex((p) => p.kind === 'beringer');
     const captureIndex = posts.findIndex((p) => p.kind === 'capture');

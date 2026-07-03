@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
@@ -174,13 +175,9 @@ test.describe('Offline ausländischer Wiederfang (issue #233)', () => {
     // Offline-Bereitschaft indicator fetches and caches the reference bundle —
     // now including the Zentralen register), then open the capture form.
     await stubApiOnline(page);
-    // `/` with no current Projekt redirects to the dedicated picker (#221); the
-    // navbar mounts there and caches the reference bundle automatically.
-    await page.goto('/');
-    await expect(page).toHaveURL(/\/projekte$/);
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    // Selecting a Projekt lands on its dashboard at `/` (ADR 0018).
-    await expect(page).toHaveURL(/\/$/);
+    // Pick the Projekt via the picker: mounting the navbar there caches the
+    // reference bundle (now including the Zentralen register) automatically.
+    await selectProject(page, PROJECT.title);
     await page.goto('/data-entry');
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,

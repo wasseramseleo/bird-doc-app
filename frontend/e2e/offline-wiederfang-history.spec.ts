@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 import { expectOutboxIndicator } from './status-menu-helpers';
 
 /**
@@ -143,9 +144,7 @@ test.describe('Offline local Wiederfang history panel (issue #168)', () => {
     // Prepare online: sign in, pick the Projekt (caches the reference bundle
     // via the nav bar's Offline-Bereitschaft indicator), open the form.
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
     await page.goto('/data-entry');
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
       STATION.name,
@@ -172,7 +171,7 @@ test.describe('Offline local Wiederfang history panel (issue #168)', () => {
     await selectBirdStatus(page, 'Erstfang');
     await expect(page.locator('input[formControlName="ring_number"]')).toHaveValue('0043');
     await saveAndAwaitFailedPost(page);
-    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, '1 nicht synchronisierter Eintrag');
 
     // --- Now recapture the same ring offline (Wiederfang) and look up its
     // history. With no server reachable, the panel is assembled from the just-

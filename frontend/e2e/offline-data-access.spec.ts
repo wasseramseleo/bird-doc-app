@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 import { expectOfflineReadiness } from './status-menu-helpers';
 
 /**
@@ -137,9 +138,7 @@ test.describe('Offline data-access facade (issue #159)', () => {
     // Offline-Bereitschaft indicator fetches and caches the reference bundle
     // automatically).
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
     await expectOfflineReadiness(page, 'zuletzt aktualisiert');
 
     // No offline indication while the app is online.

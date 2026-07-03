@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 
 /**
  * E2E for the inline autocomplete validation (#58): typing a value into the Art
@@ -84,9 +85,7 @@ test.describe('Inline autocomplete validation (#58)', () => {
     });
 
     // Selecting the project persists it, so the form route does not redirect home.
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
 
     await page.goto('/data-entry');
 

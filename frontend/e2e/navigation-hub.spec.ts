@@ -1,4 +1,5 @@
 import {expect, Page, test} from '@playwright/test';
+import {selectProject} from './select-project';
 
 /**
  * E2E coverage for the navbar project switcher (#37) and the dedicated project
@@ -113,9 +114,7 @@ test.describe('Project switcher and the /projekte picker', () => {
   });
 
   test('the switcher lists projects and switching stays on the dashboard', async ({page}) => {
-    await page.goto('/');
-    await page.locator('.project-card__main', {hasText: 'Schilfgürtel Linz'}).click();
-    await expect(page).toHaveURL(/\/$/);
+    await selectProject(page, 'Schilfgürtel Linz');
 
     await page.locator('.project-switcher').click();
 
@@ -138,9 +137,7 @@ test.describe('Project switcher and the /projekte picker', () => {
       route.fulfill({json: page0([entry(`${project}-row`, species)])});
     });
 
-    await page.goto('/');
-    await page.locator('.project-card__main', {hasText: 'Schilfgürtel Linz'}).click();
-    await expect(page).toHaveURL(/\/$/);
+    await selectProject(page, 'Schilfgürtel Linz');
 
     // First project's data on the "Letzte Fänge" hub.
     await page.locator('a[href="/data-entries"]').click();
@@ -161,9 +158,7 @@ test.describe('Project switcher and the /projekte picker', () => {
   });
 
   test('the "Neuer Fang" action routes to the data-entry form', async ({page}) => {
-    await page.goto('/');
-    await page.locator('.project-card__main', {hasText: 'Schilfgürtel Linz'}).click();
-    await expect(page).toHaveURL(/\/$/);
+    await selectProject(page, 'Schilfgürtel Linz');
 
     await page.locator('.new-fang').click();
 
@@ -171,9 +166,7 @@ test.describe('Project switcher and the /projekte picker', () => {
   });
 
   test('"Alle Projekte …" opens /projekte and keeps the current Projekt (#221)', async ({page}) => {
-    await page.goto('/');
-    await page.locator('.project-card__main', {hasText: 'Schilfgürtel Linz'}).click();
-    await expect(page).toHaveURL(/\/$/);
+    await selectProject(page, 'Schilfgürtel Linz');
 
     await page.locator('.project-switcher').click();
     await page.getByRole('menuitem', {name: /Alle Projekte/}).click();

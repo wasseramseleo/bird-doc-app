@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 import { expectOutboxIndicator, openUserMenu } from './status-menu-helpers';
 
 /**
@@ -136,9 +137,7 @@ test.describe("Today's session — editing and deleting a queued entry offline (
     // Prepare online, then go offline and record an Erstfang — it lands in
     // the durable outbox instead of reaching the server (issue #160).
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
 
     await goOffline(page);
     await page.goto('/data-entry');
@@ -150,7 +149,7 @@ test.describe("Today's session — editing and deleting a queued entry offline (
     );
     await page.keyboard.press('Control+s');
     await failedPost;
-    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, '1 nicht synchronisierter Eintrag');
 
     // "Today's session": the queued capture is visible offline, shown as
     // nicht synchronisiert.
@@ -185,13 +184,13 @@ test.describe("Today's session — editing and deleting a queued entry offline (
 
     // Still exactly one nicht synchronisiert entry — the edit corrected it
     // in place rather than queueing a second capture.
-    await expectOutboxIndicator(page, '1 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, '1 nicht synchronisierter Eintrag');
     await expect(page.locator('.session-row--queued')).toHaveCount(1);
 
     // Deleting the queued entry removes it for good.
     await page.locator('[data-testid="delete-queued"]').click();
     await page.locator('mat-dialog-actions button', { hasText: 'Löschen' }).click();
     await expect(page.locator('.session-row--queued')).toHaveCount(0);
-    await expectOutboxIndicator(page, '0 nicht synchronisierte Einträge');
+    await expectOutboxIndicator(page, 'Alle Einträge synchronisiert');
   });
 });

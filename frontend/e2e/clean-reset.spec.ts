@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 
 /**
  * E2E for the clean-reset / Zurücksetzen behaviour (#24):
@@ -65,9 +66,7 @@ async function stubApi(page: Page): Promise<void> {
 
 async function gotoCreateForm(page: Page): Promise<void> {
   await stubApi(page);
-  await page.goto('/');
-  await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-  await expect(page).toHaveURL(/\/data-entries$/);
+  await selectProject(page, PROJECT.title);
   await page.goto('/data-entry');
   await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(STATION.name);
 }

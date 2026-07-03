@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { selectProject } from './select-project';
 
 /**
  * E2E for the offline walking skeleton (issue #156, PRD #152): a device that
@@ -79,9 +80,7 @@ test.describe('Offline cold boot (issue #156)', () => {
     // so both the identity (IndexedDB) and the active Projekt (LocalStorage)
     // are cached.
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
 
     await page.goto('/data-entry');
     await expect(page.locator('input[formControlName="ringing_station"]')).toHaveValue(
@@ -100,9 +99,7 @@ test.describe('Offline cold boot (issue #156)', () => {
 
   test('does not fall back to a stale identity once logged out online', async ({ page }) => {
     await stubApiOnline(page);
-    await page.goto('/');
-    await page.locator('.project-card__main', { hasText: PROJECT.title }).click();
-    await expect(page).toHaveURL(/\/data-entries$/);
+    await selectProject(page, PROJECT.title);
 
     // A confirmed "not authenticated" response (today's online logout/expiry
     // behaviour) clears the cached identity — offline never resurrects it.
