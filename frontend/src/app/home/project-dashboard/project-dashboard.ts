@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import {DecimalPipe} from '@angular/common';
+import {HttpErrorResponse} from '@angular/common/http';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 
@@ -20,6 +21,14 @@ import {
 } from '../../models/project-stats.model';
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 import {SpeciesLineChartComponent} from './species-line-chart/species-line-chart';
+import {classifyStatsFailure, DashboardFailure} from './dashboard-state';
+
+// The state the dashboard body renders. `loading` covers the in-flight fetch (no
+// empty/broken flash); `offline` and `error` are the two failure branches, kept
+// distinct so an offline field Beringer reads "needs connection" rather than
+// "broken" (ADR 0017); `empty` is a capture-less range; `populated` is the card
+// + charts. (Issue #204.)
+type DashboardViewState = 'loading' | DashboardFailure | 'empty' | 'populated';
 
 // A range preset plus its German label, owned by the dashboard's range selector
 // (issue #203). "per Saison" is served by *Dieses Jahr* / a custom range — no
@@ -69,12 +78,24 @@ export class ProjectDashboardComponent {
 
   readonly stats = signal<ProjectStats | null>(null);
   readonly loading = signal<boolean>(true);
-  readonly error = signal<boolean>(false);
+  // Null while loading or on success; 'offline' | 'error' once a fetch fails.
+  // Distinguishing the two is the whole point of the online-only offline state
+  // (ADR 0017, issue #204).
+  readonly failure = signal<DashboardFailure | null>(null);
 
   readonly lastFangtag = computed(() => this.stats()?.last_fangtag ?? null);
   readonly topSpecies = computed(() => this.stats()?.top_species ?? []);
   readonly series = computed(() => this.stats()?.series ?? {days: [], lines: []});
   readonly hasSeries = computed(() => this.series().days.length > 0);
+
+  // The single source of truth the template switches on: exactly one of the five
+  // dashboard states, resolved from the fetch lifecycle.
+  readonly viewState = computed<DashboardViewState>(() => {
+    if (this.loading()) return 'loading';
+    const failure = this.failure();
+    if (failure) return failure;
+    return this.lastFangtag() ? 'populated' : 'empty';
+  });
 
   constructor() {
     // Reload whenever the current Projekt changes (the nav-bar switcher swaps it
@@ -84,15 +105,16 @@ export class ProjectDashboardComponent {
       const project = this.project();
       const range = this.range();
       this.loading.set(true);
-      this.error.set(false);
+      this.failure.set(null);
       this.api.getProjectStats(project.id, range).subscribe({
         next: (stats) => {
           this.stats.set(stats);
           this.loading.set(false);
         },
-        error: () => {
+        error: (err: unknown) => {
+          const status = err instanceof HttpErrorResponse ? err.status : null;
           this.stats.set(null);
-          this.error.set(true);
+          this.failure.set(classifyStatsFailure(status, navigator.onLine));
           this.loading.set(false);
         },
       });
