@@ -16,6 +16,7 @@ import {
   AgeClass,
   BirdStatus,
   DataEntry,
+  HandWingMoult,
   Sex,
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
@@ -33,6 +34,8 @@ import { AuthService } from '../service/auth.service';
 import { IndexedDbStore } from '../core/offline/indexed-db-store';
 import { ReferenceBundleCacheService } from '../core/offline/reference-bundle-cache';
 import { Scientist } from '../models/scientist.model';
+import { SpeciesNorm } from '../core/plausibility/plausibility';
+import { OfflineBundle } from '../models/offline-bundle.model';
 
 registerLocaleData(localeDeAt);
 
@@ -2855,6 +2858,1028 @@ describe('DataEntryFormComponent', () => {
       expect(form.get('ring_size')!.value as unknown as string).toBe('SA');
       expect(f.nativeElement.querySelector('[data-testid="ring-size-freetext"]')).not.toBeNull();
       expect(f.nativeElement.querySelector('[data-testid="ring-size-dropdown"]')).toBeNull();
+    });
+  });
+
+  // PRD #245, issue #246: the client-side Plausibilitätsprüfung. A normed Art
+  // plus an out-of-range Gewicht raises an inline Plausibilitätswarnung under the
+  // field on blur (the sex-contradiction role="alert" idiom); on submit an active
+  // warning routes through ONE aggregated confirm-dialog whose acknowledgment is
+  // transient — never persisted. Identical in create and edit mode.
+  describe('Plausibilitätswarnung (Artennorm, PRD #245)', () => {
+    // A Zaunkönig norm with all six σ-bands set (k 1,96): Gewicht Ø 9,1 g SD 0,82
+    // → 7,5–10,7 g; and the five #247 measurements (mm): Federlänge Ø 54 SD 2 →
+    // 50,1–57,9; Flügellänge Ø 73 SD 2,5 → 68,1–77,9; Tarsus Ø 19 SD 0,6 →
+    // 17,8–20,2; Kerbe F2 Ø 8 SD 0,7 → 6,6–9,4; Innenfuß Ø 15 SD 0,8 → 13,4–16,6.
+    const norm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      feather_mean: '54',
+      feather_sd: '2',
+      wing_mean: '73',
+      wing_sd: '2.5',
+      tarsus_mean: '19',
+      tarsus_sd: '0.6',
+      notch_f2_mean: '8',
+      notch_f2_sd: '0.7',
+      inner_foot_mean: '15',
+      inner_foot_sd: '0.8',
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: null,
+      dj_grossgefiedermauser_moeglich: null,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const unnormedSpecies: Species = { ...zaunkoenig, id: 's2', common_name_de: 'Kohlmeise' };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [norm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      // Let loadNorms() resolve from the (mocked) reference cache.
+      await settle();
+      return httpMock;
+    }
+
+    // Fill the required fields for a valid Wiederfang (no ring-number auto-fetch,
+    // which only fires for an Erstfang), so onSubmit reaches the save gate.
+    function fillValid(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: zaunkoenig as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      component.selectedSpecies.set(zaunkoenig);
+    }
+
+    const warningEl = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-weight-warning"]',
+      ) as HTMLElement | null;
+
+    it('renders the inline warning on blur for an out-of-range Gewicht, with the de-AT message', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      const el = warningEl();
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('role')).toBe('alert');
+      expect(el!.textContent).toContain(
+        'Gewicht 25 g liegt außerhalb des erwarteten Bereichs 7,5–10,7 g (Zaunkönig)',
+      );
+    });
+
+    it('renders no inline warning when the Gewicht is in range', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(9);
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(warningEl()).toBeNull();
+    });
+
+    it('renders no inline warning when the selected Art carries no Artennorm', async () => {
+      await setup();
+      component.selectedSpecies.set(unnormedSpecies);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(warningEl()).toBeNull();
+    });
+
+    it('opens ONE aggregated confirm-dialog on submit when a warning is active, and writes on confirm', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.get('weight_gram')!.setValue(25);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
+      expect(data.message).toContain('Gewicht 25 g liegt außerhalb');
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('returns to the form without writing when the confirm-dialog is cancelled', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.get('weight_gram')!.setValue(25);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+    });
+
+    it('opens no dialog and writes directly when no warning is active', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.get('weight_gram')!.setValue(9);
+
+      component.onSubmit();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('never persists the acknowledgment (no ack field on the write payload; the value rides unchanged)', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.get('weight_gram')!.setValue(25);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      expect('acknowledged' in body).toBe(false);
+      expect('plausibility_acknowledged' in body).toBe(false);
+      expect(body['weight_gram']).toBe(25);
+      post.flush({});
+    });
+
+    it('applies the same warning + acknowledgment on submit in edit mode', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '42' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush({
+          id: '42',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          weight_gram: 25,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      f.componentInstance.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const put = httpMock.expectOne(
+        (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
+      );
+      put.flush({});
+    });
+
+    // Issue #247: the remaining five σ-measurements get the identical inline
+    // blur warning under their own field, keyed by field-specific testid, with
+    // the same optionality (in-range → none) and the same de-AT message shape.
+    interface FieldCase {
+      label: string;
+      field: string;
+      testid: string;
+      inRange: number;
+      outOfRange: number;
+      message: string;
+    }
+    const fieldCases: FieldCase[] = [
+      {
+        label: 'Federlänge',
+        field: 'feather_span',
+        testid: 'plausibility-feather_span-warning',
+        inRange: 54,
+        outOfRange: 65,
+        message:
+          'Federlänge 65 mm liegt außerhalb des erwarteten Bereichs 50,1–57,9 mm (Zaunkönig)',
+      },
+      {
+        label: 'Flügellänge',
+        field: 'wing_span',
+        testid: 'plausibility-wing_span-warning',
+        inRange: 73,
+        outOfRange: 90,
+        message:
+          'Flügellänge 90 mm liegt außerhalb des erwarteten Bereichs 68,1–77,9 mm (Zaunkönig)',
+      },
+      {
+        label: 'Tarsus',
+        field: 'tarsus',
+        testid: 'plausibility-tarsus-warning',
+        inRange: 19,
+        outOfRange: 25,
+        message: 'Tarsus 25 mm liegt außerhalb des erwarteten Bereichs 17,8–20,2 mm (Zaunkönig)',
+      },
+      {
+        label: 'Kerbe F2',
+        field: 'notch_f2',
+        testid: 'plausibility-notch_f2-warning',
+        inRange: 8,
+        outOfRange: 12,
+        message: 'Kerbe F2 12 mm liegt außerhalb des erwarteten Bereichs 6,6–9,4 mm (Zaunkönig)',
+      },
+      {
+        label: 'Innenfuß',
+        field: 'inner_foot',
+        testid: 'plausibility-inner_foot-warning',
+        inRange: 15,
+        outOfRange: 20,
+        message: 'Innenfuß 20 mm liegt außerhalb des erwarteten Bereichs 13,4–16,6 mm (Zaunkönig)',
+      },
+    ];
+
+    for (const c of fieldCases) {
+      describe(`inline warning under ${c.label} (#247)`, () => {
+        const el = () =>
+          fixture.nativeElement.querySelector(
+            `[data-testid="${c.testid}"]`,
+          ) as HTMLElement | null;
+
+        it('renders on blur for an out-of-range value, with the de-AT message', async () => {
+          await setup();
+          component.selectedSpecies.set(zaunkoenig);
+          component.entryForm.get(c.field)!.setValue(c.outOfRange);
+          component.onMeasurementBlur();
+          fixture.detectChanges();
+
+          const warning = el();
+          expect(warning).not.toBeNull();
+          expect(warning!.getAttribute('role')).toBe('alert');
+          expect(warning!.textContent).toContain(c.message);
+        });
+
+        it('renders nothing when the value is in range', async () => {
+          await setup();
+          component.selectedSpecies.set(zaunkoenig);
+          component.entryForm.get(c.field)!.setValue(c.inRange);
+          component.onMeasurementBlur();
+          fixture.detectChanges();
+
+          expect(el()).toBeNull();
+        });
+
+        it('renders nothing when the selected Art carries no Artennorm', async () => {
+          await setup();
+          component.selectedSpecies.set(unnormedSpecies);
+          component.entryForm.get(c.field)!.setValue(c.outOfRange);
+          component.onMeasurementBlur();
+          fixture.detectChanges();
+
+          expect(el()).toBeNull();
+        });
+      });
+    }
+
+    it('aggregates every out-of-range measurement into ONE confirm-dialog on submit (not one per field)', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.patchValue({
+        weight_gram: 25,
+        feather_span: 65,
+        wing_span: 90,
+        tarsus: 25,
+        notch_f2: 12,
+        inner_foot: 20,
+      });
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      // A single dialog listing all six discrepancies — never one dialog per field.
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
+      expect(data.message).toContain('Gewicht 25 g liegt außerhalb');
+      expect(data.message).toContain(
+        'Federlänge 65 mm liegt außerhalb des erwarteten Bereichs 50,1–57,9 mm (Zaunkönig)',
+      );
+      expect(data.message).toContain(
+        'Flügellänge 90 mm liegt außerhalb des erwarteten Bereichs 68,1–77,9 mm (Zaunkönig)',
+      );
+      expect(data.message).toContain(
+        'Tarsus 25 mm liegt außerhalb des erwarteten Bereichs 17,8–20,2 mm (Zaunkönig)',
+      );
+      expect(data.message).toContain(
+        'Kerbe F2 12 mm liegt außerhalb des erwarteten Bereichs 6,6–9,4 mm (Zaunkönig)',
+      );
+      expect(data.message).toContain(
+        'Innenfuß 20 mm liegt außerhalb des erwarteten Bereichs 13,4–16,6 mm (Zaunkönig)',
+      );
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('renders the inline warnings for the five fields on blur in edit mode too', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '77' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const editComponent = f.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/77/'))
+        .flush({
+          id: '77',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          feather_span: 65,
+          wing_span: 90,
+          tarsus: 25,
+          notch_f2: 12,
+          inner_foot: 20,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      editComponent.onMeasurementBlur();
+      f.detectChanges();
+
+      for (const c of fieldCases) {
+        const warning = f.nativeElement.querySelector(
+          `[data-testid="${c.testid}"]`,
+        ) as HTMLElement | null;
+        expect(warning).withContext(c.label).not.toBeNull();
+        expect(warning!.textContent).toContain(c.message);
+      }
+    });
+  });
+
+  // Issue #248: the Quotient rule surfaced in the capture form. The derived
+  // Federlänge/Flügellänge ratio is checked against a relative band; its inline
+  // Plausibilitätswarnung sits under its own dedicated slot (keyed by the
+  // synthetic `quotient` field so it never collides with the two operands' σ
+  // warnings), and it joins the same aggregated save-time confirm-dialog. It
+  // recomputes on every operand blur. Create and edit mode.
+  describe('Quotient-Plausibilitätswarnung (Artennorm, #248)', () => {
+    // Quotient Ø 0,74, Toleranz 3 % → band 0,72–0,76. The σ bands are OFF so the
+    // only warning a Quotient case yields is the quotient one.
+    const quotientNorm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: null,
+      weight_sd: null,
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: '0.74',
+      quotient_tolerance_pct: '3',
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: null,
+      dj_grossgefiedermauser_moeglich: null,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [quotientNorm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const quotientMessage =
+      'Quotient Federlänge/Flügellänge 0,86 liegt außerhalb des erwarteten Bereichs 0,72–0,76 (Zaunkönig)';
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    function fillValid(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: zaunkoenig as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      component.selectedSpecies.set(zaunkoenig);
+    }
+
+    const warningEl = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-quotient-warning"]',
+      ) as HTMLElement | null;
+
+    it('renders the inline quotient warning on blur for an out-of-band ratio, with the de-AT message', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({ feather_span: 60, wing_span: 70 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      const el = warningEl();
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('role')).toBe('alert');
+      expect(el!.textContent).toContain(quotientMessage);
+    });
+
+    it('renders no inline quotient warning when the ratio is in band', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      // 54/73 = 0,7397 — inside 0,72–0,76.
+      component.entryForm.patchValue({ feather_span: 54, wing_span: 73 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(warningEl()).toBeNull();
+    });
+
+    it('renders no inline quotient warning while either operand is blank (needs both)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      // Only Federlänge — Flügellänge still blank → suppressed.
+      component.entryForm.patchValue({ feather_span: 60, wing_span: null });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+
+      expect(warningEl()).toBeNull();
+    });
+
+    it('recomputes the derived quotient as either operand changes', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      // Only Flügellänge present → no warning yet (needs both operands).
+      component.entryForm.patchValue({ wing_span: 70 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+      expect(warningEl()).toBeNull();
+
+      // Add Federlänge → the now-derivable ratio 60/70 = 0,857 is out of band.
+      component.entryForm.patchValue({ feather_span: 60 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+      expect(warningEl()).not.toBeNull();
+      expect(warningEl()!.textContent).toContain(quotientMessage);
+
+      // Change the other operand so the ratio moves back in band → warning clears.
+      // 60/82 = 0,7317 — inside 0,72–0,76.
+      component.entryForm.patchValue({ wing_span: 82 });
+      component.onMeasurementBlur();
+      fixture.detectChanges();
+      expect(warningEl()).toBeNull();
+    });
+
+    it('includes the quotient discrepancy in the aggregated save-time confirm-dialog and writes on confirm', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.patchValue({ feather_span: 60, wing_span: 70 });
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
+      expect(data.message).toContain(quotientMessage);
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('surfaces the inline quotient warning on blur in edit mode too', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '88' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const editComponent = f.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/88/'))
+        .flush({
+          id: '88',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          feather_span: 60,
+          wing_span: 70,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      editComponent.onMeasurementBlur();
+      f.detectChanges();
+
+      const warning = f.nativeElement.querySelector(
+        '[data-testid="plausibility-quotient-warning"]',
+      ) as HTMLElement | null;
+      expect(warning).not.toBeNull();
+      expect(warning!.textContent).toContain(quotientMessage);
+    });
+  });
+
+  // Issue #249: the two categorical-flag rules surfaced in the capture form. A
+  // determined Geschlecht against a not-sexable Artennorm, and a Handschwingen-
+  // mauser on a diesjährigen Vogel against a no-dj-moult Artennorm, each raise an
+  // inline Plausibilitätswarnung under their own field (`sex` / `hand_wing`) and
+  // join the same aggregated save-time confirm-dialog. The flag selects settle on
+  // selectionChange (onCategoricalChange), not an input blur. Create and edit mode.
+  describe('kategorische Flag-Plausibilitätswarnungen (Artennorm, #249)', () => {
+    // A Zaunkönig norm with ONLY the two categorical flags armed (all seven
+    // numeric rules off), so a flag case yields at most its own flag warning.
+    const flagNorm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: null,
+      weight_sd: null,
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: false,
+      dj_grossgefiedermauser_moeglich: false,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [flagNorm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const sexMessage = 'Geschlechtsbestimmung laut Artennorm nicht möglich (Zaunkönig)';
+    const handWingMessage =
+      'Großgefiedermauser bei diesjährigem Vogel laut Artennorm nicht zu erwarten (Zaunkönig)';
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    function fillValid(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: zaunkoenig as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+      component.selectedSpecies.set(zaunkoenig);
+    }
+
+    const sexWarningEl = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-sex-warning"]',
+      ) as HTMLElement | null;
+    const handWingWarningEl = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="plausibility-hand_wing-warning"]',
+      ) as HTMLElement | null;
+
+    it('renders the inline Geschlecht warning when a determined sex is picked against a not-sexable norm', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('sex')!.setValue(Sex.Male);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      const el = sexWarningEl();
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('role')).toBe('alert');
+      expect(el!.textContent).toContain(sexMessage);
+    });
+
+    it('renders no inline Geschlecht warning for Unbekannt (fires on a claim, not an absence)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('sex')!.setValue(Sex.Unknown);
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(sexWarningEl()).toBeNull();
+    });
+
+    it('renders the inline Handschwingenmauser warning for a diesjährigen Vogel with moult present', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      const el = handWingWarningEl();
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('role')).toBe('alert');
+      expect(el!.textContent).toContain(handWingMessage);
+    });
+
+    it('renders no inline Handschwingenmauser warning when the bird is not diesjährig', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.patchValue({
+        age_class: AgeClass.NotThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(handWingWarningEl()).toBeNull();
+    });
+
+    it('renders neither flag warning when the selected Art carries no Artennorm', async () => {
+      await setup();
+      component.selectedSpecies.set({ ...zaunkoenig, id: 's2', common_name_de: 'Kohlmeise' });
+      component.entryForm.patchValue({
+        sex: Sex.Male,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      component.onCategoricalChange();
+      fixture.detectChanges();
+
+      expect(sexWarningEl()).toBeNull();
+      expect(handWingWarningEl()).toBeNull();
+    });
+
+    it('includes BOTH flag discrepancies in ONE aggregated save-time confirm-dialog and writes on confirm', async () => {
+      const httpMock = await setup();
+      fillValid();
+      component.entryForm.patchValue({
+        sex: Sex.Male,
+        age_class: AgeClass.ThisYear,
+        hand_wing: HandWingMoult.AtLeastOne,
+      });
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onSubmit();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      const data = dialogMock.open.calls.mostRecent().args[1].data as { message: string };
+      expect(data.message).toContain(sexMessage);
+      expect(data.message).toContain(handWingMessage);
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      post.flush({});
+    });
+
+    it('surfaces both inline flag warnings in edit mode too', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '99' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const editComponent = f.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/99/'))
+        .flush({
+          id: '99',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Male,
+          hand_wing: HandWingMoult.AtLeastOne,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      editComponent.onCategoricalChange();
+      f.detectChanges();
+
+      const sexWarning = f.nativeElement.querySelector(
+        '[data-testid="plausibility-sex-warning"]',
+      ) as HTMLElement | null;
+      const handWingWarning = f.nativeElement.querySelector(
+        '[data-testid="plausibility-hand_wing-warning"]',
+      ) as HTMLElement | null;
+      expect(sexWarning).not.toBeNull();
+      expect(sexWarning!.textContent).toContain(sexMessage);
+      expect(handWingWarning).not.toBeNull();
+      expect(handWingWarning!.textContent).toContain(handWingMessage);
     });
   });
 });

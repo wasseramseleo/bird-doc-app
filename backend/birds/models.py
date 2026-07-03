@@ -1,5 +1,6 @@
 import secrets
 import uuid
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -832,3 +833,131 @@ class SpeciesList(models.Model):
             # Set all other lists for this user to inactive
             SpeciesList.objects.filter(user=self.user).exclude(pk=self.pk).update(is_active=False)
         super().save(*args, **kwargs)
+
+
+class SpeciesNorm(models.Model):
+    """Per-species measurement norms driving the Plausibilitätsprüfung — the
+    domain **Artennorm** (PRD #245, ADR 0021).
+
+    Two-layer ownership: a row with ``organization IS NULL`` is the **globale
+    Standard-Artennorm** (seeded once, shared like ``Species`` reference data); a
+    row with an ``organization`` is that Organisation's **override**. The
+    effective norm for a species in an Organisation is the override row if one
+    exists, else the global default — resolved **whole-row**, never a per-column
+    merge (ADR 0021), so clearing a column in an override switches *that* check
+    off for the org.
+
+    Every rule column is nullable: a null Ø/SD pair (or a null flag) means that
+    particular Ausreißertest is simply off. The client runs the check
+    (``computePlausibilityWarnings``); the server never enforces or blocks on
+    plausibility.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    species = models.ForeignKey(
+        Species,
+        on_delete=models.CASCADE,
+        related_name="norms",
+        verbose_name=_("Art"),
+    )
+    # NULL = the globale Standard-Artennorm; a value = that Organisation's
+    # override. Nullable by design (the global default targets every tenant,
+    # including ones that do not exist yet).
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="species_norms",
+        null=True,
+        blank=True,
+        verbose_name=_("Organisation"),
+    )
+
+    # The six paired Ø/SD numeric bands (Ø ± sd_factor·SD). All nullable — a
+    # null pair turns that measurement's Ausreißertest off.
+    weight_mean = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Gewicht Ø (g)")
+    )
+    weight_sd = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Gewicht SD (g)")
+    )
+    feather_mean = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Federl. Ø (mm)")
+    )
+    feather_sd = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Federl. SD (mm)")
+    )
+    wing_mean = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Flügell. Ø (mm)")
+    )
+    wing_sd = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Flügell. SD (mm)")
+    )
+    tarsus_mean = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Tarsus Ø (mm)")
+    )
+    tarsus_sd = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Tarsus SD (mm)")
+    )
+    notch_f2_mean = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Kerbe F2 Ø (mm)")
+    )
+    notch_f2_sd = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Kerbe F2 SD (mm)")
+    )
+    inner_foot_mean = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Innenfuß Ø (mm)")
+    )
+    inner_foot_sd = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True, verbose_name=_("Innenfuß SD (mm)")
+    )
+
+    # The Quotient Federl./Flügell. uses a relative band (Ø ± Toleranz-%), not
+    # an Ø/SD band. Both nullable (null = the quotient check is off).
+    quotient_mean = models.DecimalField(
+        max_digits=8, decimal_places=4, null=True, blank=True, verbose_name=_("Quotient Ø")
+    )
+    quotient_tolerance_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_("Quotient Toleranz %")
+    )
+
+    # k for every Ø ± k·SD band. Defaults to 1.96 (the xlsx's "±SD"); nullable so
+    # a row can be seeded without one (the client falls back to 1.96).
+    sd_factor = models.DecimalField(
+        max_digits=5,
+        decimal_places=3,
+        default=Decimal("1.96"),
+        null=True,
+        blank=True,
+        verbose_name=_("SD-Faktor"),
+    )
+
+    # Categorical flags. Nullable tri-state: null = the flag check is off; False
+    # = a determined value is implausible; True = it is fine.
+    geschlechtsbestimmung_moeglich = models.BooleanField(
+        null=True, blank=True, verbose_name=_("Geschlechtsbestimmung möglich")
+    )
+    dj_grossgefiedermauser_moeglich = models.BooleanField(
+        null=True, blank=True, verbose_name=_("bei dj. Großgefiedermauser möglich")
+    )
+
+    class Meta:
+        constraints = [
+            # Exactly one globale Standard-Artennorm per species. A partial
+            # index because NULL is never compared equal to NULL in a SQL unique
+            # index, so a plain unique on (species, organization) would let two
+            # NULL-org defaults coexist for one species.
+            models.UniqueConstraint(
+                fields=["species"],
+                condition=models.Q(organization__isnull=True),
+                name="unique_global_default_species_norm",
+            ),
+            # At most one override per (species, Organisation).
+            models.UniqueConstraint(
+                fields=["species", "organization"],
+                name="unique_species_norm_per_org",
+            ),
+        ]
+
+    def __str__(self):
+        scope = self.organization_id or "Standard"
+        return f"Artennorm {self.species_id} ({scope})"

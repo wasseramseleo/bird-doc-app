@@ -6,6 +6,7 @@ import {RingSize} from './ring.model';
 import {RingingStation} from './ringing-station.model';
 import {Scientist} from './scientist.model';
 import {Species} from './species.model';
+import {SpeciesNorm} from '../core/plausibility/plausibility';
 
 /**
  * The offline reference bundle (issue #157, PRD #152) — everything a device
@@ -45,5 +46,12 @@ export interface OfflineBundle {
   // species pool, never tenant-scoped. The offline Zentrale dropdown searches
   // this cached list (name, country, scheme code) with no network.
   centrals: Central[];
+  // The per-org effective Artennormen (PRD #245, ADR 0021) — override ?? default
+  // per species, keyed by `species_id`. The capture form looks up
+  // `norms[species.id]` on species selection to drive the client-side
+  // Plausibilitätsprüfung, identically online and offline. Optional so a bundle
+  // cached by a pre-feature app version (no `norms`) still deserialises — the
+  // client defaults it to an empty list.
+  norms?: SpeciesNorm[];
   last_consumed_ring_numbers: LastConsumedRingNumber[];
 }

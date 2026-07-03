@@ -17,6 +17,9 @@ router.register(r"organizations", views.OrganizationViewSet, basename="organizat
 router.register(r"projects", views.ProjectViewSet, basename="project")
 router.register(r"invitations", views.OrgEinladungViewSet, basename="invitation")
 router.register(r"mitgliedschaften", views.MitgliedschaftViewSet, basename="mitgliedschaft")
+router.register(
+    r"species-norm-overrides", views.SpeciesNormViewSet, basename="species-norm-override"
+)
 
 # The API URLs are now determined automatically by the router.
 # We just need to include the router.urls in our urlpatterns. The offline
@@ -24,5 +27,6 @@ router.register(r"mitgliedschaften", views.MitgliedschaftViewSet, basename="mitg
 # directly rather than through the router.
 urlpatterns = [
     path("offline-bundle/", views.OfflineBundleView.as_view(), name="offline-bundle"),
+    path("species-norms/", views.SpeciesNormListView.as_view(), name="species-norms"),
     path("", include(router.urls)),
 ]

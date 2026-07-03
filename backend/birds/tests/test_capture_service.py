@@ -46,6 +46,27 @@ def test_create_capture_creates_org_scoped_ring_and_attaches_organisation(
 
 
 @pytest.mark.django_db
+def test_create_capture_never_enforces_plausibility_on_out_of_range_weight(
+    species, scientist, ringing_station, organization
+):
+    """The capture service runs no plausibility check (PRD #245, ADR 0021): a
+    resolved capture with a wildly out-of-range Gewicht persists unchanged, so
+    an IWM-imported historical row that is legitimately "unusual" never blocks."""
+    entry = create_capture(
+        **_capture_kwargs(
+            species,
+            scientist,
+            ringing_station,
+            organization,
+            ring_number="810",
+            weight_gram=Decimal("250.0"),
+        )
+    )
+
+    assert entry.weight_gram == Decimal("250.0")
+
+
+@pytest.mark.django_db
 def test_create_capture_reuses_existing_org_ring(species, scientist, ringing_station, organization):
     """A ring already owned by the recording Organisation is reused, not duplicated."""
     existing = Ring.objects.create(number="400", size=Ring.RingSizes.V, organization=organization)

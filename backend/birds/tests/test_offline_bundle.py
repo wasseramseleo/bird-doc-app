@@ -10,6 +10,7 @@ identity (user, Organisation, Rolle).
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -21,6 +22,7 @@ from birds.models import (
     RingingStation,
     Scientist,
     SpeciesList,
+    SpeciesNorm,
 )
 
 BUNDLE_URL = "/api/birds/offline-bundle/"
@@ -104,6 +106,7 @@ def test_bundle_without_active_organization_is_empty_not_error(auth_client):
     assert payload["ringing_stations"] == []
     assert payload["scientists"] == []
     assert payload["projects"] == []
+    assert payload["norms"] == []
     assert payload["last_consumed_ring_numbers"] == []
 
 
@@ -400,6 +403,52 @@ def test_bundle_last_consumed_is_scoped_to_requester_org(
     assert len(entries) == 1
     assert entries[0]["project_id"] == str(project.id)
     assert entries[0]["number"] == "0050"
+
+
+# --- Per-org Artennormen (PRD #245, issue #246) -------------------------------
+# The bundle embeds the same per-org effective Artennormen the /species-norms/
+# read API serves (override ?? default per species, whole-row — ADR 0021), keyed
+# by species_id, so the client's plausibility lookup is identical online and
+# offline.
+
+
+@pytest.mark.django_db
+def test_bundle_embeds_effective_norm_resolving_override_over_default(
+    auth_client, scientist, organization, species
+):
+    SpeciesNorm.objects.create(
+        species=species, organization=None, weight_mean=Decimal("9.1"), weight_sd=Decimal("0.82")
+    )
+    SpeciesNorm.objects.create(
+        species=species,
+        organization=organization,
+        weight_mean=Decimal("12.0"),
+        weight_sd=Decimal("1.0"),
+    )
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    row = next(n for n in payload["norms"] if n["species_id"] == str(species.id))
+    assert Decimal(str(row["weight_mean"])) == Decimal("12.0")
+    assert row["species_name"] == species.common_name_de
+
+
+@pytest.mark.django_db
+def test_bundle_embeds_global_default_when_no_override(
+    auth_client, scientist, organization, species
+):
+    SpeciesNorm.objects.create(
+        species=species, organization=None, weight_mean=Decimal("9.1"), weight_sd=Decimal("0.82")
+    )
+    payload = auth_client.get(BUNDLE_URL).json()
+    row = next((n for n in payload["norms"] if n["species_id"] == str(species.id)), None)
+    assert row is not None
+    assert Decimal(str(row["weight_mean"])) == Decimal("9.1")
+
+
+@pytest.mark.django_db
+def test_bundle_norms_omit_species_with_no_norm(auth_client, scientist, organization, species):
+    payload = auth_client.get(BUNDLE_URL).json()
+    assert not any(n["species_id"] == str(species.id) for n in payload["norms"])
 
 
 # --- Zentralen register + Projekt Zentrale + offline replay (issue #233) ------
