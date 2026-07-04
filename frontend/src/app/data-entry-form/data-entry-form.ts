@@ -1,6 +1,8 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   OnInit,
   computed,
@@ -118,7 +120,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     '(focusin)': 'onPointerOrFocus($event)',
   },
 })
-export class DataEntryFormComponent implements OnInit {
+export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // Services and Router
   private readonly fb = inject(FormBuilder);
   private readonly apiService = inject(ApiService);
@@ -141,6 +143,8 @@ export class DataEntryFormComponent implements OnInit {
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly currentProject = this.projectService.currentProject;
   readonly showOptionalFields = computed(() => this.currentProject()?.show_optional_fields ?? true);
@@ -716,6 +720,26 @@ export class DataEntryFormComponent implements OnInit {
         this.seedPlausibilityOnLoad();
       });
     });
+
+    // #338: left/right arrow field-jump must be intercepted in the CAPTURE phase,
+    // on the component host (an ancestor of every field), so it runs *before* any
+    // element-level keydown listener at the event target. This matters for a
+    // closed <mat-select>: Material's own (keydown) handler routes a horizontal
+    // arrow to its key manager, whose change subscription calls
+    // `_selectViaInteraction()` and silently advances the selected value. A
+    // bubble-phase handler (the host `(keydown)` binding) fires too late — the
+    // value has already changed and preventDefault cannot undo a programmatic
+    // selection. Handling the gesture in capture lets onArrowNav stop the event
+    // (stopImmediatePropagation) before Material ever sees it, so the jump moves
+    // focus without mutating the field it leaves.
+    const host = this.elementRef.nativeElement;
+    const captureArrowNav = (event: KeyboardEvent): void => {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        this.onArrowNav(event);
+      }
+    };
+    host.addEventListener('keydown', captureArrowNav, true);
+    this.destroyRef.onDestroy(() => host.removeEventListener('keydown', captureArrowNav, true));
   }
 
   /**
@@ -846,6 +870,18 @@ export class DataEntryFormComponent implements OnInit {
     // PRD #245: load the per-org Artennormen from the offline reference bundle
     // so the plausibility lookup works the same online and offline.
     void this.loadNorms();
+  }
+
+  // #338: autofocus Art on the very first open of a create-mode form, so the
+  // Beringer can type the species straight away without clicking. Edit mode
+  // (reviewing an existing record) is left untouched — it must never steal
+  // focus onto Art. This complements the save-reset path, which already focuses
+  // Art after each capture; here it closes the gap on the first capture of a
+  // session. Runs after the view renders so the input exists in the DOM.
+  ngAfterViewInit(): void {
+    if (!this.isEditMode()) {
+      this.focusField('species');
+    }
   }
 
   // PRD #245: build the species_id → effective-Artennorm map from the cached
@@ -1186,8 +1222,11 @@ export class DataEntryFormComponent implements OnInit {
   // blur, so the warning surfaces exactly when the value is finished — the same
   // non-modal role="alert" idiom the sex-contradiction hint rides. Also called
   // when the Art changes so a stale warning never lingers.
-  onMeasurementBlur(): void {
-    this.evaluatePlausibility();
+  onMeasurementBlur(controlName?: string): void {
+    // #338: pass the blurred field through so that, if the check raises the
+    // „Verstanden" modal, focus can return to this field once it is dismissed.
+    // The blur already moved focus away, so the modal cannot restore it itself.
+    this.evaluatePlausibility(controlName);
   }
 
   // Issue #249/#266: the two categorical-flag rules read the Alter, Geschlecht and
@@ -1208,7 +1247,7 @@ export class DataEntryFormComponent implements OnInit {
   // unchanged re-trigger stays silent; a value brought back into range clears
   // without a modal; a value settling into a new breach re-fires. One trigger
   // (e.g. an Art change) that trips several checks aggregates into a single modal.
-  private evaluatePlausibility(): void {
+  private evaluatePlausibility(triggerField?: string): void {
     const measurements = this.currentMeasurements();
     const warnings = computePlausibilityWarnings(measurements, this.activeNorm());
     this.plausibilityWarnings.set(warnings);
@@ -1219,7 +1258,7 @@ export class DataEntryFormComponent implements OnInit {
     );
     this.acknowledgedSignatures.set(nextAcknowledged);
     if (toShow.length > 0) {
-      this.openPlausibilityInfoDialog(toShow);
+      this.openPlausibilityInfoDialog(toShow, triggerField);
     }
   }
 
@@ -1245,8 +1284,8 @@ export class DataEntryFormComponent implements OnInit {
   // newly-appeared Plausibilitätswarnungen (numeric and categorical). One
   // aggregated dialog lists them all; the acknowledgment is transient (already
   // recorded in the signature set) and nothing is persisted.
-  private openPlausibilityInfoDialog(warnings: PlausibilityWarning[]): void {
-    this.dialog.open<InfoDialogComponent, InfoDialogData, void>(InfoDialogComponent, {
+  private openPlausibilityInfoDialog(warnings: PlausibilityWarning[], triggerField?: string): void {
+    const ref = this.dialog.open<InfoDialogComponent, InfoDialogData, void>(InfoDialogComponent, {
       data: {
         title: 'Plausibilität prüfen',
         message:
@@ -1255,6 +1294,12 @@ export class DataEntryFormComponent implements OnInit {
       },
       width: '480px',
     });
+    // #338: on a blur-triggered warning the field already lost focus, so return
+    // it once the ringer acknowledges the modal — a deliberate backward jump to
+    // the checked field. (Optional chaining keeps unit-test dialog stubs safe.)
+    if (triggerField) {
+      ref?.afterClosed?.().subscribe(() => this.focusField(triggerField));
+    }
   }
 
   // The measurement subset the Plausibilitätsprüfung reads, pulled from the raw
@@ -1460,7 +1505,114 @@ export class DataEntryFormComponent implements OnInit {
 
     if (event.key === 'Enter') {
       this.onEnter(event);
+      return;
     }
+
+    // #338: left/right arrow field-jump is handled in the capture phase (wired in
+    // the constructor), not here — it must run before Material's own element-level
+    // keydown so a closed <mat-select> is not mutated by the navigation gesture.
+  }
+
+  // #338: left/right arrow field navigation. Right advances to the next field,
+  // left to the previous one — the same forward/backward traversal Tab/Enter use,
+  // skipping hidden and disabled controls. In a text input the jump fires only
+  // when the caret already sits at the edge the arrow points at; otherwise the
+  // arrow moves the caret natively within the value. Selects, checkboxes and
+  // empty inputs carry no caret to preserve, so they jump immediately. Native
+  // behaviour is left intact for datetime-local inputs (arrows step between
+  // date/time segments) and while an autocomplete or select panel is open (arrows
+  // navigate its options).
+  //
+  // Number fields (the measurement inputs) are the documented exception: browsers
+  // do not expose the selection API on `type=number` (selectionStart is null and
+  // cannot be set), so a *partly-filled* number input cannot be edge-detected — it
+  // keeps native in-field caret movement and advances via Tab/Enter instead. See
+  // the amended AC on #338. An *empty* number input still jumps, since there is no
+  // caret position to protect.
+  //
+  // Runs in the CAPTURE phase (see the constructor wiring): when the gesture *is*
+  // a jump it calls stopImmediatePropagation so Material's own element-level
+  // keydown never runs — otherwise a closed <mat-select> would advance its
+  // selected value before this handler could move focus away.
+  private onArrowNav(event: KeyboardEvent): void {
+    // Modified arrows (Shift-select, Ctrl/Alt word-jump, Cmd) stay native.
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (!target) {
+      return;
+    }
+    const field = target.closest('[formControlName]') as HTMLElement | null;
+    if (!field) {
+      return;
+    }
+    const controlName = field.getAttribute('formControlName');
+    if (!controlName) {
+      return;
+    }
+    // An open autocomplete/select panel owns the arrows for option navigation.
+    if (field.getAttribute('aria-expanded') === 'true') {
+      return;
+    }
+
+    const goLeft = event.key === 'ArrowLeft';
+    if (target instanceof HTMLInputElement) {
+      // datetime-local: the arrows step between the date/time segments natively.
+      if (target.type === 'datetime-local') {
+        return;
+      }
+      // A filled text-bearing input jumps only at the caret edge; otherwise the
+      // arrow moves the caret within the value. An empty input (value === '') has
+      // no caret to preserve, so it jumps immediately like a select. A filled
+      // number input hides its caret (caretAtEdge is always false) and so keeps
+      // native movement — the accepted browser limitation.
+      if (this.hasTextCaret(target) && target.value !== '' && !this.caretAtEdge(target, goLeft)) {
+        return;
+      }
+    } else if (target instanceof HTMLTextAreaElement) {
+      if (target.value !== '' && !this.caretAtEdge(target, goLeft)) {
+        return;
+      }
+    }
+
+    // This IS a field-jump gesture. Suppress the event entirely so no
+    // element-level handler (notably a closed <mat-select>'s key manager) mutates
+    // the field we are leaving; capture-phase stopImmediatePropagation stops it
+    // before Material's own keydown runs.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (goLeft) {
+      this.focusPrevious(controlName);
+    } else {
+      this.focusNext(controlName);
+    }
+  }
+
+  // #338: input types that carry a text caret we must not hijack mid-value. A
+  // type=number reports a null caret in Chrome/Safari — caretAtEdge treats that
+  // as "not at an edge", so a *filled* number input keeps native in-field caret
+  // movement rather than jumping unexpectedly (an empty one has no caret to
+  // protect and jumps; see onArrowNav).
+  private hasTextCaret(input: HTMLInputElement): boolean {
+    return ['text', 'search', 'tel', 'url', 'password', 'email', 'number'].includes(input.type);
+  }
+
+  // #338: whether the caret sits at the field edge the arrow points at — the start
+  // for left, the end for right — with no text selected. Inputs that hide their
+  // caret position (type=number in Chrome) report null and are treated as "not at
+  // an edge" so native movement is preserved.
+  private caretAtEdge(el: HTMLInputElement | HTMLTextAreaElement, goLeft: boolean): boolean {
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start === null || end === null) {
+      return false;
+    }
+    if (goLeft) {
+      return start === 0 && end === 0;
+    }
+    const length = el.value.length;
+    return start === length && end === length;
   }
 
   // #23/#59: a single context-dependent Enter dispatch. Enter never fires the
@@ -1557,18 +1709,46 @@ export class DataEntryFormComponent implements OnInit {
     if (currentIndex < 0) {
       return;
     }
-    // #26: skip disabled fields (e.g. the greyed-out Kleingefieder fields for a
-    // non-diesjährigen Vogel) so the keyboard run never lands on a dead field.
+    // #26/#338: skip disabled AND hidden fields (e.g. the greyed-out Kleingefieder
+    // fields for a non-diesjährigen Vogel, or the net block hidden by the Projekt
+    // switch) so the keyboard run never lands on a dead or absent field.
     const nextControlName = this.focusOrder
       .slice(currentIndex + 1)
-      .find((name) => !this.entryForm.get(name)?.disabled);
+      .find((name) => this.isNavigable(name));
     if (!nextControlName) {
       return;
     }
-    setTimeout(() => {
-      const nextEl = document.querySelector(`[formControlName="${nextControlName}"]`) as HTMLElement;
-      nextEl?.focus();
-    }, 50);
+    setTimeout(() => this.focusField(nextControlName), 50);
+  }
+
+  // #338: the backward counterpart of focusNext — walks focusOrder toward the
+  // start, skipping the same hidden/disabled fields, so left-arrow lands on the
+  // previous live control.
+  private focusPrevious(currentControlName: string): void {
+    const currentIndex = this.focusOrder.indexOf(currentControlName);
+    if (currentIndex < 0) {
+      return;
+    }
+    const previousControlName = this.focusOrder
+      .slice(0, currentIndex)
+      .reverse()
+      .find((name) => this.isNavigable(name));
+    if (!previousControlName) {
+      return;
+    }
+    setTimeout(() => this.focusField(previousControlName), 50);
+  }
+
+  // #338: a field is a keyboard-nav target only when it is both enabled and
+  // actually rendered. Disabled controls (e.g. the greyed-out Kleingefieder
+  // Fortschritt) and controls removed from the DOM by an @if (the net block
+  // dropped by the Projekt switch, or the collapsed Ring-vernichtet fields) are
+  // skipped so focus never dead-ends where the ringer cannot type.
+  private isNavigable(name: string): boolean {
+    if (this.entryForm.get(name)?.disabled) {
+      return false;
+    }
+    return !!document.querySelector(`[formControlName="${name}"]`);
   }
 
   // #24: the single shared clean-reset routine. It clears the bird-specific
