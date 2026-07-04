@@ -289,6 +289,11 @@
     </div>
 
     @if (!isRingDestroyed()) {
+    <!-- #336: the net block (Netznr./Netzfach/Flugrichtung) is hidden per-Projekt
+         via showNetFields(), independently of the Ring-vernichtet collapse above.
+         The three controls are also disabled + dropped from focusOrder when hidden
+         so keyboard nav never lands on them. -->
+    @if (showNetFields()) {
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Netznummer</mat-label>
@@ -310,6 +315,7 @@
         </mat-select>
       </mat-form-field>
     </div>
+    }
 
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always">

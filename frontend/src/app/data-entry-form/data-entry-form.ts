@@ -144,6 +144,11 @@ export class DataEntryFormComponent implements OnInit {
 
   readonly currentProject = this.projectService.currentProject;
   readonly showOptionalFields = computed(() => this.currentProject()?.show_optional_fields ?? true);
+  // #336: whether the capture form shows the net block (Netznr./Netzfach/
+  // Flugrichtung). Mirrors showOptionalFields — read from the active Projekt, so
+  // it is honoured offline from the project cache too. Defaults to true when the
+  // Projekt (or its cached copy) predates the flag, keeping the net fields visible.
+  readonly showNetFields = computed(() => this.currentProject()?.show_net_fields ?? true);
 
   // Component State
   private readonly entryId = signal<string | null>(this.route.snapshot.paramMap.get('id'));
@@ -408,7 +413,13 @@ export class DataEntryFormComponent implements OnInit {
     );
   });
 
-  private readonly focusOrder: string[] = [
+  // #336: the three net controls, gated by the Projekt's showNetFields() — kept
+  // as one list so the focus order and the disabling effect stay in lock-step.
+  private static readonly NET_FIELD_CONTROLS: readonly string[] = [
+    'net_location', 'net_height', 'net_direction',
+  ];
+
+  private readonly baseFocusOrder: string[] = [
     'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'central', 'ring_size', 'ring_number',
     'net_location', 'net_height', 'net_direction', 'age_class', 'sex', 'fat_deposit', 'muscle_class',
     'small_feather_int', 'small_feather_app', 'hand_wing',
@@ -416,6 +427,19 @@ export class DataEntryFormComponent implements OnInit {
     'has_mites', 'has_hunger_stripes', 'has_brood_patch', 'has_cpl_plus',
     'notch_f2', 'inner_foot'
   ];
+
+  // #336: when the Projekt hides the net block, its three controls drop out of the
+  // focus/arrow order entirely so Tab/Enter/arrow-nav never lands on a hidden
+  // input (they are also disabled by the effect below). Otherwise the order is
+  // unchanged.
+  private get focusOrder(): string[] {
+    if (this.showNetFields()) {
+      return this.baseFocusOrder;
+    }
+    return this.baseFocusOrder.filter(
+      (name) => !DataEntryFormComponent.NET_FIELD_CONTROLS.includes(name),
+    );
+  }
 
 
   birdStatusOptions: SelectOption<BirdStatus | null>[] = [
@@ -582,6 +606,25 @@ export class DataEntryFormComponent implements OnInit {
       } else {
         control.setValue(null, { emitEvent: false });
         control.disable({ emitEvent: false });
+      }
+    });
+
+    // #336: when the Projekt hides the net block (showNetFields() false), the three
+    // net controls are disabled so keyboard nav skips them (focusNext already skips
+    // disabled fields) and the hidden inputs are inert. The values are NOT cleared:
+    // getRawValue() includes disabled controls, so editing an existing capture with
+    // hidden net fields re-saves its stored net data untouched (non-destructive).
+    effect(() => {
+      const show = this.showNetFields();
+      for (const name of DataEntryFormComponent.NET_FIELD_CONTROLS) {
+        const control = this.entryForm.get(name)!;
+        if (show) {
+          if (control.disabled) {
+            control.enable({ emitEvent: false });
+          }
+        } else if (!control.disabled) {
+          control.disable({ emitEvent: false });
+        }
       }
     });
 

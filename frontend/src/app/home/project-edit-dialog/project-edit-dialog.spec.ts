@@ -19,6 +19,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     title: 'Schilfgürtel Linz',
     description: '',
     show_optional_fields: false,
+    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: {handle: 'ORG1', name: 'IWM Linz'} as Organization,
     default_station: null,
@@ -70,6 +71,24 @@ describe('ProjectEditDialogComponent', () => {
 
     expect(dialogRef.close).toHaveBeenCalledWith(
       jasmine.objectContaining({projekttyp: Projekttyp.Zugvogelmonitoring}),
+    );
+  });
+
+  it('pre-fills the Netzfelder checkbox from the Projekt', () => {
+    const {fixture, component} = setup(makeProject({show_net_fields: false}));
+
+    expect(component.form.controls.showNetFields.value).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('Netzfelder');
+  });
+
+  it('round-trips the edited Netzfelder value into the dialog result', () => {
+    const {component, dialogRef} = setup(makeProject({show_net_fields: true}));
+
+    component.form.controls.showNetFields.setValue(false);
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({showNetFields: false}),
     );
   });
 });

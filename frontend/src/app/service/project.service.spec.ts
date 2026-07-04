@@ -17,6 +17,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     title: 'Linz, Botanischer Garten',
     description: '',
     show_optional_fields: true,
+    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: {id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT'},
     default_station: null,

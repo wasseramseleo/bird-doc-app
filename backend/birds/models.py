@@ -575,6 +575,16 @@ class Project(models.Model):
         default=True,
         verbose_name=_("Optionale Felder anzeigen"),
     )
+    # Netzfelder anzeigen (issue #336, ADR 0023): an independent per-Projekt
+    # switch — parallel to ``show_optional_fields`` and NOT derived from
+    # ``projekttyp`` — that hides the capture form's whole net block (Netznr.,
+    # Netzfach, Flugrichtung) when off. Default on so every existing Projekt keeps
+    # showing the net fields. Display-only: values already stored on historical
+    # captures are untouched and still export.
+    show_net_fields = models.BooleanField(
+        default=True,
+        verbose_name=_("Netzfelder anzeigen"),
+    )
     projekttyp = models.CharField(
         max_length=32,
         choices=Projekttyp.choices,

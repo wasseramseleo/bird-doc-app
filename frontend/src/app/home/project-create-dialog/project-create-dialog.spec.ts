@@ -56,4 +56,35 @@ describe('ProjectCreateDialogComponent', () => {
       jasmine.objectContaining({title: 'Reedbed', projekttyp: Projekttyp.IWM}),
     );
   });
+
+  it('offers a Netzfelder checkbox defaulting to on', () => {
+    const {fixture, component} = setup();
+
+    expect(component.form.controls.showNetFields).toBeDefined();
+    expect(component.form.controls.showNetFields.value).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Netzfelder');
+  });
+
+  it('round-trips the Netzfelder value into the dialog result', () => {
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Nest boxes');
+    component.form.controls.showNetFields.setValue(false);
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({showNetFields: false}),
+    );
+  });
+
+  it('seeds Netzfelder off when Nestlingsberingung is chosen (override-able)', () => {
+    const {component} = setup();
+
+    component.form.controls.projekttyp.setValue(Projekttyp.Nestlingsberingung);
+    expect(component.form.controls.showNetFields.value).toBe(false);
+
+    // A different type seeds it back on, and the Admin can still override freely.
+    component.form.controls.projekttyp.setValue(Projekttyp.IWM);
+    expect(component.form.controls.showNetFields.value).toBe(true);
+  });
 });
