@@ -111,6 +111,152 @@ describe('DataEntryFormComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  // Issue #341: the reusable Zahlenmaske (Eingabefilter) wired onto the capture
+  // form — a hard input filter distinct from the value-range Plausibilitätswarnung.
+  describe('numeric input masks on the Mess- and Netz-Felder (#341)', () => {
+    const MEASUREMENT_FIELDS = [
+      'weight_gram',
+      'feather_span',
+      'wing_span',
+      'tarsus',
+      'notch_f2',
+      'inner_foot',
+    ];
+    const NET_FIELDS = ['net_location', 'net_height'];
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    const el = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLInputElement;
+
+    // Drive one keystroke through the mask at the given caret position.
+    const typeChar = (field: string, char: string, caret?: number): InputEvent => {
+      const input = el(field);
+      if (caret !== undefined) input.setSelectionRange(caret, caret);
+      const event = new InputEvent('beforeinput', {
+        data: char,
+        inputType: 'insertText',
+        cancelable: true,
+        bubbles: true,
+      });
+      input.dispatchEvent(event);
+      return event;
+    };
+
+    it('carries the one-decimal mask on all six measurement inputs', () => {
+      for (const field of MEASUREMENT_FIELDS) {
+        expect(el(field).getAttribute('appNumberMask')).toBe('decimal');
+      }
+    });
+
+    it('carries the integer mask on both Netz-number inputs', () => {
+      for (const field of NET_FIELDS) {
+        expect(el(field).getAttribute('appNumberMask')).toBe('integer');
+      }
+    });
+
+    it('rejects a letter typed into a measurement input', () => {
+      const event = typeChar('weight_gram', 'a', 0);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('rejects a second decimal digit in a measurement input', () => {
+      const input = el('tarsus');
+      input.value = '12.5';
+      const event = typeChar('tarsus', '3', 4);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('12.5');
+    });
+
+    it('accepts a comma in a measurement input, storing a dot', () => {
+      const input = el('weight_gram');
+      input.value = '75';
+      const event = typeChar('weight_gram', ',', 1);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('7.5');
+      expect(component.entryForm.get('weight_gram')!.value as unknown).toBe('7.5');
+    });
+
+    it('rejects a decimal separator typed into a Netz-number input', () => {
+      const input = el('net_location');
+      input.value = '12';
+      const event = typeChar('net_location', '.', 2);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('12');
+    });
+
+    it('rejects a comma typed into a Netz-number input', () => {
+      const event = typeChar('net_height', ',', 0);
+      expect(event.defaultPrevented).toBe(true);
+    });
+  });
+
+  // Issue #341 regression: with the masked fields now rendered as type="text"
+  // (DefaultValueAccessor), clearing a previously-typed value leaves the control
+  // holding "" rather than null, and the mask permits an in-progress lone/trailing
+  // dot. The write payload must coerce both back to values the backend accepts —
+  // DRF's IntegerField 400s on "" and DecimalField 400s on a dangling "." — so a
+  // normal correction (type a Netznr., then clear it) still saves.
+  describe('normalises masked numeric controls on submit (#341 regression)', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    const submitAndReadBody = (): Record<string, unknown> => {
+      component.onSubmit();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      post.flush({});
+      return body;
+    };
+
+    it('sends null (not "") for a Netz-number typed then cleared', () => {
+      fillValidWiederfang();
+      // The DefaultValueAccessor leaves a cleared type="text" input holding "".
+      component.entryForm.patchValue({ net_location: '' as never, net_height: '5' as never });
+
+      const body = submitAndReadBody();
+
+      expect(body['net_location']).toBeNull();
+      // A still-populated Netz-number rides along untouched (backend coerces).
+      expect(body['net_height']).toBe('5');
+    });
+
+    it('sends null for a measurement field cleared back to an empty string', () => {
+      fillValidWiederfang();
+      component.entryForm.patchValue({ weight_gram: '' as never });
+
+      expect(submitAndReadBody()['weight_gram']).toBeNull();
+    });
+
+    it('drops a dangling decimal point ("18." → "18", "." → null) before submit', () => {
+      fillValidWiederfang();
+      component.entryForm.patchValue({ weight_gram: '18.' as never, tarsus: '.' as never });
+
+      const body = submitAndReadBody();
+
+      expect(body['weight_gram']).toBe('18');
+      expect(body['tarsus']).toBeNull();
+    });
+  });
+
   describe('creating a Beringer inline from an unknown Kürzel', () => {
     const dialogMock = { open: jasmine.createSpy('open') };
     let httpMock: HttpTestingController;
@@ -5435,11 +5581,12 @@ describe('DataEntryFormComponent', () => {
       expect(document.activeElement).toBe(el('age_class'));
     }));
 
-    it('jumps immediately from an empty number field (no caret to preserve)', fakeAsync(() => {
-      // A measurement field is type=number. Empty, it has no caret position to
-      // protect, so left/right jump like a select rather than dead-ending.
+    it('jumps immediately from an empty measurement field (no caret to preserve)', fakeAsync(() => {
+      // #341 made the six measurement inputs type=text (appNumberMask). Empty,
+      // such a field has no caret position to protect, so left/right jump like a
+      // select rather than dead-ending.
       const tarsus = el('tarsus') as HTMLInputElement;
-      expect(tarsus.type).toBe('number');
+      expect(tarsus.type).toBe('text');
       expect(tarsus.value).toBe('');
       tarsus.focus();
 
@@ -5451,23 +5598,32 @@ describe('DataEntryFormComponent', () => {
       expect(document.activeElement).toBe(el('feather_span'));
     }));
 
-    it('keeps native caret movement in a partly-filled number field (browser has no caret API for type=number)', fakeAsync(() => {
-      // AC caveat (#338): `type=number` exposes no selection API in Chrome/Safari
-      // — selectionStart is null and cannot be set — so a filled number input's
-      // caret edge is undetectable. It therefore keeps native in-field caret
-      // movement (advance via Tab/Enter) rather than jumping mid-value.
+    it('does caret-boundary navigation in a partly-filled measurement field (type=text after #341)', fakeAsync(() => {
+      // Integration note (#338 × #341): #338 originally had to exempt the
+      // measurement fields because type=number exposes no caret API. #341 changed
+      // them to type=text (appNumberMask), which restores a real caret — so they
+      // now follow the normal caret-boundary rule the original #338 AC described:
+      // the arrow moves the caret within the value and only jumps at the edge.
       const tarsus = el('tarsus') as HTMLInputElement;
+      expect(tarsus.type).toBe('text');
       tarsus.value = '123';
       tarsus.focus();
-      // Confirm the browser limitation the behaviour rests on.
-      expect(tarsus.selectionStart).toBeNull();
 
-      const event = arrow('ArrowRight');
-      tarsus.dispatchEvent(event);
+      // Caret in the middle → the right arrow moves it natively, no field jump.
+      tarsus.setSelectionRange(1, 1);
+      const mid = arrow('ArrowRight');
+      tarsus.dispatchEvent(mid);
       tick(50);
-
-      expect(event.defaultPrevented).toBe(false);
+      expect(mid.defaultPrevented).toBe(false);
       expect(document.activeElement).toBe(tarsus);
+
+      // Caret at the end → the right arrow jumps to the next field.
+      tarsus.setSelectionRange(3, 3);
+      const edge = arrow('ArrowRight');
+      tarsus.dispatchEvent(edge);
+      tick(50);
+      expect(edge.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('feather_span'));
     }));
   });
 
