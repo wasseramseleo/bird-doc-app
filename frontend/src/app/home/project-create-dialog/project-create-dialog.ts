@@ -3,11 +3,13 @@ import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 
 import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
 import {MatButtonModule} from '@angular/material/button';
+import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatDialogModule, MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatSelectModule} from '@angular/material/select';
 import {Organization} from '../../models/organization.model';
+import {PROJEKTTYP_OPTIONS, Projekttyp} from '../../models/project.model';
 import {RingingStation} from '../../models/ringing-station.model';
 import {ApiService} from '../../service/api.service';
 
@@ -19,6 +21,8 @@ export interface ProjectCreateDialogResult {
   title: string;
   description: string;
   organizationHandle: string;
+  projekttyp: Projekttyp;
+  showNetFields: boolean;
   defaultStationHandle: string;
 }
 
@@ -28,6 +32,7 @@ export interface ProjectCreateDialogResult {
     ReactiveFormsModule,
     MatDialogModule,
     MatButtonModule,
+    MatCheckboxModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule
@@ -43,11 +48,16 @@ export class ProjectCreateDialogComponent {
   readonly data = inject<ProjectCreateDialogData>(MAT_DIALOG_DATA);
 
   readonly stations = signal<RingingStation[]>([]);
+  readonly projekttypOptions = PROJEKTTYP_OPTIONS;
 
   readonly form = this.fb.nonNullable.group({
     title: ['', Validators.required],
     description: [''],
     organizationHandle: [this.data.organizations[0]?.handle ?? '', Validators.required],
+    projekttyp: [Projekttyp.Sonstiges],
+    // Netzfelder anzeigen (issue #336): default on, parallel to the edit dialog's
+    // "Optionale Felder anzeigen". Nestlingsberingung may seed it off below.
+    showNetFields: [true],
     defaultStationHandle: [''],
   });
 
@@ -61,6 +71,16 @@ export class ProjectCreateDialogComponent {
     orgControl.valueChanges.pipe(takeUntilDestroyed()).subscribe((handle) => {
       this.form.controls.defaultStationHandle.setValue('');
       this.loadStations(handle);
+    });
+    // Create-time seed (issue #337, ADR 0023): choosing Nestlingsberingung — the
+    // one listed programme that rings in the nest and uses no mist-nets — pre-sets
+    // Netzfelder off as a convenience. It is a one-way suggestion only: the Admin
+    // stays free to turn it back on, and picking any OTHER Projekttyp must not force
+    // the checkbox to any value (never re-raising it). The two are never hard-coupled.
+    this.form.controls.projekttyp.valueChanges.pipe(takeUntilDestroyed()).subscribe((typ) => {
+      if (typ === Projekttyp.Nestlingsberingung) {
+        this.form.controls.showNetFields.setValue(false);
+      }
     });
   }
 

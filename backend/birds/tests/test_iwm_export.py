@@ -1,3 +1,4 @@
+import zipfile
 from datetime import UTC, datetime, time
 from decimal import Decimal
 from io import BytesIO
@@ -9,6 +10,22 @@ from django.utils.timezone import make_aware
 from birds.iwm_export import SHEET_NAME, build_iwm_workbook
 from birds.iwm_import import commit_import
 from birds.models import Central, DataEntry, Project, Ring, RingingStation
+
+# The one thing that differs between two builds of identical data: openpyxl
+# stamps the current time into docProps/core.xml on every ``save()``. It is
+# unrelated to the export's payload, so a content comparison strips it out.
+_VOLATILE_MEMBERS = {"docProps/core.xml"}
+
+
+def _export_payload(content):
+    """The export bytes minus the live 'modified' timestamp — every meaningful
+    member of the workbook zip, so two payloads compare byte-for-byte iff the
+    exported content is identical."""
+    src = zipfile.ZipFile(BytesIO(content))
+    return {
+        name: src.read(name) for name in sorted(src.namelist()) if name not in _VOLATILE_MEMBERS
+    }
+
 
 STATIONS_URL = "/api/birds/ringing-stations/"
 
@@ -506,3 +523,69 @@ def test_export_import_round_trip_reconstructs_equivalent_captures(
             assert getattr(got, field) == want[field], field
         # Round-tripped into the fresh Projekt's Organisation (ADR 0005).
         assert got.organization == organization
+
+
+@pytest.mark.django_db
+def test_projekttyp_does_not_change_the_export(species, scientist, ringing_station, project):
+    """Projekttyp is descriptive metadata, not an export field (ADR 0023): the
+    IWM export is byte-for-byte identical whatever the Projekt's Projekttyp is,
+    and no exported column carries it."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="511", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 3, 1, 8, 0, tzinfo=UTC),
+    )
+
+    project.projekttyp = Project.Projekttyp.SONSTIGES
+    project.save()
+    baseline = build_iwm_workbook(DataEntry.objects.all())
+
+    project.projekttyp = Project.Projekttyp.NESTLINGSBERINGUNG
+    project.save()
+    after = build_iwm_workbook(DataEntry.objects.all())
+
+    # The payload (everything but the live save-timestamp) is identical.
+    assert _export_payload(after) == _export_payload(baseline)
+    # And there is no Projekttyp column to leak the value into.
+    headers = {h for h in _read_rows(baseline) if h}
+    assert not any("projekttyp" in h.lower() for h in headers)
+
+
+@pytest.mark.django_db
+def test_hiding_net_fields_does_not_alter_stored_or_exported_net_data(
+    species, scientist, ringing_station, project
+):
+    """Hiding the net block (show_net_fields=False) is display-only (issue #336,
+    ADR 0023): the net-field values already stored on captures are untouched and
+    the IWM export still emits them, so the export is byte-for-byte identical
+    whatever the Projekt's show_net_fields is."""
+    entry = DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="611", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        net_location=7,
+        net_height=3,
+        date_time=datetime(2026, 3, 1, 8, 0, tzinfo=UTC),
+    )
+
+    assert project.show_net_fields is True
+    baseline = build_iwm_workbook(DataEntry.objects.all())
+
+    project.show_net_fields = False
+    project.save()
+    after = build_iwm_workbook(DataEntry.objects.all())
+
+    # The stored net data on the capture is untouched by flipping the Projekt flag.
+    entry.refresh_from_db()
+    assert entry.net_location == 7
+    assert entry.net_height == 3
+
+    # And the export payload (everything but the live save-timestamp) is identical,
+    # still carrying the Netz value.
+    assert _export_payload(after) == _export_payload(baseline)
+    assert _read_rows(after)["Netz"] == "7"

@@ -525,6 +525,16 @@ class Project(models.Model):
         TAPE_OTHER = "G", _("Klangattrappe (andere Arten)")
         WHISTLE = "H", _("Lockpfeife")
 
+    class Projekttyp(models.TextChoices):
+        # Which programme a Projekt runs — descriptive, internal metadata only
+        # (ADR 0023). It is never exported and gates no capture field; an unset
+        # Projekttyp reads as Sonstiges (the default). db-values match members.
+        IWM = "IWM", _("IWM")
+        IMS = "IMS", _("IMS")
+        ZUGVOGELMONITORING = "ZUGVOGELMONITORING", _("Zugvogelmonitoring")
+        NESTLINGSBERINGUNG = "NESTLINGSBERINGUNG", _("Nestlingsberingung")
+        SONSTIGES = "SONSTIGES", _("Sonstiges")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255, verbose_name=_("Titel"))
     description = models.TextField(blank=True, verbose_name=_("Beschreibung"))
@@ -564,6 +574,22 @@ class Project(models.Model):
     show_optional_fields = models.BooleanField(
         default=True,
         verbose_name=_("Optionale Felder anzeigen"),
+    )
+    # Netzfelder anzeigen (issue #336, ADR 0023): an independent per-Projekt
+    # switch — parallel to ``show_optional_fields`` and NOT derived from
+    # ``projekttyp`` — that hides the capture form's whole net block (Netznr.,
+    # Netzfach, Flugrichtung) when off. Default on so every existing Projekt keeps
+    # showing the net fields. Display-only: values already stored on historical
+    # captures are untouched and still export.
+    show_net_fields = models.BooleanField(
+        default=True,
+        verbose_name=_("Netzfelder anzeigen"),
+    )
+    projekttyp = models.CharField(
+        max_length=32,
+        choices=Projekttyp.choices,
+        default=Projekttyp.SONSTIGES,
+        verbose_name=_("Projekttyp"),
     )
     circumstance = models.CharField(max_length=8, default="25", verbose_name=_("Umstand"))
     capture_method = models.CharField(

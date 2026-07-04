@@ -11,7 +11,7 @@ import {of} from 'rxjs';
 
 import {TodaySessionComponent} from './today-session';
 import {ProjectService} from '../service/project.service';
-import {Project} from '../models/project.model';
+import {Project, Projekttyp} from '../models/project.model';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {RingSize} from '../models/ring.model';
 import {AuthService} from '../service/auth.service';
@@ -29,6 +29,8 @@ const PROJECT: Project = {
   title: 'Herbst',
   description: '',
   show_optional_fields: true,
+  show_net_fields: true,
+  projekttyp: Projekttyp.Sonstiges,
   organization: {id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT'},
   default_station: null,
   scientists: [],

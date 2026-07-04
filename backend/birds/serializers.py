@@ -446,6 +446,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "show_optional_fields",
+            "show_net_fields",
+            "projekttyp",
             "organization",
             "organization_id",
             "central",

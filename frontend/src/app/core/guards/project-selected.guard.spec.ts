@@ -5,7 +5,7 @@ import { provideRouter, Router, UrlTree } from '@angular/router';
 
 import { projectSelectedGuard } from './project-selected.guard';
 import { ProjectService } from '../../service/project.service';
-import { Project } from '../../models/project.model';
+import { Project, Projekttyp } from '../../models/project.model';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -13,6 +13,8 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     title: 'Schilfgürtel Linz',
     description: '',
     show_optional_fields: false,
+    show_net_fields: true,
+    projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
     default_station: null,
     scientists: [],

@@ -7,7 +7,7 @@ import {MatDialogModule, MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatSelectModule} from '@angular/material/select';
-import {Project} from '../../models/project.model';
+import {PROJEKTTYP_OPTIONS, Project, Projekttyp} from '../../models/project.model';
 import {RingingStation} from '../../models/ringing-station.model';
 import {Scientist} from '../../models/scientist.model';
 import {ApiService} from '../../service/api.service';
@@ -22,6 +22,8 @@ export interface ProjectEditDialogResult {
   description: string;
   scientistIds: string[];
   showOptionalFields: boolean;
+  showNetFields: boolean;
+  projekttyp: Projekttyp;
   defaultStationHandle: string;
 }
 
@@ -48,6 +50,7 @@ export class ProjectEditDialogComponent {
   readonly data = inject<ProjectEditDialogData>(MAT_DIALOG_DATA);
 
   readonly stations = signal<RingingStation[]>([]);
+  readonly projekttypOptions = PROJEKTTYP_OPTIONS;
 
   readonly form = this.fb.nonNullable.group({
     title: [this.data.project.title, Validators.required],
@@ -57,6 +60,10 @@ export class ProjectEditDialogComponent {
       [Validators.required, Validators.minLength(1)],
     ],
     showOptionalFields: [this.data.project.show_optional_fields],
+    // Netzfelder anzeigen (issue #336): pre-filled from the Projekt, independent
+    // of show_optional_fields and of the Projekttyp. Default on for legacy rows.
+    showNetFields: [this.data.project.show_net_fields ?? true],
+    projekttyp: [this.data.project.projekttyp ?? Projekttyp.Sonstiges],
     defaultStationHandle: [this.data.project.default_station?.handle ?? ''],
   });
 

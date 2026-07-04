@@ -9,7 +9,7 @@ import { of } from 'rxjs';
 
 import { ProjectActionsService } from './project-actions.service';
 import { ProjectService } from './project.service';
-import { Project } from '../models/project.model';
+import { Project, Projekttyp } from '../models/project.model';
 import { Organization } from '../models/organization.model';
 import { ProjectEditDialogComponent, ProjectEditDialogResult } from '../home/project-edit-dialog/project-edit-dialog';
 import { ProjectCreateDialogComponent, ProjectCreateDialogResult } from '../home/project-create-dialog/project-create-dialog';
@@ -23,6 +23,8 @@ function createResult(overrides: Partial<ProjectCreateDialogResult> = {}): Proje
     title: 'Neues Projekt',
     description: 'Beschreibung',
     organizationHandle: 'iwm',
+    projekttyp: Projekttyp.Sonstiges,
+    showNetFields: true,
     defaultStationHandle: '',
     ...overrides,
   };
@@ -34,6 +36,8 @@ function editResult(overrides: Partial<ProjectEditDialogResult> = {}): ProjectEd
     description: 'Beschreibung',
     scientistIds: ['s1'],
     showOptionalFields: false,
+    showNetFields: true,
+    projekttyp: Projekttyp.Sonstiges,
     defaultStationHandle: '',
     ...overrides,
   };
@@ -51,6 +55,8 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     title: 'Schilfgürtel Linz',
     description: '',
     show_optional_fields: false,
+    show_net_fields: true,
+    projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz', handle: 'iwm' } as Project['organization'],
     default_station: null,
     scientists: [],
@@ -155,6 +161,7 @@ describe('ProjectActionsService', () => {
           description: 'desc',
           scientistIds: ['s1', 's2'],
           showOptionalFields: true,
+          projekttyp: Projekttyp.IWM,
           defaultStationHandle: 'st1',
         }),
       );
@@ -170,6 +177,8 @@ describe('ProjectActionsService', () => {
         description: 'desc',
         scientist_ids: ['s1', 's2'],
         show_optional_fields: true,
+        show_net_fields: true,
+        projekttyp: Projekttyp.IWM,
         default_station_id: 'st1',
       });
 
@@ -256,7 +265,7 @@ describe('ProjectActionsService', () => {
       const setCurrent = spyOn(ctx.projectService, 'setCurrent').and.callThrough();
       const navigate = spyOn(ctx.router, 'navigateByUrl').and.stub();
       const snack = spyOn(ctx.snackBar, 'open');
-      stubDialog(ctx.dialog, createResult({ title: 'Neues Projekt', description: 'd', organizationHandle: 'iwm' }));
+      stubDialog(ctx.dialog, createResult({ title: 'Neues Projekt', description: 'd', organizationHandle: 'iwm', projekttyp: Projekttyp.Nestlingsberingung }));
 
       ctx.service.create();
 
@@ -266,6 +275,8 @@ describe('ProjectActionsService', () => {
         title: 'Neues Projekt',
         description: 'd',
         organization_id: 'iwm',
+        projekttyp: Projekttyp.Nestlingsberingung,
+        show_net_fields: true,
         default_station_id: null,
       });
 

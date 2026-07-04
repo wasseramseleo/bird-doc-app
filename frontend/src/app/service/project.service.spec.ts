@@ -4,7 +4,7 @@ import {of} from 'rxjs';
 import {ProjectService} from './project.service';
 import {WorkbenchStorageService} from './workbench-storage.service';
 import {ApiService} from './api.service';
-import {Project} from '../models/project.model';
+import {Project, Projekttyp} from '../models/project.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 
 function page0(results: Project[]): PaginatedApiResponse<Project> {
@@ -17,6 +17,8 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     title: 'Linz, Botanischer Garten',
     description: '',
     show_optional_fields: true,
+    show_net_fields: true,
+    projekttyp: Projekttyp.Sonstiges,
     organization: {id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT'},
     default_station: null,
     scientists: [],
