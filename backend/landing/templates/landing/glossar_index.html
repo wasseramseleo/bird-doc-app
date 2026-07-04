@@ -1,0 +1,38 @@
+{% extends "landing/base_destination.html" %}
+
+{% comment %}
+Der Beringungs-Glossar-Index (issue #306, PRD #300): server-gerendert und
+skriptfrei (ADR 0009), Deutsch-only außerhalb der i18n_patterns. Die Liste wird
+aus derselben GLOSSAR_ENTRIES-Quelle erzeugt wie die Term-Seiten und die
+Sitemap-Sektion — sie können daher nicht voneinander abweichen.
+{% endcomment %}
+
+{% block body_class %}page--marketing{% endblock %}
+
+{% block title %}Beringungs-Glossar · BirdDoc{% endblock %}
+
+{% block head_meta %}
+    <meta name="description" content="Das Beringungs-Glossar erklärt die Fachbegriffe der Vogelberingung — von Erstfang über Wiederfang bis Ringserie, je ein Begriff pro Seite.">
+{% endblock %}
+
+{% block content %}
+    {% include "landing/_wissen_breadcrumb.html" %}
+
+    <p class="eyebrow">Wissen</p>
+    <h1>Beringungs-Glossar</h1>
+    <p>
+        Das Beringungs-Glossar erklärt die Fachsprache der Vogelberingung für
+        alle, die keine Beringer sind — je ein Begriff auf einer eigenen Seite,
+        antwortzuerst und in klarer Sprache. Es beschreibt das Handwerk der
+        Beringung, nicht die Software.
+    </p>
+
+    <ul class="glossar-index">
+        {% for entry in entries %}
+            <li class="glossar-index__item">
+                <a href="{% url 'wissen_glossar_term' slug=entry.slug %}">{{ entry.begriff }}</a>
+                — {{ entry.lead }}
+            </li>
+        {% endfor %}
+    </ul>
+{% endblock %}
