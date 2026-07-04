@@ -82,6 +82,44 @@ describe('SpeciesLineChartComponent', () => {
     ]);
   });
 
+  it('gives every identified Art a distinct colour up to the backend Top-N (8 lines)', () => {
+    // The backend folds all but the Top-N Arten into Übrige (SERIES_TOP_N = 8,
+    // backend/birds/project_stats.py) — so a busy range can yield up to eight
+    // identified-Art lines plus Übrige. Colour encodes Art identity here, so the
+    // palette must give each of the eight its own colour with NO wrap/collision.
+    const fixture = setup({
+      days: ['2026-06-26'],
+      lines: [
+        { species_id: 'sp-1', name: 'A', counts: [1] },
+        { species_id: 'sp-2', name: 'B', counts: [1] },
+        { species_id: 'sp-3', name: 'C', counts: [1] },
+        { species_id: 'sp-4', name: 'D', counts: [1] },
+        { species_id: 'sp-5', name: 'E', counts: [1] },
+        { species_id: 'sp-6', name: 'F', counts: [1] },
+        { species_id: 'sp-7', name: 'G', counts: [1] },
+        { species_id: 'sp-8', name: 'H', counts: [1] },
+        { species_id: null, name: 'Übrige', counts: [1] },
+      ],
+    });
+    const data = fixture.componentInstance.chartData();
+
+    // The eight identified lines walk the full eight-colour CVD-safe palette,
+    // in order — lines 6-8 must NOT reuse lines 1-3's colours.
+    const artColors = data.datasets.slice(0, 8).map((d) => d.borderColor as string);
+    expect(artColors).toEqual([
+      '#00658f',
+      '#c96a00',
+      '#6a51a3',
+      '#2f7d32',
+      '#b0447c',
+      '#840b13',
+      '#766319',
+      '#0c9797',
+    ]);
+    // Every identified-Art colour is unique (colour still identifies the Art).
+    expect(new Set(artColors).size).toBe(8);
+  });
+
   it('draws the Übrige line in warm grey and dashed, distinct from the Art lines', () => {
     const fixture = setup(series);
     const data = fixture.componentInstance.chartData();

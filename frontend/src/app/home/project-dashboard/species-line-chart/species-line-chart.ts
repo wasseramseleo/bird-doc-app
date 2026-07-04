@@ -32,10 +32,25 @@ import { StatsSeries } from '../../../models/project-stats.model';
 Chart.register(LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend);
 
 // The validated colour-vision-deficiency-safe categorical palette for the
-// per-Art lines (issue #294): worst adjacent-pair CVD ΔE 34.4 under Protanopie,
-// every entry ≥ 3:1 contrast on the paper surface. Colour encodes Art identity
-// here, so it must stay distinguishable under CVD.
-const LINE_PALETTE = ['#00658f', '#c96a00', '#6a51a3', '#2f7d32', '#b0447c'];
+// per-Art lines (issue #294). Colour encodes Art identity here, so every line
+// must get its OWN colour: the backend folds all but the Top-N Arten into Übrige
+// (SERIES_TOP_N = 8, backend/birds/project_stats.py), so a busy range yields up
+// to EIGHT identified lines — the palette therefore carries eight entries so it
+// never wraps and no two Arten ever share a colour. The eight are a full
+// spectral spread (blue · orange · purple · green · magenta · red · gold · teal)
+// kept distinguishable under simulated Protanopie/Deuteranopie/Tritanopie — no
+// pair is tighter than the original five's own closest CVD pair — with every
+// entry ≥ 3:1 contrast on the paper surface.
+const LINE_PALETTE = [
+  '#00658f',
+  '#c96a00',
+  '#6a51a3',
+  '#2f7d32',
+  '#b0447c',
+  '#840b13',
+  '#766319',
+  '#0c9797',
+];
 // Übrige (always the last line) is a warm grey, dashed, so the folded rest reads
 // as context rather than as a sixth Art.
 const UEBRIGE_COLOR = '#8a857a';
