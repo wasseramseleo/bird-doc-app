@@ -3288,6 +3288,43 @@ describe('DataEntryFormComponent', () => {
       );
     });
 
+    // #338: a blur fires the check, so the field has already lost focus by the
+    // time the informational „Verstanden" modal opens. Once acknowledged, focus
+    // must land back on the field that triggered the warning so the flagged value
+    // can be re-examined or retyped straight away — a deliberate backward jump.
+    it('returns focus to the checked field after the „Verstanden" dialog closes', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      component.entryForm.get('weight_gram')!.setValue(25);
+      fixture.detectChanges();
+
+      // Nothing is focused after the blur (the field lost focus already).
+      const weight = fixture.nativeElement.querySelector('[formControlName="weight_gram"]');
+      expect(document.activeElement).not.toBe(weight);
+
+      component.onMeasurementBlur('weight_gram');
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(weight);
+    });
+
+    it('does not steal focus when the blurred value is in range (no dialog)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      component.entryForm.get('weight_gram')!.setValue(9);
+      fixture.detectChanges();
+
+      component.onMeasurementBlur('weight_gram');
+      fixture.detectChanges();
+
+      const weight = fixture.nativeElement.querySelector('[formControlName="weight_gram"]');
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      expect(document.activeElement).not.toBe(weight);
+    });
+
     it('renders no inline warning when the Gewicht is in range', async () => {
       await setup();
       component.selectedSpecies.set(zaunkoenig);
@@ -5010,5 +5047,264 @@ describe('DataEntryFormComponent', () => {
       expect(lastDialogMessage()).toContain('Gewicht 25 g liegt außerhalb');
       expect(lastDialogMessage()).toContain('(Kohlmeise)');
     });
+  });
+
+  // PRD #333, issue #338: the shared focus system — create-mode autofocus, the
+  // return-focus after „Verstanden", and left/right arrow field navigation.
+  describe('focus system: create-mode autofocus (#338)', () => {
+    afterEach(() => localStorage.clear());
+
+    it('focuses the Art field with no click when a create-mode form opens', async () => {
+      await setupCreateMode();
+      const species = fixture.nativeElement.querySelector('[formControlName="species"]');
+      expect(document.activeElement).toBe(species);
+    });
+
+    it('does not force-focus the Art field in edit mode (reviewing an existing record)', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '42' : null) } },
+      };
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+        ],
+      }).compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush({
+          id: '42',
+          species: { id: 's1', common_name_de: 'Kohlmeise', ring_size: RingSize.S },
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz' },
+          project: null,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      f.detectChanges();
+
+      const species = f.nativeElement.querySelector('[formControlName="species"]');
+      // Edit mode never steals focus onto Art; the ringer is reviewing a record.
+      expect(document.activeElement).not.toBe(species);
+    });
+  });
+
+  describe('focus system: left/right arrow field navigation (#338)', () => {
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    const el = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
+
+    const arrow = (key: 'ArrowLeft' | 'ArrowRight') =>
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+
+    it('advances to the next field on right arrow from a select (no caret)', fakeAsync(() => {
+      const age = el('age_class');
+      age.focus();
+
+      const event = arrow('ArrowRight');
+      age.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('sex'));
+    }));
+
+    it('goes to the previous field on left arrow from a select (no caret)', fakeAsync(() => {
+      const sex = el('sex');
+      sex.focus();
+
+      const event = arrow('ArrowLeft');
+      sex.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('age_class'));
+    }));
+
+    it('jumps immediately from a checkbox (no caret) on left arrow', fakeAsync(() => {
+      const checkbox = fixture.nativeElement.querySelector(
+        'mat-checkbox[formControlName="has_mites"] input',
+      ) as HTMLInputElement;
+      checkbox.focus();
+
+      const event = arrow('ArrowLeft');
+      checkbox.dispatchEvent(event);
+      tick(50);
+
+      // has_mites' predecessor in the focus order is the Bemerkungen textarea.
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('comment'));
+    }));
+
+    it('advances from the end of a text field (caret at the edge)', fakeAsync(() => {
+      const ringNumber = el('ring_number') as HTMLInputElement;
+      ringNumber.value = '12345';
+      ringNumber.focus();
+      ringNumber.setSelectionRange(5, 5);
+
+      const event = arrow('ArrowRight');
+      ringNumber.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('net_location'));
+    }));
+
+    it('goes back from the start of a text field (caret at the edge)', fakeAsync(() => {
+      const ringNumber = el('ring_number') as HTMLInputElement;
+      ringNumber.value = '12345';
+      ringNumber.focus();
+      ringNumber.setSelectionRange(0, 0);
+
+      const event = arrow('ArrowLeft');
+      ringNumber.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('ring_size'));
+    }));
+
+    it('moves the caret inside a partly-filled text field instead of jumping', fakeAsync(() => {
+      const ringNumber = el('ring_number') as HTMLInputElement;
+      ringNumber.value = '12345';
+      ringNumber.focus();
+      ringNumber.setSelectionRange(2, 2);
+
+      const event = arrow('ArrowRight');
+      ringNumber.dispatchEvent(event);
+      tick(50);
+
+      // The caret is mid-value, so the arrow stays native and focus does not move.
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(ringNumber);
+    }));
+
+    it('keeps native behaviour in a datetime-local field (segment stepping)', fakeAsync(() => {
+      const dateTime = el('date_time') as HTMLInputElement;
+      dateTime.focus();
+
+      const event = arrow('ArrowRight');
+      dateTime.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(dateTime);
+    }));
+
+    it('keeps native behaviour while the Art autocomplete panel is open', fakeAsync(() => {
+      const species = el('species') as HTMLInputElement;
+      species.setAttribute('aria-expanded', 'true');
+      species.focus();
+
+      const event = arrow('ArrowRight');
+      species.dispatchEvent(event);
+      tick(50);
+
+      // The open panel owns the arrows for option navigation — no field jump.
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(species);
+    }));
+
+    it('skips a disabled field (the greyed-out Kleingefieder Fortschritt)', fakeAsync(() => {
+      // Default Alter (Unbekannt) disables small_feather_app (Fortschritt).
+      expect(component.entryForm.get('small_feather_app')!.disabled).toBe(true);
+
+      const smallInt = el('small_feather_int');
+      smallInt.focus();
+
+      const event = arrow('ArrowRight');
+      smallInt.dispatchEvent(event);
+      tick(50);
+
+      // small_feather_app is skipped; focus lands on the next live field.
+      expect(document.activeElement).toBe(el('hand_wing'));
+    }));
+  });
+
+  describe('focus system: arrow navigation skips net fields hidden by the Projekt (#338)', () => {
+    afterEach(() => localStorage.clear());
+
+    it('jumps from Ringnummer straight to Alter when the net block is hidden', fakeAsync(() => {
+      TestBed.resetTestingModule();
+      const hiddenNetProject = {
+        id: 'p1',
+        title: 'Herbst',
+        description: '',
+        show_optional_fields: true,
+        show_net_fields: false,
+        projekttyp: Projekttyp.Sonstiges,
+        organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+        default_station: null,
+        scientists: [],
+        created: '',
+        updated: '',
+      } as Project;
+      TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(hiddenNetProject),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+        ],
+      });
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      f.detectChanges();
+
+      const at = (name: string) =>
+        f.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
+
+      // The three net controls are hidden by the Projekt switch.
+      expect(at('net_location')).toBeNull();
+
+      const ringNumber = at('ring_number') as HTMLInputElement;
+      ringNumber.value = '12345';
+      ringNumber.focus();
+      ringNumber.setSelectionRange(5, 5);
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true,
+        cancelable: true,
+      });
+      ringNumber.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(at('age_class'));
+    }));
   });
 });

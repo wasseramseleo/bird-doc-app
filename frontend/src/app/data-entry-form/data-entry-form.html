@@ -408,7 +408,7 @@
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Tarsus (mm)</mat-label>
-        <input matInput type="number" formControlName="tarsus" (blur)="onMeasurementBlur()">
+        <input matInput type="number" formControlName="tarsus" (blur)="onMeasurementBlur('tarsus')">
         <!-- #265: the verbose inline hint is replaced by a quiet warning suffix
              icon, shown while the field's σ warning is active (incl. after the
              modal is dismissed). -->
@@ -419,7 +419,7 @@
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Federlänge (mm)</mat-label>
-        <input matInput type="number" formControlName="feather_span" (blur)="onMeasurementBlur()">
+        <input matInput type="number" formControlName="feather_span" (blur)="onMeasurementBlur('feather_span')">
         <!-- #265: a Quotient breach has no field of its own, so it marks BOTH
              Federlänge and Flügellänge — suffixWarningByField folds it in. -->
         @if (suffixWarningByField()['feather_span']; as msg) {
@@ -429,7 +429,7 @@
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Flügellänge (mm)</mat-label>
-        <input matInput type="number" formControlName="wing_span" (blur)="onMeasurementBlur()">
+        <input matInput type="number" formControlName="wing_span" (blur)="onMeasurementBlur('wing_span')">
         @if (suffixWarningByField()['wing_span']; as msg) {
           <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                     data-testid="plausibility-wing_span-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
@@ -437,7 +437,7 @@
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Gewicht (g)</mat-label>
-        <input matInput type="number" formControlName="weight_gram" (blur)="onMeasurementBlur()">
+        <input matInput type="number" formControlName="weight_gram" (blur)="onMeasurementBlur('weight_gram')">
         @if (suffixWarningByField()['weight_gram']; as msg) {
           <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                     data-testid="plausibility-weight_gram-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
@@ -470,7 +470,7 @@
         <div class="column">
           <mat-form-field appearance="outline" floatLabel="always">
             <mat-label>Kerbe F2 (mm)</mat-label>
-            <input matInput type="number" formControlName="notch_f2" (blur)="onMeasurementBlur()">
+            <input matInput type="number" formControlName="notch_f2" (blur)="onMeasurementBlur('notch_f2')">
             @if (suffixWarningByField()['notch_f2']; as msg) {
               <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                         data-testid="plausibility-notch_f2-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
@@ -480,7 +480,7 @@
         <div class="column">
           <mat-form-field appearance="outline" floatLabel="always">
             <mat-label>Innenfuß (mm)</mat-label>
-            <input matInput type="number" formControlName="inner_foot" (blur)="onMeasurementBlur()">
+            <input matInput type="number" formControlName="inner_foot" (blur)="onMeasurementBlur('inner_foot')">
             @if (suffixWarningByField()['inner_foot']; as msg) {
               <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                         data-testid="plausibility-inner_foot-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
