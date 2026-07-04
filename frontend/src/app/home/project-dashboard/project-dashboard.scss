@@ -197,6 +197,67 @@
   font-variant-numeric: tabular-nums;
 }
 
+// The Erstnachweise arrival feed (issue #297): a full-width list of the season's
+// most recent per-Art first records. Full-width on every viewport (no max-width
+// clamp), values plain text, newest first.
+.erstnachweise {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.erstnachweise__title {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.erstnachweise__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.erstnachweise__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--mat-sys-outline-variant, #dadce0);
+  border-radius: 10px;
+}
+
+.erstnachweise__date {
+  font-variant-numeric: tabular-nums;
+  color: var(--mat-sys-on-surface-variant, #5f6368);
+  min-width: 5.5rem;
+}
+
+.erstnachweise__name {
+  font-weight: 600;
+  font-style: italic;
+}
+
+.erstnachweise__beringer {
+  color: var(--mat-sys-on-surface-variant, #5f6368);
+}
+
+.erstnachweise__badge {
+  margin-left: auto;
+  align-self: center;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--mat-sys-primary, #00658f);
+  color: var(--mat-sys-on-primary, #fff);
+}
+
 .dashboard__state {
   display: flex;
   flex-direction: column;

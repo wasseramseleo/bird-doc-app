@@ -19,7 +19,7 @@ from itertools import count
 
 import pytest
 
-from birds.models import DataEntry, Ring, Species
+from birds.models import DataEntry, Ring, Scientist, Species
 
 _ring_seq = count(1)
 
@@ -617,3 +617,131 @@ def test_single_fangtag_has_null_previous(
     assert last["trend"]["previous_fangtag"] is None
     assert last["trend"]["previous_faenge"] is None
     assert last["trend"]["delta"] == 1
+
+
+# --- erstnachweise (issue #297, Ankunfts-Feed) --------------------------------
+
+
+@pytest.mark.django_db
+def test_erstnachweise_are_newest_first_and_capped_at_five(
+    auth_client, scientist, project, ringing_station
+):
+    """``erstnachweise`` is the per-Art *Erstnachweis* — each Art's first record
+    within the range — served newest-first and capped at five. With six Arten
+    first-recorded on six distinct Vienna days, the five most-recent first-records
+    are served in descending date order; the oldest Art falls off the cap.
+
+    Each entry carries the Art (id + German name + wissenschaftlicher Name), the
+    Vienna date of its first in-range record, and that record's Beringer.
+    """
+    from birds.project_stats import ERSTNACHWEIS_LIMIT
+
+    assert ERSTNACHWEIS_LIMIT == 5
+
+    arten = [_make_species(f"Art {i:02d}") for i in range(6)]
+    # First-record days ascending; UTC 08:00 → same Vienna calendar day (CEST).
+    first_days = [
+        datetime(2026, 6, 10, 8, 0, tzinfo=UTC),  # Art 00 (oldest — dropped by cap)
+        datetime(2026, 6, 15, 8, 0, tzinfo=UTC),  # Art 01
+        datetime(2026, 6, 20, 8, 0, tzinfo=UTC),  # Art 02
+        datetime(2026, 6, 25, 8, 0, tzinfo=UTC),  # Art 03
+        datetime(2026, 6, 28, 8, 0, tzinfo=UTC),  # Art 04
+        datetime(2026, 7, 2, 8, 0, tzinfo=UTC),  # Art 05 (newest)
+    ]
+    for art, when in zip(arten, first_days, strict=True):
+        _capture(project, art, ringing_station, scientist, when)
+        # A later capture must not move the Erstnachweis off its first record.
+        _capture(project, art, ringing_station, scientist, datetime(2026, 7, 3, 8, 0, tzinfo=UTC))
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    assert response.status_code == 200
+    erst = response.data["erstnachweise"]
+
+    # Capped at five, newest first: Art 05, 04, 03, 02, 01 — Art 00 drops off.
+    assert len(erst) == 5
+    assert [e["scientific_name"] for e in erst] == [
+        arten[5].scientific_name,
+        arten[4].scientific_name,
+        arten[3].scientific_name,
+        arten[2].scientific_name,
+        arten[1].scientific_name,
+    ]
+    # Dates are each Art's *first* in-range record (Vienna), newest first.
+    assert [e["date"] for e in erst] == [
+        "2026-07-02",
+        "2026-06-28",
+        "2026-06-25",
+        "2026-06-20",
+        "2026-06-15",
+    ]
+    # The oldest Art fell off the cap of five.
+    assert str(arten[0].id) not in [e["species_id"] for e in erst]
+
+    # Full shape of the newest entry: Art id + German name + Beringer (Kürzel).
+    assert erst[0]["species_id"] == str(arten[5].id)
+    assert erst[0]["name"] == arten[5].common_name_de
+    assert erst[0]["beringer"] == scientist.handle
+
+
+@pytest.mark.django_db
+def test_erstnachweis_takes_first_records_date_and_beringer(
+    auth_client, scientist, project, ringing_station, species
+):
+    """An Erstnachweis is the Art's *first* record: it carries the date and the
+    Beringer of the earliest in-range capture, never a later one."""
+    bob = Scientist.objects.create(handle="BOB", organization=project.organization)
+    # Earliest record: 2026-06-20, by Alice (the ``scientist`` fixture, Kürzel ALC).
+    _capture(project, species, ringing_station, scientist, datetime(2026, 6, 20, 8, 0, tzinfo=UTC))
+    # A later record of the same Art, by a different Beringer — must be ignored.
+    _capture(project, species, ringing_station, bob, datetime(2026, 7, 2, 8, 0, tzinfo=UTC))
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    erst = response.data["erstnachweise"]
+    assert len(erst) == 1
+    assert erst[0]["date"] == "2026-06-20"
+    assert erst[0]["beringer"] == scientist.handle
+    assert erst[0]["beringer"] != bob.handle
+
+
+@pytest.mark.django_db
+def test_erstnachweise_exclude_aves_ignota_and_ring_vernichtet(
+    auth_client,
+    scientist,
+    project,
+    ringing_station,
+    species,
+    aves_ignota_species,
+    sentinel_species,
+):
+    """A Sonderart is not an Art record: Aves ignota is excluded from the
+    Erstnachweise (as is Ring vernichtet, excluded everywhere). Only real,
+    identified Arten form arrivals."""
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 8, 0, tzinfo=UTC))
+    _capture(
+        project,
+        aves_ignota_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 1, 8, 0, tzinfo=UTC),
+    )
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 6, 30, 8, 0, tzinfo=UTC),
+    )
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    erst = response.data["erstnachweise"]
+    ids = [e["species_id"] for e in erst]
+    assert ids == [str(species.id)]
+    assert str(aves_ignota_species.id) not in ids
+    assert str(sentinel_species.id) not in ids
+
+
+@pytest.mark.django_db
+def test_erstnachweise_empty_when_range_has_no_captures(auth_client, scientist, project):
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-06-30"}))
+    assert response.status_code == 200
+    assert response.data["erstnachweise"] == []

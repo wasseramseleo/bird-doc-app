@@ -49,6 +49,22 @@ function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
       { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
       { species_id: 'sp-2', name: 'Amsel', count: 21 },
     ],
+    erstnachweise: [
+      {
+        species_id: 'sp-1',
+        name: 'Mönchsgrasmücke',
+        scientific_name: 'Sylvia atricapilla',
+        date: '2026-07-02',
+        beringer: 'a.huber',
+      },
+      {
+        species_id: 'sp-2',
+        name: 'Amsel',
+        scientific_name: 'Turdus merula',
+        date: '2026-06-28',
+        beringer: 'b.mayer',
+      },
+    ],
     series: {
       days: ['2026-06-26', '2026-06-28', '2026-07-02'],
       lines: [
@@ -67,6 +83,17 @@ function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
     },
     ...overrides,
   };
+}
+
+// An ISO date `n` calendar days before today (local), for the „NEU"-threshold
+// test — computed relative to now so the assertion never goes stale.
+function isoDaysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function setup(project: Project, now: Date = DEFAULT_NOW) {
@@ -605,6 +632,134 @@ describe('ProjectDashboardComponent', () => {
     expect(card).toContain('Neue Beschreibung');
     expect(card).toContain('Carla Nova');
     expect(card).not.toContain('Alte Beschreibung');
+    httpMock.verify();
+  });
+
+  it('renders the Erstnachweise arrival feed newest-first (Datum de-AT, wissenschaftlicher Name, Beringer)', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .flush(
+        makeStats({
+          erstnachweise: [
+            {
+              species_id: 'sp-a',
+              name: 'Neuntöter',
+              scientific_name: 'Lanius collurio',
+              date: '2026-07-02',
+              beringer: 'Anna Huber',
+            },
+            {
+              species_id: 'sp-b',
+              name: 'Teichrohrsänger',
+              scientific_name: 'Acrocephalus scirpaceus',
+              date: '2026-06-20',
+              beringer: 'Bernd Mayer',
+            },
+          ],
+        }),
+      );
+    fixture.detectChanges();
+
+    const items: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.erstnachweise__item'),
+    );
+    expect(items.length).toBe(2);
+
+    // Newest first: Lanius collurio (2026-07-02) before Acrocephalus (2026-06-20).
+    const first = items[0].textContent ?? '';
+    expect(first).toContain('Lanius collurio');
+    expect(first).toContain('Anna Huber');
+    // Datum rendered de-AT (dd.MM.yyyy), not the raw ISO string.
+    expect(first).toContain('02.07.2026');
+    expect(first).not.toContain('2026-07-02');
+
+    const second = items[1].textContent ?? '';
+    expect(second).toContain('Acrocephalus scirpaceus');
+    expect(second).toContain('Bernd Mayer');
+    expect(second).toContain('20.06.2026');
+    httpMock.verify();
+  });
+
+  it('badges only the Erstnachweise from the last seven days as „NEU"', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .flush(
+        makeStats({
+          erstnachweise: [
+            {
+              species_id: 'sp-fresh',
+              name: 'Frischart',
+              scientific_name: 'Recens recens',
+              date: isoDaysAgo(2), // within the last 7 days → NEU
+              beringer: 'Anna Huber',
+            },
+            {
+              species_id: 'sp-old',
+              name: 'Altart',
+              scientific_name: 'Vetus vetus',
+              date: isoDaysAgo(30), // well outside the window → no badge
+              beringer: 'Bernd Mayer',
+            },
+          ],
+        }),
+      );
+    fixture.detectChanges();
+
+    const items: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.erstnachweise__item'),
+    );
+    const badgeOf = (el: HTMLElement) => el.querySelector('.erstnachweise__badge');
+    // The fresh arrival (2 days old) is badged NEU; the 30-day-old one is not.
+    expect(badgeOf(items[0])).not.toBeNull();
+    expect(badgeOf(items[0])?.textContent?.trim()).toBe('NEU');
+    expect(badgeOf(items[1])).toBeNull();
+    // Exactly one NEU badge across the whole feed.
+    expect(fixture.nativeElement.querySelectorAll('.erstnachweise__badge').length).toBe(1);
+    httpMock.verify();
+  });
+
+  it('names the jüngster Erstnachweis in the Arten KPI so the number ties to a recent arrival', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock
+      .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
+      .flush(
+        makeStats({
+          totals: { faenge: 120, artenzahl: 17, fangtage: 16, erstfaenge: 90, wiederfaenge: 30 },
+          erstnachweise: [
+            {
+              species_id: 'sp-a',
+              name: 'Neuntöter',
+              scientific_name: 'Lanius collurio',
+              date: '2026-07-02',
+              beringer: 'Anna Huber',
+            },
+            {
+              species_id: 'sp-b',
+              name: 'Amsel',
+              scientific_name: 'Turdus merula',
+              date: '2026-06-20',
+              beringer: 'Bernd Mayer',
+            },
+          ],
+        }),
+      );
+    fixture.detectChanges();
+
+    const tiles: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.kpi-tile'));
+    // The Arten tile (species richness) now names the jüngster (newest) Erstnachweis.
+    const artenTile = tiles.find((t) => (t.textContent ?? '').includes('Arten'));
+    expect(artenTile).toBeTruthy();
+    expect(artenTile!.textContent).toContain('17');
+    // The jüngster Erstnachweis is the newest feed entry (Neuntöter), not the older Amsel.
+    expect(artenTile!.textContent).toContain('Neuntöter');
     httpMock.verify();
   });
 

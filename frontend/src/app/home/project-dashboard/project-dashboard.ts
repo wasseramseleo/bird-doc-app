@@ -7,7 +7,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import {DecimalPipe, PercentPipe} from '@angular/common';
+import {DatePipe, DecimalPipe, PercentPipe} from '@angular/common';
 import {HttpErrorResponse} from '@angular/common/http';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {MatIconModule} from '@angular/material/icon';
@@ -60,6 +60,7 @@ interface RangePresetOption {
 @Component({
   selector: 'app-project-dashboard',
   imports: [
+    DatePipe,
     DecimalPipe,
     PercentPipe,
     MatIconModule,
@@ -153,6 +154,13 @@ export class ProjectDashboardComponent {
   readonly series = computed(() => this.stats()?.series ?? {days: [], lines: []});
   readonly hasSeries = computed(() => this.series().days.length > 0);
 
+  // The season's arrival feed (issue #297): the per-Art Erstnachweise, already
+  // ordered newest-first and capped at five by the server. The jüngster (newest)
+  // Erstnachweis subtitles the Arten KPI so the species count ties to a concrete
+  // recent arrival.
+  readonly erstnachweise = computed(() => this.stats()?.erstnachweise ?? []);
+  readonly juengsterErstnachweis = computed(() => this.erstnachweise()[0] ?? null);
+
   // The Fangaktivität-nach-Tagesstunde histogram (issue #296): the served 24-slot
   // per-Vienna-hour Fänge array, fed straight to the chart. Defaults to a zeroed
   // 24-slot histogram so the block never renders a short/undefined array.
@@ -216,6 +224,23 @@ export class ProjectDashboardComponent {
 
   exportIwm(): void {
     this.actions.exportIwm(this.project());
+  }
+
+  // Days within which an Erstnachweis still counts as a fresh arrival (the „NEU"
+  // badge). A calendar-day window measured against today, so a field Beringer
+  // sees at a glance which Arten only just showed up this week.
+  private static readonly NEU_WINDOW_DAYS = 7;
+
+  // Whether an Erstnachweis (an ISO `YYYY-MM-DD` first-record date) falls within
+  // the last seven calendar days — the „NEU" threshold, evaluated client-side
+  // against today (the payload carries only the date, ADR 0017).
+  isNeu(dateIso: string): boolean {
+    const [year, month, day] = dateIso.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((today.getTime() - date.getTime()) / 86_400_000);
+    return diffDays >= 0 && diffDays <= ProjectDashboardComponent.NEU_WINDOW_DAYS;
   }
 
   selectPreset(preset: StatsRangePreset): void {
