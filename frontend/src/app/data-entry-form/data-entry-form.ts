@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   OnInit,
   computed,
@@ -142,6 +143,8 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly currentProject = this.projectService.currentProject;
   readonly showOptionalFields = computed(() => this.currentProject()?.show_optional_fields ?? true);
@@ -717,6 +720,26 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         this.seedPlausibilityOnLoad();
       });
     });
+
+    // #338: left/right arrow field-jump must be intercepted in the CAPTURE phase,
+    // on the component host (an ancestor of every field), so it runs *before* any
+    // element-level keydown listener at the event target. This matters for a
+    // closed <mat-select>: Material's own (keydown) handler routes a horizontal
+    // arrow to its key manager, whose change subscription calls
+    // `_selectViaInteraction()` and silently advances the selected value. A
+    // bubble-phase handler (the host `(keydown)` binding) fires too late — the
+    // value has already changed and preventDefault cannot undo a programmatic
+    // selection. Handling the gesture in capture lets onArrowNav stop the event
+    // (stopImmediatePropagation) before Material ever sees it, so the jump moves
+    // focus without mutating the field it leaves.
+    const host = this.elementRef.nativeElement;
+    const captureArrowNav = (event: KeyboardEvent): void => {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        this.onArrowNav(event);
+      }
+    };
+    host.addEventListener('keydown', captureArrowNav, true);
+    this.destroyRef.onDestroy(() => host.removeEventListener('keydown', captureArrowNav, true));
   }
 
   /**
@@ -1485,20 +1508,32 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       return;
     }
 
-    // #338: left/right arrow field-jump through the shared focusOrder.
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      this.onArrowNav(event);
-    }
+    // #338: left/right arrow field-jump is handled in the capture phase (wired in
+    // the constructor), not here — it must run before Material's own element-level
+    // keydown so a closed <mat-select> is not mutated by the navigation gesture.
   }
 
   // #338: left/right arrow field navigation. Right advances to the next field,
   // left to the previous one — the same forward/backward traversal Tab/Enter use,
-  // skipping hidden and disabled controls. In a text or number input the jump
-  // fires only when the caret already sits at the edge the arrow points at;
-  // otherwise the arrow moves the caret natively within the value. Selects and
-  // checkboxes carry no caret, so they jump immediately. Native behaviour is left
-  // intact for datetime-local inputs (arrows step between date/time segments) and
-  // while an autocomplete or select panel is open (arrows navigate its options).
+  // skipping hidden and disabled controls. In a text input the jump fires only
+  // when the caret already sits at the edge the arrow points at; otherwise the
+  // arrow moves the caret natively within the value. Selects, checkboxes and
+  // empty inputs carry no caret to preserve, so they jump immediately. Native
+  // behaviour is left intact for datetime-local inputs (arrows step between
+  // date/time segments) and while an autocomplete or select panel is open (arrows
+  // navigate its options).
+  //
+  // Number fields (the measurement inputs) are the documented exception: browsers
+  // do not expose the selection API on `type=number` (selectionStart is null and
+  // cannot be set), so a *partly-filled* number input cannot be edge-detected — it
+  // keeps native in-field caret movement and advances via Tab/Enter instead. See
+  // the amended AC on #338. An *empty* number input still jumps, since there is no
+  // caret position to protect.
+  //
+  // Runs in the CAPTURE phase (see the constructor wiring): when the gesture *is*
+  // a jump it calls stopImmediatePropagation so Material's own element-level
+  // keydown never runs — otherwise a closed <mat-select> would advance its
+  // selected value before this handler could move focus away.
   private onArrowNav(event: KeyboardEvent): void {
     // Modified arrows (Shift-select, Ctrl/Alt word-jump, Cmd) stay native.
     if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
@@ -1527,18 +1562,26 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       if (target.type === 'datetime-local') {
         return;
       }
-      // Text-bearing inputs jump only at the caret edge; otherwise the arrow
-      // moves the caret within the value.
-      if (this.hasTextCaret(target) && !this.caretAtEdge(target, goLeft)) {
+      // A filled text-bearing input jumps only at the caret edge; otherwise the
+      // arrow moves the caret within the value. An empty input (value === '') has
+      // no caret to preserve, so it jumps immediately like a select. A filled
+      // number input hides its caret (caretAtEdge is always false) and so keeps
+      // native movement — the accepted browser limitation.
+      if (this.hasTextCaret(target) && target.value !== '' && !this.caretAtEdge(target, goLeft)) {
         return;
       }
     } else if (target instanceof HTMLTextAreaElement) {
-      if (!this.caretAtEdge(target, goLeft)) {
+      if (target.value !== '' && !this.caretAtEdge(target, goLeft)) {
         return;
       }
     }
 
+    // This IS a field-jump gesture. Suppress the event entirely so no
+    // element-level handler (notably a closed <mat-select>'s key manager) mutates
+    // the field we are leaving; capture-phase stopImmediatePropagation stops it
+    // before Material's own keydown runs.
     event.preventDefault();
+    event.stopImmediatePropagation();
     if (goLeft) {
       this.focusPrevious(controlName);
     } else {
@@ -1548,8 +1591,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
 
   // #338: input types that carry a text caret we must not hijack mid-value. A
   // type=number reports a null caret in Chrome/Safari — caretAtEdge treats that
-  // as "not at an edge", so those keep native in-field caret movement rather than
-  // jumping unexpectedly.
+  // as "not at an edge", so a *filled* number input keeps native in-field caret
+  // movement rather than jumping unexpectedly (an empty one has no caret to
+  // protect and jumps; see onArrowNav).
   private hasTextCaret(input: HTMLInputElement): boolean {
     return ['text', 'search', 'tel', 'url', 'password', 'email', 'number'].includes(input.type);
   }

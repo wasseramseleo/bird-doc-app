@@ -5239,6 +5239,89 @@ describe('DataEntryFormComponent', () => {
       // small_feather_app is skipped; focus lands on the next live field.
       expect(document.activeElement).toBe(el('hand_wing'));
     }));
+
+    // A real arrow key carries a keyCode (LEFT=37, RIGHT=39); the KeyboardEvent
+    // constructor drops keyCode, so define it explicitly. Material's own
+    // <mat-select> keydown handler is keyCode-driven, so only a keyCode-bearing
+    // event exercises the value-mutation path this fix must suppress.
+    const arrowWithKeyCode = (key: 'ArrowLeft' | 'ArrowRight', keyCode: number) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+      return event;
+    };
+
+    it('does not mutate a closed <mat-select> value on an arrow jump (real keyCode)', fakeAsync(() => {
+      // Alter defaults to Unbekannt, which sits mid-list (index 1 of 6), so
+      // Material's key manager has a Right-neighbour it would advance to.
+      const age = el('age_class');
+      expect(component.entryForm.get('age_class')!.value).toBe(AgeClass.Unknown);
+      age.focus();
+
+      // Without capture-phase suppression, MatSelect's own element-level keydown
+      // fires first at the target and routes RIGHT to its key manager, whose
+      // change subscription calls _selectViaInteraction() and advances the
+      // selection to Diesjährig BEFORE the jump handler bubbles up. The fix must
+      // stop that: the value stays put and only focus moves on.
+      const event = arrowWithKeyCode('ArrowRight', 39);
+      age.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(component.entryForm.get('age_class')!.value).toBe(AgeClass.Unknown);
+      expect(document.activeElement).toBe(el('sex'));
+    }));
+
+    it('does not mutate a closed <mat-select> value on a left arrow jump (real keyCode)', fakeAsync(() => {
+      // Seed Geschlecht = Weiblich (index 2 of 3) so its key manager has a
+      // Left-neighbour (Männlich) it would otherwise step back onto.
+      component.entryForm.get('sex')!.setValue(Sex.Female);
+      fixture.detectChanges();
+      const sex = el('sex');
+      sex.focus();
+
+      const event = arrowWithKeyCode('ArrowLeft', 37);
+      sex.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(component.entryForm.get('sex')!.value).toBe(Sex.Female);
+      expect(document.activeElement).toBe(el('age_class'));
+    }));
+
+    it('jumps immediately from an empty number field (no caret to preserve)', fakeAsync(() => {
+      // A measurement field is type=number. Empty, it has no caret position to
+      // protect, so left/right jump like a select rather than dead-ending.
+      const tarsus = el('tarsus') as HTMLInputElement;
+      expect(tarsus.type).toBe('number');
+      expect(tarsus.value).toBe('');
+      tarsus.focus();
+
+      const event = arrow('ArrowRight');
+      tarsus.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('feather_span'));
+    }));
+
+    it('keeps native caret movement in a partly-filled number field (browser has no caret API for type=number)', fakeAsync(() => {
+      // AC caveat (#338): `type=number` exposes no selection API in Chrome/Safari
+      // — selectionStart is null and cannot be set — so a filled number input's
+      // caret edge is undetectable. It therefore keeps native in-field caret
+      // movement (advance via Tab/Enter) rather than jumping mid-value.
+      const tarsus = el('tarsus') as HTMLInputElement;
+      tarsus.value = '123';
+      tarsus.focus();
+      // Confirm the browser limitation the behaviour rests on.
+      expect(tarsus.selectionStart).toBeNull();
+
+      const event = arrow('ArrowRight');
+      tarsus.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(tarsus);
+    }));
   });
 
   describe('focus system: arrow navigation skips net fields hidden by the Projekt (#338)', () => {
