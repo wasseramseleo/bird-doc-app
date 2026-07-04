@@ -3,6 +3,7 @@ import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 
 import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
 import {MatButtonModule} from '@angular/material/button';
+import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatDialogModule, MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
@@ -21,6 +22,7 @@ export interface ProjectCreateDialogResult {
   description: string;
   organizationHandle: string;
   projekttyp: Projekttyp;
+  showNetFields: boolean;
   defaultStationHandle: string;
 }
 
@@ -30,6 +32,7 @@ export interface ProjectCreateDialogResult {
     ReactiveFormsModule,
     MatDialogModule,
     MatButtonModule,
+    MatCheckboxModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule
@@ -52,6 +55,9 @@ export class ProjectCreateDialogComponent {
     description: [''],
     organizationHandle: [this.data.organizations[0]?.handle ?? '', Validators.required],
     projekttyp: [Projekttyp.Sonstiges],
+    // Netzfelder anzeigen (issue #336): default on, parallel to the edit dialog's
+    // "Optionale Felder anzeigen". Nestlingsberingung may seed it off below.
+    showNetFields: [true],
     defaultStationHandle: [''],
   });
 
@@ -65,6 +71,13 @@ export class ProjectCreateDialogComponent {
     orgControl.valueChanges.pipe(takeUntilDestroyed()).subscribe((handle) => {
       this.form.controls.defaultStationHandle.setValue('');
       this.loadStations(handle);
+    });
+    // Create-time seed (ADR 0023): choosing Nestlingsberingung — the one listed
+    // programme that rings in the nest and uses no mist-nets — pre-sets Netzfelder
+    // off as a convenience. It is a suggestion only: the Admin stays free to turn
+    // it back on, and the two are never hard-coupled.
+    this.form.controls.projekttyp.valueChanges.pipe(takeUntilDestroyed()).subscribe((typ) => {
+      this.form.controls.showNetFields.setValue(typ !== Projekttyp.Nestlingsberingung);
     });
   }
 

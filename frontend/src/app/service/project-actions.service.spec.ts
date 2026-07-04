@@ -24,6 +24,7 @@ function createResult(overrides: Partial<ProjectCreateDialogResult> = {}): Proje
     description: 'Beschreibung',
     organizationHandle: 'iwm',
     projekttyp: Projekttyp.Sonstiges,
+    showNetFields: true,
     defaultStationHandle: '',
     ...overrides,
   };
@@ -35,6 +36,7 @@ function editResult(overrides: Partial<ProjectEditDialogResult> = {}): ProjectEd
     description: 'Beschreibung',
     scientistIds: ['s1'],
     showOptionalFields: false,
+    showNetFields: true,
     projekttyp: Projekttyp.Sonstiges,
     defaultStationHandle: '',
     ...overrides,
@@ -53,6 +55,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     title: 'Schilfgürtel Linz',
     description: '',
     show_optional_fields: false,
+    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz', handle: 'iwm' } as Project['organization'],
     default_station: null,
@@ -174,6 +177,7 @@ describe('ProjectActionsService', () => {
         description: 'desc',
         scientist_ids: ['s1', 's2'],
         show_optional_fields: true,
+        show_net_fields: true,
         projekttyp: Projekttyp.IWM,
         default_station_id: 'st1',
       });
@@ -272,6 +276,7 @@ describe('ProjectActionsService', () => {
         description: 'd',
         organization_id: 'iwm',
         projekttyp: Projekttyp.Nestlingsberingung,
+        show_net_fields: true,
         default_station_id: null,
       });
 

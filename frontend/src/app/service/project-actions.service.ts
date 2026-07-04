@@ -84,6 +84,7 @@ export class ProjectActionsService {
           description: result.description,
           organization_id: result.organizationHandle,
           projekttyp: result.projekttyp,
+          show_net_fields: result.showNetFields,
           default_station_id: result.defaultStationHandle || null,
         })
         .subscribe({
@@ -121,6 +122,7 @@ export class ProjectActionsService {
           description: result.description,
           scientist_ids: result.scientistIds,
           show_optional_fields: result.showOptionalFields,
+          show_net_fields: result.showNetFields,
           projekttyp: result.projekttyp,
           default_station_id: result.defaultStationHandle || null,
         })

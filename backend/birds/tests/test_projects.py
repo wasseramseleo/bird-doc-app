@@ -261,3 +261,68 @@ def test_mitglied_cannot_set_projekttyp(mitglied_client, mitglied_scientist, pro
     assert response.status_code == 403
     project.refresh_from_db()
     assert project.projekttyp == Project.Projekttyp.SONSTIGES
+
+
+# --- Netzfelder anzeigen: per-Projekt net-block visibility toggle -------------
+# Issue #336, PRD #332, ADR 0023. ``show_net_fields`` is an independent per-Projekt
+# boolean (default on, parallel to ``show_optional_fields``, NOT derived from
+# Projekttyp): when off the capture form hides the whole net block. Admin-only to
+# write; hiding is display-only and never touches stored/exported net data.
+
+
+@pytest.mark.django_db
+def test_create_project_defaults_show_net_fields_to_true(auth_client, scientist, organization):
+    """A Projekt created without naming show_net_fields keeps the net fields on."""
+    response = auth_client.post(LIST_URL, {"title": "P"}, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert response.json()["show_net_fields"] is True
+    assert Project.objects.get(title="P").show_net_fields is True
+
+
+@pytest.mark.django_db
+def test_create_project_with_show_net_fields_false_round_trips(
+    auth_client, scientist, organization
+):
+    """An explicit show_net_fields=False on create is persisted and echoed back."""
+    response = auth_client.post(
+        LIST_URL,
+        {"title": "P", "show_net_fields": False},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    assert response.json()["show_net_fields"] is False
+    assert Project.objects.get(title="P").show_net_fields is False
+
+
+@pytest.mark.django_db
+def test_update_project_show_net_fields_round_trips(auth_client, project):
+    """An Admin can hide the net block on an existing Projekt; the value round-trips."""
+    assert project.show_net_fields is True
+
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"show_net_fields": False},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["show_net_fields"] is False
+    project.refresh_from_db()
+    assert project.show_net_fields is False
+
+
+@pytest.mark.django_db
+def test_mitglied_cannot_set_show_net_fields(mitglied_client, mitglied_scientist, project):
+    """show_net_fields rides the Admin-only write rule: a plain Mitglied cannot
+    change it (the whole Projekt write is refused with a 403)."""
+    response = mitglied_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"show_net_fields": False},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    project.refresh_from_db()
+    assert project.show_net_fields is True

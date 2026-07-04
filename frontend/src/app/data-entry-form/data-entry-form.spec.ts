@@ -52,6 +52,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -196,6 +197,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: station.organization!,
       default_station: station,
@@ -234,6 +236,89 @@ describe('DataEntryFormComponent', () => {
       const f = await setupWith({ ...project, default_station: null });
       f.detectChanges();
       expect(f.componentInstance.entryForm.get('ringing_station')!.value).toBeNull();
+    });
+  });
+
+  describe('per-Projekt Netzfelder visibility (#336)', () => {
+    const NET_CONTROLS = ['net_location', 'net_height', 'net_direction'];
+
+    const projectWithNet = (show_net_fields: boolean): Project =>
+      ({
+        id: 'p1',
+        title: 'Herbst',
+        description: '',
+        show_optional_fields: true,
+        show_net_fields,
+        projekttyp: Projekttyp.Sonstiges,
+        organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+        default_station: null,
+        scientists: [],
+        created: '',
+        updated: '',
+      }) as Project;
+
+    async function setupWith(show_net_fields: boolean) {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(projectWithNet(show_net_fields)),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+        ],
+      }).compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      f.detectChanges();
+      const httpMock = TestBed.inject(HttpTestingController);
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      f.detectChanges();
+      return f;
+    }
+
+    const netEl = (f: ComponentFixture<DataEntryFormComponent>, name: string) =>
+      f.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement | null;
+
+    it('renders the net block and keeps it in the focus order when show_net_fields is true', async () => {
+      const f = await setupWith(true);
+      const component = f.componentInstance;
+
+      expect(component.showNetFields()).toBe(true);
+      for (const name of NET_CONTROLS) {
+        expect(netEl(f, name)).not.toBeNull();
+        expect(component.entryForm.get(name)!.disabled).toBe(false);
+        // The three net controls participate in Tab/Enter/arrow navigation.
+        expect((component as unknown as { focusOrder: string[] }).focusOrder).toContain(name);
+      }
+    });
+
+    it('hides the net block, disables its controls, and drops them from the focus order when show_net_fields is false', async () => {
+      const f = await setupWith(false);
+      const component = f.componentInstance;
+
+      expect(component.showNetFields()).toBe(false);
+      const order = (component as unknown as { focusOrder: string[] }).focusOrder;
+      for (const name of NET_CONTROLS) {
+        // Absent from the DOM, so focus can never land on a hidden input.
+        expect(netEl(f, name)).toBeNull();
+        // Disabled so keyboard nav skips them and getRawValue stays inert-but-preserved.
+        expect(component.entryForm.get(name)!.disabled).toBe(true);
+        // Dropped from the shared focus/arrow order entirely.
+        expect(order).not.toContain(name);
+      }
+      // The fields immediately around the net block still navigate to each other.
+      expect(order).toContain('ring_number');
+      expect(order).toContain('age_class');
     });
   });
 
@@ -563,6 +648,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -1905,6 +1991,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -3103,6 +3190,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -3552,6 +3640,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -3828,6 +3917,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -4119,6 +4209,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -4432,6 +4523,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -4750,6 +4842,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,

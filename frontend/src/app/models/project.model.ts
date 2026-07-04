@@ -38,6 +38,11 @@ export interface Project {
   title: string;
   description: string;
   show_optional_fields: boolean;
+  // Netzfelder anzeigen (issue #336, ADR 0023): an independent per-Projekt switch
+  // (default on, parallel to show_optional_fields, NOT derived from projekttyp)
+  // that hides the capture form's net block when false. Honoured offline from the
+  // project cache, same path show_optional_fields rides.
+  show_net_fields: boolean;
   projekttyp: Projekttyp;
   organization: Organization;
   // The Projekt's Zentrale (ADR 0019), carried on the GET/bundle shape (#233) so
@@ -55,6 +60,7 @@ export interface ProjectCreatePayload {
   description?: string;
   organization_id: string;
   projekttyp?: Projekttyp;
+  show_net_fields?: boolean;
   default_station_id?: string | null;
 }
 
@@ -63,6 +69,7 @@ export interface ProjectUpdatePayload {
   description: string;
   scientist_ids: string[];
   show_optional_fields?: boolean;
+  show_net_fields?: boolean;
   projekttyp?: Projekttyp;
   default_station_id?: string | null;
 }
