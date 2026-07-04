@@ -17,6 +17,7 @@ import { DASHBOARD_NOW } from './dashboard-state';
 import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
 import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
 import { HourHistogramChartComponent } from './hour-histogram-chart/hour-histogram-chart';
+import { FaengeSparklineComponent } from './faenge-sparkline/faenge-sparkline';
 import { Project } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
 import { ProjectActionsService } from '../../service/project-actions.service';
@@ -311,6 +312,43 @@ describe('ProjectDashboardComponent', () => {
     httpMock.verify();
   });
 
+  it('carries a cumulative Fänge sparkline on the Fänge KPI tile, derived from the served series', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    // The sparkline lives inside the first KPI tile (Fänge), not free-floating.
+    const tiles: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.kpi-tile'));
+    const faengeTile = tiles[0];
+    expect((faengeTile.textContent ?? '')).toContain('Fänge');
+    expect(faengeTile.querySelector('app-faenge-sparkline')).not.toBeNull();
+
+    // It is fed the *cumulative* trajectory derived client-side from the served
+    // per-Fangtag series — daily totals 17, 23, 24 → running 17, 40, 64 — with no
+    // extra request (the same single stats payload feeds it).
+    const spark = fixture.debugElement.query(By.directive(FaengeSparklineComponent));
+    expect(spark).not.toBeNull();
+    expect((spark.componentInstance as FaengeSparklineComponent).values()).toEqual([17, 40, 64]);
+    httpMock.verify();
+  });
+
+  it('omits the Fänge sparkline when the range has no Fangtag series to plot', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // A populated last_fangtag but an empty series (a single-day range can carry a
+    // last Fangtag with no multi-point trajectory) → no sparkline to draw.
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(
+      makeStats({ series: { days: [], lines: [] } }),
+    );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-faenge-sparkline')).toBeNull();
+    httpMock.verify();
+  });
+
   it('feeds the häufigste-Arten bar chart the top_species from the stats response', () => {
     const { fixture, httpMock } = setup(makeProject());
     fixture.detectChanges();
@@ -341,6 +379,90 @@ describe('ProjectDashboardComponent', () => {
     expect(chartData.labels).toEqual(['2026-06-26', '2026-06-28', '2026-07-02']);
     expect(chartData.datasets.map((d) => d.label)).toEqual(['Mönchsgrasmücke', 'Amsel', 'Übrige']);
     expect(chartData.datasets[0].data).toEqual([10, 12, 12]);
+    httpMock.verify();
+  });
+
+  it('offers a table alternative for the Fänge/Fangtag line chart, chart shown by default (table hidden)', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    // Default: the line chart renders, the table alternative does not.
+    expect(fixture.debugElement.query(By.directive(SpeciesLineChartComponent))).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('table.series-table')).toBeNull();
+
+    // The toggle invites the table view.
+    const toggle: HTMLButtonElement | null = fixture.nativeElement.querySelector(
+      '.chart-panel__table-toggle',
+    );
+    expect(toggle).not.toBeNull();
+    expect(toggle!.textContent?.trim()).toBe('Als Tabelle anzeigen');
+    httpMock.verify();
+  });
+
+  it('reveals the served series as a table (same data as the chart) when „Als Tabelle anzeigen" is clicked, and hides the chart', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const toggle: HTMLButtonElement = fixture.nativeElement.querySelector(
+      '.chart-panel__table-toggle',
+    );
+    toggle.click();
+    fixture.detectChanges();
+
+    // The chart is swapped for a real <table> mirroring the served series.
+    expect(fixture.debugElement.query(By.directive(SpeciesLineChartComponent))).toBeNull();
+    const table: HTMLTableElement | null = fixture.nativeElement.querySelector('table.series-table');
+    expect(table).not.toBeNull();
+
+    const text = table!.textContent ?? '';
+    // A caption plus the Fangtage as de-AT (dd.MM.yyyy) column headers.
+    expect(text).toContain('Fänge pro Fangtag');
+    expect(text).toContain('26.06.2026');
+    expect(text).toContain('28.06.2026');
+    expect(text).toContain('02.07.2026');
+
+    // One row per Art (incl. the folded Übrige), the Art named in the row header.
+    const rowHeaders = Array.from(table!.querySelectorAll('tbody th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    expect(rowHeaders).toEqual(['Mönchsgrasmücke', 'Amsel', 'Übrige']);
+
+    // The Mönchsgrasmücke row carries its served per-Fangtag counts (10, 12, 12).
+    const firstRowCells = Array.from(table!.querySelectorAll('tbody tr')[0].querySelectorAll('td'));
+    expect(firstRowCells.map((td) => td.textContent?.trim())).toEqual(['10', '12', '12']);
+    // The Übrige row too (2, 3, 4) — the whole series, not just the identified Arten.
+    const uebrigeCells = Array.from(table!.querySelectorAll('tbody tr')[2].querySelectorAll('td'));
+    expect(uebrigeCells.map((td) => td.textContent?.trim())).toEqual(['2', '3', '4']);
+    httpMock.verify();
+  });
+
+  it('flips the toggle label and returns to the chart when the table alternative is toggled off again', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const toggle: HTMLButtonElement = fixture.nativeElement.querySelector(
+      '.chart-panel__table-toggle',
+    );
+    expect(toggle.textContent?.trim()).toBe('Als Tabelle anzeigen');
+
+    // Table on: the label flips to offer switching back to the chart.
+    toggle.click();
+    fixture.detectChanges();
+    expect(toggle.textContent?.trim()).toBe('Als Diagramm anzeigen');
+    expect(fixture.nativeElement.querySelector('table.series-table')).not.toBeNull();
+
+    // Table off: back to the chart, the label flips back.
+    toggle.click();
+    fixture.detectChanges();
+    expect(toggle.textContent?.trim()).toBe('Als Tabelle anzeigen');
+    expect(fixture.nativeElement.querySelector('table.series-table')).toBeNull();
+    expect(fixture.debugElement.query(By.directive(SpeciesLineChartComponent))).not.toBeNull();
     httpMock.verify();
   });
 

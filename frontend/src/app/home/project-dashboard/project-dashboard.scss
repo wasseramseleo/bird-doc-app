@@ -420,3 +420,63 @@
   margin: 0;
   font-size: 0.8rem;
 }
+
+// The „Als Tabelle anzeigen" ⇄ „Als Diagramm anzeigen" toggle (issue #299): a
+// compact pill that swaps the Fänge/Fangtag line chart for its table alternative.
+// Self-aligned start so it sits above the chart/table without stretching.
+.chart-panel__table-toggle {
+  align-self: flex-start;
+  appearance: none;
+  border: 1px solid var(--mat-sys-outline-variant, #c3c7cf);
+  background: transparent;
+  color: var(--mat-sys-primary, #00658f);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+// The table alternative wraps so it scrolls horizontally on narrow screens rather
+// than pushing the page wide.
+.series-table-wrap {
+  overflow-x: auto;
+}
+
+// The same series as the line chart, as a real data table: one column per Fangtag,
+// one row per Art. Tabular numerals so the counts align; row header (the Art) left,
+// the per-day counts right.
+.series-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+
+  caption {
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.7rem;
+    color: var(--mat-sys-on-surface-variant, #5f6368);
+    margin-bottom: 0.5rem;
+  }
+
+  th,
+  td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--mat-sys-outline-variant, #dadce0);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  thead th,
+  th[scope='row'] {
+    color: var(--mat-sys-on-surface-variant, #5f6368);
+    font-weight: 600;
+  }
+
+  th[scope='row'] {
+    text-align: left;
+    color: var(--mat-sys-on-surface, #1a1c1e);
+  }
+}

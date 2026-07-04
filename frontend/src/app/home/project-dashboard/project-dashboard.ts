@@ -27,8 +27,10 @@ import {
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 import {SpeciesLineChartComponent} from './species-line-chart/species-line-chart';
 import {HourHistogramChartComponent} from './hour-histogram-chart/hour-histogram-chart';
+import {FaengeSparklineComponent} from './faenge-sparkline/faenge-sparkline';
 import {
   classifyStatsFailure,
+  cumulativeFaenge,
   DashboardFailure,
   DASHBOARD_NOW,
   FangtagRecency,
@@ -69,6 +71,7 @@ interface RangePresetOption {
     SpeciesBarChartComponent,
     SpeciesLineChartComponent,
     HourHistogramChartComponent,
+    FaengeSparklineComponent,
   ],
   templateUrl: './project-dashboard.html',
   styleUrl: './project-dashboard.scss',
@@ -160,6 +163,22 @@ export class ProjectDashboardComponent {
   readonly topSpecies = computed(() => this.stats()?.top_species ?? []);
   readonly series = computed(() => this.stats()?.series ?? {days: [], lines: []});
   readonly hasSeries = computed(() => this.series().days.length > 0);
+
+  // The „Fänge pro Fangtag" line chart offers an accessible table alternative
+  // presenting the same served series (issue #299). One toggle owns which of the
+  // two the panel shows — the chart by default, the table on demand — so it never
+  // renders both at once; the table reads the identical `series()` the chart does.
+  readonly showSeriesTable = signal(false);
+  toggleSeriesTable(): void {
+    this.showSeriesTable.update((shown) => !shown);
+  }
+
+  // The Fänge-KPI-Tile sparkline series (issue #299): the season's cumulative
+  // Fänge trajectory, derived client-side from the same served per-Fangtag series
+  // that feeds the line chart — no backend change (ADR 0017). One running total
+  // per Fangtag; the tile only draws it once there are at least two points, so a
+  // single-Fangtag range shows no degenerate one-point line.
+  readonly faengeSparkline = computed<number[]>(() => cumulativeFaenge(this.series()));
 
   // The season's arrival feed (issue #297): the per-Art Erstnachweise, already
   // ordered newest-first and capped at five by the server. The jüngster (newest)
