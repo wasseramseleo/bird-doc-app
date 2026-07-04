@@ -7,7 +7,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import {DecimalPipe, PercentPipe} from '@angular/common';
+import {DatePipe, DecimalPipe, PercentPipe} from '@angular/common';
 import {HttpErrorResponse} from '@angular/common/http';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {RouterLink} from '@angular/router';
@@ -26,7 +26,15 @@ import {
 } from '../../models/project-stats.model';
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 import {SpeciesLineChartComponent} from './species-line-chart/species-line-chart';
-import {classifyStatsFailure, DashboardFailure} from './dashboard-state';
+import {HourHistogramChartComponent} from './hour-histogram-chart/hour-histogram-chart';
+import {
+  classifyStatsFailure,
+  DashboardFailure,
+  DASHBOARD_NOW,
+  FangtagRecency,
+  fangtagRecency,
+  formatFangtagDate,
+} from './dashboard-state';
 
 // The state the dashboard body renders. `loading` covers the in-flight fetch (no
 // empty/broken flash); `offline` and `error` are the two failure branches, kept
@@ -43,15 +51,16 @@ interface RangePresetOption {
   label: string;
 }
 
-// The current Projekt's dashboard (ADR 0018). Renders the "Letzter Tag" stat
-// card, the häufigste-Arten bar chart and the Top-N-Fänge/Fangtag line chart,
-// and owns the range selector that ties all three plus the card to one time
+// The current Projekt's dashboard (ADR 0018). Renders the "Letzter Fangtag"
+// strip, the häufigste-Arten bar chart and the Top-N-Fänge/Fangtag line chart,
+// and owns the range selector that ties all three plus the strip to one time
 // story. Stats are online-only (ADR 0017): with no network it shows an error
 // state, not offline data. All counting semantics live server-side; this
 // component only selects the range and maps the typed response onto the views.
 @Component({
   selector: 'app-project-dashboard',
   imports: [
+    DatePipe,
     DecimalPipe,
     PercentPipe,
     RouterLink,
@@ -59,6 +68,7 @@ interface RangePresetOption {
     MatProgressSpinnerModule,
     SpeciesBarChartComponent,
     SpeciesLineChartComponent,
+    HourHistogramChartComponent,
   ],
   templateUrl: './project-dashboard.html',
   styleUrl: './project-dashboard.scss',
@@ -67,6 +77,11 @@ interface RangePresetOption {
 export class ProjectDashboardComponent {
   private readonly api = inject(ApiService);
   private readonly actions = inject(ProjectActionsService);
+  // The reference "now" for the recency chip + Ruhige-Phase threshold (injected
+  // so it is deterministic under test). This is a read-only reference clock, not
+  // a signal — the values it feeds only ever change when a fresh stats payload
+  // (a new last_fangtag) arrives, so recomputing on that change is enough.
+  private readonly now = inject(DASHBOARD_NOW);
 
   readonly project = input.required<Project>();
 
@@ -108,6 +123,22 @@ export class ProjectDashboardComponent {
 
   readonly lastFangtag = computed(() => this.stats()?.last_fangtag ?? null);
 
+  // The last Fangtag day rendered de-AT (DD.MM.YYYY) for the strip's date field.
+  readonly fangtagDate = computed(() => {
+    const day = this.lastFangtag();
+    return day ? formatFangtagDate(day.date) : '';
+  });
+
+  // How current the last Fangtag is (issue #295): drives the always-shown recency
+  // chip (`vor N Tagen`, success-tinted at ≤ 3 Tagen) and the > 14-Tage
+  // Ruhige-Phase note. Null only when there is no Fangtag in range (empty state),
+  // which keeps the quiet phase strictly distinct from the empty state — a quiet
+  // phase means data exists but is old, never that the range holds nothing.
+  readonly recency = computed<FangtagRecency | null>(() => {
+    const day = this.lastFangtag();
+    return day ? fangtagRecency(day.date, this.now()) : null;
+  });
+
   // The KPI row's figures for the selected range (issue #293). `totals` is served
   // whole; Wiederfang-Anteil and Ø Fänge/Fangtag are the two figures derived
   // client-side from the served counts (guarded against an empty range so they
@@ -129,6 +160,20 @@ export class ProjectDashboardComponent {
   readonly topSpecies = computed(() => this.stats()?.top_species ?? []);
   readonly series = computed(() => this.stats()?.series ?? {days: [], lines: []});
   readonly hasSeries = computed(() => this.series().days.length > 0);
+
+  // The season's arrival feed (issue #297): the per-Art Erstnachweise, already
+  // ordered newest-first and capped at five by the server. The jüngster (newest)
+  // Erstnachweis subtitles the Arten KPI so the species count ties to a concrete
+  // recent arrival.
+  readonly erstnachweise = computed(() => this.stats()?.erstnachweise ?? []);
+  readonly juengsterErstnachweis = computed(() => this.erstnachweise()[0] ?? null);
+
+  // The Fangaktivität-nach-Tagesstunde histogram (issue #296): the served 24-slot
+  // per-Vienna-hour Fänge array, fed straight to the chart. Defaults to a zeroed
+  // 24-slot histogram so the block never renders a short/undefined array.
+  readonly hourHistogram = computed<number[]>(
+    () => this.stats()?.hour_histogram ?? new Array(24).fill(0),
+  );
 
   // The single source of truth the template switches on: exactly one of the five
   // dashboard states, resolved from the fetch lifecycle.
@@ -186,6 +231,23 @@ export class ProjectDashboardComponent {
 
   exportIwm(): void {
     this.actions.exportIwm(this.project());
+  }
+
+  // Days within which an Erstnachweis still counts as a fresh arrival (the „NEU"
+  // badge). A calendar-day window measured against today, so a field Beringer
+  // sees at a glance which Arten only just showed up this week.
+  private static readonly NEU_WINDOW_DAYS = 7;
+
+  // Whether an Erstnachweis (an ISO `YYYY-MM-DD` first-record date) falls within
+  // the last seven calendar days — the „NEU" threshold, evaluated client-side
+  // against today (the payload carries only the date, ADR 0017).
+  isNeu(dateIso: string): boolean {
+    const [year, month, day] = dateIso.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((today.getTime() - date.getTime()) / 86_400_000);
+    return diffDays >= 0 && diffDays <= ProjectDashboardComponent.NEU_WINDOW_DAYS;
   }
 
   selectPreset(preset: StatsRangePreset): void {
