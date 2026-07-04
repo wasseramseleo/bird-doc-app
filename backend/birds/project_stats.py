@@ -20,7 +20,7 @@ import calendar
 import datetime
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count
+from django.db.models import Count, Min
 from django.db.models.functions import ExtractHour, TruncDate
 
 from .models import DataEntry, Species
@@ -107,15 +107,38 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
             "to": date_to.isoformat() if date_to is not None else None,
             "preset": preset,
         },
-        "totals": {
-            "faenge": captures.count(),
-            "artenzahl": captures.values("species_id").distinct().count(),
-        },
+        "totals": _totals(captures),
         "top_species": _top_species(captures),
+        "erstnachweise": _erstnachweise(captures),
         "series": _series(captures),
+        "hour_histogram": _hour_histogram(captures),
         "last_fangtag": _last_fangtag(captures),
     }
     return payload
+
+
+def _totals(captures):
+    """The KPI-row totals over the range (issue #293), all under the module's
+    shared counting rules — ``captures`` already excludes Ring vernichtet and
+    still includes Aves ignota.
+
+    ``faenge = erstfaenge + wiederfaenge`` (every capture carries a
+    ``bird_status`` of exactly one). ``fangtage`` counts distinct Europe/Vienna
+    capture days in range (a Ring-vernichtet-only day is not a Fangtag, since
+    those records never reach ``captures``). Wiederfang-Anteil and Ø/Fangtag are
+    derived client-side from these served counts, never here."""
+    return {
+        "faenge": captures.count(),
+        "artenzahl": captures.values("species_id").distinct().count(),
+        "fangtage": (
+            captures.annotate(day=TruncDate("date_time", tzinfo=VIENNA))
+            .values("day")
+            .distinct()
+            .count()
+        ),
+        "erstfaenge": captures.filter(bird_status=DataEntry.BirdStatus.FIRST_CATCH).count(),
+        "wiederfaenge": captures.filter(bird_status=DataEntry.BirdStatus.RE_CATCH).count(),
+    }
 
 
 TOP_SPECIES_LIMIT = 10
@@ -141,6 +164,50 @@ def _top_species(captures):
         }
         for row in rows
     ]
+
+
+ERSTNACHWEIS_LIMIT = 5
+
+
+def _erstnachweise(captures):
+    """The season's arrival feed (issue #297): the per-Art **Erstnachweis** —
+    each Art's *first record within the range* — newest-first, capped at five.
+
+    An „Erstnachweis" is the first *record* of a species in the range,
+    deliberately not an „Erstfang" (the first capture of an individual bird — a
+    new ring). A **Sonderart is not an Art record**: Aves ignota is excluded
+    here (and Ring vernichtet is already excluded from ``captures``), so only
+    real, identified Arten form arrivals. Each entry carries the Art (id, German
+    name and wissenschaftlicher Name), the Europe/Vienna date of its first
+    in-range record, and that first record's Beringer.
+    """
+    art_captures = captures.filter(species__special_kind=Species.SpecialKind.NORMAL)
+    # Per-Art first-record instant, newest-first, capped — ordered in SQL so no
+    # per-row datetime handling is needed for the ranking itself.
+    ranked = (
+        art_captures.values("species_id", "species__common_name_de", "species__scientific_name")
+        .annotate(first=Min("date_time"))
+        .order_by("-first")[:ERSTNACHWEIS_LIMIT]
+    )
+    result = []
+    for row in ranked:
+        earliest = (
+            art_captures.filter(species_id=row["species_id"])
+            .select_related("staff")
+            .order_by("date_time", "id")
+            .first()
+        )
+        beringer = earliest.staff.full_name or earliest.staff.handle
+        result.append(
+            {
+                "species_id": str(row["species_id"]),
+                "name": row["species__common_name_de"],
+                "scientific_name": row["species__scientific_name"],
+                "date": earliest.date_time.astimezone(VIENNA).date().isoformat(),
+                "beringer": beringer,
+            }
+        )
+    return result
 
 
 SERIES_TOP_N = 8
@@ -206,6 +273,32 @@ def _series(captures):
         lines.append({"species_id": None, "name": UEBRIGE_LABEL, "counts": uebrige_counts})
 
     return {"days": [day.isoformat() for day in days], "lines": lines}
+
+
+HOURS_PER_DAY = 24
+
+
+def _hour_histogram(captures):
+    """Fänge per Europe/Vienna clock hour (0–23) over the whole range for the
+    Fangaktivität-nach-Tagesstunde histogram (issue #296).
+
+    A fixed 24-slot list indexed by hour, so an empty range yields a zeroed
+    histogram (``[0] * 24``) rather than a missing or short array — the chart
+    always has 24 buckets, never an error state. Hours are bucketed on the Vienna
+    clock (timestamps stored UTC, ``USE_TZ=True`` — ADR 0017): a capture at
+    2026-07-01T23:30Z lands in Vienna hour 1, not 23. Same counting as the rest
+    of the module — ``captures`` already excludes Ring vernichtet and still
+    includes Aves ignota.
+    """
+    counts = [0] * HOURS_PER_DAY
+    rows = (
+        captures.annotate(hour=ExtractHour("date_time", tzinfo=VIENNA))
+        .values("hour")
+        .annotate(c=Count("id"))
+    )
+    for row in rows:
+        counts[row["hour"]] = row["c"]
+    return counts
 
 
 def _last_fangtag(captures):

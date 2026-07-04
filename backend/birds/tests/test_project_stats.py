@@ -19,7 +19,7 @@ from itertools import count
 
 import pytest
 
-from birds.models import DataEntry, Ring, Species
+from birds.models import DataEntry, Ring, Scientist, Species
 
 _ring_seq = count(1)
 
@@ -105,8 +105,108 @@ def test_explicit_from_to_echoes_range(auth_client, scientist, project):
 def test_empty_range_returns_zeroed_payload(auth_client, scientist, project):
     response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
     assert response.status_code == 200
-    assert response.data["totals"] == {"faenge": 0, "artenzahl": 0}
+    # Every totals figure — the original two plus the additively-added
+    # fangtage/erstfaenge/wiederfaenge (issue #293) — is zeroed for an empty range.
+    assert response.data["totals"] == {
+        "faenge": 0,
+        "artenzahl": 0,
+        "fangtage": 0,
+        "erstfaenge": 0,
+        "wiederfaenge": 0,
+    }
     assert response.data["last_fangtag"] is None
+
+
+# --- totals: fangtage / erstfaenge / wiederfaenge (issue #293) ----------------
+
+
+@pytest.mark.django_db
+def test_totals_split_erstfang_wiederfang_and_count_fangtage(
+    auth_client,
+    scientist,
+    project,
+    ringing_station,
+    species,
+    species_other,
+    aves_ignota_species,
+    sentinel_species,
+):
+    """``totals`` additively serves ``fangtage``, ``erstfaenge`` and
+    ``wiederfaenge`` under the established counting semantics:
+
+    - ``erstfaenge + wiederfaenge == faenge`` (each capture is one or the other);
+    - Ring vernichtet is excluded from every figure and never forms a Fangtag;
+    - Aves ignota counts as a Fang and carries its own Erstfang/Wiederfang status;
+    - ``fangtage`` counts distinct Europe/Vienna capture days in the range.
+    """
+    # --- Fangtag A: 2026-07-02 (Vienna) ---
+    # 2× Alpha Erstfang, 1× Alpha Wiederfang.
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 4, 0, tzinfo=UTC))
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 4, 10, tzinfo=UTC))
+    _capture(
+        project,
+        species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 4, 20, tzinfo=UTC),
+        status="w",
+    )
+    # 1× Aves ignota, recorded as an Erstfang — a Fang, +1 Artenzahl, counts as Erstfang.
+    _capture(
+        project,
+        aves_ignota_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 5, 0, tzinfo=UTC),
+    )
+    # 1× Ring vernichtet — excluded from every figure.
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 6, 0, tzinfo=UTC),
+    )
+
+    # --- Fangtag B: 2026-06-28 (Vienna) ---
+    # 1× Beta Erstfang, 1× Beta Wiederfang.
+    _capture(
+        project, species_other, ringing_station, scientist, datetime(2026, 6, 28, 8, 0, tzinfo=UTC)
+    )
+    _capture(
+        project,
+        species_other,
+        ringing_station,
+        scientist,
+        datetime(2026, 6, 28, 9, 0, tzinfo=UTC),
+        status="w",
+    )
+
+    # --- A Ring-vernichtet-only Vienna day: must NOT become a Fangtag ---
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 6, 30, 5, 0, tzinfo=UTC),
+    )
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    assert response.status_code == 200
+    totals = response.data["totals"]
+
+    # Fänge = 4 (July 2, Ring vernichtet excluded) + 2 (June 28) = 6.
+    assert totals["faenge"] == 6
+    # Erstfänge: 2 Alpha + 1 Aves ignota + 1 Beta = 4.
+    assert totals["erstfaenge"] == 4
+    # Wiederfänge: 1 Alpha + 1 Beta = 2.
+    assert totals["wiederfaenge"] == 2
+    # The split adds up to the Fänge total.
+    assert totals["erstfaenge"] + totals["wiederfaenge"] == totals["faenge"]
+    # Two distinct Vienna Fangtage; the Ring-vernichtet-only June 30 is not one.
+    assert totals["fangtage"] == 2
+    # Artenzahl unchanged: Alpha, Beta, Aves ignota = 3.
+    assert totals["artenzahl"] == 3
 
 
 # --- Counting semantics + last_fangtag ---------------------------------------
@@ -243,6 +343,70 @@ def test_strongest_hour_buckets_across_vienna_day_boundary(
     assert last["faenge"] == 3
     assert last["strongest_hour"]["hour"] == 1
     assert last["strongest_hour"]["count"] == 2
+
+
+# --- hour_histogram (issue #296, Fangaktivität nach Tagesstunde) -------------
+
+
+@pytest.mark.django_db
+def test_hour_histogram_buckets_in_vienna_and_excludes_ring_vernichtet(
+    auth_client,
+    scientist,
+    project,
+    ringing_station,
+    species,
+    aves_ignota_species,
+    sentinel_species,
+):
+    """``hour_histogram`` is Fänge per Europe/Vienna clock hour (0–23) over the
+    whole range, a fixed 24-slot list indexed by hour. Hours bucket on the Vienna
+    day/hour boundary (timestamps stored UTC): a capture at 2026-07-01T23:30Z is
+    01:30 Vienna (CEST) and lands in hour 1, not 23. Same counting as the rest of
+    the module — Ring vernichtet excluded, Aves ignota counted as a Fang."""
+    # Vienna hour 1 (2026-07-02): two plain captures just before the UTC-day roll.
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 1, 23, 30, tzinfo=UTC))
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 1, 23, 45, tzinfo=UTC))
+    # Vienna hour 6 (04:00–04:20 UTC): one Aves ignota (counted) + two plain = 3.
+    _capture(
+        project,
+        aves_ignota_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 4, 0, tzinfo=UTC),
+    )
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 4, 10, tzinfo=UTC))
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 4, 20, tzinfo=UTC))
+    # Ring vernichtet, also Vienna hour 6 — excluded from every count.
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 4, 30, tzinfo=UTC),
+    )
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-07-01", "to": "2026-07-03"}))
+    assert response.status_code == 200
+    histogram = response.data["hour_histogram"]
+
+    # A fixed 24-slot list indexed by Vienna clock hour.
+    assert len(histogram) == 24
+    # Hour 1 carried the two pre-midnight-UTC captures (23:xx Z → 01:xx Vienna).
+    assert histogram[1] == 2
+    # Hour 6 carried the Aves ignota (counted) + two plain; Ring vernichtet excluded.
+    assert histogram[6] == 3
+    # Every other hour is zero; the total is the counted Fänge (5, not 6).
+    assert sum(histogram) == 5
+    assert [hour for hour, count in enumerate(histogram) if count] == [1, 6]
+
+
+@pytest.mark.django_db
+def test_hour_histogram_zeroed_for_empty_range(auth_client, scientist, project):
+    """An empty range yields a fully-zeroed 24-slot histogram, never a short or
+    missing array — no error state."""
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-06-30"}))
+    assert response.status_code == 200
+    assert response.data["hour_histogram"] == [0] * 24
 
 
 # --- top_species (issue #202, häufigste-Arten bar chart) ---------------------
@@ -453,3 +617,131 @@ def test_single_fangtag_has_null_previous(
     assert last["trend"]["previous_fangtag"] is None
     assert last["trend"]["previous_faenge"] is None
     assert last["trend"]["delta"] == 1
+
+
+# --- erstnachweise (issue #297, Ankunfts-Feed) --------------------------------
+
+
+@pytest.mark.django_db
+def test_erstnachweise_are_newest_first_and_capped_at_five(
+    auth_client, scientist, project, ringing_station
+):
+    """``erstnachweise`` is the per-Art *Erstnachweis* — each Art's first record
+    within the range — served newest-first and capped at five. With six Arten
+    first-recorded on six distinct Vienna days, the five most-recent first-records
+    are served in descending date order; the oldest Art falls off the cap.
+
+    Each entry carries the Art (id + German name + wissenschaftlicher Name), the
+    Vienna date of its first in-range record, and that record's Beringer.
+    """
+    from birds.project_stats import ERSTNACHWEIS_LIMIT
+
+    assert ERSTNACHWEIS_LIMIT == 5
+
+    arten = [_make_species(f"Art {i:02d}") for i in range(6)]
+    # First-record days ascending; UTC 08:00 → same Vienna calendar day (CEST).
+    first_days = [
+        datetime(2026, 6, 10, 8, 0, tzinfo=UTC),  # Art 00 (oldest — dropped by cap)
+        datetime(2026, 6, 15, 8, 0, tzinfo=UTC),  # Art 01
+        datetime(2026, 6, 20, 8, 0, tzinfo=UTC),  # Art 02
+        datetime(2026, 6, 25, 8, 0, tzinfo=UTC),  # Art 03
+        datetime(2026, 6, 28, 8, 0, tzinfo=UTC),  # Art 04
+        datetime(2026, 7, 2, 8, 0, tzinfo=UTC),  # Art 05 (newest)
+    ]
+    for art, when in zip(arten, first_days, strict=True):
+        _capture(project, art, ringing_station, scientist, when)
+        # A later capture must not move the Erstnachweis off its first record.
+        _capture(project, art, ringing_station, scientist, datetime(2026, 7, 3, 8, 0, tzinfo=UTC))
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    assert response.status_code == 200
+    erst = response.data["erstnachweise"]
+
+    # Capped at five, newest first: Art 05, 04, 03, 02, 01 — Art 00 drops off.
+    assert len(erst) == 5
+    assert [e["scientific_name"] for e in erst] == [
+        arten[5].scientific_name,
+        arten[4].scientific_name,
+        arten[3].scientific_name,
+        arten[2].scientific_name,
+        arten[1].scientific_name,
+    ]
+    # Dates are each Art's *first* in-range record (Vienna), newest first.
+    assert [e["date"] for e in erst] == [
+        "2026-07-02",
+        "2026-06-28",
+        "2026-06-25",
+        "2026-06-20",
+        "2026-06-15",
+    ]
+    # The oldest Art fell off the cap of five.
+    assert str(arten[0].id) not in [e["species_id"] for e in erst]
+
+    # Full shape of the newest entry: Art id + German name + Beringer (Kürzel).
+    assert erst[0]["species_id"] == str(arten[5].id)
+    assert erst[0]["name"] == arten[5].common_name_de
+    assert erst[0]["beringer"] == scientist.handle
+
+
+@pytest.mark.django_db
+def test_erstnachweis_takes_first_records_date_and_beringer(
+    auth_client, scientist, project, ringing_station, species
+):
+    """An Erstnachweis is the Art's *first* record: it carries the date and the
+    Beringer of the earliest in-range capture, never a later one."""
+    bob = Scientist.objects.create(handle="BOB", organization=project.organization)
+    # Earliest record: 2026-06-20, by Alice (the ``scientist`` fixture, Kürzel ALC).
+    _capture(project, species, ringing_station, scientist, datetime(2026, 6, 20, 8, 0, tzinfo=UTC))
+    # A later record of the same Art, by a different Beringer — must be ignored.
+    _capture(project, species, ringing_station, bob, datetime(2026, 7, 2, 8, 0, tzinfo=UTC))
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    erst = response.data["erstnachweise"]
+    assert len(erst) == 1
+    assert erst[0]["date"] == "2026-06-20"
+    assert erst[0]["beringer"] == scientist.handle
+    assert erst[0]["beringer"] != bob.handle
+
+
+@pytest.mark.django_db
+def test_erstnachweise_exclude_aves_ignota_and_ring_vernichtet(
+    auth_client,
+    scientist,
+    project,
+    ringing_station,
+    species,
+    aves_ignota_species,
+    sentinel_species,
+):
+    """A Sonderart is not an Art record: Aves ignota is excluded from the
+    Erstnachweise (as is Ring vernichtet, excluded everywhere). Only real,
+    identified Arten form arrivals."""
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 8, 0, tzinfo=UTC))
+    _capture(
+        project,
+        aves_ignota_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 1, 8, 0, tzinfo=UTC),
+    )
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 6, 30, 8, 0, tzinfo=UTC),
+    )
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    erst = response.data["erstnachweise"]
+    ids = [e["species_id"] for e in erst]
+    assert ids == [str(species.id)]
+    assert str(aves_ignota_species.id) not in ids
+    assert str(sentinel_species.id) not in ids
+
+
+@pytest.mark.django_db
+def test_erstnachweise_empty_when_range_has_no_captures(auth_client, scientist, project):
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-06-30"}))
+    assert response.status_code == 200
+    assert response.data["erstnachweise"] == []

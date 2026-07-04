@@ -15,6 +15,13 @@ export interface ProjectStatsRange {
 export interface ProjectStatsTotals {
   faenge: number;
   artenzahl: number;
+  // Additively added for the KPI row (issue #293), all under the same
+  // server-side counting rules: fangtage = distinct Europe/Vienna capture days;
+  // faenge = erstfaenge + wiederfaenge. Wiederfang-Anteil and Ø/Fangtag are
+  // derived from these client-side.
+  fangtage: number;
+  erstfaenge: number;
+  wiederfaenge: number;
 }
 
 export interface HaeufigsteArt {
@@ -72,11 +79,33 @@ export interface StatsSeries {
   lines: SeriesLine[];
 }
 
+// One Erstnachweis (issue #297): an Art's *first record within the range* — the
+// season's arrival feed, deliberately not an Erstfang (the first capture of an
+// individual bird). A Sonderart is not an Art record, so Aves ignota and Ring
+// vernichtet never appear. Served newest-first, capped at five.
+export interface Erstnachweis {
+  species_id: string;
+  // German common name (Art) and its wissenschaftlicher Name.
+  name: string;
+  scientific_name: string;
+  // ISO date (`YYYY-MM-DD`): the Europe/Vienna date of the Art's first in-range record.
+  date: string;
+  // Display name of that first record's Beringer (full name, or the Kürzel).
+  beringer: string;
+}
+
 export interface ProjectStats {
   range: ProjectStatsRange;
   totals: ProjectStatsTotals;
   top_species: TopSpecies[];
+  // The season's arrival feed: newest-first, capped at five (issue #297).
+  erstnachweise: Erstnachweis[];
   series: StatsSeries;
+  // Fänge per Europe/Vienna clock hour (0–23) over the range, for the
+  // Fangaktivität-nach-Tagesstunde histogram (issue #296). A fixed 24-slot array
+  // indexed by hour; an empty range is a fully-zeroed histogram, never missing.
+  // Same counting as the rest: Ring vernichtet excluded, Aves ignota included.
+  hour_histogram: number[];
   // Null when the range holds no captures (empty payload, no error).
   last_fangtag: LastFangtag | null;
 }

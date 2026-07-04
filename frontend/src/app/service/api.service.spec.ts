@@ -140,10 +140,19 @@ describe('ApiService', () => {
   it('getProjectStats hits the project stats action with the range params and maps the typed payload', () => {
     const stats: ProjectStats = {
       range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
-      totals: { faenge: 142, artenzahl: 17 },
+      totals: { faenge: 142, artenzahl: 17, fangtage: 9, erstfaenge: 118, wiederfaenge: 24 },
       top_species: [
         { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
         { species_id: 'sp-2', name: 'Amsel', count: 21 },
+      ],
+      erstnachweise: [
+        {
+          species_id: 'sp-1',
+          name: 'Mönchsgrasmücke',
+          scientific_name: 'Sylvia atricapilla',
+          date: '2026-07-02',
+          beringer: 'a.huber',
+        },
       ],
       series: {
         days: ['2026-06-26', '2026-07-02'],
@@ -152,6 +161,7 @@ describe('ApiService', () => {
           { species_id: null, name: 'Übrige', counts: [7, 10] },
         ],
       },
+      hour_histogram: [0, 0, 0, 0, 0, 4, 12, 10, 8, 6, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       last_fangtag: {
         date: '2026-07-02',
         faenge: 38,
@@ -192,9 +202,11 @@ describe('ApiService', () => {
     expect(req.request.params.has('to')).toBeFalse();
     req.flush({
       range: { from: null, to: '2026-07-03', preset: 'week' },
-      totals: { faenge: 0, artenzahl: 0 },
+      totals: { faenge: 0, artenzahl: 0, fangtage: 0, erstfaenge: 0, wiederfaenge: 0 },
       top_species: [],
+      erstnachweise: [],
       series: { days: [], lines: [] },
+      hour_histogram: new Array(24).fill(0),
       last_fangtag: null,
     } as ProjectStats);
   });

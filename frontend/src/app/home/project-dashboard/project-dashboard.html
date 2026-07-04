@@ -1,59 +1,38 @@
 <section class="dashboard">
   <header class="dashboard__header">
-    <h1>{{ project().title }}</h1>
-  </header>
+    <div class="dashboard__identity">
+      <h1>{{ project().title }}</h1>
+      <p class="dashboard__meta" aria-label="Projektdaten">
+        <span class="dashboard__meta-item">{{ project().organization.name }}</span>
+        <span class="dashboard__meta-item">
+          @if (project().default_station; as station) {
+            {{ station.name }}
+          } @else {
+            Keine Standard-Station
+          }
+        </span>
+        <span class="dashboard__meta-item">{{ beringerCount() }} Beringer</span>
+        <button type="button" class="dashboard__meta-more" (click)="edit()">
+          Alle Projektdaten
+        </button>
+      </p>
+    </div>
 
-  <section class="projektdaten" aria-label="Projektdaten">
-    <div class="projektdaten__actions">
-      <button type="button" class="projektdaten__action" (click)="edit()">Bearbeiten</button>
+    <div class="dashboard__actions">
+      <a class="dashboard__action dashboard__action--primary" routerLink="/data-entry">
+        <mat-icon aria-hidden="true">add</mat-icon>
+        Neuer Fang
+      </a>
+      <button type="button" class="dashboard__action" (click)="edit()">Bearbeiten</button>
       <button
         type="button"
-        class="projektdaten__action"
+        class="dashboard__action"
         aria-label="Als IWM Excel exportieren"
         (click)="exportIwm()">
         Export
       </button>
     </div>
-
-    <dl class="projektdaten__list">
-      <div class="projektdaten__row">
-        <dt>Beschreibung</dt>
-        <dd>
-          @if (project().description) {
-            {{ project().description }}
-          } @else {
-            <span class="projektdaten__empty">Keine Beschreibung hinterlegt</span>
-          }
-        </dd>
-      </div>
-      <div class="projektdaten__row">
-        <dt>Organisation</dt>
-        <dd>{{ project().organization.name }}</dd>
-      </div>
-      <div class="projektdaten__row">
-        <dt>Wissenschaftler</dt>
-        <dd>
-          @if (project().scientists.length > 0) {
-            @for (scientist of project().scientists; track scientist.id) {
-              <span class="projektdaten__scientist">{{ scientist.full_name }}</span>
-            }
-          } @else {
-            <span class="projektdaten__empty">Keine Wissenschaftler zugeordnet</span>
-          }
-        </dd>
-      </div>
-      <div class="projektdaten__row">
-        <dt>Standard-Station</dt>
-        <dd>
-          @if (project().default_station; as station) {
-            {{ station.name }}
-          } @else {
-            <span class="projektdaten__empty">Keine Standard-Station festgelegt</span>
-          }
-        </dd>
-      </div>
-    </dl>
-  </section>
+  </header>
 
   <div class="range-selector" role="group" aria-label="Zeitraum">
     @for (option of presets; track option.preset) {
@@ -113,50 +92,100 @@
       </div>
     }
     @case ('populated') {
+      @if (totals(); as kpi) {
+        <section class="kpi-row" aria-label="Kennzahlen">
+          <div class="kpi-tile">
+            <span class="kpi-tile__label">Fänge</span>
+            <span class="kpi-tile__value">{{ kpi.faenge | number }}</span>
+            <span class="kpi-tile__detail">davon {{ kpi.erstfaenge | number }} Erstfänge</span>
+            @if (faengeSparkline().length >= 2) {
+              <app-faenge-sparkline [values]="faengeSparkline()" />
+            }
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile__label">Arten</span>
+            <span class="kpi-tile__value">{{ kpi.artenzahl | number }}</span>
+            @if (juengsterErstnachweis(); as neu) {
+              <span class="kpi-tile__detail">jüngster Erstnachweis: {{ neu.name }}</span>
+            }
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile__label">Fangtage</span>
+            <span class="kpi-tile__value">{{ kpi.fangtage | number }}</span>
+            <span class="kpi-tile__detail"
+              >Ø {{ faengeProFangtag() | number: '1.1-1' }} Fänge/Fangtag</span
+            >
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile__label">Wiederfang-Anteil</span>
+            <span class="kpi-tile__value">{{ wiederfangAnteil() | percent: '1.0-1' }}</span>
+            <span class="kpi-tile__detail">{{ kpi.wiederfaenge | number }} Wiederfänge</span>
+          </div>
+        </section>
+      }
+
+      @if (erstnachweise().length > 0) {
+        <section class="erstnachweise" aria-label="Erstnachweise">
+          <h2 class="erstnachweise__title">Erstnachweise</h2>
+          <ul class="erstnachweise__list">
+            @for (nachweis of erstnachweise(); track nachweis.species_id) {
+              <li class="erstnachweise__item">
+                <span class="erstnachweise__date">{{ nachweis.date | date: 'dd.MM.yyyy' }}</span>
+                <span class="erstnachweise__name">{{ nachweis.scientific_name }}</span>
+                <span class="erstnachweise__beringer">{{ nachweis.beringer }}</span>
+                @if (isNeu(nachweis.date)) {
+                  <span class="erstnachweise__badge">NEU</span>
+                }
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
       @if (lastFangtag(); as day) {
-    <article class="stat-card">
-      <h2 class="stat-card__title">Letzter Tag</h2>
-      <p class="stat-card__date">{{ day.date }}</p>
+    <section class="fangtag-strip" aria-label="Letzter Fangtag">
+      <span class="fangtag-strip__title">Letzter Fangtag</span>
+      <span class="fangtag-strip__date">{{ fangtagDate() }}</span>
 
-      <div class="stat-card__figure">
-        <span class="stat-card__value">{{ day.faenge | number }}</span>
-        <span class="stat-card__label">Fänge</span>
-      </div>
+      @if (recency(); as rec) {
+        <span
+          class="fangtag-strip__chip"
+          [class.fangtag-strip__chip--recent]="rec.recent">
+          {{ rec.label }}
+        </span>
+      }
 
-      <div class="stat-card__trend">
+      <span class="fangtag-strip__item">
+        {{ day.faenge | number }} Fänge
         @if (day.trend.previous_fangtag) {
           <span
-            class="stat-card__delta"
-            [class.stat-card__delta--up]="day.trend.delta > 0"
-            [class.stat-card__delta--down]="day.trend.delta < 0">
-            <mat-icon aria-hidden="true">
-              {{ day.trend.delta > 0 ? 'trending_up' : day.trend.delta < 0 ? 'trending_down' : 'trending_flat' }}
-            </mat-icon>
-            {{ day.trend.delta > 0 ? '+' : '' }}{{ day.trend.delta | number }}
-          </span>
-          <span class="stat-card__trend-ref">
-            gegenüber {{ day.trend.previous_fangtag }} ({{ day.trend.previous_faenge | number }})
-          </span>
-        } @else {
-          <span class="stat-card__trend-ref">Erster Fangtag im Zeitraum</span>
+            class="fangtag-strip__delta"
+            [class.fangtag-strip__delta--up]="day.trend.delta > 0"
+            [class.fangtag-strip__delta--down]="day.trend.delta < 0"
+            >({{ day.trend.delta > 0 ? '+' : '' }}{{ day.trend.delta | number }})</span
+          >
         }
-      </div>
+      </span>
 
-      <dl class="stat-card__details">
-        @if (day.haeufigste_art; as art) {
-          <div class="stat-card__detail">
-            <dt>Häufigste Art</dt>
-            <dd>{{ art.name }} ({{ art.count | number }})</dd>
-          </div>
-        }
-        @if (day.strongest_hour; as hour) {
-          <div class="stat-card__detail">
-            <dt>Stärkste Stunde</dt>
-            <dd>{{ hour.hour }}:00 Uhr ({{ hour.count | number }})</dd>
-          </div>
-        }
-      </dl>
-    </article>
+      @if (day.haeufigste_art; as art) {
+        <span class="fangtag-strip__item">{{ art.name }} ({{ art.count | number }})</span>
+      }
+
+      @if (day.strongest_hour; as hour) {
+        <span class="fangtag-strip__item">{{ hour.hour }}:00 Uhr ({{ hour.count | number }})</span>
+      }
+    </section>
+
+    @if (recency()?.quiet) {
+      <aside class="quiet-phase">
+        <span class="quiet-phase__title">Ruhige Phase</span>
+        <p class="quiet-phase__text">
+          Seit dem letzten Fangtag ist eine Weile vergangen. Zwischen zwei Fangterminen
+          ist das ganz normal — die Zahlen bleiben stehen, bis der nächste Fangtag läuft.
+        </p>
+        <a class="quiet-phase__action" routerLink="/heute">Fangtag beginnen</a>
+      </aside>
+    }
 
     @if (topSpecies().length > 0) {
       <section class="chart-panel">
@@ -168,9 +197,52 @@
     @if (hasSeries()) {
       <section class="chart-panel">
         <h2 class="chart-panel__title">Fänge pro Fangtag</h2>
-        <app-species-line-chart [series]="series()" />
+        <button
+          type="button"
+          class="chart-panel__table-toggle"
+          [attr.aria-pressed]="showSeriesTable()"
+          (click)="toggleSeriesTable()">
+          {{ showSeriesTable() ? 'Als Diagramm anzeigen' : 'Als Tabelle anzeigen' }}
+        </button>
+
+        @if (showSeriesTable()) {
+          <!-- The same served series the chart draws, as an accessible table: one
+               column per Fangtag, one row per Art (Übrige folded in). -->
+          <div class="series-table-wrap">
+            <table class="series-table">
+              <caption>
+                Fänge pro Fangtag
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Art</th>
+                  @for (day of series().days; track day) {
+                    <th scope="col">{{ day | date: 'dd.MM.yyyy' }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (line of series().lines; track line.name) {
+                  <tr>
+                    <th scope="row">{{ line.name }}</th>
+                    @for (count of line.counts; track $index) {
+                      <td>{{ count | number }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <app-species-line-chart [series]="series()" />
+        }
       </section>
     }
+
+    <section class="chart-panel">
+      <h2 class="chart-panel__title">Fangaktivität nach Tagesstunde</h2>
+      <app-hour-histogram-chart [histogram]="hourHistogram()" />
+    </section>
       }
     }
   }
