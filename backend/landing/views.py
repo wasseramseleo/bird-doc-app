@@ -143,6 +143,26 @@ class GespraechDoneView(TemplateView):
     template_name = "landing/gespraech_done.html"
 
 
+class VergleichView(TemplateView):
+    """`/vergleich/` — the bilingual BirdDoc-vs-Excel/Papierlisten comparison
+    (issue #302, PRD #300).
+
+    A citable bottom-funnel page that lifts the homepage's Excel-comparison
+    section (issue #116) into its own indexable URL, so that when a
+    Stationsleiter asks an AI chat „BirdDoc oder Excel?" the answer can be
+    grounded in BirdDoc's actual differences instead of a hallucinated summary.
+    Part of the bilingual marketing surface (issue #107): German at the apex,
+    English under ``/en/``; server-rendered and script-free (ADR 0009), with the
+    self-referential canonical + hreflang cluster of the home. The meta
+    description states the answer first (issue #305) — the same sentence that
+    opens the page — so the search/AI snippet and the on-page lead never drift.
+
+    Prices and the numeric Artennorm are deliberately out of scope: this page
+    contrasts the *workflow* against paper and Excel, not a price list."""
+
+    template_name = "landing/vergleich.html"
+
+
 class ImpressumView(TemplateView):
     """The operator's Impressum — a server-rendered legal page (issue #78).
 
