@@ -197,6 +197,11 @@
         <app-species-line-chart [series]="series()" />
       </section>
     }
+
+    <section class="chart-panel">
+      <h2 class="chart-panel__title">Fangaktivität nach Tagesstunde</h2>
+      <app-hour-histogram-chart [histogram]="hourHistogram()" />
+    </section>
       }
     }
   }

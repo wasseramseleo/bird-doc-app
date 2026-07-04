@@ -26,6 +26,7 @@ import {
 } from '../../models/project-stats.model';
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 import {SpeciesLineChartComponent} from './species-line-chart/species-line-chart';
+import {HourHistogramChartComponent} from './hour-histogram-chart/hour-histogram-chart';
 import {
   classifyStatsFailure,
   DashboardFailure,
@@ -66,6 +67,7 @@ interface RangePresetOption {
     RouterLink,
     SpeciesBarChartComponent,
     SpeciesLineChartComponent,
+    HourHistogramChartComponent,
   ],
   templateUrl: './project-dashboard.html',
   styleUrl: './project-dashboard.scss',
@@ -150,6 +152,13 @@ export class ProjectDashboardComponent {
   readonly topSpecies = computed(() => this.stats()?.top_species ?? []);
   readonly series = computed(() => this.stats()?.series ?? {days: [], lines: []});
   readonly hasSeries = computed(() => this.series().days.length > 0);
+
+  // The Fangaktivität-nach-Tagesstunde histogram (issue #296): the served 24-slot
+  // per-Vienna-hour Fänge array, fed straight to the chart. Defaults to a zeroed
+  // 24-slot histogram so the block never renders a short/undefined array.
+  readonly hourHistogram = computed<number[]>(
+    () => this.stats()?.hour_histogram ?? new Array(24).fill(0),
+  );
 
   // The single source of truth the template switches on: exactly one of the five
   // dashboard states, resolved from the fetch lifecycle.
