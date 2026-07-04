@@ -101,8 +101,8 @@ class StaticViewSitemap(Sitemap):
 
     A static set of named routes — the marketing home, the two lead funnels, the
     BirdDoc-vs-Excel/Papierlisten comparison (issue #302), the feature overview
-    (issue #303) and the legal pages — reversed to their canonical
-    (default-language, apex) URLs.
+    (issue #303), the pricing-model page (issue #304) and the legal pages —
+    reversed to their canonical (default-language, apex) URLs.
     The transactional token flows (registration, password reset, invitation
     accept) are deliberately left out: they are reached by mailed links, not
     crawled."""
@@ -117,6 +117,7 @@ class StaticViewSitemap(Sitemap):
             "landing:gespraech",
             "landing:vergleich",
             "landing:funktionen",
+            "landing:preise",
             "landing:impressum",
             "landing:datenschutz",
             "landing:agb",

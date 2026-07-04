@@ -57,6 +57,7 @@ def test_sitemap_lists_the_public_pages(client, db):
         "gespraech",
         "vergleich",
         "funktionen",
+        "preise",
         "impressum",
         "datenschutz",
         "agb",
@@ -576,3 +577,91 @@ def test_sitemap_lists_the_funktionen_page(client, db):
 
     content = client.get("/sitemap.xml").content.decode()
     assert reverse("landing:funktionen") in content
+
+
+# ---------------------------------------------------------------------------
+# /preise/ — the bilingual pricing-model page (issue #304, PRD #300). A citable
+# bottom-funnel page that describes the DURABLE pricing model — licensed per
+# Organisation not per head, no-account Beringer free, the beta cohort keeps its
+# preferential price — so an AI answer quoted months later is still roughly
+# right. Same DE/EN cluster as the home + /vergleich/ + /funktionen/.
+# ---------------------------------------------------------------------------
+
+
+def test_preise_de_and_en_return_200(client):
+    # The pricing page is bilingual like the marketing home: German at the apex
+    # (no prefix) and English under /en/, both server-rendered.
+    assert client.get("/preise/").status_code == 200
+    assert client.get("/en/preise/").status_code == 200
+
+
+def test_preise_lead_describes_the_pricing_model_not_a_price_figure(client):
+    # The quotable lead describes the pricing *model* — licensed per Organisation
+    # (not per head), no-account Beringer free, the beta cohort keeps its
+    # preferential price — and NOT a single price figure (a number dates fast;
+    # the model does not). Assert the lead paragraph names all three model
+    # pillars, and that no currency amount is the quotable core of the page
+    # (issue #304): an AI answer quoted months later must still be roughly right.
+    import re
+
+    content = client.get("/preise/").content.decode()
+    lead = re.search(r'<p class="features__lead">(.*?)</p>', content, re.DOTALL).group(1)
+    assert "pro Organisation" in lead
+    assert "nie pro Kopf" in lead
+    assert "kostenlos" in lead
+    assert "Beta-Kohorte" in lead
+    assert "Vorzugspreis" in lead
+    # No price figure anywhere on the page: no currency symbol, no „X €/EUR/Euro
+    # pro Monat/Jahr" amount — the durable model, never a datable number.
+    assert "€" not in content
+    assert not re.search(r"\d+\s*(?:€|EUR|Euro)", content)
+    assert not re.search(r"\d+\s*(?:€|EUR|Euro)?\s*(?:pro|/)\s*(?:Monat|Jahr)", content)
+
+
+def test_preise_renders_self_canonical_and_hreflang_cluster(client):
+    # The German apex variant is self-canonical and advertises the full DE/EN/
+    # x-default cluster, driven by the same language-switch logic as the home;
+    # x-default resolves to the German apex URL (default language, unprefixed).
+    content = client.get("/preise/").content.decode()
+    de_url = "http://testserver/preise/"
+    en_url = "http://testserver/en/preise/"
+    assert f'<link rel="canonical" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_preise_en_variant_is_self_canonical_with_the_same_cluster(client):
+    # The /en/ variant canonicalises to itself (never to the German apex) and
+    # renders the SAME alternate cluster as its German counterpart (issue #279).
+    content = client.get("/en/preise/").content.decode()
+    de_url = "http://testserver/preise/"
+    en_url = "http://testserver/en/preise/"
+    assert f'<link rel="canonical" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_preise_carries_an_answer_first_title_and_meta_description(client):
+    # A <title> and a <meta name="description"> are present and answer-first: the
+    # description opens by stating the pricing model (issue #305), so the
+    # search/AI snippet leads with „pro Organisation" rather than a price figure.
+    # The <title> carries „Preise" and the brand.
+    import re
+
+    content = client.get("/preise/").content.decode()
+    title = re.search(r"<title>(.*?)</title>", content, re.DOTALL).group(1)
+    assert "Preise" in title
+    assert "BirdDoc" in title
+    description = re.search(r'<meta name="description" content="([^"]+)"', content).group(1)
+    assert description.startswith("BirdDoc wird pro Organisation lizenziert")
+
+
+def test_sitemap_lists_the_preise_page(client, db):
+    # The pricing page joins the static sitemap section so a crawler discovers it
+    # by its canonical (default-language, apex) URL.
+    from django.urls import reverse
+
+    content = client.get("/sitemap.xml").content.decode()
+    assert reverse("landing:preise") in content

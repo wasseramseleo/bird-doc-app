@@ -183,6 +183,25 @@ class FunktionenView(TemplateView):
     template_name = "landing/funktionen.html"
 
 
+class PreiseView(TemplateView):
+    """`/preise/` — the bilingual pricing-model page (issue #304, PRD #300).
+
+    A citable bottom-funnel page that describes the *durable pricing model* —
+    licensed per Organisation not per head, no-account Beringer free, and the
+    beta cohort keeps its preferential price — so that when an Organisation
+    decision-maker asks an AI chat „Was kostet BirdDoc?" the answer quoted
+    months later is still roughly right. The page leads with the *model*, not a
+    price point: the current beta status is stated honestly, but no specific
+    price number is the quotable core (a figure dates fast; the model does not).
+    Part of the bilingual marketing surface (issue #107): German at the apex,
+    English under ``/en/``; server-rendered and script-free (ADR 0009), with the
+    self-referential canonical + hreflang cluster of the home. The meta
+    description states the answer first (issue #305) — the same sentence that
+    opens the page — so the search/AI snippet and the on-page lead never drift."""
+
+    template_name = "landing/preise.html"
+
+
 class ImpressumView(TemplateView):
     """The operator's Impressum — a server-rendered legal page (issue #78).
 
