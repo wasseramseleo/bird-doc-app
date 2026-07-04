@@ -12,7 +12,7 @@ import { ProjectService } from '../service/project.service';
 import { AuthService } from '../service/auth.service';
 import { OutboxService } from '../service/outbox.service';
 import { IndexedDbStore } from '../core/offline/indexed-db-store';
-import { Project } from '../models/project.model';
+import { Project, Projekttyp } from '../models/project.model';
 import { environment } from '../../environments/environment';
 import { FeedbackDialogComponent } from '../feedback/feedback-dialog/feedback-dialog';
 
@@ -22,6 +22,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     title: 'Schilfgürtel Linz',
     description: '',
     show_optional_fields: false,
+    projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
     default_station: null,
     scientists: [],

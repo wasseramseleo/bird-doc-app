@@ -4,6 +4,7 @@
       <h1>{{ project().title }}</h1>
       <p class="dashboard__meta" aria-label="Projektdaten">
         <span class="dashboard__meta-item">{{ project().organization.name }}</span>
+        <span class="dashboard__meta-item">{{ projekttypLabel() }}</span>
         <span class="dashboard__meta-item">
           @if (project().default_station; as station) {
             {{ station.name }}

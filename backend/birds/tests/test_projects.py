@@ -188,3 +188,76 @@ def test_update_rejects_default_station_from_other_organization(auth_client, pro
     )
     assert response.status_code == 400
     assert "default_station_id" in response.json()
+
+
+# --- Projekttyp: descriptive per-Projekt programme classification -----------
+# Issue #335, PRD #332, ADR 0023. Projekttyp is internal, descriptive metadata:
+# writable only by an Admin, optional (unset reads as Sonstiges), never exported
+# and gating no capture field.
+
+
+@pytest.mark.django_db
+def test_create_project_defaults_projekttyp_to_sonstiges(auth_client, scientist, organization):
+    """A Projekt created without a Projekttyp resolves to Sonstiges (the default)."""
+    response = auth_client.post(LIST_URL, {"title": "P"}, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert response.json()["projekttyp"] == Project.Projekttyp.SONSTIGES
+    assert Project.objects.get(title="P").projekttyp == Project.Projekttyp.SONSTIGES
+
+
+@pytest.mark.django_db
+def test_create_project_with_projekttyp_round_trips(auth_client, scientist, organization):
+    """An explicit Projekttyp on create is persisted and echoed back."""
+    response = auth_client.post(
+        LIST_URL,
+        {"title": "P", "projekttyp": Project.Projekttyp.NESTLINGSBERINGUNG},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    assert response.json()["projekttyp"] == Project.Projekttyp.NESTLINGSBERINGUNG
+    assert Project.objects.get(title="P").projekttyp == Project.Projekttyp.NESTLINGSBERINGUNG
+
+
+@pytest.mark.django_db
+def test_update_project_projekttyp_round_trips(auth_client, project):
+    """An Admin can change a Projekt's Projekttyp; the new value round-trips."""
+    assert project.projekttyp == Project.Projekttyp.SONSTIGES
+
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"projekttyp": Project.Projekttyp.IWM},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["projekttyp"] == Project.Projekttyp.IWM
+    project.refresh_from_db()
+    assert project.projekttyp == Project.Projekttyp.IWM
+
+
+@pytest.mark.django_db
+def test_update_without_projekttyp_leaves_default_untouched(auth_client, project):
+    """Editing a Projekt without naming a Projekttyp keeps it at Sonstiges — an
+    unset Projekttyp still reads as Sonstiges after an unrelated edit."""
+    response = auth_client.patch(f"{LIST_URL}{project.id}/", {"title": "Renamed"}, format="json")
+
+    assert response.status_code == 200, response.json()
+    project.refresh_from_db()
+    assert project.projekttyp == Project.Projekttyp.SONSTIGES
+
+
+@pytest.mark.django_db
+def test_mitglied_cannot_set_projekttyp(mitglied_client, mitglied_scientist, project):
+    """Projekttyp rides the Admin-only write rule: a plain Mitglied cannot change
+    it (the whole Projekt write is refused with a 403)."""
+    response = mitglied_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"projekttyp": Project.Projekttyp.IWM},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    project.refresh_from_db()
+    assert project.projekttyp == Project.Projekttyp.SONSTIGES

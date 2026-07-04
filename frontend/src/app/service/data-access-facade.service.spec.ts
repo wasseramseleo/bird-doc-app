@@ -18,7 +18,7 @@ import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {Species} from '../models/species.model';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist} from '../models/scientist.model';
-import {Project} from '../models/project.model';
+import {Project, Projekttyp} from '../models/project.model';
 import {Central} from '../models/central.model';
 import {RingSize} from '../models/ring.model';
 
@@ -277,6 +277,7 @@ describe('DataAccessFacadeService', () => {
       title: 'Schilfgürtel Linz',
       description: '',
       show_optional_fields: false,
+      projekttyp: Projekttyp.Sonstiges,
       organization: {id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT'},
       default_station: null,
       scientists: [],
