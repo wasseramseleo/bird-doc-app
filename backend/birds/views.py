@@ -170,7 +170,7 @@ class DataEntryViewSet(viewsets.ModelViewSet):
     )
     serializer_class = DataEntrySerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ["species__common_name_de", "species__scientific_name"]
+    search_fields = ["species__common_name_de", "species__scientific_name", "ring__number"]
 
     def get_queryset(self):
         """

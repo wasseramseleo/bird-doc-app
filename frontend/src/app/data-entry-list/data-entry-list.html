@@ -26,10 +26,10 @@
   </header>
 
   <mat-form-field appearance="outline" class="entry-list__search">
-    <mat-label>Art suchen</mat-label>
+    <mat-label>Art oder Ringnummer suchen</mat-label>
     <mat-icon matPrefix>search</mat-icon>
     <input matInput [formControl]="searchControl" autocomplete="off"
-           placeholder="Deutscher oder wissenschaftlicher Name">
+           placeholder="Deutscher oder wissenschaftlicher Name oder Ringnummer">
   </mat-form-field>
 
   @if (loading()) {
