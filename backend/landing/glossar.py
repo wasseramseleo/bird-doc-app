@@ -50,11 +50,43 @@ class GlossarEntry:
     absaetze: tuple[str, ...]
 
 
-# The first-wave seed terms that exercise the whole path (index → term page →
-# sitemap → breadcrumb). The remaining first-wave terms are authored in a
-# follow-up; adding one here automatically lists it on the index and in the
-# sitemap section (no-drift by construction).
+# The first-wave field-domain vocabulary (roughly a dozen terms, issue #313),
+# authored on the #306 mechanism that exercises the whole path (index → term
+# page → sitemap → breadcrumb). Ordered as a reader would meet them; adding one
+# here automatically lists it on the index and in the sitemap section (no-drift
+# by construction). Product/tenancy vocabulary is deliberately excluded, and no
+# numeric Artennorm value is ever published (it stays signup-gated).
 GLOSSAR_ENTRIES: tuple[GlossarEntry, ...] = (
+    GlossarEntry(
+        slug="beringung",
+        begriff="Beringung",
+        meta_description=(
+            "Beringung ist das wissenschaftliche Markieren wildlebender Vögel mit einem "
+            "individuell nummerierten Ring, um Zugwege, Alter und Ortstreue zu erforschen. "
+            "Wie sie funktioniert und wer sie durchführt."
+        ),
+        lead=(
+            "Beringung ist das wissenschaftliche Markieren wildlebender Vögel mit einem "
+            "individuell nummerierten Ring, um ihre Wege, ihr Alter und ihre Ortstreue "
+            "über Jahre hinweg nachvollziehen zu können."
+        ),
+        absaetze=(
+            "Bei der Beringung wird ein Vogel behutsam gefangen, vermessen und mit einem "
+            "leichten Ring am Lauf versehen. Jeder Ring trägt eine eindeutige Nummer und "
+            "die Adresse einer Beringungszentrale. Wird derselbe Vogel später erneut "
+            "gefangen oder tot gefunden, lässt sich über diese Nummer zweifelsfrei "
+            "feststellen, welches Individuum man vor sich hat.",
+            "So entsteht aus vielen einzelnen Fängen ein Bild von Zugwegen, "
+            "Lebenserwartung und Bestandsentwicklung ganzer Arten. Beringung ist damit "
+            "eine der ältesten und ergiebigsten Methoden der Vogelforschung — ein großer "
+            "Teil unseres Wissens über den Vogelzug stammt aus wiedergefundenen Ringen.",
+            "Beringen dürfen nur eigens ausgebildete und behördlich lizenzierte "
+            "Beringerinnen und Beringer. Der Tierschutz hat dabei Vorrang: Fang, "
+            "Handhabung und Ringgröße folgen festen Regeln, damit die Belastung für den "
+            "Vogel so gering wie möglich bleibt und er unmittelbar nach der Aufnahme "
+            "wieder freigelassen wird.",
+        ),
+    ),
     GlossarEntry(
         slug="erstfang",
         begriff="Erstfang",
@@ -110,7 +142,66 @@ GLOSSAR_ENTRIES: tuple[GlossarEntry, ...] = (
             "Ein Vogel kann beliebig oft wiedergefangen werden; jeder Wiederfang ist "
             "eine eigene Fangaufnahme mit eigenem Datum, Ort und Zustand. Gezählt wird "
             "jede Begegnung als eigener Fang, denn jedes Mal wurde ein Vogel tatsächlich "
-            "in der Hand untersucht.",
+            "in der Hand untersucht — und erst die Summe dieser Begegnungen macht die "
+            "Lebensgeschichte eines beringten Vogels sichtbar.",
+        ),
+    ),
+    GlossarEntry(
+        slug="ringgroesse",
+        begriff="Ringgröße",
+        meta_description=(
+            "Die Ringgröße ist die Größenklasse eines Vogelrings als kurzes "
+            "Buchstabenkürzel, das zum Laufdurchmesser des Vogels passen muss. Wie die "
+            "österreichischen Größencodes funktionieren."
+        ),
+        lead=(
+            "Die Ringgröße ist die Größenklasse eines Vogelrings, angegeben als kurzes "
+            "Buchstabenkürzel, das zum Durchmesser des Vogellaufs passen muss — zu eng "
+            "schnürt ein, zu weit rutscht ab."
+        ),
+        absaetze=(
+            "Vögel unterscheiden sich enorm in der Stärke ihrer Beine: Ein Zaunkönig "
+            "braucht einen winzigen Ring, ein Höckerschwan einen um ein Vielfaches "
+            "größeren. Jede Größenklasse deckt eine Spanne von Laufdurchmessern ab, und "
+            "für jede Art ist erfahrungsgemäß bekannt, welche Größe in aller Regel passt.",
+            "In Österreich sind die Ringgrößen als feste Reihe von Buchstabencodes "
+            "festgelegt, die die zuständige Beringungszentrale herausgibt. Ausländische "
+            "Zentralen verwenden eigene Größenschemata, sodass derselbe Buchstabe je nach "
+            "Land eine andere Größe bezeichnen kann — deshalb gehört zu einer Ringgröße "
+            "immer die Angabe, aus welchem Schema sie stammt.",
+            "Welche Größe für eine Art empfohlen wird, hält die Artenliste fest; die "
+            "endgültige Wahl trifft aber die Beringerin am lebenden Tier. Sitzt der "
+            "empfohlene Ring im Einzelfall nicht richtig, wird eine Nummer größer oder "
+            "kleiner gewählt — der Sitz am Vogel geht der Tabelle vor.",
+        ),
+    ),
+    GlossarEntry(
+        slug="empfohlene-ringgroesse",
+        begriff="Empfohlene Ringgröße",
+        meta_description=(
+            "Die Empfohlene Ringgröße ist der erfahrungsbasierte Standardvorschlag für "
+            "die Ringgröße einer Art — ein Richtwert, keine Vorschrift. Warum manche "
+            "Arten keine feste Empfehlung haben."
+        ),
+        lead=(
+            "Die Empfohlene Ringgröße ist die Ringgröße, die für eine Art standardmäßig "
+            "vorgeschlagen wird — ein erfahrungsbasierter Richtwert, der die passende "
+            "Größe schon vor dem Anlegen nahelegt, aber keine feste Vorschrift ist."
+        ),
+        absaetze=(
+            "Für die meisten Arten hat sich über unzählige Beringungen hinweg gezeigt, "
+            "welche Größenklasse am besten sitzt. Diese Erfahrung ist in der Artenliste "
+            "als Empfehlung hinterlegt, sodass bei der Aufnahme eines Vogels die "
+            "voraussichtlich richtige Größe schon vorgeschlagen wird und nicht jedes Mal "
+            "neu nachgeschlagen werden muss.",
+            "Die Empfehlung bleibt aber ein Vorschlag. Manche Arten haben gar keine "
+            "eindeutige Empfehlung — etwa wenn Männchen und Weibchen so unterschiedlich "
+            "groß sind, dass beide Geschlechter verschiedene Ringe brauchen. Dann bleibt "
+            "die Angabe bewusst offen, statt eine womöglich falsche Größe vorzugeben.",
+            "Im Einzelfall entscheidet immer der Vogel. Weicht der Lauf eines Tieres vom "
+            "Üblichen ab, wählt die Beringerin eine andere als die empfohlene Größe — die "
+            "Empfehlung beschleunigt die Routine, ersetzt aber nie den prüfenden Blick "
+            "auf das konkrete Bein.",
         ),
     ),
     GlossarEntry(
@@ -130,7 +221,9 @@ GLOSSAR_ENTRIES: tuple[GlossarEntry, ...] = (
             "Ringe werden nicht einzeln, sondern als zusammenhängende, aufsteigend "
             "nummerierte Serie ausgegeben — anschaulich eine Schnur gleich großer Ringe. "
             "Für die Feldarbeit werden daraus einzelne Abschnitte herausgetrennt und auf "
-            "mehrere Beringer verteilt.",
+            "mehrere Beringer verteilt. Jeder Ring der Serie trägt seine eigene, "
+            "eindeutige Nummer, sodass später zweifelsfrei feststeht, welcher Vogel "
+            "welchen Ring bekommen hat.",
             "Weil die Abschnitte nicht zwingend in Nummernreihenfolge benutzt werden, "
             "steigen die Ringnummern eines Projekts über die Zeit nicht streng an: Ein "
             "neuerer Fang kann durchaus eine niedrigere Nummer tragen als ein älterer. "
@@ -139,6 +232,189 @@ GLOSSAR_ENTRIES: tuple[GlossarEntry, ...] = (
             "Ein Wiederfang entnimmt der Serie keine Nummer, ein Erstfang und eine "
             "vernichtete Ringnummer dagegen schon. So bleibt nachvollziehbar, welche "
             "Nummern bereits vergeben sind und welche als nächste an der Reihe ist.",
+        ),
+    ),
+    GlossarEntry(
+        slug="kuerzel",
+        begriff="Kürzel",
+        meta_description=(
+            "Ein Kürzel ist das kurze Namenszeichen, das eine Beringerin in Aufnahmen und "
+            "Meldungen eindeutig benennt. Wie die österreichische Regel aus dem Namen ein "
+            "Kürzel bildet."
+        ),
+        lead=(
+            "Ein Kürzel ist das kurze Namenszeichen, mit dem eine Beringerin oder ein "
+            "Beringer in Aufnahmen und Meldungen eindeutig benannt wird, ohne den vollen "
+            "Namen ausschreiben zu müssen."
+        ),
+        absaetze=(
+            "Bei jedem gefangenen Vogel wird festgehalten, wer ihn beringt oder abgelesen "
+            "hat. Weil ein voller Name Platz kostet und sich leicht doppelt, tritt an "
+            "seine Stelle ein kompaktes Kürzel — ein knappes, unverwechselbares Zeichen, "
+            "das die verantwortliche Person in jedem Datensatz und in jedem Export "
+            "benennt.",
+            "In Österreich folgt das Kürzel einer einfachen Regel: der erste Buchstabe "
+            "des Vornamens, gefolgt von den ersten beiden Buchstaben des Nachnamens. Aus "
+            "Filip Reiter wird so das Kürzel FRE. Dadurch lässt sich ein Kürzel meist "
+            "ohne Nachschlagen einer Person zuordnen.",
+            "Das Kürzel steht für die Verantwortung an einer Aufnahme, nicht für ein "
+            "Benutzerkonto. Auch erfahrene Helferinnen und Helfer ohne eigenes Konto "
+            "beringen Vögel und werden über ihr Kürzel als handelnde Person geführt — es "
+            "benennt, wer am Vogel gearbeitet hat, unabhängig davon, wer die Daten "
+            "einträgt.",
+        ),
+    ),
+    GlossarEntry(
+        slug="fangmethode",
+        begriff="Fangmethode",
+        meta_description=(
+            "Die Fangmethode beschreibt, wie ein Vogel gefangen wurde — etwa mit dem "
+            "Japannetz — als standardisierter Code. Warum sie für den Vergleich von "
+            "Beringungsdaten wichtig ist."
+        ),
+        lead=(
+            "Die Fangmethode beschreibt, auf welche Weise ein Vogel gefangen wurde — etwa "
+            "mit einem feinmaschigen Japannetz —, festgehalten als standardisierter Code, "
+            "der die Fangumstände für die Auswertung vergleichbar macht."
+        ),
+        absaetze=(
+            "Vögel werden auf sehr unterschiedliche Art gefangen: mit nahezu "
+            "unsichtbaren Netzen, mit Reusen und Fallen oder direkt am Nest. Für die "
+            "spätere Auswertung ist wichtig zu wissen, wie ein Fang zustande kam, denn die "
+            "Methode beeinflusst, welche Arten und Altersgruppen überhaupt in die Hand "
+            "geraten.",
+            "Damit sich Daten über Stationen und Länder hinweg vergleichen lassen, wird "
+            "die Fangmethode nicht in Worten, sondern als vereinbarter Buchstabencode "
+            "notiert. So bezeichnet derselbe Code europaweit dieselbe Methode, und "
+            "Meldungen aus verschiedenen Quellen bleiben eindeutig lesbar.",
+            "Die Fangmethode ist in der Regel eine Eigenschaft der gesamten "
+            "Fangkampagne und nicht des einzelnen Vogels: An einer Station mit stehenden "
+            "Netzen werden über einen Zeitraum viele Vögel auf dieselbe Weise gefangen. "
+            "Sie wird deshalb einmal für das Vorhaben festgelegt und gilt für dessen "
+            "Fänge.",
+        ),
+    ),
+    GlossarEntry(
+        slug="lockmittel",
+        begriff="Lockmittel",
+        meta_description=(
+            "Ein Lockmittel ist jeder Reiz, mit dem Vögel an den Fangplatz gelockt werden "
+            "— etwa abgespielte Rufe — festgehalten als Code. Warum auch kein Lockmittel "
+            "dokumentiert wird."
+        ),
+        lead=(
+            "Ein Lockmittel ist jeder Reiz, mit dem Vögel gezielt an den Fangplatz "
+            "gelockt werden — etwa abgespielte Rufe —, festgehalten als standardisierter "
+            "Code, der auch die bewusste Entscheidung gegen jede Lockung dokumentiert."
+        ),
+        absaetze=(
+            "Um bestimmte Arten überhaupt oder in ausreichender Zahl zu fangen, wird der "
+            "Fang manchmal unterstützt: durch vorgespielte Lautäußerungen, durch "
+            "Klanginstallationen oder andere Reize, die Vögel neugierig machen oder zur "
+            "Annäherung veranlassen. Ob und womit gelockt wurde, verändert, welche Vögel "
+            "am Netz erscheinen.",
+            "Deshalb gehört das Lockmittel zu den festgehaltenen Umständen eines Fangs. "
+            "Es wird als vereinbarter Code notiert, damit europaweit eindeutig ist, "
+            "welcher Reiz eingesetzt wurde. Auch der Normalfall hat einen eigenen Code: "
+            "Wurde gar nicht gelockt, wird ausdrücklich der Code für kein Lockmittel "
+            "eingetragen.",
+            "Wie die Fangmethode ist das Lockmittel meist eine Eigenschaft des ganzen "
+            "Vorhabens und nicht des einzelnen Vogels. Es wird für die Fangkampagne "
+            "festgelegt und mit exportiert, sodass sich später nachvollziehen lässt, "
+            "unter welchen Bedingungen ein Datensatz entstanden ist.",
+        ),
+    ),
+    GlossarEntry(
+        slug="fangtag",
+        begriff="Fangtag",
+        meta_description=(
+            "Ein Fangtag ist ein Kalendertag, an dem an einer Beringungsstelle mindestens "
+            "ein Vogel gefangen wurde. Warum Tage ohne Fang keine Fangtage sind und die "
+            "Reihe lückenhaft bleibt."
+        ),
+        lead=(
+            "Ein Fangtag ist ein einzelner Kalendertag, an dem an einer "
+            "Beringungsstelle mindestens ein Vogel gefangen wurde — die natürliche "
+            "Einheit, in der die tägliche Fangleistung zusammengefasst wird."
+        ),
+        absaetze=(
+            "Beringung findet nicht gleichmäßig statt, sondern an einzelnen Tagen mit "
+            "Fangbetrieb: Wetter, Jahreszeit und Aufwand entscheiden, ob und wie viel "
+            "gefangen wird. Jeder Tag, an dem tatsächlich Vögel in der Hand waren, ist "
+            "ein Fangtag und bündelt alles, was an ihm aufgenommen wurde.",
+            "Tage ohne einen einzigen Fang sind keine Fangtage. Die Folge der Fangtage "
+            "ist deshalb lückenhaft: Sie zählt nur die Tage, an denen wirklich beringt "
+            "wurde, und füllt die Lücken dazwischen nicht zu einem durchgehenden Kalender "
+            "auf. So spiegelt sie den tatsächlichen Aufwand wider und nicht den Ablauf "
+            "des Kalenders.",
+            "Als gemeinsame Zeiteinheit macht der Fangtag Zahlen vergleichbar: Wie viele "
+            "Vögel und wie viele Arten kamen an einem Tag zusammen, wie entwickeln sich "
+            "diese Werte über eine Saison? Auswertungen gruppieren ihre Tageswerte "
+            "entlang der Fangtage, weil ein Fangtag einer Einheit an Feldarbeit "
+            "entspricht.",
+        ),
+    ),
+    GlossarEntry(
+        slug="artennorm-plausibilitaet",
+        begriff="Artennorm und Plausibilität",
+        meta_description=(
+            "Eine Artennorm ist das art-typische Erwartungsprofil, gegen das Messwerte "
+            "geprüft werden; fällt ein Wert heraus, warnt eine Plausibilitätswarnung, "
+            "ohne die Aufnahme zu blockieren."
+        ),
+        lead=(
+            "Eine Artennorm ist das art-typische Erwartungsprofil, gegen das die "
+            "Messwerte eines gefangenen Vogels geprüft werden — weicht ein Wert deutlich "
+            "ab, erscheint eine Plausibilitätswarnung, die auf einen möglichen Fehler "
+            "aufmerksam macht."
+        ),
+        absaetze=(
+            "Beim Vermessen eines Vogels entstehen viele Zahlen — Gewicht, Flügel- und "
+            "Federlänge und weitere Maße. Für viele Arten ist aus großen Datenmengen "
+            "bekannt, in welchem Bereich diese Werte üblicherweise liegen. Die Artennorm "
+            "fasst dieses Erfahrungswissen je Art zusammen: einen typischen Mittelwert "
+            "und eine übliche Streuung für jede geprüfte Größe.",
+            "Trägt jemand einen Wert ein, der aus diesem üblichen Bereich fällt, meldet "
+            "sich die Plausibilitätswarnung. Sie weist auf die Auffälligkeit hin, "
+            "blockiert aber nie: Ein echt ungewöhnlicher Vogel muss aufnehmbar bleiben. "
+            "Die Warnung hilft, Zahlendreher und Verwechslungen im Feld zu bemerken, "
+            "überlässt die Entscheidung aber der beringenden Person.",
+            "Nicht jede Art hat eine Artennorm, und selbst wo es eine gibt, ist jede "
+            "einzelne Prüfung eigenständig — sie greift nur dort, wo ein Erwartungswert "
+            "hinterlegt ist. Die konkreten Zahlenwerte hinter diesen Prüfungen gehören "
+            "zum Innenleben der Software und werden auf den öffentlichen Wissensseiten "
+            "bewusst nicht veröffentlicht; hier steht der Begriff, nicht die Tabelle.",
+        ),
+    ),
+    GlossarEntry(
+        slug="zentrale",
+        begriff="Zentrale",
+        meta_description=(
+            "Eine Zentrale ist die staatliche Beringungszentrale, unter deren Regeln ein "
+            "Ring ausgegeben und gemeldet wird. Warum ausländische Ringe zu ihrer "
+            "Zentrale gemeldet werden."
+        ),
+        lead=(
+            "Eine Zentrale ist die staatliche Beringungszentrale, unter deren Regeln ein "
+            "Ring ausgegeben und gemeldet wird — sie führt die Ringnummern eines Landes "
+            "und ist die Anlaufstelle für jeden Fund eines dort ausgegebenen Rings."
+        ),
+        absaetze=(
+            "Jeder Vogelring gehört zu genau einer Zentrale, deren Adresse in den Ring "
+            "eingeprägt ist. Sie vergibt die Ringe an ihre Beringerinnen und Beringer, "
+            "verwaltet die zugehörigen Nummernkreise und sammelt die Meldungen über "
+            "beringte und wiedergefundene Vögel. In Österreich ist das die "
+            "Österreichische Vogelwarte.",
+            "Zentralen arbeiten länderübergreifend zusammen, folgen aber jeweils eigenen "
+            "Konventionen. Das zeigt sich besonders bei den Ringgrößen: Derselbe "
+            "Größenbuchstabe kann bei zwei Zentralen unterschiedliche Größen bezeichnen. "
+            "Wird ein Vogel mit ausländischem Ring wiedergefangen, gehört zur Meldung "
+            "deshalb immer, von welcher Zentrale der Ring stammt.",
+            "Findet jemand einen beringten Vogel, führt die Ringadresse zur richtigen "
+            "Zentrale, die den Fund mit dem ursprünglichen Fang zusammenbringt. So "
+            "entsteht über Landesgrenzen hinweg ein gemeinsames Bild der "
+            "Vogelbewegungen — die Zentrale ordnet einen einzelnen Ring in dieses große "
+            "Ganze ein.",
         ),
     ),
 )
