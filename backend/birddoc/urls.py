@@ -37,6 +37,8 @@ urlpatterns = [
 # `/sitemap.xml` and the Fang-Karte Open-Graph image.
 urlpatterns += [
     path("favicon.ico", seo.FaviconView.as_view(), name="favicon"),
+    path("favicon-96x96.png", seo.FaviconPngView.as_view(), name="favicon_png"),
+    path("apple-touch-icon.png", seo.AppleTouchIconView.as_view(), name="apple_touch_icon"),
     path("robots.txt", seo.RobotsTxtView.as_view(), name="robots"),
     path("sitemap.xml", sitemap, {"sitemaps": seo.SITEMAPS}, name="sitemap"),
     path("og/fang-karte.svg", seo.FangKarteOgImageView.as_view(), name="og_fang_karte"),
