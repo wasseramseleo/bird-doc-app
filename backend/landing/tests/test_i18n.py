@@ -175,3 +175,33 @@ def test_vergleich_carries_a_working_de_en_toggle(client):
     en = client.get("/en/vergleich/").content.decode()
     assert 'class="lang-toggle__other" href="/en/vergleich/"' in de
     assert 'class="lang-toggle__other" href="/vergleich/"' in en
+
+
+def test_funktionen_switches_between_german_and_english(client):
+    # The feature overview is bilingual (issue #303): the four capability
+    # passages render German at the apex and English under /en/, with the German
+    # gone from the English page. Exercised through the initial server-rendered
+    # HTML, so the content is present with no client-side JS required (ADR 0009).
+    de = client.get("/funktionen/").content.decode()
+    en = client.get("/en/funktionen/").content.decode()
+    # The German capabilities at the apex...
+    assert "Offline-Fähigkeit" in de
+    assert "Ringserien-Logik" in de
+    assert "nächste freie Ringnummer" in de
+    # ...and the English capabilities under /en/, with the German gone.
+    assert "Offline capability" in en
+    assert "Ring series logic" in en
+    assert "next free ring number" in en
+    assert "Offline-Fähigkeit" not in en
+    assert "Ringserien-Logik" not in en
+    assert "nächste freie Ringnummer" not in en
+
+
+def test_funktionen_carries_a_working_de_en_toggle(client):
+    # The header toggle on the feature overview switches THAT page's language —
+    # from the German apex to /en/funktionen/ and back — rather than bouncing
+    # home.
+    de = client.get("/funktionen/").content.decode()
+    en = client.get("/en/funktionen/").content.decode()
+    assert 'class="lang-toggle__other" href="/en/funktionen/"' in de
+    assert 'class="lang-toggle__other" href="/funktionen/"' in en

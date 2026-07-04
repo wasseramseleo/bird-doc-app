@@ -28,6 +28,11 @@ urlpatterns = [
     # page (issue #302). Bilingual like the home: German at the apex, English
     # under /en/ (this urlconf is wrapped by i18n_patterns in birddoc/urls.py).
     path("vergleich/", views.VergleichView.as_view(), name="vergleich"),
+    # Public bottom-funnel feature overview — the citable „was eine
+    # Beringungssoftware können muss" page (issue #303). Bilingual like the home:
+    # German at the apex, English under /en/ (this urlconf is wrapped by
+    # i18n_patterns in birddoc/urls.py).
+    path("funktionen/", views.FunktionenView.as_view(), name="funktionen"),
     # Zugangscode-gated public registration: found an Organisation + email
     # verification, reachable unauthenticated at the apex (issue #79).
     path("registrierung/", views.RegisterView.as_view(), name="register"),

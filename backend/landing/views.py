@@ -163,6 +163,26 @@ class VergleichView(TemplateView):
     template_name = "landing/vergleich.html"
 
 
+class FunktionenView(TemplateView):
+    """`/funktionen/` — the bilingual feature-overview page (issue #303, PRD #300).
+
+    A citable bottom-funnel page describing what a Beringungssoftware should do
+    — offline capture, IWM export, plausibility warnings and ring-series logic —
+    so that when someone asks an AI chat „Welche Funktionen sollte eine
+    Beringungssoftware haben?" the answer can be grounded in BirdDoc's actual
+    capabilities. Each capability is framed as a self-contained, quotable
+    passage. Part of the bilingual marketing surface (issue #107): German at the
+    apex, English under ``/en/``; server-rendered and script-free (ADR 0009),
+    with the self-referential canonical + hreflang cluster of the home. The meta
+    description states the answer first (issue #305) — the same sentence that
+    opens the page — so the search/AI snippet and the on-page lead never drift.
+
+    Prices and the numeric Artennorm are deliberately out of scope: this page
+    names the *capabilities* a ringing software should have, not a price list."""
+
+    template_name = "landing/funktionen.html"
+
+
 class ImpressumView(TemplateView):
     """The operator's Impressum — a server-rendered legal page (issue #78).
 

@@ -56,6 +56,7 @@ def test_sitemap_lists_the_public_pages(client, db):
         "warteliste",
         "gespraech",
         "vergleich",
+        "funktionen",
         "impressum",
         "datenschutz",
         "agb",
@@ -486,3 +487,92 @@ def test_sitemap_lists_the_vergleich_page(client, db):
 
     content = client.get("/sitemap.xml").content.decode()
     assert reverse("landing:vergleich") in content
+
+
+# ---------------------------------------------------------------------------
+# /funktionen/ — the bilingual feature-overview page (issue #303, PRD #300). A
+# citable bottom-funnel page describing what a Beringungssoftware should do, so
+# BirdDoc is retrievable for capability prompts („Welche Funktionen sollte eine
+# Beringungssoftware haben?"). Same DE/EN cluster as the home + /vergleich/.
+# ---------------------------------------------------------------------------
+
+
+def test_funktionen_de_and_en_return_200(client):
+    # The feature overview is bilingual like the marketing home: German at the
+    # apex (no prefix) and English under /en/, both server-rendered.
+    assert client.get("/funktionen/").status_code == 200
+    assert client.get("/en/funktionen/").status_code == 200
+
+
+def test_funktionen_describes_the_four_named_capabilities_as_standalone_passages(client):
+    # Each of the four named capabilities is a self-contained, quotable passage
+    # — its own heading plus a standalone descriptive statement — so a machine
+    # reader can lift any one capability whole (issue #303).
+    import re
+
+    content = client.get("/funktionen/").content.decode()
+    headings = [h.strip() for h in re.findall(r"<h2[^>]*>(.*?)</h2>", content, re.DOTALL)]
+    for capability in (
+        "Offline-Fähigkeit",
+        "IWM-Export",
+        "Plausibilitätswarnung",
+        "Ringserien-Logik",
+    ):
+        assert capability in headings, f"{capability} is not a standalone passage heading"
+    for fragment in (
+        "sicher auf dem Gerät",
+        "fertige Meldedatei im IWM-Format",
+        "außerhalb des üblichen Bereichs",
+        "nächste freie Ringnummer",
+    ):
+        assert fragment in content, fragment
+
+
+def test_funktionen_renders_self_canonical_and_hreflang_cluster(client):
+    # The German apex variant is self-canonical and advertises the full DE/EN/
+    # x-default cluster, driven by the same language-switch logic as the home;
+    # x-default resolves to the German apex URL (default language, unprefixed).
+    content = client.get("/funktionen/").content.decode()
+    de_url = "http://testserver/funktionen/"
+    en_url = "http://testserver/en/funktionen/"
+    assert f'<link rel="canonical" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_funktionen_en_variant_is_self_canonical_with_the_same_cluster(client):
+    # The /en/ variant canonicalises to itself (never to the German apex) and
+    # renders the SAME alternate cluster as its German counterpart (issue #279).
+    content = client.get("/en/funktionen/").content.decode()
+    de_url = "http://testserver/funktionen/"
+    en_url = "http://testserver/en/funktionen/"
+    assert f'<link rel="canonical" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_funktionen_carries_an_answer_first_title_and_meta_description(client):
+    # A <title> and a <meta name="description"> are present and answer-first: the
+    # description opens by answering what a Beringungssoftware should do (issue
+    # #305), so the search/AI snippet states the capabilities up front. The
+    # <title> carries both „Funktionen" and the „Beringungssoftware" head term.
+    import re
+
+    content = client.get("/funktionen/").content.decode()
+    title = re.search(r"<title>(.*?)</title>", content, re.DOTALL).group(1)
+    assert "Funktionen" in title
+    assert "Beringungssoftware" in title
+    assert "BirdDoc" in title
+    description = re.search(r'<meta name="description" content="([^"]+)"', content).group(1)
+    assert description.startswith("Eine Beringungssoftware sollte")
+
+
+def test_sitemap_lists_the_funktionen_page(client, db):
+    # The feature overview joins the static sitemap section so a crawler
+    # discovers it by its canonical (default-language, apex) URL.
+    from django.urls import reverse
+
+    content = client.get("/sitemap.xml").content.decode()
+    assert reverse("landing:funktionen") in content

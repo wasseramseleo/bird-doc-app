@@ -100,8 +100,9 @@ class StaticViewSitemap(Sitemap):
     """The public, indexable pages of the marketing + trust surface.
 
     A static set of named routes — the marketing home, the two lead funnels, the
-    BirdDoc-vs-Excel/Papierlisten comparison (issue #302) and the legal pages —
-    reversed to their canonical (default-language, apex) URLs.
+    BirdDoc-vs-Excel/Papierlisten comparison (issue #302), the feature overview
+    (issue #303) and the legal pages — reversed to their canonical
+    (default-language, apex) URLs.
     The transactional token flows (registration, password reset, invitation
     accept) are deliberately left out: they are reached by mailed links, not
     crawled."""
@@ -115,6 +116,7 @@ class StaticViewSitemap(Sitemap):
             "landing:warteliste",
             "landing:gespraech",
             "landing:vergleich",
+            "landing:funktionen",
             "landing:impressum",
             "landing:datenschutz",
             "landing:agb",
