@@ -15,6 +15,13 @@ export interface ProjectStatsRange {
 export interface ProjectStatsTotals {
   faenge: number;
   artenzahl: number;
+  // Additively added for the KPI row (issue #293), all under the same
+  // server-side counting rules: fangtage = distinct Europe/Vienna capture days;
+  // faenge = erstfaenge + wiederfaenge. Wiederfang-Anteil and Ø/Fangtag are
+  // derived from these client-side.
+  fangtage: number;
+  erstfaenge: number;
+  wiederfaenge: number;
 }
 
 export interface HaeufigsteArt {

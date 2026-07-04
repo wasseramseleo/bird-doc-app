@@ -64,7 +64,7 @@ describe('HomeComponent', () => {
 
     httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush({
       range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
-      totals: { faenge: 142, artenzahl: 17 },
+      totals: { faenge: 142, artenzahl: 17, fangtage: 9, erstfaenge: 118, wiederfaenge: 24 },
       top_species: [{ species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 12 }],
       last_fangtag: {
         date: '2026-07-02',

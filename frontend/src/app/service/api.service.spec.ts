@@ -140,7 +140,7 @@ describe('ApiService', () => {
   it('getProjectStats hits the project stats action with the range params and maps the typed payload', () => {
     const stats: ProjectStats = {
       range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
-      totals: { faenge: 142, artenzahl: 17 },
+      totals: { faenge: 142, artenzahl: 17, fangtage: 9, erstfaenge: 118, wiederfaenge: 24 },
       top_species: [
         { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
         { species_id: 'sp-2', name: 'Amsel', count: 21 },
@@ -192,7 +192,7 @@ describe('ApiService', () => {
     expect(req.request.params.has('to')).toBeFalse();
     req.flush({
       range: { from: null, to: '2026-07-03', preset: 'week' },
-      totals: { faenge: 0, artenzahl: 0 },
+      totals: { faenge: 0, artenzahl: 0, fangtage: 0, erstfaenge: 0, wiederfaenge: 0 },
       top_species: [],
       series: { days: [], lines: [] },
       last_fangtag: null,

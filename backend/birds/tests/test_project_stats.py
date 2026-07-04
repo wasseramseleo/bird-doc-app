@@ -105,8 +105,108 @@ def test_explicit_from_to_echoes_range(auth_client, scientist, project):
 def test_empty_range_returns_zeroed_payload(auth_client, scientist, project):
     response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
     assert response.status_code == 200
-    assert response.data["totals"] == {"faenge": 0, "artenzahl": 0}
+    # Every totals figure — the original two plus the additively-added
+    # fangtage/erstfaenge/wiederfaenge (issue #293) — is zeroed for an empty range.
+    assert response.data["totals"] == {
+        "faenge": 0,
+        "artenzahl": 0,
+        "fangtage": 0,
+        "erstfaenge": 0,
+        "wiederfaenge": 0,
+    }
     assert response.data["last_fangtag"] is None
+
+
+# --- totals: fangtage / erstfaenge / wiederfaenge (issue #293) ----------------
+
+
+@pytest.mark.django_db
+def test_totals_split_erstfang_wiederfang_and_count_fangtage(
+    auth_client,
+    scientist,
+    project,
+    ringing_station,
+    species,
+    species_other,
+    aves_ignota_species,
+    sentinel_species,
+):
+    """``totals`` additively serves ``fangtage``, ``erstfaenge`` and
+    ``wiederfaenge`` under the established counting semantics:
+
+    - ``erstfaenge + wiederfaenge == faenge`` (each capture is one or the other);
+    - Ring vernichtet is excluded from every figure and never forms a Fangtag;
+    - Aves ignota counts as a Fang and carries its own Erstfang/Wiederfang status;
+    - ``fangtage`` counts distinct Europe/Vienna capture days in the range.
+    """
+    # --- Fangtag A: 2026-07-02 (Vienna) ---
+    # 2× Alpha Erstfang, 1× Alpha Wiederfang.
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 4, 0, tzinfo=UTC))
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 4, 10, tzinfo=UTC))
+    _capture(
+        project,
+        species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 4, 20, tzinfo=UTC),
+        status="w",
+    )
+    # 1× Aves ignota, recorded as an Erstfang — a Fang, +1 Artenzahl, counts as Erstfang.
+    _capture(
+        project,
+        aves_ignota_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 5, 0, tzinfo=UTC),
+    )
+    # 1× Ring vernichtet — excluded from every figure.
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 6, 0, tzinfo=UTC),
+    )
+
+    # --- Fangtag B: 2026-06-28 (Vienna) ---
+    # 1× Beta Erstfang, 1× Beta Wiederfang.
+    _capture(
+        project, species_other, ringing_station, scientist, datetime(2026, 6, 28, 8, 0, tzinfo=UTC)
+    )
+    _capture(
+        project,
+        species_other,
+        ringing_station,
+        scientist,
+        datetime(2026, 6, 28, 9, 0, tzinfo=UTC),
+        status="w",
+    )
+
+    # --- A Ring-vernichtet-only Vienna day: must NOT become a Fangtag ---
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 6, 30, 5, 0, tzinfo=UTC),
+    )
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
+    assert response.status_code == 200
+    totals = response.data["totals"]
+
+    # Fänge = 4 (July 2, Ring vernichtet excluded) + 2 (June 28) = 6.
+    assert totals["faenge"] == 6
+    # Erstfänge: 2 Alpha + 1 Aves ignota + 1 Beta = 4.
+    assert totals["erstfaenge"] == 4
+    # Wiederfänge: 1 Alpha + 1 Beta = 2.
+    assert totals["wiederfaenge"] == 2
+    # The split adds up to the Fänge total.
+    assert totals["erstfaenge"] + totals["wiederfaenge"] == totals["faenge"]
+    # Two distinct Vienna Fangtage; the Ring-vernichtet-only June 30 is not one.
+    assert totals["fangtage"] == 2
+    # Artenzahl unchanged: Alpha, Beta, Aves ignota = 3.
+    assert totals["artenzahl"] == 3
 
 
 # --- Counting semantics + last_fangtag ---------------------------------------

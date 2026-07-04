@@ -151,6 +151,52 @@
   cursor: pointer;
 }
 
+// The KPI row (issue #293): four equal tiles that open the dashboard for the
+// selected range. A 4-column grid that collapses to 2×2, then a single column.
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+
+  @media (max-width: 720px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 420px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kpi-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--mat-sys-outline-variant, #dadce0);
+  border-radius: 12px;
+}
+
+.kpi-tile__label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+  color: var(--mat-sys-on-surface-variant, #5f6368);
+}
+
+.kpi-tile__value {
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  // Tabular numerals so the figures align and don't jitter as they change.
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-tile__detail {
+  font-size: 0.8rem;
+  color: var(--mat-sys-on-surface-variant, #5f6368);
+  font-variant-numeric: tabular-nums;
+}
+
 .dashboard__state {
   display: flex;
   flex-direction: column;

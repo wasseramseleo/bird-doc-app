@@ -107,15 +107,36 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
             "to": date_to.isoformat() if date_to is not None else None,
             "preset": preset,
         },
-        "totals": {
-            "faenge": captures.count(),
-            "artenzahl": captures.values("species_id").distinct().count(),
-        },
+        "totals": _totals(captures),
         "top_species": _top_species(captures),
         "series": _series(captures),
         "last_fangtag": _last_fangtag(captures),
     }
     return payload
+
+
+def _totals(captures):
+    """The KPI-row totals over the range (issue #293), all under the module's
+    shared counting rules — ``captures`` already excludes Ring vernichtet and
+    still includes Aves ignota.
+
+    ``faenge = erstfaenge + wiederfaenge`` (every capture carries a
+    ``bird_status`` of exactly one). ``fangtage`` counts distinct Europe/Vienna
+    capture days in range (a Ring-vernichtet-only day is not a Fangtag, since
+    those records never reach ``captures``). Wiederfang-Anteil and Ø/Fangtag are
+    derived client-side from these served counts, never here."""
+    return {
+        "faenge": captures.count(),
+        "artenzahl": captures.values("species_id").distinct().count(),
+        "fangtage": (
+            captures.annotate(day=TruncDate("date_time", tzinfo=VIENNA))
+            .values("day")
+            .distinct()
+            .count()
+        ),
+        "erstfaenge": captures.filter(bird_status=DataEntry.BirdStatus.FIRST_CATCH).count(),
+        "wiederfaenge": captures.filter(bird_status=DataEntry.BirdStatus.RE_CATCH).count(),
+    }
 
 
 TOP_SPECIES_LIMIT = 10
