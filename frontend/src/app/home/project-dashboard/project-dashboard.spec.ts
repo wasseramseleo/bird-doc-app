@@ -5,6 +5,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
 
 // The KPI row's derived figures (Wiederfang-Anteil, Ø/Fangtag) are formatted
@@ -12,12 +13,18 @@ import { By } from '@angular/platform-browser';
 registerLocaleData(localeDeAt);
 
 import { ProjectDashboardComponent } from './project-dashboard';
+import { DASHBOARD_NOW } from './dashboard-state';
 import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
 import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
 import { HourHistogramChartComponent } from './hour-histogram-chart/hour-histogram-chart';
 import { Project } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
 import { ProjectActionsService } from '../../service/project-actions.service';
+
+// The recency chip and the Ruhige-Phase note (issue #295) are relative to "now".
+// Pin it so every populated payload has a deterministic „vor N Tagen": with the
+// default last_fangtag (2026-07-02) this reads „vor 2 Tagen" (recent, not quiet).
+const DEFAULT_NOW = new Date(2026, 6, 4, 10, 0, 0);
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -62,7 +69,7 @@ function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
   };
 }
 
-function setup(project: Project) {
+function setup(project: Project, now: Date = DEFAULT_NOW) {
   // The dashboard delegates Bearbeiten/Export to the shared ProjectActionsService
   // (issue #222); the real one wires MatDialog/Router/HTTP, so stub it. Tests that
   // assert delegation read the spy; the rest just need it to not blow up.
@@ -77,8 +84,12 @@ function setup(project: Project) {
       provideHttpClient(),
       provideHttpClientTesting(),
       provideNoopAnimations(),
+      // The Ruhige-Phase note's „Fangtag beginnen" uses routerLink → /heute.
+      provideRouter([]),
       { provide: LOCALE_ID, useValue: 'de-AT' },
       { provide: ProjectActionsService, useValue: actions },
+      // Deterministic reference clock for the recency chip / quiet-phase threshold.
+      { provide: DASHBOARD_NOW, useValue: () => now },
     ],
   });
   const fixture: ComponentFixture<ProjectDashboardComponent> =
@@ -89,7 +100,7 @@ function setup(project: Project) {
 }
 
 describe('ProjectDashboardComponent', () => {
-  it('fetches stats for the current project and renders the Letzter Tag card', () => {
+  it('renders the last Fangtag as a one-line strip: title, de-AT date, recency chip, Fänge + trend delta, häufigste Art, stärkste Stunde', () => {
     const { fixture, httpMock } = setup(makeProject());
     fixture.detectChanges(); // fires the load effect
 
@@ -97,18 +108,123 @@ describe('ProjectDashboardComponent', () => {
     req.flush(makeStats());
     fixture.detectChanges();
 
-    const text: string = fixture.nativeElement.textContent;
-    expect(text).toContain('Letzter Tag');
-    expect(text).toContain('2026-07-02');
+    const strip: HTMLElement | null = fixture.nativeElement.querySelector('.fangtag-strip');
+    expect(strip).not.toBeNull();
+    const text = strip!.textContent ?? '';
+    expect(text).toContain('Letzter Fangtag');
+    expect(text).toContain('02.07.2026'); // de-AT date (DD.MM.YYYY), timezone-independent
+    expect(text).toContain('vor 2 Tagen'); // recency chip vs the pinned now (2026-07-04)
     expect(text).toContain('38'); // Fänge
-    expect(text).toContain('Mönchsgrasmücke');
-    expect(text).toContain('12'); // häufigste Art count
+    expect(text).toContain('+13'); // trend delta vs the previous Fangtag
+    expect(text).toContain('Mönchsgrasmücke'); // häufigste Art
+    expect(text).toContain('12'); // häufigste-Art count
     expect(text).toContain('6:00 Uhr'); // stärkste Stunde
     expect(text).toContain('9'); // strongest-hour count
-    // Trend vs the previous Fangtag (delta +13 against 2026-06-28).
-    expect(text).toContain('13');
-    expect(text).toContain('2026-06-28');
 
+    // The old „Letzter Tag" card heading is gone; there is no ruhige phase here.
+    expect(fixture.nativeElement.textContent).not.toContain('Letzter Tag');
+    expect(fixture.nativeElement.querySelector('.quiet-phase')).toBeNull();
+    httpMock.verify();
+  });
+
+  it('always shows the „vor N Tagen" recency chip success-tinted at 3 Tagen or less', () => {
+    // now = 2026-07-05 → the last Fangtag (2026-07-02) is exactly 3 Tage back.
+    const { fixture, httpMock } = setup(makeProject(), new Date(2026, 6, 5, 9, 0, 0));
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const chip: HTMLElement | null = fixture.nativeElement.querySelector('.fangtag-strip__chip');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toContain('vor 3 Tagen');
+    expect(chip!.classList).toContain('fangtag-strip__chip--recent');
+    httpMock.verify();
+  });
+
+  it('shows the recency chip neutral (no success tint) above 3 Tagen', () => {
+    // now = 2026-07-07 → 5 Tage back, past the ≤ 3 recency threshold.
+    const { fixture, httpMock } = setup(makeProject(), new Date(2026, 6, 7, 9, 0, 0));
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const chip: HTMLElement | null = fixture.nativeElement.querySelector('.fangtag-strip__chip');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toContain('vor 5 Tagen');
+    expect(chip!.classList).not.toContain('fangtag-strip__chip--recent');
+    httpMock.verify();
+  });
+
+  it('still shows the recency chip (never hides it) for a long-stale last Fangtag', () => {
+    // now = 2026-08-01 → 30 Tage back: the chip is always present, just neutral.
+    const { fixture, httpMock } = setup(makeProject(), new Date(2026, 7, 1, 9, 0, 0));
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const chip: HTMLElement | null = fixture.nativeElement.querySelector('.fangtag-strip__chip');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toContain('vor 30 Tagen');
+    expect(chip!.classList).not.toContain('fangtag-strip__chip--recent');
+    httpMock.verify();
+  });
+
+  it('shows the Ruhige-Phase note (offering „Fangtag beginnen") when the last Fangtag is more than 14 Tage back', () => {
+    // now = 2026-07-17 → 15 Tage back, strictly over the > 14-Tage threshold.
+    const { fixture, httpMock } = setup(makeProject(), new Date(2026, 6, 17, 9, 0, 0));
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const note: HTMLElement | null = fixture.nativeElement.querySelector('.quiet-phase');
+    expect(note).not.toBeNull();
+    expect(note!.textContent).toContain('Ruhige Phase');
+
+    // It offers a way to begin the next Fangtag → the Heute-Ansicht (/heute).
+    const action: HTMLAnchorElement | null = note!.querySelector('.quiet-phase__action');
+    expect(action).not.toBeNull();
+    expect(action!.textContent).toContain('Fangtag beginnen');
+    expect(action!.getAttribute('href')).toBe('/heute');
+
+    // No auto-widening: the populated strip and the recency chip still show the
+    // (old) data — the quiet phase augments the strip, it does not replace it.
+    expect(fixture.nativeElement.querySelector('.fangtag-strip')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.fangtag-strip__chip')?.textContent).toContain(
+      'vor 15 Tagen',
+    );
+    httpMock.verify();
+  });
+
+  it('does not show the Ruhige-Phase note at exactly 14 Tage (the boundary is strictly greater)', () => {
+    // now = 2026-07-16 → 14 Tage back: still „normal", not a quiet phase yet.
+    const { fixture, httpMock } = setup(makeProject(), new Date(2026, 6, 16, 9, 0, 0));
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.quiet-phase')).toBeNull();
+    // The strip and its recency chip are still there.
+    expect(fixture.nativeElement.querySelector('.fangtag-strip')).not.toBeNull();
+    httpMock.verify();
+  });
+
+  it('keeps the quiet phase distinct from the empty state: no Ruhige-Phase note (and no strip) when the range holds no Fangtag', () => {
+    // A now far past any capture, but a payload with no data in range at all.
+    const { fixture, httpMock } = setup(makeProject(), new Date(2026, 7, 1, 9, 0, 0));
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(
+      makeStats({
+        totals: { faenge: 0, artenzahl: 0, fangtage: 0, erstfaenge: 0, wiederfaenge: 0 },
+        last_fangtag: null,
+      }),
+    );
+    fixture.detectChanges();
+
+    // The empty-range state, not a quiet-phase note.
+    expect(fixture.nativeElement.querySelector('.quiet-phase')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.dashboard__state--empty')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('keine Fänge');
     httpMock.verify();
   });
 
@@ -259,8 +375,8 @@ describe('ProjectDashboardComponent', () => {
     );
     fixture.detectChanges();
 
-    // The card consumes the new data.
-    expect(fixture.nativeElement.textContent).toContain('2026-07-01');
+    // The strip consumes the new data (date rendered de-AT).
+    expect(fixture.nativeElement.textContent).toContain('01.07.2026');
     expect(fixture.nativeElement.textContent).toContain('Buchfink');
 
     // The bar chart consumes the new top_species.
@@ -292,7 +408,7 @@ describe('ProjectDashboardComponent', () => {
       );
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Fänge');
     httpMock.verify();
   });
@@ -304,7 +420,7 @@ describe('ProjectDashboardComponent', () => {
     // Loading branch: a spinner, and none of the terminal states leaks through.
     expect(fixture.nativeElement.querySelector('.dashboard__state--loading')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('mat-spinner')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
     expect(fixture.nativeElement.querySelector('.dashboard__state--empty')).toBeNull();
     expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
     expect(fixture.nativeElement.querySelector('.dashboard__state--error')).toBeNull();
@@ -328,7 +444,7 @@ describe('ProjectDashboardComponent', () => {
     // generic error state, and no populated card.
     expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.dashboard__state--error')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Internetverbindung');
     httpMock.verify();
   });
@@ -353,10 +469,10 @@ describe('ProjectDashboardComponent', () => {
     retry.flush(makeStats());
     fixture.detectChanges();
 
-    // The promised auto-reload landed: offline copy gone, card populated.
+    // The promised auto-reload landed: offline copy gone, strip populated.
     expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.stat-card')).not.toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Letzter Tag');
+    expect(fixture.nativeElement.querySelector('.fangtag-strip')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Letzter Fangtag');
     httpMock.verify();
   });
 
@@ -505,7 +621,7 @@ describe('ProjectDashboardComponent', () => {
     // Error branch: distinguishable from the offline "needs connection" state.
     expect(fixture.nativeElement.querySelector('.dashboard__state--error')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
     httpMock.verify();
   });
 });
