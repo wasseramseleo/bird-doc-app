@@ -414,6 +414,35 @@ def test_en_home_organization_jsonld_keeps_the_german_canonical_url(client):
     assert data["url"] == "http://testserver/"
 
 
+# The BirdDoc Wikidata item (issue #310) that #315 wires in via sameAs, so a
+# machine reader treats BirdDoc as a grounded entity rather than a string.
+WIKIDATA_ITEM_URL = "https://www.wikidata.org/wiki/Q140431012"
+
+
+def test_organization_jsonld_links_the_wikidata_item_via_sameas(client):
+    # The Organization grounds BirdDoc as an *entity* by pointing sameAs at the
+    # BirdDoc Wikidata item (issue #315): the QID the human deliverable #310
+    # produced, so a resolver reconciles the name to a stable identifier.
+    data = _home_jsonld_of_type(client, "Organization")
+    assert WIKIDATA_ITEM_URL in data["sameAs"]
+
+
+def test_en_home_organization_jsonld_keeps_the_wikidata_sameas(client):
+    # The entity is the same organisation regardless of the marketing variant:
+    # the /en/ Organization block still parses and carries the Wikidata sameAs,
+    # so the grounding holds on both language variants (issue #315 AC: DE + EN).
+    data = _home_jsonld_of_type(client, "Organization", "/en/")
+    assert WIKIDATA_ITEM_URL in data["sameAs"]
+
+
+def test_softwareapplication_jsonld_links_the_same_wikidata_item(client):
+    # The SoftwareApplication block carries the SAME sameAs (issue #315, scope
+    # „both"): both blocks describe one grounded entity, so both reconcile to the
+    # same Wikidata QID — a reader landing on either block resolves BirdDoc.
+    data = _home_jsonld_of_type(client, "SoftwareApplication")
+    assert WIKIDATA_ITEM_URL in data["sameAs"]
+
+
 def test_en_home_translates_the_head_term_title_and_h1(client):
     # The /en/ home renders a sensibly translated title and H1 through the
     # existing catalog (issue #281) — the German head term does not leak onto

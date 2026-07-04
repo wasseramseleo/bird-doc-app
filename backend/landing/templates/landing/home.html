@@ -59,8 +59,8 @@ the view; og:url shares the canonical_url tag with base.html's canonical link
     {% comment %}
     Schema.org Organization JSON-LD (issue #301): grounds BirdDoc as an entity
     alongside the SoftwareApplication block above. Inline only, dumped in the
-    view so it is parseable by construction (ADR 0009). A sameAs to the Wikidata
-    item is added once that item exists (a separate slice).
+    view so it is parseable by construction (ADR 0009). A sameAs points at the
+    BirdDoc Wikidata item (issue #315), so both blocks reconcile to a stable QID.
     {% endcomment %}
     <script type="application/ld+json">{{ organization_jsonld|safe }}</script>
 {% endblock %}
