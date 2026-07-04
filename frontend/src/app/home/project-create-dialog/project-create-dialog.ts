@@ -72,12 +72,15 @@ export class ProjectCreateDialogComponent {
       this.form.controls.defaultStationHandle.setValue('');
       this.loadStations(handle);
     });
-    // Create-time seed (ADR 0023): choosing Nestlingsberingung — the one listed
-    // programme that rings in the nest and uses no mist-nets — pre-sets Netzfelder
-    // off as a convenience. It is a suggestion only: the Admin stays free to turn
-    // it back on, and the two are never hard-coupled.
+    // Create-time seed (issue #337, ADR 0023): choosing Nestlingsberingung — the
+    // one listed programme that rings in the nest and uses no mist-nets — pre-sets
+    // Netzfelder off as a convenience. It is a one-way suggestion only: the Admin
+    // stays free to turn it back on, and picking any OTHER Projekttyp must not force
+    // the checkbox to any value (never re-raising it). The two are never hard-coupled.
     this.form.controls.projekttyp.valueChanges.pipe(takeUntilDestroyed()).subscribe((typ) => {
-      this.form.controls.showNetFields.setValue(typ !== Projekttyp.Nestlingsberingung);
+      if (typ === Projekttyp.Nestlingsberingung) {
+        this.form.controls.showNetFields.setValue(false);
+      }
     });
   }
 
