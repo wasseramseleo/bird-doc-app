@@ -231,4 +231,18 @@ describe('DataEntryListComponent', () => {
     expect(component.searchControl.value).toBe('');
     expect(afterSwitch.request.params.has('search')).toBe(false);
   });
+
+  // Issue #339: the "Neuer Eintrag" button carries a discoverability hint for the
+  // app-wide "n" shortcut so the keystroke is learnable from the UI.
+  it('shows a visible "(n)" shortcut hint on the Neuer Eintrag button', () => {
+    flushEntries([row({})]);
+
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
+    const newEntryButton = buttons.find((b) => b.textContent?.includes('Neuer Eintrag'));
+
+    expect(newEntryButton).withContext('Neuer Eintrag button exists').toBeTruthy();
+    expect(newEntryButton!.textContent).toContain('(n)');
+  });
 });

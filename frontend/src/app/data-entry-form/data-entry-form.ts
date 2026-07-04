@@ -1,6 +1,8 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   OnInit,
   computed,
@@ -57,6 +59,7 @@ import {Scientist} from '../models/scientist.model';
 import {RingSize} from '../models/ring.model';
 import {AUW_SCHEME_CODE, Central, PROJEKT_ZENTRALE} from '../models/central.model';
 import {SelectOnTabDirective} from '../core/directives/select-on-tab';
+import {NumberMaskDirective} from '../shared/directives/number-mask';
 import {MatTableModule} from '@angular/material/table';
 import {DataEntryDetailDialogComponent} from './data-entry-detail-dialog/data-entry-detail-dialog';
 import {
@@ -101,6 +104,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     MatNativeDateModule,
     MatProgressSpinnerModule,
     SelectOnTabDirective,
+    NumberMaskDirective,
     MatCheckboxModule,
     MatSnackBarModule,
     MatTableModule,
@@ -118,7 +122,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     '(focusin)': 'onPointerOrFocus($event)',
   },
 })
-export class DataEntryFormComponent implements OnInit {
+export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // Services and Router
   private readonly fb = inject(FormBuilder);
   private readonly apiService = inject(ApiService);
@@ -141,6 +145,8 @@ export class DataEntryFormComponent implements OnInit {
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly currentProject = this.projectService.currentProject;
   readonly showOptionalFields = computed(() => this.currentProject()?.show_optional_fields ?? true);
@@ -371,6 +377,30 @@ export class DataEntryFormComponent implements OnInit {
     resetAcknowledgedSignatures(),
   );
 
+  // #340: when a save-reset re-reads the clock and the freshly-suggested Uhrzeit
+  // snaps to a *different* top-of-hour than the entry just saved, this holds the
+  // two hours so the time field can raise a calm, non-blocking „Stunde gewechselt"
+  // hint with a one-click revert to the previous hour. Never blocking, never a
+  // modal, and never sticky — recomputed fresh on every save (null = no hint),
+  // cleared the moment the user reverts. Transient, never persisted.
+  readonly hourChangeHint = signal<{ previousDateTime: string; suggestedDateTime: string } | null>(
+    null,
+  );
+  // The alert note surfaced on the time field: „⚠ Stunde gewechselt auf HH:00 —
+  // noch Vögel aus der letzten Runde?" — HH:00 is the freshly-suggested new hour.
+  readonly hourChangeMessage = computed<string>(() => {
+    const hint = this.hourChangeHint();
+    return hint
+      ? `⚠ Stunde gewechselt auf ${this.hourLabel(hint.suggestedDateTime)} — noch Vögel aus der letzten Runde?`
+      : '';
+  });
+  // The one-click revert action label „auf HH:00 zurück" — HH:00 is the previous
+  // (just-saved) hour it writes back into the time field.
+  readonly hourChangeRevertLabel = computed<string>(() => {
+    const hint = this.hourChangeHint();
+    return hint ? `auf ${this.hourLabel(hint.previousDateTime)} zurück` : '';
+  });
+
   // #155: a fresh client-generated UUID identifies this capture-create attempt
   // end-to-end, so a retried/replayed offline-outbox create is never duplicated
   // server-side (the idempotency keystone for PRD #152). Regenerated after
@@ -417,6 +447,20 @@ export class DataEntryFormComponent implements OnInit {
   // as one list so the focus order and the disabling effect stay in lock-step.
   private static readonly NET_FIELD_CONTROLS: readonly string[] = [
     'net_location', 'net_height', 'net_direction',
+  ];
+
+  // #341: every numeric control wearing the appNumberMask (both Netz-Nummern +
+  // the six Messwerte). Rendered as type="text", so their value accessor is the
+  // DefaultValueAccessor: clearing a typed value leaves the control holding the
+  // empty string "" (the old type="number" NumberValueAccessor coerced ""→null),
+  // and the mask deliberately permits an in-progress lone/trailing dot ("5.",
+  // "."). DRF's IntegerField rejects "" with a 400 and DecimalField rejects a
+  // dangling-dot string, so transformFromForm() normalises these on the write
+  // payload (see normalizeMaskedNumeric) — a cleared correction saves as null
+  // again instead of failing.
+  private static readonly MASKED_NUMERIC_CONTROLS: readonly string[] = [
+    'net_location', 'net_height',
+    'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'notch_f2', 'inner_foot',
   ];
 
   private readonly baseFocusOrder: string[] = [
@@ -716,6 +760,26 @@ export class DataEntryFormComponent implements OnInit {
         this.seedPlausibilityOnLoad();
       });
     });
+
+    // #338: left/right arrow field-jump must be intercepted in the CAPTURE phase,
+    // on the component host (an ancestor of every field), so it runs *before* any
+    // element-level keydown listener at the event target. This matters for a
+    // closed <mat-select>: Material's own (keydown) handler routes a horizontal
+    // arrow to its key manager, whose change subscription calls
+    // `_selectViaInteraction()` and silently advances the selected value. A
+    // bubble-phase handler (the host `(keydown)` binding) fires too late — the
+    // value has already changed and preventDefault cannot undo a programmatic
+    // selection. Handling the gesture in capture lets onArrowNav stop the event
+    // (stopImmediatePropagation) before Material ever sees it, so the jump moves
+    // focus without mutating the field it leaves.
+    const host = this.elementRef.nativeElement;
+    const captureArrowNav = (event: KeyboardEvent): void => {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        this.onArrowNav(event);
+      }
+    };
+    host.addEventListener('keydown', captureArrowNav, true);
+    this.destroyRef.onDestroy(() => host.removeEventListener('keydown', captureArrowNav, true));
   }
 
   /**
@@ -846,6 +910,18 @@ export class DataEntryFormComponent implements OnInit {
     // PRD #245: load the per-org Artennormen from the offline reference bundle
     // so the plausibility lookup works the same online and offline.
     void this.loadNorms();
+  }
+
+  // #338: autofocus Art on the very first open of a create-mode form, so the
+  // Beringer can type the species straight away without clicking. Edit mode
+  // (reviewing an existing record) is left untouched — it must never steal
+  // focus onto Art. This complements the save-reset path, which already focuses
+  // Art after each capture; here it closes the gap on the first capture of a
+  // session. Runs after the view renders so the input exists in the DOM.
+  ngAfterViewInit(): void {
+    if (!this.isEditMode()) {
+      this.focusField('species');
+    }
   }
 
   // PRD #245: build the species_id → effective-Artennorm map from the cached
@@ -1186,8 +1262,11 @@ export class DataEntryFormComponent implements OnInit {
   // blur, so the warning surfaces exactly when the value is finished — the same
   // non-modal role="alert" idiom the sex-contradiction hint rides. Also called
   // when the Art changes so a stale warning never lingers.
-  onMeasurementBlur(): void {
-    this.evaluatePlausibility();
+  onMeasurementBlur(controlName?: string): void {
+    // #338: pass the blurred field through so that, if the check raises the
+    // „Verstanden" modal, focus can return to this field once it is dismissed.
+    // The blur already moved focus away, so the modal cannot restore it itself.
+    this.evaluatePlausibility(controlName);
   }
 
   // Issue #249/#266: the two categorical-flag rules read the Alter, Geschlecht and
@@ -1208,7 +1287,7 @@ export class DataEntryFormComponent implements OnInit {
   // unchanged re-trigger stays silent; a value brought back into range clears
   // without a modal; a value settling into a new breach re-fires. One trigger
   // (e.g. an Art change) that trips several checks aggregates into a single modal.
-  private evaluatePlausibility(): void {
+  private evaluatePlausibility(triggerField?: string): void {
     const measurements = this.currentMeasurements();
     const warnings = computePlausibilityWarnings(measurements, this.activeNorm());
     this.plausibilityWarnings.set(warnings);
@@ -1219,7 +1298,7 @@ export class DataEntryFormComponent implements OnInit {
     );
     this.acknowledgedSignatures.set(nextAcknowledged);
     if (toShow.length > 0) {
-      this.openPlausibilityInfoDialog(toShow);
+      this.openPlausibilityInfoDialog(toShow, triggerField);
     }
   }
 
@@ -1245,8 +1324,8 @@ export class DataEntryFormComponent implements OnInit {
   // newly-appeared Plausibilitätswarnungen (numeric and categorical). One
   // aggregated dialog lists them all; the acknowledgment is transient (already
   // recorded in the signature set) and nothing is persisted.
-  private openPlausibilityInfoDialog(warnings: PlausibilityWarning[]): void {
-    this.dialog.open<InfoDialogComponent, InfoDialogData, void>(InfoDialogComponent, {
+  private openPlausibilityInfoDialog(warnings: PlausibilityWarning[], triggerField?: string): void {
+    const ref = this.dialog.open<InfoDialogComponent, InfoDialogData, void>(InfoDialogComponent, {
       data: {
         title: 'Plausibilität prüfen',
         message:
@@ -1255,6 +1334,12 @@ export class DataEntryFormComponent implements OnInit {
       },
       width: '480px',
     });
+    // #338: on a blur-triggered warning the field already lost focus, so return
+    // it once the ringer acknowledges the modal — a deliberate backward jump to
+    // the checked field. (Optional chaining keeps unit-test dialog stubs safe.)
+    if (triggerField) {
+      ref?.afterClosed?.().subscribe(() => this.focusField(triggerField));
+    }
   }
 
   // The measurement subset the Plausibilitätsprüfung reads, pulled from the raw
@@ -1367,9 +1452,60 @@ export class DataEntryFormComponent implements OnInit {
   }
 
   private getInitialDateTime(): string {
-    const now = new Date();
+    const now = this.currentDate();
     now.setMinutes(0, 0, 0);
     return this.datePipe.transform(now, 'yyyy-MM-ddTHH:mm')!;
+  }
+
+  // #340: a single wall-clock seam so the auto-advancing Uhrzeit is deterministic
+  // under test — every "now" the suggestion reads flows through here.
+  protected currentDate(): Date {
+    return new Date();
+  }
+
+  // #340: the "HH" hour component of a "yyyy-MM-ddTHH:mm" local datetime string,
+  // or null when it can't be read. Compares wall-clock hour-of-day, so crossing
+  // any hour boundary (incl. 23→00) counts as a change.
+  private hourOf(dateTime: string | null | undefined): string | null {
+    if (!dateTime || dateTime.length < 13) {
+      return null;
+    }
+    return dateTime.slice(11, 13);
+  }
+
+  // #340: the top-of-hour label "HH:00" for a "yyyy-MM-ddTHH:mm" datetime string.
+  private hourLabel(dateTime: string): string {
+    const hour = this.hourOf(dateTime);
+    return hour ? `${hour}:00` : '';
+  }
+
+  // #340: raise the non-blocking hour-change hint iff the freshly-suggested hour
+  // differs from the hour of the entry just saved — never within the same hour.
+  // The previous hour is stored snapped to its top-of-hour, which is exactly what
+  // the revert writes back.
+  private maybeSignalHourChange(savedDateTime: string | null, suggestedDateTime: string): void {
+    const savedHour = this.hourOf(savedDateTime);
+    const suggestedHour = this.hourOf(suggestedDateTime);
+    if (savedHour !== null && suggestedHour !== null && savedHour !== suggestedHour) {
+      this.hourChangeHint.set({
+        previousDateTime: `${savedDateTime!.slice(0, 11)}${savedHour}:00`,
+        suggestedDateTime,
+      });
+    } else {
+      this.hourChangeHint.set(null);
+    }
+  }
+
+  // #340: the one-click „auf HH:00 zurück" — write the previous hour back into the
+  // time field and dismiss the hint. Non-sticky: the next save re-reads the clock
+  // and decides afresh whether to warn again.
+  revertToPreviousHour(): void {
+    const hint = this.hourChangeHint();
+    if (!hint) {
+      return;
+    }
+    this.entryForm.get('date_time')?.setValue(hint.previousDateTime);
+    this.hourChangeHint.set(null);
   }
 
   private transformToForm(entry: DataEntry): any {
@@ -1387,8 +1523,22 @@ export class DataEntryFormComponent implements OnInit {
     return formValue;
   }
 
+  // #341: an appNumberMask control holds a raw string. Coerce the two states the
+  // mask can leave behind that the backend rejects: the empty string (a cleared
+  // field → null, so IntegerField/DecimalField accept it) and a dangling decimal
+  // point ("5." → "5", "." → null). A real number (edit mode preloads them) or an
+  // already-null value passes through untouched.
+  private static normalizeMaskedNumeric(value: unknown): unknown {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.endsWith('.') ? value.slice(0, -1) : value;
+    return trimmed === '' ? null : trimmed;
+  }
+
   private transformFromForm(formValue: any): Partial<DataEntry> {
     const payload: any = {...formValue};
+    for (const field of DataEntryFormComponent.MASKED_NUMERIC_CONTROLS) {
+      payload[field] = DataEntryFormComponent.normalizeMaskedNumeric(payload[field]);
+    }
     payload.species_id = formValue.species?.id;
     payload.ringing_station_id = formValue.ringing_station?.handle;
     payload.staff_id = formValue.staff?.id;
@@ -1460,7 +1610,114 @@ export class DataEntryFormComponent implements OnInit {
 
     if (event.key === 'Enter') {
       this.onEnter(event);
+      return;
     }
+
+    // #338: left/right arrow field-jump is handled in the capture phase (wired in
+    // the constructor), not here — it must run before Material's own element-level
+    // keydown so a closed <mat-select> is not mutated by the navigation gesture.
+  }
+
+  // #338: left/right arrow field navigation. Right advances to the next field,
+  // left to the previous one — the same forward/backward traversal Tab/Enter use,
+  // skipping hidden and disabled controls. In a text input the jump fires only
+  // when the caret already sits at the edge the arrow points at; otherwise the
+  // arrow moves the caret natively within the value. Selects, checkboxes and
+  // empty inputs carry no caret to preserve, so they jump immediately. Native
+  // behaviour is left intact for datetime-local inputs (arrows step between
+  // date/time segments) and while an autocomplete or select panel is open (arrows
+  // navigate its options).
+  //
+  // Number fields (the measurement inputs) are the documented exception: browsers
+  // do not expose the selection API on `type=number` (selectionStart is null and
+  // cannot be set), so a *partly-filled* number input cannot be edge-detected — it
+  // keeps native in-field caret movement and advances via Tab/Enter instead. See
+  // the amended AC on #338. An *empty* number input still jumps, since there is no
+  // caret position to protect.
+  //
+  // Runs in the CAPTURE phase (see the constructor wiring): when the gesture *is*
+  // a jump it calls stopImmediatePropagation so Material's own element-level
+  // keydown never runs — otherwise a closed <mat-select> would advance its
+  // selected value before this handler could move focus away.
+  private onArrowNav(event: KeyboardEvent): void {
+    // Modified arrows (Shift-select, Ctrl/Alt word-jump, Cmd) stay native.
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (!target) {
+      return;
+    }
+    const field = target.closest('[formControlName]') as HTMLElement | null;
+    if (!field) {
+      return;
+    }
+    const controlName = field.getAttribute('formControlName');
+    if (!controlName) {
+      return;
+    }
+    // An open autocomplete/select panel owns the arrows for option navigation.
+    if (field.getAttribute('aria-expanded') === 'true') {
+      return;
+    }
+
+    const goLeft = event.key === 'ArrowLeft';
+    if (target instanceof HTMLInputElement) {
+      // datetime-local: the arrows step between the date/time segments natively.
+      if (target.type === 'datetime-local') {
+        return;
+      }
+      // A filled text-bearing input jumps only at the caret edge; otherwise the
+      // arrow moves the caret within the value. An empty input (value === '') has
+      // no caret to preserve, so it jumps immediately like a select. A filled
+      // number input hides its caret (caretAtEdge is always false) and so keeps
+      // native movement — the accepted browser limitation.
+      if (this.hasTextCaret(target) && target.value !== '' && !this.caretAtEdge(target, goLeft)) {
+        return;
+      }
+    } else if (target instanceof HTMLTextAreaElement) {
+      if (target.value !== '' && !this.caretAtEdge(target, goLeft)) {
+        return;
+      }
+    }
+
+    // This IS a field-jump gesture. Suppress the event entirely so no
+    // element-level handler (notably a closed <mat-select>'s key manager) mutates
+    // the field we are leaving; capture-phase stopImmediatePropagation stops it
+    // before Material's own keydown runs.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (goLeft) {
+      this.focusPrevious(controlName);
+    } else {
+      this.focusNext(controlName);
+    }
+  }
+
+  // #338: input types that carry a text caret we must not hijack mid-value. A
+  // type=number reports a null caret in Chrome/Safari — caretAtEdge treats that
+  // as "not at an edge", so a *filled* number input keeps native in-field caret
+  // movement rather than jumping unexpectedly (an empty one has no caret to
+  // protect and jumps; see onArrowNav).
+  private hasTextCaret(input: HTMLInputElement): boolean {
+    return ['text', 'search', 'tel', 'url', 'password', 'email', 'number'].includes(input.type);
+  }
+
+  // #338: whether the caret sits at the field edge the arrow points at — the start
+  // for left, the end for right — with no text selected. Inputs that hide their
+  // caret position (type=number in Chrome) report null and are treated as "not at
+  // an edge" so native movement is preserved.
+  private caretAtEdge(el: HTMLInputElement | HTMLTextAreaElement, goLeft: boolean): boolean {
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start === null || end === null) {
+      return false;
+    }
+    if (goLeft) {
+      return start === 0 && end === 0;
+    }
+    const length = el.value.length;
+    return start === length && end === length;
   }
 
   // #23/#59: a single context-dependent Enter dispatch. Enter never fires the
@@ -1557,18 +1814,46 @@ export class DataEntryFormComponent implements OnInit {
     if (currentIndex < 0) {
       return;
     }
-    // #26: skip disabled fields (e.g. the greyed-out Kleingefieder fields for a
-    // non-diesjährigen Vogel) so the keyboard run never lands on a dead field.
+    // #26/#338: skip disabled AND hidden fields (e.g. the greyed-out Kleingefieder
+    // fields for a non-diesjährigen Vogel, or the net block hidden by the Projekt
+    // switch) so the keyboard run never lands on a dead or absent field.
     const nextControlName = this.focusOrder
       .slice(currentIndex + 1)
-      .find((name) => !this.entryForm.get(name)?.disabled);
+      .find((name) => this.isNavigable(name));
     if (!nextControlName) {
       return;
     }
-    setTimeout(() => {
-      const nextEl = document.querySelector(`[formControlName="${nextControlName}"]`) as HTMLElement;
-      nextEl?.focus();
-    }, 50);
+    setTimeout(() => this.focusField(nextControlName), 50);
+  }
+
+  // #338: the backward counterpart of focusNext — walks focusOrder toward the
+  // start, skipping the same hidden/disabled fields, so left-arrow lands on the
+  // previous live control.
+  private focusPrevious(currentControlName: string): void {
+    const currentIndex = this.focusOrder.indexOf(currentControlName);
+    if (currentIndex < 0) {
+      return;
+    }
+    const previousControlName = this.focusOrder
+      .slice(0, currentIndex)
+      .reverse()
+      .find((name) => this.isNavigable(name));
+    if (!previousControlName) {
+      return;
+    }
+    setTimeout(() => this.focusField(previousControlName), 50);
+  }
+
+  // #338: a field is a keyboard-nav target only when it is both enabled and
+  // actually rendered. Disabled controls (e.g. the greyed-out Kleingefieder
+  // Fortschritt) and controls removed from the DOM by an @if (the net block
+  // dropped by the Projekt switch, or the collapsed Ring-vernichtet fields) are
+  // skipped so focus never dead-ends where the ringer cannot type.
+  private isNavigable(name: string): boolean {
+    if (this.entryForm.get(name)?.disabled) {
+      return false;
+    }
+    return !!document.querySelector(`[formControlName="${name}"]`);
   }
 
   // #24: the single shared clean-reset routine. It clears the bird-specific
@@ -1581,6 +1866,11 @@ export class DataEntryFormComponent implements OnInit {
       ringing_station: this.entryForm.get('ringing_station')?.value,
       staff: this.entryForm.get('staff')?.value,
     };
+
+    // #340: capture the Uhrzeit of the entry just saved *before* the reset
+    // overwrites it, so we can compare it against the freshly-suggested hour below.
+    const savedDateTime = this.entryForm.get('date_time')?.value as string | null;
+    const suggestedDateTime = this.getInitialDateTime();
 
     // #273: the focus shift below blurs the Ringnummer while it still holds the
     // just-saved ring. Seed the "last searched ring" key with it first so that
@@ -1602,7 +1892,7 @@ export class DataEntryFormComponent implements OnInit {
       // a foreign recapture is an exception, not session state — so each save
       // resets it to the Projekt default.
       central: PROJEKT_ZENTRALE,
-      date_time: this.getInitialDateTime(),
+      date_time: suggestedDateTime,
       age_class: AgeClass.Unknown,
       sex: Sex.Unknown,
       has_mites: false,
@@ -1623,6 +1913,10 @@ export class DataEntryFormComponent implements OnInit {
     // (this same form instance, no navigation) must mint its own.
     this.idempotencyKey = crypto.randomUUID();
     this.lastFailedSubmission = null;
+
+    // #340: last — raise (or clear) the non-blocking Stundenwechsel-Hinweis based
+    // on whether the clock rolled to a new hour while the previous bird was saved.
+    this.maybeSignalHourChange(savedDateTime, suggestedDateTime);
   }
 
   // #24: restore the loaded record's saved values, dropping the user's edits and

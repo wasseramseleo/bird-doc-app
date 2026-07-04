@@ -36,6 +36,32 @@
   }
 }
 
+// #340: the non-blocking Stundenwechsel-Hinweis on the Uhrzeit field — an alert
+// colour plus a short note and a one-click revert to the previous hour. Mirrors
+// the .sex-contradiction warning idiom; never a modal, never blocking.
+.hour-change-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background-color: var(--bd-warning-soft, rgba(216, 67, 21, 0.1));
+  border: 1px solid var(--bd-warning, #d84315);
+  color: var(--bd-warning-deep, #b53a12);
+  font-size: 0.85rem;
+  font-weight: 500;
+
+  &__note {
+    flex: 1 1 auto;
+  }
+
+  &__revert {
+    flex: none;
+  }
+}
+
 .data-entry-form {
   display: flex;
   flex-direction: column;

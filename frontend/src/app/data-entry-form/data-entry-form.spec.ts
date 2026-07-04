@@ -111,6 +111,152 @@ describe('DataEntryFormComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  // Issue #341: the reusable Zahlenmaske (Eingabefilter) wired onto the capture
+  // form — a hard input filter distinct from the value-range Plausibilitätswarnung.
+  describe('numeric input masks on the Mess- and Netz-Felder (#341)', () => {
+    const MEASUREMENT_FIELDS = [
+      'weight_gram',
+      'feather_span',
+      'wing_span',
+      'tarsus',
+      'notch_f2',
+      'inner_foot',
+    ];
+    const NET_FIELDS = ['net_location', 'net_height'];
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    const el = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLInputElement;
+
+    // Drive one keystroke through the mask at the given caret position.
+    const typeChar = (field: string, char: string, caret?: number): InputEvent => {
+      const input = el(field);
+      if (caret !== undefined) input.setSelectionRange(caret, caret);
+      const event = new InputEvent('beforeinput', {
+        data: char,
+        inputType: 'insertText',
+        cancelable: true,
+        bubbles: true,
+      });
+      input.dispatchEvent(event);
+      return event;
+    };
+
+    it('carries the one-decimal mask on all six measurement inputs', () => {
+      for (const field of MEASUREMENT_FIELDS) {
+        expect(el(field).getAttribute('appNumberMask')).toBe('decimal');
+      }
+    });
+
+    it('carries the integer mask on both Netz-number inputs', () => {
+      for (const field of NET_FIELDS) {
+        expect(el(field).getAttribute('appNumberMask')).toBe('integer');
+      }
+    });
+
+    it('rejects a letter typed into a measurement input', () => {
+      const event = typeChar('weight_gram', 'a', 0);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('rejects a second decimal digit in a measurement input', () => {
+      const input = el('tarsus');
+      input.value = '12.5';
+      const event = typeChar('tarsus', '3', 4);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('12.5');
+    });
+
+    it('accepts a comma in a measurement input, storing a dot', () => {
+      const input = el('weight_gram');
+      input.value = '75';
+      const event = typeChar('weight_gram', ',', 1);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('7.5');
+      expect(component.entryForm.get('weight_gram')!.value as unknown).toBe('7.5');
+    });
+
+    it('rejects a decimal separator typed into a Netz-number input', () => {
+      const input = el('net_location');
+      input.value = '12';
+      const event = typeChar('net_location', '.', 2);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('12');
+    });
+
+    it('rejects a comma typed into a Netz-number input', () => {
+      const event = typeChar('net_height', ',', 0);
+      expect(event.defaultPrevented).toBe(true);
+    });
+  });
+
+  // Issue #341 regression: with the masked fields now rendered as type="text"
+  // (DefaultValueAccessor), clearing a previously-typed value leaves the control
+  // holding "" rather than null, and the mask permits an in-progress lone/trailing
+  // dot. The write payload must coerce both back to values the backend accepts —
+  // DRF's IntegerField 400s on "" and DecimalField 400s on a dangling "." — so a
+  // normal correction (type a Netznr., then clear it) still saves.
+  describe('normalises masked numeric controls on submit (#341 regression)', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    const submitAndReadBody = (): Record<string, unknown> => {
+      component.onSubmit();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      post.flush({});
+      return body;
+    };
+
+    it('sends null (not "") for a Netz-number typed then cleared', () => {
+      fillValidWiederfang();
+      // The DefaultValueAccessor leaves a cleared type="text" input holding "".
+      component.entryForm.patchValue({ net_location: '' as never, net_height: '5' as never });
+
+      const body = submitAndReadBody();
+
+      expect(body['net_location']).toBeNull();
+      // A still-populated Netz-number rides along untouched (backend coerces).
+      expect(body['net_height']).toBe('5');
+    });
+
+    it('sends null for a measurement field cleared back to an empty string', () => {
+      fillValidWiederfang();
+      component.entryForm.patchValue({ weight_gram: '' as never });
+
+      expect(submitAndReadBody()['weight_gram']).toBeNull();
+    });
+
+    it('drops a dangling decimal point ("18." → "18", "." → null) before submit', () => {
+      fillValidWiederfang();
+      component.entryForm.patchValue({ weight_gram: '18.' as never, tarsus: '.' as never });
+
+      const body = submitAndReadBody();
+
+      expect(body['weight_gram']).toBe('18');
+      expect(body['tarsus']).toBeNull();
+    });
+  });
+
   describe('creating a Beringer inline from an unknown Kürzel', () => {
     const dialogMock = { open: jasmine.createSpy('open') };
     let httpMock: HttpTestingController;
@@ -2287,6 +2433,153 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #340: the non-blocking Stundenwechsel-Hinweis on the Uhrzeit field. The
+  // suggested time snaps to the top of the hour and is re-read from the clock on
+  // each save-reset; when that freshly-suggested hour differs from the hour of the
+  // entry just saved, a calm alert with a one-click „auf HH:00 zurück" revert
+  // appears — never a modal, never sticky, never within the same hour.
+  describe('Stundenwechsel-Hinweis on the Uhrzeit field (#340)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    // Freeze the wall clock the auto-advance reads, so the freshly-suggested
+    // top-of-hour is deterministic (each call gets a fresh Date — getInitialDateTime
+    // mutates it via setMinutes).
+    function freezeClockAt(local: string): void {
+      spyOn(component as unknown as { currentDate: () => Date }, 'currentDate').and.callFake(
+        () => new Date(local),
+      );
+    }
+
+    // Save the current form (a valid Wiederfang) and drain the post-save timers so
+    // cleanReset() — which raises/clears the hint — has fully run.
+    function save(): void {
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      tick(50);
+      fixture.detectChanges();
+    }
+
+    it('raises a non-blocking hint on the time field after a save that crossed an hour boundary', fakeAsync(() => {
+      // Clock now reads 14:20 → the next suggestion snaps to 14:00, but the bird was
+      // still being stamped 13:00 from the previous net-round.
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      const hint = component.hourChangeHint();
+      expect(hint).not.toBeNull();
+      expect(hint!.previousDateTime).toBe('2026-07-04T13:00');
+      expect(hint!.suggestedDateTime).toBe('2026-07-04T14:00');
+
+      // The note names the new hour; the revert names the previous hour.
+      expect(component.hourChangeMessage()).toContain('14:00');
+      expect(component.hourChangeRevertLabel()).toBe('auf 13:00 zurück');
+
+      // Surfaced on the time field in the DOM, and no blocking modal was opened.
+      const el = fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]');
+      expect(el).not.toBeNull();
+      expect(el.textContent).toContain('Stunde gewechselt auf 14:00');
+
+      tick(900);
+    }));
+
+    it('opens no modal for the hour-change signal — it is purely non-blocking', fakeAsync(() => {
+      const openSpy = spyOn(
+        (component as unknown as { dialog: MatDialog }).dialog,
+        'open',
+      ).and.callThrough();
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      expect(component.hourChangeHint()).not.toBeNull();
+      expect(openSpy).not.toHaveBeenCalled();
+
+      tick(900);
+    }));
+
+    it('raises no hint when the suggested hour is unchanged (same-hour save)', fakeAsync(() => {
+      // Clock reads 14:20 and the bird was stamped 14:00 — same hour, no signal.
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T14:00' });
+
+      save();
+
+      expect(component.hourChangeHint()).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]')).toBeNull();
+
+      tick(900);
+    }));
+
+    it('reverts the time field to the previous hour on a one-click „auf HH:00 zurück"', fakeAsync(() => {
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      // Post-reset the field auto-advanced to the new hour…
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+
+      // …until the one-click revert writes the previous hour back and clears the hint.
+      const revert = fixture.nativeElement.querySelector(
+        '[data-testid="hour-change-revert"]',
+      ) as HTMLButtonElement;
+      revert.click();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T13:00');
+      expect(component.hourChangeHint()).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]')).toBeNull();
+
+      tick(900);
+    }));
+
+    it('is not sticky — a following same-hour save clears the hint and keeps the clock-driven suggestion', fakeAsync(() => {
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+      save();
+      expect(component.hourChangeHint()).not.toBeNull();
+      tick(900);
+
+      // Next capture is saved within the (now current) 14:00 hour — no forced revert
+      // to 13:00, the suggestion tracks the clock and the hint is gone.
+      fillValidWiederfang();
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+      save();
+
+      expect(component.hourChangeHint()).toBeNull();
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+
+      tick(900);
+    }));
+  });
+
   describe('capture idempotency key (#155, offline outbox groundwork)', () => {
     const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let httpMock: HttpTestingController;
@@ -3286,6 +3579,43 @@ describe('DataEntryFormComponent', () => {
       expect(el!.getAttribute('title')).toContain(
         'Gewicht 25 g liegt außerhalb des erwarteten Bereichs 7,5–10,7 g (Zaunkönig)',
       );
+    });
+
+    // #338: a blur fires the check, so the field has already lost focus by the
+    // time the informational „Verstanden" modal opens. Once acknowledged, focus
+    // must land back on the field that triggered the warning so the flagged value
+    // can be re-examined or retyped straight away — a deliberate backward jump.
+    it('returns focus to the checked field after the „Verstanden" dialog closes', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      component.entryForm.get('weight_gram')!.setValue(25);
+      fixture.detectChanges();
+
+      // Nothing is focused after the blur (the field lost focus already).
+      const weight = fixture.nativeElement.querySelector('[formControlName="weight_gram"]');
+      expect(document.activeElement).not.toBe(weight);
+
+      component.onMeasurementBlur('weight_gram');
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(weight);
+    });
+
+    it('does not steal focus when the blurred value is in range (no dialog)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      component.entryForm.get('weight_gram')!.setValue(9);
+      fixture.detectChanges();
+
+      component.onMeasurementBlur('weight_gram');
+      fixture.detectChanges();
+
+      const weight = fixture.nativeElement.querySelector('[formControlName="weight_gram"]');
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      expect(document.activeElement).not.toBe(weight);
     });
 
     it('renders no inline warning when the Gewicht is in range', async () => {
@@ -5010,5 +5340,357 @@ describe('DataEntryFormComponent', () => {
       expect(lastDialogMessage()).toContain('Gewicht 25 g liegt außerhalb');
       expect(lastDialogMessage()).toContain('(Kohlmeise)');
     });
+  });
+
+  // PRD #333, issue #338: the shared focus system — create-mode autofocus, the
+  // return-focus after „Verstanden", and left/right arrow field navigation.
+  describe('focus system: create-mode autofocus (#338)', () => {
+    afterEach(() => localStorage.clear());
+
+    it('focuses the Art field with no click when a create-mode form opens', async () => {
+      await setupCreateMode();
+      const species = fixture.nativeElement.querySelector('[formControlName="species"]');
+      expect(document.activeElement).toBe(species);
+    });
+
+    it('does not force-focus the Art field in edit mode (reviewing an existing record)', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '42' : null) } },
+      };
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+        ],
+      }).compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush({
+          id: '42',
+          species: { id: 's1', common_name_de: 'Kohlmeise', ring_size: RingSize.S },
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz' },
+          project: null,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      f.detectChanges();
+
+      const species = f.nativeElement.querySelector('[formControlName="species"]');
+      // Edit mode never steals focus onto Art; the ringer is reviewing a record.
+      expect(document.activeElement).not.toBe(species);
+    });
+  });
+
+  describe('focus system: left/right arrow field navigation (#338)', () => {
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    const el = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
+
+    const arrow = (key: 'ArrowLeft' | 'ArrowRight') =>
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+
+    it('advances to the next field on right arrow from a select (no caret)', fakeAsync(() => {
+      const age = el('age_class');
+      age.focus();
+
+      const event = arrow('ArrowRight');
+      age.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('sex'));
+    }));
+
+    it('goes to the previous field on left arrow from a select (no caret)', fakeAsync(() => {
+      const sex = el('sex');
+      sex.focus();
+
+      const event = arrow('ArrowLeft');
+      sex.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('age_class'));
+    }));
+
+    it('jumps immediately from a checkbox (no caret) on left arrow', fakeAsync(() => {
+      const checkbox = fixture.nativeElement.querySelector(
+        'mat-checkbox[formControlName="has_mites"] input',
+      ) as HTMLInputElement;
+      checkbox.focus();
+
+      const event = arrow('ArrowLeft');
+      checkbox.dispatchEvent(event);
+      tick(50);
+
+      // has_mites' predecessor in the focus order is the Bemerkungen textarea.
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('comment'));
+    }));
+
+    it('advances from the end of a text field (caret at the edge)', fakeAsync(() => {
+      const ringNumber = el('ring_number') as HTMLInputElement;
+      ringNumber.value = '12345';
+      ringNumber.focus();
+      ringNumber.setSelectionRange(5, 5);
+
+      const event = arrow('ArrowRight');
+      ringNumber.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('net_location'));
+    }));
+
+    it('goes back from the start of a text field (caret at the edge)', fakeAsync(() => {
+      const ringNumber = el('ring_number') as HTMLInputElement;
+      ringNumber.value = '12345';
+      ringNumber.focus();
+      ringNumber.setSelectionRange(0, 0);
+
+      const event = arrow('ArrowLeft');
+      ringNumber.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('ring_size'));
+    }));
+
+    it('moves the caret inside a partly-filled text field instead of jumping', fakeAsync(() => {
+      const ringNumber = el('ring_number') as HTMLInputElement;
+      ringNumber.value = '12345';
+      ringNumber.focus();
+      ringNumber.setSelectionRange(2, 2);
+
+      const event = arrow('ArrowRight');
+      ringNumber.dispatchEvent(event);
+      tick(50);
+
+      // The caret is mid-value, so the arrow stays native and focus does not move.
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(ringNumber);
+    }));
+
+    it('keeps native behaviour in a datetime-local field (segment stepping)', fakeAsync(() => {
+      const dateTime = el('date_time') as HTMLInputElement;
+      dateTime.focus();
+
+      const event = arrow('ArrowRight');
+      dateTime.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(dateTime);
+    }));
+
+    it('keeps native behaviour while the Art autocomplete panel is open', fakeAsync(() => {
+      const species = el('species') as HTMLInputElement;
+      species.setAttribute('aria-expanded', 'true');
+      species.focus();
+
+      const event = arrow('ArrowRight');
+      species.dispatchEvent(event);
+      tick(50);
+
+      // The open panel owns the arrows for option navigation — no field jump.
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(species);
+    }));
+
+    it('skips a disabled field (the greyed-out Kleingefieder Fortschritt)', fakeAsync(() => {
+      // Default Alter (Unbekannt) disables small_feather_app (Fortschritt).
+      expect(component.entryForm.get('small_feather_app')!.disabled).toBe(true);
+
+      const smallInt = el('small_feather_int');
+      smallInt.focus();
+
+      const event = arrow('ArrowRight');
+      smallInt.dispatchEvent(event);
+      tick(50);
+
+      // small_feather_app is skipped; focus lands on the next live field.
+      expect(document.activeElement).toBe(el('hand_wing'));
+    }));
+
+    // A real arrow key carries a keyCode (LEFT=37, RIGHT=39); the KeyboardEvent
+    // constructor drops keyCode, so define it explicitly. Material's own
+    // <mat-select> keydown handler is keyCode-driven, so only a keyCode-bearing
+    // event exercises the value-mutation path this fix must suppress.
+    const arrowWithKeyCode = (key: 'ArrowLeft' | 'ArrowRight', keyCode: number) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+      return event;
+    };
+
+    it('does not mutate a closed <mat-select> value on an arrow jump (real keyCode)', fakeAsync(() => {
+      // Alter defaults to Unbekannt, which sits mid-list (index 1 of 6), so
+      // Material's key manager has a Right-neighbour it would advance to.
+      const age = el('age_class');
+      expect(component.entryForm.get('age_class')!.value).toBe(AgeClass.Unknown);
+      age.focus();
+
+      // Without capture-phase suppression, MatSelect's own element-level keydown
+      // fires first at the target and routes RIGHT to its key manager, whose
+      // change subscription calls _selectViaInteraction() and advances the
+      // selection to Diesjährig BEFORE the jump handler bubbles up. The fix must
+      // stop that: the value stays put and only focus moves on.
+      const event = arrowWithKeyCode('ArrowRight', 39);
+      age.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(component.entryForm.get('age_class')!.value).toBe(AgeClass.Unknown);
+      expect(document.activeElement).toBe(el('sex'));
+    }));
+
+    it('does not mutate a closed <mat-select> value on a left arrow jump (real keyCode)', fakeAsync(() => {
+      // Seed Geschlecht = Weiblich (index 2 of 3) so its key manager has a
+      // Left-neighbour (Männlich) it would otherwise step back onto.
+      component.entryForm.get('sex')!.setValue(Sex.Female);
+      fixture.detectChanges();
+      const sex = el('sex');
+      sex.focus();
+
+      const event = arrowWithKeyCode('ArrowLeft', 37);
+      sex.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(component.entryForm.get('sex')!.value).toBe(Sex.Female);
+      expect(document.activeElement).toBe(el('age_class'));
+    }));
+
+    it('jumps immediately from an empty measurement field (no caret to preserve)', fakeAsync(() => {
+      // #341 made the six measurement inputs type=text (appNumberMask). Empty,
+      // such a field has no caret position to protect, so left/right jump like a
+      // select rather than dead-ending.
+      const tarsus = el('tarsus') as HTMLInputElement;
+      expect(tarsus.type).toBe('text');
+      expect(tarsus.value).toBe('');
+      tarsus.focus();
+
+      const event = arrow('ArrowRight');
+      tarsus.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('feather_span'));
+    }));
+
+    it('does caret-boundary navigation in a partly-filled measurement field (type=text after #341)', fakeAsync(() => {
+      // Integration note (#338 × #341): #338 originally had to exempt the
+      // measurement fields because type=number exposes no caret API. #341 changed
+      // them to type=text (appNumberMask), which restores a real caret — so they
+      // now follow the normal caret-boundary rule the original #338 AC described:
+      // the arrow moves the caret within the value and only jumps at the edge.
+      const tarsus = el('tarsus') as HTMLInputElement;
+      expect(tarsus.type).toBe('text');
+      tarsus.value = '123';
+      tarsus.focus();
+
+      // Caret in the middle → the right arrow moves it natively, no field jump.
+      tarsus.setSelectionRange(1, 1);
+      const mid = arrow('ArrowRight');
+      tarsus.dispatchEvent(mid);
+      tick(50);
+      expect(mid.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(tarsus);
+
+      // Caret at the end → the right arrow jumps to the next field.
+      tarsus.setSelectionRange(3, 3);
+      const edge = arrow('ArrowRight');
+      tarsus.dispatchEvent(edge);
+      tick(50);
+      expect(edge.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('feather_span'));
+    }));
+  });
+
+  describe('focus system: arrow navigation skips net fields hidden by the Projekt (#338)', () => {
+    afterEach(() => localStorage.clear());
+
+    it('jumps from Ringnummer straight to Alter when the net block is hidden', fakeAsync(() => {
+      TestBed.resetTestingModule();
+      const hiddenNetProject = {
+        id: 'p1',
+        title: 'Herbst',
+        description: '',
+        show_optional_fields: true,
+        show_net_fields: false,
+        projekttyp: Projekttyp.Sonstiges,
+        organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+        default_station: null,
+        scientists: [],
+        created: '',
+        updated: '',
+      } as Project;
+      TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(hiddenNetProject),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+        ],
+      });
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      f.detectChanges();
+
+      const at = (name: string) =>
+        f.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
+
+      // The three net controls are hidden by the Projekt switch.
+      expect(at('net_location')).toBeNull();
+
+      const ringNumber = at('ring_number') as HTMLInputElement;
+      ringNumber.value = '12345';
+      ringNumber.focus();
+      ringNumber.setSelectionRange(5, 5);
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true,
+        cancelable: true,
+      });
+      ringNumber.dispatchEvent(event);
+      tick(50);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(at('age_class'));
+    }));
   });
 });
