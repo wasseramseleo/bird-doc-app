@@ -43,4 +43,18 @@ describe('SpeciesBarChartComponent', () => {
     expect(data.labels).toEqual([]);
     expect(data.datasets[0].data).toEqual([]);
   });
+
+  it('draws every bar in the single brand accent, not a colour per species', () => {
+    const fixture = setup(top);
+    const data = fixture.componentInstance.chartData();
+
+    // One dataset whose backgroundColor is a single scalar string — that one
+    // colour applies to every bar, so colour encodes rank (bar height), never
+    // species identity (issue #294). A per-species chart would carry an array.
+    expect(data.datasets.length).toBe(1);
+    const background = data.datasets[0].backgroundColor;
+    expect(typeof background).toBe('string');
+    expect(background).toBeTruthy();
+    expect(Array.isArray(background)).toBe(false);
+  });
 });

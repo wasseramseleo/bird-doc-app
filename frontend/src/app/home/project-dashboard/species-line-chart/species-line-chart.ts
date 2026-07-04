@@ -31,19 +31,30 @@ import { StatsSeries } from '../../../models/project-stats.model';
 // registered the bar controller separately (registration is idempotent per type).
 Chart.register(LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend);
 
-// A small, colour-blind-safe categorical palette for the per-Art lines. Übrige
-// (always the last line) reuses the muted grey at the end.
+// The validated colour-vision-deficiency-safe categorical palette for the
+// per-Art lines (issue #294). Colour encodes Art identity here, so every line
+// must get its OWN colour: the backend folds all but the Top-N Arten into Übrige
+// (SERIES_TOP_N = 8, backend/birds/project_stats.py), so a busy range yields up
+// to EIGHT identified lines — the palette therefore carries eight entries so it
+// never wraps and no two Arten ever share a colour. The eight are a full
+// spectral spread (blue · orange · purple · green · magenta · red · gold · teal)
+// kept distinguishable under simulated Protanopie/Deuteranopie/Tritanopie — no
+// pair is tighter than the original five's own closest CVD pair — with every
+// entry ≥ 3:1 contrast on the paper surface.
 const LINE_PALETTE = [
   '#00658f',
-  '#984ea3',
-  '#4daf4a',
-  '#ff7f00',
-  '#e41a1c',
-  '#a65628',
-  '#f781bf',
-  '#377eb8',
+  '#c96a00',
+  '#6a51a3',
+  '#2f7d32',
+  '#b0447c',
+  '#840b13',
+  '#766319',
+  '#0c9797',
 ];
-const UEBRIGE_COLOR = '#9e9e9e';
+// Übrige (always the last line) is a warm grey, dashed, so the folded rest reads
+// as context rather than as a sixth Art.
+const UEBRIGE_COLOR = '#8a857a';
+const UEBRIGE_DASH = [6, 4];
 
 // The Top-N-Fänge/Fangtag line chart (issue #203). Rendered imperatively against
 // a <canvas> from the component's render hook (`afterNextRender`). One line per
@@ -67,24 +78,36 @@ export class SpeciesLineChartComponent {
 
   // The X axis is the sparse Fangtage; each series line becomes one dataset of
   // per-Fangtag Fänge counts, labelled by species name (Übrige is `species_id`
-  // null), aligned to `days`.
+  // null), aligned to `days`. Colour is part of the exposed structure so specs
+  // assert per-line colour and the dashed Übrige, not pixels: each identified
+  // Art walks the CVD-safe palette; the Übrige line (null id) is warm grey and
+  // dashed so the named Arten read as the signal and the rest as context.
   readonly chartData = computed<ChartData<'line'>>(() => {
     const series = this.series();
     return {
       labels: series.days,
-      datasets: series.lines.map((line) => ({
-        label: line.name,
-        data: line.counts,
-      })),
+      datasets: series.lines.map((line, index) => {
+        const isUebrige = line.species_id === null;
+        const color = isUebrige ? UEBRIGE_COLOR : LINE_PALETTE[index % LINE_PALETTE.length];
+        return {
+          label: line.name,
+          data: line.counts,
+          borderColor: color,
+          backgroundColor: color,
+          borderDash: isUebrige ? UEBRIGE_DASH : [],
+          pointRadius: 2,
+          borderWidth: 2,
+          tension: 0.25,
+        };
+      }),
     };
   });
 
   constructor() {
     afterNextRender(() => {
-      const themed = this.applyTheme(this.chartData());
       this.chart = new Chart(this.canvas().nativeElement, {
         type: this.chartType,
-        data: themed,
+        data: this.chartData(),
         options: this.chartOptions(),
       });
     });
@@ -92,7 +115,7 @@ export class SpeciesLineChartComponent {
     // The nav-bar project switcher and the range selector both swap the data
     // without recreating the component; re-feed the chart whenever it changes.
     effect(() => {
-      const data = this.applyTheme(this.chartData());
+      const data = this.chartData();
       if (!this.chart) return;
       this.chart.data = data;
       this.chart.update();
@@ -104,29 +127,6 @@ export class SpeciesLineChartComponent {
   private token(name: string, fallback: string): string {
     const value = getComputedStyle(this.host.nativeElement).getPropertyValue(name).trim();
     return value || fallback;
-  }
-
-  // Colour each line from the categorical palette; the Übrige line (null id) is
-  // muted grey so the named Arten read as the signal and the rest as context.
-  private applyTheme(data: ChartData<'line'>): ChartData<'line'> {
-    const lines = this.series().lines;
-    return {
-      labels: data.labels,
-      datasets: data.datasets.map((dataset, index) => {
-        const color =
-          lines[index]?.species_id === null
-            ? UEBRIGE_COLOR
-            : LINE_PALETTE[index % LINE_PALETTE.length];
-        return {
-          ...dataset,
-          borderColor: color,
-          backgroundColor: color,
-          pointRadius: 2,
-          borderWidth: 2,
-          tension: 0.25,
-        };
-      }),
-    };
   }
 
   private chartOptions(): ChartOptions<'line'> {
