@@ -6,6 +6,21 @@ test client, asserting the SEO/OG tags are present and that the crawler files ar
 served (ADR 0009: the public surface is server-rendered Django).
 """
 
+import pytest
+from django.utils import translation
+
+
+@pytest.fixture(autouse=True)
+def _restore_active_language():
+    # A request to /en/ leaves "en" active on the thread (LocaleMiddleware
+    # activates, nothing deactivates), and a later test's bare reverse() would
+    # then build /en/ URLs. Restore whatever was active so this module leaks
+    # no language state into whichever test pytest-django orders next (same
+    # guard as test_stats.py).
+    language = translation.get_language()
+    yield
+    translation.activate(language)
+
 
 def test_robots_txt_is_served(client):
     # A crawler hitting /robots.txt gets a plain-text policy, served at the apex
@@ -171,3 +186,66 @@ def test_home_carries_a_twitter_summary_large_image_card(client):
     content = client.get("/").content.decode()
     assert 'name="twitter:card"' in content
     assert "summary_large_image" in content
+
+
+def test_home_title_targets_the_beringungssoftware_head_term(client):
+    # The marketing home's <title> carries the category head term
+    # „Beringungssoftware" — the term a Beringer shopping for a tool actually
+    # searches (issue #281) — alongside the brand.
+    import re
+
+    content = client.get("/").content.decode()
+    title = re.search(r"<title>(.*?)</title>", content, re.DOTALL).group(1)
+    assert "Beringungssoftware" in title
+    assert "BirdDoc" in title
+
+
+def test_home_heading_hierarchy_leads_with_beringungssoftware(client):
+    # The heading hierarchy leads with the head term (issue #281): the page's
+    # H1 opens on „Beringungssoftware", not on the brand tagline.
+    import re
+
+    content = client.get("/").content.decode()
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", content, re.DOTALL).group(1)
+    assert h1.strip().startswith("Beringungssoftware")
+
+
+def test_home_keeps_the_stationsjournal_tagline_in_the_lead(client):
+    # The distinctive „Stationsjournal für die Vogelberingung … Schluss mit
+    # Papier und Excel" voice survives the head-term retarget as the brand
+    # tagline in the hero lead (issue #281) — the term is added, the voice kept.
+    import re
+
+    content = client.get("/").content.decode()
+    lead = re.search(r'<p class="lead">(.*?)</p>', content, re.DOTALL).group(1)
+    assert "Schluss mit Papier und Excel" in lead
+    assert "Stationsjournal für die Vogelberingung" in lead
+
+
+def test_meta_description_and_og_tags_survive_the_head_term_retarget(client):
+    # The retarget touches <title> and headings ONLY (issue #281): the meta
+    # description and the OG/Twitter titles keep their issue-#108 wording —
+    # „Beringungssoftware" does not leak into the share/description tags.
+    import re
+
+    content = client.get("/").content.decode()
+    description = re.search(r'<meta name="description" content="([^"]+)"', content).group(1)
+    assert description.startswith("Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal")
+    assert "Beringungssoftware" not in description
+    for prop in ('property="og:title"', 'name="twitter:title"'):
+        tag = re.search(rf'<meta {prop} content="([^"]+)"', content).group(1)
+        assert tag == "BirdDoc: Stationsjournal für die Vogelberingung"
+
+
+def test_en_home_translates_the_head_term_title_and_h1(client):
+    # The /en/ home renders a sensibly translated title and H1 through the
+    # existing catalog (issue #281) — the German head term does not leak onto
+    # the English page.
+    import re
+
+    content = client.get("/en/").content.decode()
+    title = re.search(r"<title>(.*?)</title>", content, re.DOTALL).group(1)
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", content, re.DOTALL).group(1)
+    assert "Bird ringing software" in title
+    assert h1.strip().startswith("Bird ringing software")
+    assert "Beringungssoftware" not in content

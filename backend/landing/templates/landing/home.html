@@ -10,6 +10,15 @@ default centred main, so the full-bleed treatment must key on `page--home`.
 {% block body_class %}page--marketing page--home{% endblock %}
 
 {% comment %}
+Head-term retarget (issue #281): the <title> leads the brand with the category
+term „Beringungssoftware" — what a Beringer shopping for a tool actually
+searches — while the distinctive „Stationsjournal für die Vogelberingung"
+voice survives in the same breath. The string is shared with the hero H1
+below so title and heading can never drift apart.
+{% endcomment %}
+{% block title %}BirdDoc – {% translate "Beringungssoftware &amp; Stationsjournal für die Vogelberingung" %}{% endblock %}
+
+{% comment %}
 SEO + Open-Graph share baseline (issue #108): a shared BirdDoc link previews
 with a title, a description and the hero Fang-Karte as the share image, so it
 reads credibly in chat and on social. The image is a server-rendered SVG of the
@@ -95,9 +104,16 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     {% endcomment %}
     <section class="hero" id="top">
         <div class="hero__copy">
+            {% comment %}
+            Head-term retarget (issue #281): the H1 leads with the searched
+            category term „Beringungssoftware" (same string as the <title>),
+            and the distinctive „Stationsjournal für die Vogelberingung …
+            Schluss mit Papier und Excel" voice survives as the brand tagline
+            opening the lead.
+            {% endcomment %}
             <p class="eyebrow">{% translate "Stationsjournal · Beringung" %}</p>
-            <h1 class="hero__thesis">{% translate "Schluss mit Papier und Excel" %}</h1>
-            <p class="lead">{% blocktranslate trimmed %}BirdDoc ist das Stationsjournal für die Beringung: ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten Tabellen.{% endblocktranslate %}
+            <h1 class="hero__thesis">{% translate "Beringungssoftware &amp; Stationsjournal für die Vogelberingung" %}</h1>
+            <p class="lead">{% blocktranslate trimmed %}Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal für die Vogelberingung – ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten Tabellen.{% endblocktranslate %}
                 <span class="badge badge--beta">Beta</span></p>
             {% include "landing/_app_german_only_note.html" %}
             {% comment %}
