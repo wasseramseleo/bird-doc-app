@@ -14,6 +14,7 @@ registerLocaleData(localeDeAt);
 import { ProjectDashboardComponent } from './project-dashboard';
 import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
 import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
+import { HourHistogramChartComponent } from './hour-histogram-chart/hour-histogram-chart';
 import { Project } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
 import { ProjectActionsService } from '../../service/project-actions.service';
@@ -49,6 +50,7 @@ function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
         { species_id: null, name: 'Übrige', counts: [2, 3, 4] },
       ],
     },
+    hour_histogram: [0, 0, 0, 0, 0, 3, 9, 12, 8, 5, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     last_fangtag: {
       date: '2026-07-02',
       faenge: 38,
@@ -195,6 +197,24 @@ describe('ProjectDashboardComponent', () => {
     expect(chartData.labels).toEqual(['2026-06-26', '2026-06-28', '2026-07-02']);
     expect(chartData.datasets.map((d) => d.label)).toEqual(['Mönchsgrasmücke', 'Amsel', 'Übrige']);
     expect(chartData.datasets[0].data).toEqual([10, 12, 12]);
+    httpMock.verify();
+  });
+
+  it('feeds the Fangaktivität-nach-Tagesstunde histogram the hour_histogram from the stats response', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const chart = fixture.debugElement.query(By.directive(HourHistogramChartComponent));
+    expect(chart).not.toBeNull();
+    const chartData = (chart.componentInstance as HourHistogramChartComponent).chartData();
+    // 24 hour-of-day buckets fed straight through as a single count dataset.
+    expect(chartData.labels?.length).toBe(24);
+    expect(chartData.datasets[0].data).toEqual([
+      0, 0, 0, 0, 0, 3, 9, 12, 8, 5, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ]);
     httpMock.verify();
   });
 
