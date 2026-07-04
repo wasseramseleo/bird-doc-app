@@ -46,6 +46,14 @@ urlpatterns += [
 # the DACH audience, so it lives at the apex root OUTSIDE i18n_patterns: there
 # is exactly one canonical URL per page and no `/en/` variant is served.
 urlpatterns += [
+    # The index hub of the whole Wissen reference (issue #314): describes what
+    # the reference contains and links its sections. It sits at the top of the
+    # Wissen breadcrumb trail and joins the sitemap.
+    path(
+        "wissen/",
+        wissen.WissenHubView.as_view(),
+        name="wissen_index",
+    ),
     path(
         "wissen/ringgroessen/",
         wissen.RinggroessenTabelleView.as_view(),

@@ -1,0 +1,73 @@
+{% extends "landing/base_destination.html" %}
+
+{% comment %}
+Der /wissen/-Index-Hub (issue #314, PRD #300): die Startseite der Wissen-
+Referenz. Server-gerendert und skriptfrei (ADR 0009), Deutsch-only außerhalb der
+i18n_patterns — genau eine kanonische URL, keine /en/-Variante. Der Hub beschreibt
+die Referenz und verlinkt ihre Sektionen (Ringgrößen-Tabelle, Artenseiten,
+Beringungs-Glossar), damit ein Leser — und ein maschineller Leser — die Sektion
+als Ganzes erfassen und verlinken kann.
+{% endcomment %}
+
+{% block body_class %}page--marketing{% endblock %}
+
+{% block title %}Wissen · BirdDoc{% endblock %}
+
+{% block head_meta %}
+    {# Answer-first <meta description>: nennt, was die Referenz enthält. #}
+    <meta name="description" content="{{ meta_description }}">
+{% endblock %}
+
+{% block content %}
+    {% include "landing/_wissen_breadcrumb.html" %}
+
+    <p class="eyebrow">Wissen</p>
+    <h1>Wissen — die öffentliche Beringungs-Referenz</h1>
+    <p>
+        Die Wissen-Referenz von BirdDoc erklärt und belegt die Grundlagen der
+        Vogelberingung in Österreich — offen, ohne Anmeldung und in klarer
+        Sprache. Sie besteht aus drei Sektionen: der Ringgrößen-Tabelle, den
+        Artenseiten und dem Beringungs-Glossar.
+    </p>
+
+    <ul class="wissen-hub">
+        <li class="wissen-hub__section">
+            <h2><a href="{% url 'wissen_ringgroessen' %}">Ringgrößen-Tabelle</a></h2>
+            <p>
+                Die vollständige Tabelle nennt die Empfohlene Ringgröße für jede
+                Art der österreichischen Artenliste — mit deutschem Namen,
+                wissenschaftlichem Namen, Familie und Ordnung.
+            </p>
+        </li>
+        <li class="wissen-hub__section">
+            <h2>
+                {% if example_art_url %}
+                    <a href="{{ example_art_url }}">Artenseiten</a>
+                {% else %}
+                    Artenseiten
+                {% endif %}
+            </h2>
+            <p>
+                Eine ausführliche Seite je Art mit ihrer Empfohlenen Ringgröße
+                und Taxonomie. Alle Artenseiten sind über jede Zeile der
+                <a href="{% url 'wissen_ringgroessen' %}">Ringgrößen-Tabelle</a>
+                erreichbar{% if example_species %} — zum Beispiel die Seite zur
+                <a href="{{ example_art_url }}">{{ example_species.common_name_de }}</a>{% endif %}.
+            </p>
+        </li>
+        <li class="wissen-hub__section">
+            <h2><a href="{% url 'wissen_glossar' %}">Beringungs-Glossar</a></h2>
+            <p>
+                Das Glossar erklärt die Fachbegriffe der Vogelberingung — von
+                Erstfang über Wiederfang bis Ringserie, je ein Begriff auf einer
+                eigenen Seite, antwortzuerst.
+            </p>
+        </li>
+    </ul>
+
+    {# Der Hub führt in den bestehenden Funnel (issue #80). #}
+    <p class="wissen-cta">
+        BirdDoc ist das digitale Stationsjournal für die Vogelberingung —
+        <a class="button" href="{% url 'landing:warteliste' %}">Zugang anfragen</a>
+    </p>
+{% endblock %}
