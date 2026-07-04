@@ -1,59 +1,38 @@
 <section class="dashboard">
   <header class="dashboard__header">
-    <h1>{{ project().title }}</h1>
-  </header>
+    <div class="dashboard__identity">
+      <h1>{{ project().title }}</h1>
+      <p class="dashboard__meta" aria-label="Projektdaten">
+        <span class="dashboard__meta-item">{{ project().organization.name }}</span>
+        <span class="dashboard__meta-item">
+          @if (project().default_station; as station) {
+            {{ station.name }}
+          } @else {
+            Keine Standard-Station
+          }
+        </span>
+        <span class="dashboard__meta-item">{{ beringerCount() }} Beringer</span>
+        <button type="button" class="dashboard__meta-more" (click)="edit()">
+          Alle Projektdaten
+        </button>
+      </p>
+    </div>
 
-  <section class="projektdaten" aria-label="Projektdaten">
-    <div class="projektdaten__actions">
-      <button type="button" class="projektdaten__action" (click)="edit()">Bearbeiten</button>
+    <div class="dashboard__actions">
+      <a class="dashboard__action dashboard__action--primary" routerLink="/data-entry">
+        <mat-icon aria-hidden="true">add</mat-icon>
+        Neuer Fang
+      </a>
+      <button type="button" class="dashboard__action" (click)="edit()">Bearbeiten</button>
       <button
         type="button"
-        class="projektdaten__action"
+        class="dashboard__action"
         aria-label="Als IWM Excel exportieren"
         (click)="exportIwm()">
         Export
       </button>
     </div>
-
-    <dl class="projektdaten__list">
-      <div class="projektdaten__row">
-        <dt>Beschreibung</dt>
-        <dd>
-          @if (project().description) {
-            {{ project().description }}
-          } @else {
-            <span class="projektdaten__empty">Keine Beschreibung hinterlegt</span>
-          }
-        </dd>
-      </div>
-      <div class="projektdaten__row">
-        <dt>Organisation</dt>
-        <dd>{{ project().organization.name }}</dd>
-      </div>
-      <div class="projektdaten__row">
-        <dt>Wissenschaftler</dt>
-        <dd>
-          @if (project().scientists.length > 0) {
-            @for (scientist of project().scientists; track scientist.id) {
-              <span class="projektdaten__scientist">{{ scientist.full_name }}</span>
-            }
-          } @else {
-            <span class="projektdaten__empty">Keine Wissenschaftler zugeordnet</span>
-          }
-        </dd>
-      </div>
-      <div class="projektdaten__row">
-        <dt>Standard-Station</dt>
-        <dd>
-          @if (project().default_station; as station) {
-            {{ station.name }}
-          } @else {
-            <span class="projektdaten__empty">Keine Standard-Station festgelegt</span>
-          }
-        </dd>
-      </div>
-    </dl>
-  </section>
+  </header>
 
   <div class="range-selector" role="group" aria-label="Zeitraum">
     @for (option of presets; track option.preset) {

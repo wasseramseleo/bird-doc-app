@@ -10,9 +10,9 @@ import {
 import {DatePipe, DecimalPipe, PercentPipe} from '@angular/common';
 import {HttpErrorResponse} from '@angular/common/http';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
+import {RouterLink} from '@angular/router';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
-import {RouterLink} from '@angular/router';
 import {fromEvent} from 'rxjs';
 
 import {ApiService} from '../../service/api.service';
@@ -63,9 +63,9 @@ interface RangePresetOption {
     DatePipe,
     DecimalPipe,
     PercentPipe,
+    RouterLink,
     MatIconModule,
     MatProgressSpinnerModule,
-    RouterLink,
     SpeciesBarChartComponent,
     SpeciesLineChartComponent,
     HourHistogramChartComponent,
@@ -84,6 +84,13 @@ export class ProjectDashboardComponent {
   private readonly now = inject(DASHBOARD_NOW);
 
   readonly project = input.required<Project>();
+
+  // The demoted Projektdaten (issue #298) collapse to a one-line meta strip —
+  // Organisation · Standard-Station · Beringer-Anzahl — under the Projekt title,
+  // so the KPI row is the first substantive content. „Beringer" is the domain
+  // term for the code's historically-named `scientists` (CONTEXT.md); this is
+  // just their count for the strip.
+  readonly beringerCount = computed(() => this.project().scientists.length);
 
   readonly presets: readonly RangePresetOption[] = [
     {preset: 'week', label: 'Letzte Woche'},

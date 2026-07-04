@@ -108,11 +108,12 @@ function setup(project: Project, now: Date = DEFAULT_NOW) {
   TestBed.configureTestingModule({
     imports: [ProjectDashboardComponent],
     providers: [
+      // Router for the header actions (Bearbeiten/Neuer Fang) and the
+      // Ruhige-Phase note's „Fangtag beginnen" (routerLink → /heute).
+      provideRouter([]),
       provideHttpClient(),
       provideHttpClientTesting(),
       provideNoopAnimations(),
-      // The Ruhige-Phase note's „Fangtag beginnen" uses routerLink → /heute.
-      provideRouter([]),
       { provide: LOCALE_ID, useValue: 'de-AT' },
       { provide: ProjectActionsService, useValue: actions },
       // Deterministic reference clock for the recency chip / quiet-phase threshold.
@@ -503,7 +504,7 @@ describe('ProjectDashboardComponent', () => {
     httpMock.verify();
   });
 
-  it('renders a Projektdaten card with Beschreibung, Organisation, each Wissenschaftler and the Standard-Station', () => {
+  it('reduces Projektdaten to a one-line meta strip under the title: Organisation · Standard-Station · Beringer-Anzahl', () => {
     const project = makeProject({
       description: 'Reedbed-Monitoring am Nordufer',
       organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
@@ -518,55 +519,90 @@ describe('ProjectDashboardComponent', () => {
     httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
     fixture.detectChanges();
 
-    const card = fixture.nativeElement.querySelector('.projektdaten');
-    expect(card).not.toBeNull();
-    const text: string = card.textContent;
-    expect(text).toContain('Beschreibung');
-    expect(text).toContain('Reedbed-Monitoring am Nordufer');
-    expect(text).toContain('Organisation');
+    const meta: HTMLElement | null = fixture.nativeElement.querySelector('.dashboard__meta');
+    expect(meta).not.toBeNull();
+    const text = (meta!.textContent ?? '').replace(/\s+/g, ' ').trim();
+    // The three-part strip: Organisation · Standard-Station · Beringer-Anzahl.
     expect(text).toContain('IWM Linz');
-    expect(text).toContain('Wissenschaftler');
-    expect(text).toContain('Anna Huber');
-    expect(text).toContain('Bernd Mayer');
-    expect(text).toContain('Standard-Station');
     expect(text).toContain('Station Nordufer');
+    expect(text).toContain('2 Beringer');
+
+    // The demoted card no longer spells out the full Projektdaten details on the
+    // dashboard (Beschreibung, per-Beringer names): the KPI row is the first
+    // substantive content, so the old full card is gone.
+    expect(fixture.nativeElement.querySelector('.projektdaten')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Reedbed-Monitoring am Nordufer');
+    expect(fixture.nativeElement.textContent).not.toContain('Anna Huber');
     httpMock.verify();
   });
 
-  it('renders neutral German placeholders for an empty Beschreibung, empty Wissenschaftler list and missing Standard-Station', () => {
-    // makeProject() defaults: description '', scientists [], default_station null.
+  it('shows a neutral Station placeholder and a zero Beringer-Anzahl in the meta strip when the Projekt has neither', () => {
+    // makeProject() defaults: scientists [], default_station null.
     const { fixture, httpMock } = setup(makeProject());
     fixture.detectChanges();
     httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
     fixture.detectChanges();
 
-    const card = fixture.nativeElement.querySelector('.projektdaten');
-    const text: string = card.textContent;
-    expect(text).toContain('Keine Beschreibung hinterlegt');
-    expect(text).toContain('Keine Wissenschaftler zugeordnet');
-    expect(text).toContain('Keine Standard-Station festgelegt');
+    const meta: HTMLElement = fixture.nativeElement.querySelector('.dashboard__meta');
+    const text = (meta.textContent ?? '').replace(/\s+/g, ' ').trim();
+    expect(text).toContain('Keine Standard-Station');
+    expect(text).toContain('0 Beringer');
     httpMock.verify();
   });
 
-  it('delegates Bearbeiten to ProjectActionsService.edit with the current Projekt', () => {
+  it('offers a „Neuer Fang" header shortcut into the capture-entry flow (/data-entry)', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const links: HTMLAnchorElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.dashboard__actions a'),
+    );
+    const newFang = links.find((a) => a.textContent?.includes('Neuer Fang'));
+    expect(newFang).toBeTruthy();
+    expect(newFang!.getAttribute('href')).toBe('/data-entry');
+    httpMock.verify();
+  });
+
+  it('opens the full Projektdaten via the „Alle Projektdaten" affordance (existing details flow)', () => {
     const project = makeProject();
     const { fixture, httpMock, actions } = setup(project);
     fixture.detectChanges();
     httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
     fixture.detectChanges();
 
-    const buttons: HTMLButtonElement[] = Array.from(
-      fixture.nativeElement.querySelectorAll('.projektdaten__action'),
+    const more: HTMLButtonElement | null =
+      fixture.nativeElement.querySelector('.dashboard__meta-more');
+    expect(more).toBeTruthy();
+    expect(more!.textContent?.trim()).toBe('Alle Projektdaten');
+    more!.click();
+
+    // The full-details flow is the shared edit/details flow (issue #298 keeps the
+    // demotion cost-free by reusing ProjectActionsService).
+    expect(actions.edit).toHaveBeenCalledOnceWith(project);
+    httpMock.verify();
+  });
+
+  it('delegates Bearbeiten (header action) to ProjectActionsService.edit with the current Projekt', () => {
+    const project = makeProject();
+    const { fixture, httpMock, actions } = setup(project);
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const buttons: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.dashboard__actions .dashboard__action'),
     );
     const editButton = buttons.find((b) => b.textContent?.trim() === 'Bearbeiten');
     expect(editButton).toBeTruthy();
-    editButton!.click();
+    (editButton as HTMLButtonElement).click();
 
     expect(actions.edit).toHaveBeenCalledOnceWith(project);
     httpMock.verify();
   });
 
-  it('delegates Export to ProjectActionsService.exportIwm with the current Projekt', () => {
+  it('delegates Export (header action) to ProjectActionsService.exportIwm with the current Projekt', () => {
     const project = makeProject();
     const { fixture, httpMock, actions } = setup(project);
     fixture.detectChanges();
@@ -574,7 +610,7 @@ describe('ProjectDashboardComponent', () => {
     fixture.detectChanges();
 
     const exportButton: HTMLButtonElement | null = fixture.nativeElement.querySelector(
-      '.projektdaten__action[aria-label="Als IWM Excel exportieren"]',
+      '.dashboard__actions .dashboard__action[aria-label="Als IWM Excel exportieren"]',
     );
     expect(exportButton).toBeTruthy();
     exportButton!.click();
@@ -583,7 +619,7 @@ describe('ProjectDashboardComponent', () => {
     httpMock.verify();
   });
 
-  it('shows the Organisation exactly once: in the Projektdaten card, not as a header subhead', () => {
+  it('shows the Organisation exactly once: in the meta strip, not as a header subhead', () => {
     const project = makeProject({
       organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
     });
@@ -603,24 +639,29 @@ describe('ProjectDashboardComponent', () => {
     httpMock.verify();
   });
 
-  it('refreshes the Projektdaten card when the project input changes (currentProject signal after an edit)', () => {
-    const project = makeProject({ description: 'Alte Beschreibung' });
+  it('refreshes the meta strip when the project input changes (currentProject signal after an edit)', () => {
+    const project = makeProject({
+      scientists: [{ id: 's1', handle: 'a.huber', full_name: 'Anna Huber' }],
+    });
     const { fixture, httpMock } = setup(project);
     fixture.detectChanges();
     httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.projektdaten').textContent).toContain(
-      'Alte Beschreibung',
+    expect(fixture.nativeElement.querySelector('.dashboard__meta').textContent).toContain(
+      '1 Beringer',
     );
 
     // A successful edit upserts + setCurrents the updated Projekt in ProjectService;
     // that currentProject signal feeds this component's `project` input. Simulate
-    // that new input value — the card must reflect it with no manual reload.
+    // that new input value — the meta strip must reflect it with no manual reload.
     fixture.componentRef.setInput(
       'project',
       makeProject({
-        description: 'Neue Beschreibung',
-        scientists: [{ id: 's9', handle: 'c.nova', full_name: 'Carla Nova' }],
+        scientists: [
+          { id: 's1', handle: 'a.huber', full_name: 'Anna Huber' },
+          { id: 's9', handle: 'c.nova', full_name: 'Carla Nova' },
+        ],
+        default_station: { handle: 'st-x', name: 'Station Neu' } as Project['default_station'],
       }),
     );
     fixture.detectChanges();
@@ -628,10 +669,10 @@ describe('ProjectDashboardComponent', () => {
     httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
     fixture.detectChanges();
 
-    const card: string = fixture.nativeElement.querySelector('.projektdaten').textContent;
-    expect(card).toContain('Neue Beschreibung');
-    expect(card).toContain('Carla Nova');
-    expect(card).not.toContain('Alte Beschreibung');
+    const meta: string = fixture.nativeElement.querySelector('.dashboard__meta').textContent;
+    expect(meta).toContain('2 Beringer');
+    expect(meta).toContain('Station Neu');
+    expect(meta).not.toContain('1 Beringer');
     httpMock.verify();
   });
 
