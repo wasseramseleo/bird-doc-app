@@ -193,6 +193,70 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // Issue #341 regression: with the masked fields now rendered as type="text"
+  // (DefaultValueAccessor), clearing a previously-typed value leaves the control
+  // holding "" rather than null, and the mask permits an in-progress lone/trailing
+  // dot. The write payload must coerce both back to values the backend accepts —
+  // DRF's IntegerField 400s on "" and DecimalField 400s on a dangling "." — so a
+  // normal correction (type a Netznr., then clear it) still saves.
+  describe('normalises masked numeric controls on submit (#341 regression)', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    const submitAndReadBody = (): Record<string, unknown> => {
+      component.onSubmit();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      post.flush({});
+      return body;
+    };
+
+    it('sends null (not "") for a Netz-number typed then cleared', () => {
+      fillValidWiederfang();
+      // The DefaultValueAccessor leaves a cleared type="text" input holding "".
+      component.entryForm.patchValue({ net_location: '' as never, net_height: '5' as never });
+
+      const body = submitAndReadBody();
+
+      expect(body['net_location']).toBeNull();
+      // A still-populated Netz-number rides along untouched (backend coerces).
+      expect(body['net_height']).toBe('5');
+    });
+
+    it('sends null for a measurement field cleared back to an empty string', () => {
+      fillValidWiederfang();
+      component.entryForm.patchValue({ weight_gram: '' as never });
+
+      expect(submitAndReadBody()['weight_gram']).toBeNull();
+    });
+
+    it('drops a dangling decimal point ("18." → "18", "." → null) before submit', () => {
+      fillValidWiederfang();
+      component.entryForm.patchValue({ weight_gram: '18.' as never, tarsus: '.' as never });
+
+      const body = submitAndReadBody();
+
+      expect(body['weight_gram']).toBe('18');
+      expect(body['tarsus']).toBeNull();
+    });
+  });
+
   describe('creating a Beringer inline from an unknown Kürzel', () => {
     const dialogMock = { open: jasmine.createSpy('open') };
     let httpMock: HttpTestingController;

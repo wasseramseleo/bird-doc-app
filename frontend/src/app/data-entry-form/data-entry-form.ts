@@ -449,6 +449,20 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     'net_location', 'net_height', 'net_direction',
   ];
 
+  // #341: every numeric control wearing the appNumberMask (both Netz-Nummern +
+  // the six Messwerte). Rendered as type="text", so their value accessor is the
+  // DefaultValueAccessor: clearing a typed value leaves the control holding the
+  // empty string "" (the old type="number" NumberValueAccessor coerced ""→null),
+  // and the mask deliberately permits an in-progress lone/trailing dot ("5.",
+  // "."). DRF's IntegerField rejects "" with a 400 and DecimalField rejects a
+  // dangling-dot string, so transformFromForm() normalises these on the write
+  // payload (see normalizeMaskedNumeric) — a cleared correction saves as null
+  // again instead of failing.
+  private static readonly MASKED_NUMERIC_CONTROLS: readonly string[] = [
+    'net_location', 'net_height',
+    'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'notch_f2', 'inner_foot',
+  ];
+
   private readonly baseFocusOrder: string[] = [
     'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'central', 'ring_size', 'ring_number',
     'net_location', 'net_height', 'net_direction', 'age_class', 'sex', 'fat_deposit', 'muscle_class',
@@ -1509,8 +1523,22 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     return formValue;
   }
 
+  // #341: an appNumberMask control holds a raw string. Coerce the two states the
+  // mask can leave behind that the backend rejects: the empty string (a cleared
+  // field → null, so IntegerField/DecimalField accept it) and a dangling decimal
+  // point ("5." → "5", "." → null). A real number (edit mode preloads them) or an
+  // already-null value passes through untouched.
+  private static normalizeMaskedNumeric(value: unknown): unknown {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.endsWith('.') ? value.slice(0, -1) : value;
+    return trimmed === '' ? null : trimmed;
+  }
+
   private transformFromForm(formValue: any): Partial<DataEntry> {
     const payload: any = {...formValue};
+    for (const field of DataEntryFormComponent.MASKED_NUMERIC_CONTROLS) {
+      payload[field] = DataEntryFormComponent.normalizeMaskedNumeric(payload[field]);
+    }
     payload.species_id = formValue.species?.id;
     payload.ringing_station_id = formValue.ringing_station?.handle;
     payload.staff_id = formValue.staff?.id;
