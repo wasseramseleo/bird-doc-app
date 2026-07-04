@@ -17,6 +17,14 @@
   margin: 0;
 }
 
+// Issue #339: a quiet hint on the "Neuer Eintrag" button that plain `n` opens a
+// fresh capture form. Dimmed and slightly smaller so it reads as an aside.
+.entry-list__shortcut-hint {
+  margin-left: 6px;
+  font-size: 0.8em;
+  opacity: 0.75;
+}
+
 .entry-list__subhead {
   margin: 4px 0 0;
   color: var(--bd-ink-soft);
