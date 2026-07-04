@@ -1,0 +1,37 @@
+{% extends "landing/base_destination.html" %}
+
+{% comment %}
+Eine öffentliche Beringungs-Glossar-Seite (issue #306, PRD #300): ein Begriff,
+antwortzuerst — der `lead` eröffnet die Seite als direkte Definition, die
+`absaetze` erklären danach. Server-gerendert, skriptfrei (ADR 0009), Deutsch-only
+außerhalb der i18n_patterns. Trägt eine eigene Meta-Description und den
+BreadcrumbList-JSON-LD-Pfad über den Glossar-Index.
+{% endcomment %}
+
+{% block body_class %}page--marketing{% endblock %}
+
+{% block title %}{{ entry.begriff }} · Beringungs-Glossar · BirdDoc{% endblock %}
+
+{% block head_meta %}
+    <meta name="description" content="{{ entry.meta_description }}">
+{% endblock %}
+
+{% block content %}
+    {% include "landing/_wissen_breadcrumb.html" %}
+
+    <p class="eyebrow">Beringungs-Glossar</p>
+    <h1>{{ entry.begriff }}</h1>
+
+    {# Antwortzuerst: der Lead beantwortet „Was ist <Begriff>?" im ersten Satz. #}
+    <p class="glossar-term__lead">{{ entry.lead }}</p>
+
+    {% for absatz in entry.absaetze %}
+        <p>{{ absatz }}</p>
+    {% endfor %}
+
+    {# Der Glossar führt in den bestehenden Funnel (issue #80). #}
+    <p class="wissen-cta">
+        BirdDoc ist das digitale Stationsjournal für die Vogelberingung —
+        <a class="button" href="{% url 'landing:warteliste' %}">Zugang anfragen</a>
+    </p>
+{% endblock %}
