@@ -16,6 +16,7 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from .fang_karte import FANG_KARTE
+from .wissen import WissenReferenceSitemap
 
 
 class StaticViewSitemap(Sitemap):
@@ -48,7 +49,10 @@ class StaticViewSitemap(Sitemap):
         return 1.0 if item == "landing:home" else 0.5
 
 
-SITEMAPS = {"static": StaticViewSitemap}
+# The static marketing/trust pages plus the /wissen/ species reference
+# (issue #284) — both sections render into the ONE sitemap.xml that
+# robots.txt already advertises.
+SITEMAPS = {"static": StaticViewSitemap, "wissen": WissenReferenceSitemap}
 
 
 class RobotsTxtView(TemplateView):

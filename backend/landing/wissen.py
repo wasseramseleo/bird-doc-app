@@ -12,7 +12,9 @@ Austrian list. The Artenseiten never render Artennorm values: the norms
 """
 
 import json
+from functools import cached_property
 
+from django.contrib.sitemaps import Sitemap
 from django.http import Http404
 from django.urls import reverse
 from django.utils.text import slugify
@@ -57,6 +59,42 @@ def breadcrumb_context(breadcrumbs):
             ensure_ascii=False,
         ),
     }
+
+
+class WissenReferenceSitemap(Sitemap):
+    """The /wissen/ reference in sitemap.xml (issue #284).
+
+    Advertises the whole programmatic reference so the crawler discovers the
+    section, not just the marketing pages: the Ringgrößen index plus one URL
+    per non-Sonderart species page, derived from the same `Species` reference
+    data (and the same slug rule) as the pages themselves — so the sitemap can
+    never advertise a page that 404s or miss one that exists. Registered
+    alongside the static-pages sitemap in `seo.SITEMAPS`; `robots.txt` already
+    points at the one resulting sitemap.xml.
+    """
+
+    protocol = "https"
+    # The species reference data changes rarely.
+    changefreq = "monthly"
+
+    @cached_property
+    def _index_url(self):
+        return reverse("wissen_ringgroessen")
+
+    def items(self):
+        return [self._index_url] + [
+            reverse("wissen_art", kwargs={"slug": art_slug(species)})
+            for species in Species.objects.filter(special_kind=Species.SpecialKind.NORMAL).order_by(
+                "common_name_de"
+            )
+        ]
+
+    def location(self, item):
+        return item
+
+    def priority(self, item):
+        # The index is the hub of the section; the species pages are leaves.
+        return 0.7 if item == self._index_url else 0.5
 
 
 class RinggroessenTabelleView(TemplateView):
