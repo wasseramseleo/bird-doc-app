@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-04 18:22+0200\n"
+"POT-Creation-Date: 2026-07-04 18:41+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -672,6 +672,64 @@ msgstr ""
 msgid "Stationsjournal für die Vogelberingung"
 msgstr ""
 
+msgid "Funktionen einer Beringungssoftware – was BirdDoc können muss"
+msgstr ""
+
+msgid ""
+"Eine Beringungssoftware sollte am Ringtisch offline erfassen, Fänge als IWM-"
+"Datei an die Vogelwarte exportieren, unplausible Eingaben sofort als Warnung "
+"anzeigen und Ringnummern fortlaufend aus der Ringserie vorschlagen – das "
+"sind die vier Kernfunktionen, die BirdDoc erfüllt."
+msgstr ""
+
+msgid "Funktionen"
+msgstr ""
+
+msgid "Funktionen einer Beringungssoftware"
+msgstr ""
+
+msgid "Offline-Fähigkeit"
+msgstr ""
+
+msgid ""
+"Offline-Fähigkeit heißt, dass jeder Fang direkt am Ringtisch erfasst wird, "
+"auch ganz ohne Internet. Die Daten liegen sicher auf dem Gerät und werden "
+"abgeglichen, sobald wieder eine Verbindung besteht."
+msgstr ""
+
+msgid "IWM-Export"
+msgstr ""
+
+msgid ""
+"Der IWM-Export erzeugt aus allen Fängen eines Projekts eine fertige "
+"Meldedatei im IWM-Format der Vogelwarte – ohne die Tabelle von Hand "
+"umzubauen."
+msgstr ""
+
+msgid "Plausibilitätswarnung"
+msgstr ""
+
+msgid ""
+"Eine Plausibilitätswarnung zeigt schon beim Erfassen an, wenn ein Maß oder "
+"eine Angabe für die gewählte Art außerhalb des üblichen Bereichs liegt – der "
+"Fehler fällt am Ringtisch auf, nicht erst Monate später."
+msgstr ""
+
+msgid "Ringserien-Logik"
+msgstr ""
+
+msgid ""
+"Die Ringserien-Logik führt jede Ringserie fortlaufend und schlägt die "
+"nächste freie Ringnummer automatisch vor – Zahlendreher und doppelt "
+"vergebene Ringe werden vermieden."
+msgstr ""
+
+msgid "BirdDoc ist das digitale Stationsjournal für die Vogelberingung."
+msgstr ""
+
+msgid "Zugang anfragen"
+msgstr ""
+
 msgid "Gespräch vereinbaren"
 msgstr ""
 
@@ -722,9 +780,6 @@ msgstr ""
 msgid "Menü"
 msgstr ""
 
-msgid "Funktionen"
-msgstr ""
-
 msgid "Für Organisationen"
 msgstr ""
 
@@ -751,9 +806,6 @@ msgid ""
 "auf Papier und in Excel – und ihre Fänge als IWM-Datei an die Vogelwarte "
 "melden. BirdDoc läuft im Browser, wird in Österreich gehostet und ist "
 "während der öffentlichen Beta kostenlos."
-msgstr ""
-
-msgid "Zugang anfragen"
 msgstr ""
 
 msgid "Ringserie: fortlaufende Ringnummern"
@@ -1055,9 +1107,6 @@ msgstr ""
 
 msgid ""
 "Ein Schema für alle Fänge, sauber als IWM- und EURING-Datei exportierbar."
-msgstr ""
-
-msgid "BirdDoc ist das digitale Stationsjournal für die Vogelberingung."
 msgstr ""
 
 msgid "Warteliste · Beringung"
