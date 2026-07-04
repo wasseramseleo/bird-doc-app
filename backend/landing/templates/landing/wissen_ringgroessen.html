@@ -11,6 +11,12 @@ i18n_patterns und hat bewusst keine /en/-Variante.
 
 {% block title %}Ringgrößen-Tabelle Österreich · BirdDoc{% endblock %}
 
+{% block head_meta %}
+    {# Answer-first <meta description> (issue #305): states what the page #}
+    {# answers so the search snippet is useful. #}
+    <meta name="description" content="{{ meta_description }}">
+{% endblock %}
+
 {% block content %}
     {% include "landing/_wissen_breadcrumb.html" %}
 

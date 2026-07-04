@@ -33,6 +33,31 @@ def art_slug(species):
     return slugify(species.scientific_name)
 
 
+def art_answer(species):
+    """The answer-first sentence of an Artenseite: the Empfohlene Ringgröße.
+
+    States the recommended ring size, or — when the species carries none — the
+    honest no-recommendation statement (never a fabricated value, never Python's
+    literal ``None``). One plain-text sentence that is BOTH the page's
+    answer-first lead and its ``<meta name="description">`` (issue #305), so the
+    snippet a search engine or an AI passage-retriever lifts is the exact
+    sentence that opens the page — the two can never drift. Only the ring size,
+    already public on this page, is stated; the numeric Artennorm (PRD #245)
+    stays gated behind signup and is never rendered here.
+    """
+    if species.ring_size:
+        return (
+            f"Für die Art {species.common_name_de} ({species.scientific_name}) "
+            f"empfiehlt die österreichische Artenliste die Ringgröße "
+            f"{species.ring_size}."
+        )
+    return (
+        f"Für die Art {species.common_name_de} ({species.scientific_name}) gibt "
+        f"es in der österreichischen Artenliste keine Standard-Empfehlung für "
+        f"die Ringgröße."
+    )
+
+
 def breadcrumb_context(breadcrumbs):
     """Context for a breadcrumb trail of `(name, absolute_url)` pairs.
 
@@ -109,6 +134,16 @@ class RinggroessenTabelleView(TemplateView):
 
     PAGE_NAME = "Ringgrößen-Tabelle Österreich"
 
+    # Answer-first <meta name="description"> (issue #305): states what the page
+    # answers — the Empfohlene Ringgröße of every Art — so the search snippet is
+    # useful and an AI retriever can lift the page's purpose.
+    META_DESCRIPTION = (
+        "Die Ringgrößen-Tabelle Österreich nennt die Empfohlene Ringgröße für "
+        "jede Art der österreichischen Artenliste — mit deutschem Namen, "
+        "wissenschaftlichem Namen, Familie und Ordnung, direkt aus der "
+        "Artenliste, mit der BirdDoc bei der Beringung arbeitet."
+    )
+
     def get_context_data(self, **kwargs):
         # Only real birds: the non-taxon Sonderart rows ("Ring vernichtet",
         # "Aves ignota") are not part of the public reference. Each row carries
@@ -124,6 +159,7 @@ class RinggroessenTabelleView(TemplateView):
         return {
             **super().get_context_data(**kwargs),
             "species_list": species_list,
+            "meta_description": self.META_DESCRIPTION,
             **breadcrumb_context(
                 [
                     ("BirdDoc", self.request.build_absolute_uri(reverse("landing:home"))),
@@ -148,6 +184,10 @@ class ArtSeiteView(TemplateView):
         return {
             **super().get_context_data(**kwargs),
             "species": species,
+            # The answer-first lead and the <meta description> share this exact
+            # sentence (issue #305), so the on-page answer and the search
+            # snippet can never drift.
+            "meta_description": art_answer(species),
             **breadcrumb_context(
                 [
                     ("BirdDoc", self.request.build_absolute_uri(reverse("landing:home"))),
