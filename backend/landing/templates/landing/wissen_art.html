@@ -11,11 +11,23 @@ und Ordnung, dazu die Empfohlene Ringgröße. Server-gerendert, skriptfrei
 
 {% block title %}Ringgröße {{ species.common_name_de }} ({{ species.scientific_name }}) · BirdDoc{% endblock %}
 
+{% block head_meta %}
+    {# Answer-first (issue #305): the <meta description> is the very sentence #}
+    {# that opens the page below, so the search snippet and the on-page lead #}
+    {# can never drift. Only the (public) Ringgröße is stated — never a #}
+    {# numeric Artennorm, which stays gated behind signup (PRD #245). #}
+    <meta name="description" content="{{ meta_description }}">
+{% endblock %}
+
 {% block content %}
     {% include "landing/_wissen_breadcrumb.html" %}
 
     <p class="eyebrow">Wissen</p>
     <h1>{{ species.common_name_de }}</h1>
+    {# Direct-answer lead: the first content sentence states the Ringgröße #}
+    {# (or the honest no-recommendation case) — identical to the meta #}
+    {# description, so the answer leads the page. #}
+    <p class="lead">{{ meta_description }}</p>
     <p class="wissen-art__taxonomy">
         <em>{{ species.scientific_name }}</em>
         · Familie: {{ species.family_name }}
