@@ -123,6 +123,9 @@
           <div class="kpi-tile">
             <span class="kpi-tile__label">Arten</span>
             <span class="kpi-tile__value">{{ kpi.artenzahl | number }}</span>
+            @if (juengsterErstnachweis(); as neu) {
+              <span class="kpi-tile__detail">jüngster Erstnachweis: {{ neu.name }}</span>
+            }
           </div>
           <div class="kpi-tile">
             <span class="kpi-tile__label">Fangtage</span>
@@ -136,6 +139,24 @@
             <span class="kpi-tile__value">{{ wiederfangAnteil() | percent: '1.0-1' }}</span>
             <span class="kpi-tile__detail">{{ kpi.wiederfaenge | number }} Wiederfänge</span>
           </div>
+        </section>
+      }
+
+      @if (erstnachweise().length > 0) {
+        <section class="erstnachweise" aria-label="Erstnachweise">
+          <h2 class="erstnachweise__title">Erstnachweise</h2>
+          <ul class="erstnachweise__list">
+            @for (nachweis of erstnachweise(); track nachweis.species_id) {
+              <li class="erstnachweise__item">
+                <span class="erstnachweise__date">{{ nachweis.date | date: 'dd.MM.yyyy' }}</span>
+                <span class="erstnachweise__name">{{ nachweis.scientific_name }}</span>
+                <span class="erstnachweise__beringer">{{ nachweis.beringer }}</span>
+                @if (isNeu(nachweis.date)) {
+                  <span class="erstnachweise__badge">NEU</span>
+                }
+              </li>
+            }
+          </ul>
         </section>
       }
 

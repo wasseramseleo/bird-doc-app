@@ -79,10 +79,27 @@ export interface StatsSeries {
   lines: SeriesLine[];
 }
 
+// One Erstnachweis (issue #297): an Art's *first record within the range* — the
+// season's arrival feed, deliberately not an Erstfang (the first capture of an
+// individual bird). A Sonderart is not an Art record, so Aves ignota and Ring
+// vernichtet never appear. Served newest-first, capped at five.
+export interface Erstnachweis {
+  species_id: string;
+  // German common name (Art) and its wissenschaftlicher Name.
+  name: string;
+  scientific_name: string;
+  // ISO date (`YYYY-MM-DD`): the Europe/Vienna date of the Art's first in-range record.
+  date: string;
+  // Display name of that first record's Beringer (full name, or the Kürzel).
+  beringer: string;
+}
+
 export interface ProjectStats {
   range: ProjectStatsRange;
   totals: ProjectStatsTotals;
   top_species: TopSpecies[];
+  // The season's arrival feed: newest-first, capped at five (issue #297).
+  erstnachweise: Erstnachweis[];
   series: StatsSeries;
   // Null when the range holds no captures (empty payload, no error).
   last_fangtag: LastFangtag | null;

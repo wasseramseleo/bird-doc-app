@@ -20,7 +20,7 @@ import calendar
 import datetime
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count
+from django.db.models import Count, Min
 from django.db.models.functions import ExtractHour, TruncDate
 
 from .models import DataEntry, Species
@@ -109,6 +109,7 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
         },
         "totals": _totals(captures),
         "top_species": _top_species(captures),
+        "erstnachweise": _erstnachweise(captures),
         "series": _series(captures),
         "last_fangtag": _last_fangtag(captures),
     }
@@ -162,6 +163,50 @@ def _top_species(captures):
         }
         for row in rows
     ]
+
+
+ERSTNACHWEIS_LIMIT = 5
+
+
+def _erstnachweise(captures):
+    """The season's arrival feed (issue #297): the per-Art **Erstnachweis** —
+    each Art's *first record within the range* — newest-first, capped at five.
+
+    An „Erstnachweis" is the first *record* of a species in the range,
+    deliberately not an „Erstfang" (the first capture of an individual bird — a
+    new ring). A **Sonderart is not an Art record**: Aves ignota is excluded
+    here (and Ring vernichtet is already excluded from ``captures``), so only
+    real, identified Arten form arrivals. Each entry carries the Art (id, German
+    name and wissenschaftlicher Name), the Europe/Vienna date of its first
+    in-range record, and that first record's Beringer.
+    """
+    art_captures = captures.filter(species__special_kind=Species.SpecialKind.NORMAL)
+    # Per-Art first-record instant, newest-first, capped — ordered in SQL so no
+    # per-row datetime handling is needed for the ranking itself.
+    ranked = (
+        art_captures.values("species_id", "species__common_name_de", "species__scientific_name")
+        .annotate(first=Min("date_time"))
+        .order_by("-first")[:ERSTNACHWEIS_LIMIT]
+    )
+    result = []
+    for row in ranked:
+        earliest = (
+            art_captures.filter(species_id=row["species_id"])
+            .select_related("staff")
+            .order_by("date_time", "id")
+            .first()
+        )
+        beringer = earliest.staff.full_name or earliest.staff.handle
+        result.append(
+            {
+                "species_id": str(row["species_id"]),
+                "name": row["species__common_name_de"],
+                "scientific_name": row["species__scientific_name"],
+                "date": earliest.date_time.astimezone(VIENNA).date().isoformat(),
+                "beringer": beringer,
+            }
+        )
+    return result
 
 
 SERIES_TOP_N = 8
