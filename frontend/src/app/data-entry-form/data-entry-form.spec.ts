@@ -5581,11 +5581,12 @@ describe('DataEntryFormComponent', () => {
       expect(document.activeElement).toBe(el('age_class'));
     }));
 
-    it('jumps immediately from an empty number field (no caret to preserve)', fakeAsync(() => {
-      // A measurement field is type=number. Empty, it has no caret position to
-      // protect, so left/right jump like a select rather than dead-ending.
+    it('jumps immediately from an empty measurement field (no caret to preserve)', fakeAsync(() => {
+      // #341 made the six measurement inputs type=text (appNumberMask). Empty,
+      // such a field has no caret position to protect, so left/right jump like a
+      // select rather than dead-ending.
       const tarsus = el('tarsus') as HTMLInputElement;
-      expect(tarsus.type).toBe('number');
+      expect(tarsus.type).toBe('text');
       expect(tarsus.value).toBe('');
       tarsus.focus();
 
@@ -5597,23 +5598,32 @@ describe('DataEntryFormComponent', () => {
       expect(document.activeElement).toBe(el('feather_span'));
     }));
 
-    it('keeps native caret movement in a partly-filled number field (browser has no caret API for type=number)', fakeAsync(() => {
-      // AC caveat (#338): `type=number` exposes no selection API in Chrome/Safari
-      // — selectionStart is null and cannot be set — so a filled number input's
-      // caret edge is undetectable. It therefore keeps native in-field caret
-      // movement (advance via Tab/Enter) rather than jumping mid-value.
+    it('does caret-boundary navigation in a partly-filled measurement field (type=text after #341)', fakeAsync(() => {
+      // Integration note (#338 × #341): #338 originally had to exempt the
+      // measurement fields because type=number exposes no caret API. #341 changed
+      // them to type=text (appNumberMask), which restores a real caret — so they
+      // now follow the normal caret-boundary rule the original #338 AC described:
+      // the arrow moves the caret within the value and only jumps at the edge.
       const tarsus = el('tarsus') as HTMLInputElement;
+      expect(tarsus.type).toBe('text');
       tarsus.value = '123';
       tarsus.focus();
-      // Confirm the browser limitation the behaviour rests on.
-      expect(tarsus.selectionStart).toBeNull();
 
-      const event = arrow('ArrowRight');
-      tarsus.dispatchEvent(event);
+      // Caret in the middle → the right arrow moves it natively, no field jump.
+      tarsus.setSelectionRange(1, 1);
+      const mid = arrow('ArrowRight');
+      tarsus.dispatchEvent(mid);
       tick(50);
-
-      expect(event.defaultPrevented).toBe(false);
+      expect(mid.defaultPrevented).toBe(false);
       expect(document.activeElement).toBe(tarsus);
+
+      // Caret at the end → the right arrow jumps to the next field.
+      tarsus.setSelectionRange(3, 3);
+      const edge = arrow('ArrowRight');
+      tarsus.dispatchEvent(edge);
+      tick(50);
+      expect(edge.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('feather_span'));
     }));
   });
 
