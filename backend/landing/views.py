@@ -24,7 +24,7 @@ from .fang_formular import FANG_FORMULAR
 from .fang_karte import FANG_KARTE
 from .forms import GespraechForm, RegistrationForm, WartelisteForm
 from .models import Warteliste
-from .seo import software_application_jsonld
+from .seo import organization_jsonld, software_application_jsonld
 from .stats import STATION_STATS
 
 
@@ -87,6 +87,10 @@ class HomeView(TemplateView):
             # Python so it is parseable by construction — a rich-result shot
             # in a niche where no competitor bothers.
             "software_application_jsonld": software_application_jsonld(self.request),
+            # Schema.org Organization block (issue #301): grounds BirdDoc as an
+            # entity alongside the SoftwareApplication block, dumped in Python
+            # so it too is parseable by construction.
+            "organization_jsonld": organization_jsonld(self.request),
         }
 
 

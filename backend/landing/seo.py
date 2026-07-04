@@ -69,6 +69,33 @@ def software_application_jsonld(request):
     )
 
 
+def organization_jsonld(request):
+    """The home's Schema.org ``Organization`` JSON-LD, dumped to a string.
+
+    Grounds BirdDoc as an *entity* (issue #301) alongside the
+    ``SoftwareApplication`` block, so a machine reader resolving „Was ist
+    BirdDoc?" has a named organisation to attach the answer to rather than a
+    bare string. Dumped in Python (not hand-written in a template) so the block
+    is parseable by construction — the same rule as the SoftwareApplication and
+    Wissen breadcrumb blocks. Inline only: no third-party request,
+    server-rendered (ADR 0009).
+
+    ``url`` is pinned to the absolute canonical home URL — the German apex
+    (default language, unprefixed — the URL hreflang's x-default resolves to),
+    built off the live request so the canonical domain keeps living in the host
+    routing, not the code (ADR 0010). A ``sameAs`` pointing at the Wikidata item
+    is added once that item exists (a separate slice, PRD #300)."""
+    return json.dumps(
+        {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "BirdDoc",
+            "url": request.build_absolute_uri(_default_language_home_path()),
+        },
+        ensure_ascii=False,
+    )
+
+
 class StaticViewSitemap(Sitemap):
     """The public, indexable pages of the marketing + trust surface.
 

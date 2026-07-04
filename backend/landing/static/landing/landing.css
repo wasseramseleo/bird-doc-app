@@ -827,6 +827,17 @@ body {
     max-width: 34rem;
 }
 
+/* The quotable entity definition (issue #301): a quieter, self-contained
+   „BirdDoc ist eine Beringungssoftware …" sentence under the lead — muted and
+   set on a measure that reads as a definition, not a second headline. */
+.hero__definition {
+    max-width: 34rem;
+    margin: 0.9rem 0 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+
 .hero__ctas {
     display: flex;
     flex-wrap: wrap;

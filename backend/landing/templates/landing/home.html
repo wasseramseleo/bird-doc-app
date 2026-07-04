@@ -55,6 +55,14 @@ the view; og:url shares the canonical_url tag with base.html's canonical link
     parseable by construction, same rule as the Wissen breadcrumb block.
     {% endcomment %}
     <script type="application/ld+json">{{ software_application_jsonld|safe }}</script>
+
+    {% comment %}
+    Schema.org Organization JSON-LD (issue #301): grounds BirdDoc as an entity
+    alongside the SoftwareApplication block above. Inline only, dumped in the
+    view so it is parseable by construction (ADR 0009). A sameAs to the Wikidata
+    item is added once that item exists (a separate slice).
+    {% endcomment %}
+    <script type="application/ld+json">{{ organization_jsonld|safe }}</script>
 {% endblock %}
 
 {% comment %}
@@ -122,6 +130,14 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
             <h1 class="hero__thesis">{% translate "Beringungssoftware &amp; Stationsjournal für die Vogelberingung" %}</h1>
             <p class="lead">{% blocktranslate trimmed %}Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal für die Vogelberingung – ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten Tabellen.{% endblocktranslate %}
                 <span class="badge badge--beta">Beta</span></p>
+            {% comment %}
+            The quotable entity definition (issue #301, PRD #300): one
+            self-contained, entity-dense sentence naming BirdDoc and defining it
+            as a Beringungssoftware for the Vogelberingung, written so an AI
+            answer engine can lift it verbatim as the answer to „Was ist
+            BirdDoc?". Bilingual like the rest of the marketing surface.
+            {% endcomment %}
+            <p class="hero__definition">{% blocktranslate trimmed %}BirdDoc ist eine Beringungssoftware für die Vogelberingung: ein digitales Stationsjournal, in dem Beringerinnen und Beringer jeden gefangenen und beringten Vogel direkt am Ringtisch als sauberen Datensatz erfassen – statt auf Papier und in Excel – und ihre Fänge als IWM-Datei an die Vogelwarte melden. BirdDoc läuft im Browser, wird in Österreich gehostet und ist während der öffentlichen Beta kostenlos.{% endblocktranslate %}</p>
             {% include "landing/_app_german_only_note.html" %}
             {% comment %}
             Hero CTAs (issue #138): the primary action is the Warteliste — a
@@ -227,7 +243,7 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
         <ul class="relief" id="funktionen">
             <li class="relief__item">
                 <h3 class="relief__title">{% translate "Eine saubere Fang-Karte" %}</h3>
-                <p>{% blocktranslate trimmed %}Alle Angaben eines Fangs an einem Ort, direkt am Ringtisch erfasst: ein Datensatz pro Vogel statt loser Zettel.{% endblocktranslate %}</p>
+                <p>{% blocktranslate trimmed %}BirdDoc bündelt alle Angaben eines Fangs an einem Ort, direkt am Ringtisch erfasst: ein Datensatz pro Vogel statt loser Zettel.{% endblocktranslate %}</p>
             </li>
             <li class="relief__item">
                 <h3 class="relief__title">{% translate "Intelligente Ringnummerierung" %}</h3>
@@ -439,7 +455,7 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     <div class="band__inner">
     <section class="hosting" aria-label="Hosting">
         <span class="hosting__flag" aria-hidden="true">🇦🇹</span>
-        <p>{% blocktranslate trimmed %}<strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben in Österreich bzw. der EU, DSGVO-konform und ohne Drittanbieter-Tracking.{% endblocktranslate %}</p>
+        <p>{% blocktranslate trimmed %}<strong>BirdDoc wird in Österreich gehostet.</strong> Alle Beringungsdaten bleiben in Österreich bzw. der EU, DSGVO-konform und ohne Drittanbieter-Tracking.{% endblocktranslate %}</p>
     </section>
 
     {% comment %}
@@ -451,7 +467,7 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
         <ul class="price-teaser">
             <li>
                 <span class="price-teaser__tag">{% translate "Jetzt" %}</span>
-                {% blocktranslate trimmed %}Während der öffentlichen Beta <strong>kostenlos</strong>.{% endblocktranslate %}
+                {% blocktranslate trimmed %}BirdDoc ist während der öffentlichen Beta <strong>kostenlos</strong>.{% endblocktranslate %}
             </li>
             <li>
                 <span class="price-teaser__tag">{% translate "Ab 1.0" %}</span>
