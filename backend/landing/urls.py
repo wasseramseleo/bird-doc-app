@@ -33,6 +33,11 @@ urlpatterns = [
     # German at the apex, English under /en/ (this urlconf is wrapped by
     # i18n_patterns in birddoc/urls.py).
     path("funktionen/", views.FunktionenView.as_view(), name="funktionen"),
+    # Public bottom-funnel pricing page — the citable „Was kostet BirdDoc?" page
+    # framed around the durable pricing model, not a price point (issue #304).
+    # Bilingual like the home: German at the apex, English under /en/ (this
+    # urlconf is wrapped by i18n_patterns in birddoc/urls.py).
+    path("preise/", views.PreiseView.as_view(), name="preise"),
     # Zugangscode-gated public registration: found an Organisation + email
     # verification, reachable unauthenticated at the apex (issue #79).
     path("registrierung/", views.RegisterView.as_view(), name="register"),

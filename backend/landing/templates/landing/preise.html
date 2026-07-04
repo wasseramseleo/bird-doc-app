@@ -1,0 +1,77 @@
+{% extends "landing/base.html" %}
+{% load i18n %}
+
+{% comment %}
+Die Bottom-Funnel-Seite /preise/ (issue #304, PRD #300): die zitierbare
+Preismodell-Seite „Was kostet BirdDoc?". Zweisprachig wie die Startseite
+(issue #107) — Deutsch am Apex, Englisch unter /en/ —, server-gerendert und
+skriptfrei (ADR 0009). Sie trägt denselben selbstreferenziellen Canonical +
+hreflang-Cluster wie die Home; die Antwort steht zuerst (issue #305), damit der
+Such-/KI-Snippet und der Seiten-Lead nie auseinanderdriften. Der zitierbare
+Kern ist das dauerhafte Preis*modell* — pro Organisation, nie pro Kopf; Beringer
+ohne Konto kostenlos; die Beta-Kohorte behält den Vorzugspreis —, NICHT ein
+konkreter Preisbetrag: eine Zahl veraltet schnell, das Modell bleibt. Der
+aktuelle Beta-Status wird ehrlich genannt, aber nicht zum zitierbaren Kern
+gemacht.
+{% endcomment %}
+
+{% block body_class %}page--marketing{% endblock %}
+
+{% block title %}{% translate "Preise – das Preismodell von BirdDoc: pro Organisation, nie pro Kopf" %} · BirdDoc{% endblock %}
+
+{% block head_meta %}
+    {% include "landing/_hreflang_alternates.html" %}
+    {% comment %}
+    Antwortzuerst (issue #305): die <meta description> ist derselbe Satz, der die
+    Seite eröffnet — der Snippet, den eine Suchmaschine oder ein KI-Reader hebt,
+    ist damit exakt der Seiten-Lead. Ein konkreter Preisbetrag bleibt bewusst
+    außen vor; zitierbar ist das Modell.
+    {% endcomment %}
+    {% blocktranslate trimmed asvar meta_description %}BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer ohne eigenes Konto erfassen kostenlos mit, und Organisationen der Beta-Kohorte behalten dauerhaft ihren Vorzugspreis – das ist das Preismodell, unabhängig vom späteren Betrag.{% endblocktranslate %}
+    <meta name="description" content="{{ meta_description }}">
+{% endblock %}
+
+{% comment %}
+Der DE/EN-Umschalter im Header (issue #107): wechselt genau diese Seite zwischen
+Deutsch (Apex) und Englisch (/en/), ohne sie zu verlassen — wie bei den Funnels.
+{% endcomment %}
+{% block header_back %}
+    {% include "landing/_lang_toggle.html" %}
+{% endblock %}
+
+{% block content %}
+    <p class="eyebrow">{% translate "Preise" %}</p>
+    <h1 class="features__title">{% blocktranslate trimmed %}Was kostet BirdDoc?{% endblocktranslate %}</h1>
+    <p class="features__lead">{% blocktranslate trimmed %}BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer ohne eigenes Konto erfassen kostenlos mit, und Organisationen der Beta-Kohorte behalten dauerhaft ihren Vorzugspreis – das ist das Preismodell, unabhängig vom späteren Betrag.{% endblocktranslate %}</p>
+
+    {% include "landing/_app_german_only_note.html" %}
+
+    <ul class="features__grid">
+        <li class="features__item">
+            <h2 class="features__name">{% translate "Pro Organisation, nie pro Kopf" %}</h2>
+            <p class="features__desc">{% blocktranslate trimmed %}Die Lizenz gilt pro Organisation, nicht pro Person. Eine Station oder ein Verein zahlt einmal für die ganze Gruppe, statt jede beringende Person einzeln zu lizenzieren – der Preis wächst nicht mit jedem zusätzlichen Beringer.{% endblocktranslate %}</p>
+        </li>
+        <li class="features__item">
+            <h2 class="features__name">{% translate "Beringer ohne Konto kostenlos" %}</h2>
+            <p class="features__desc">{% blocktranslate trimmed %}Beringer ohne eigenes Konto erfassen ihre Fänge kostenlos mit. Wer nur gelegentlich an der Station beringt, belegt keinen kostenpflichtigen Platz und verursacht keine zusätzlichen Kosten.{% endblocktranslate %}</p>
+        </li>
+        <li class="features__item">
+            <h2 class="features__name">{% translate "Beta-Kohorte behält den Vorzugspreis" %}</h2>
+            <p class="features__desc">{% blocktranslate trimmed %}Organisationen, die während der öffentlichen Beta einsteigen, gehören zur Beta-Kohorte und behalten dauerhaft ihren Vorzugspreis. Ein späterer Regelpreis gilt für sie nicht, auch wenn die Beta endet.{% endblocktranslate %}</p>
+        </li>
+    </ul>
+
+    {% comment %}
+    Der aktuelle Beta-Status wird ehrlich genannt (issue #304), aber nicht zum
+    zitierbaren Kern gemacht: der Kern ist das Modell oben, nicht der Betrag.
+    {% endcomment %}
+    <p class="features__note">{% blocktranslate trimmed %}Aktueller Stand: BirdDoc ist in geschlossener Beta und für alle Beta-Organisationen derzeit kostenlos. Ein konkreter Regelpreis steht noch nicht fest – das Preismodell oben bleibt bestehen, unabhängig vom späteren Betrag.{% endblocktranslate %}</p>
+
+    {% comment %}
+    Die Preismodell-Seite führt in den bestehenden Beringer-Funnel (issue #80).
+    {% endcomment %}
+    <p class="wissen-cta">
+        {% blocktranslate trimmed %}BirdDoc ist das digitale Stationsjournal für die Vogelberingung.{% endblocktranslate %}
+        <a class="button" href="{% url 'landing:warteliste' %}">{% translate "Zugang anfragen" %}</a>
+    </p>
+{% endblock %}

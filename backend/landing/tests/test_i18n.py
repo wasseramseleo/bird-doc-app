@@ -205,3 +205,34 @@ def test_funktionen_carries_a_working_de_en_toggle(client):
     en = client.get("/en/funktionen/").content.decode()
     assert 'class="lang-toggle__other" href="/en/funktionen/"' in de
     assert 'class="lang-toggle__other" href="/funktionen/"' in en
+
+
+def test_preise_switches_between_german_and_english(client):
+    # The pricing page is bilingual (issue #304): the pricing-model content
+    # renders German at the apex and English under /en/, with the German gone
+    # from the English page. Exercised through the initial server-rendered HTML,
+    # so the content is present with no client-side JS required (ADR 0009).
+    de = client.get("/preise/").content.decode()
+    en = client.get("/en/preise/").content.decode()
+    # The German pricing model at the apex...
+    assert "Was kostet BirdDoc?" in de
+    assert "nie pro Kopf" in de
+    assert "Beta-Kohorte" in de
+    assert "Vorzugspreis" in de
+    # ...and the English pricing model under /en/, with the German gone.
+    assert "What does BirdDoc cost?" in en
+    assert "never per head" in en
+    assert "beta cohort" in en
+    assert "preferential price" in en
+    assert "Was kostet BirdDoc?" not in en
+    assert "Beta-Kohorte" not in en
+    assert "Vorzugspreis" not in en
+
+
+def test_preise_carries_a_working_de_en_toggle(client):
+    # The header toggle on the pricing page switches THAT page's language — from
+    # the German apex to /en/preise/ and back — rather than bouncing home.
+    de = client.get("/preise/").content.decode()
+    en = client.get("/en/preise/").content.decode()
+    assert 'class="lang-toggle__other" href="/en/preise/"' in de
+    assert 'class="lang-toggle__other" href="/preise/"' in en
