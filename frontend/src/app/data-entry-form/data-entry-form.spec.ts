@@ -111,6 +111,88 @@ describe('DataEntryFormComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  // Issue #341: the reusable Zahlenmaske (Eingabefilter) wired onto the capture
+  // form — a hard input filter distinct from the value-range Plausibilitätswarnung.
+  describe('numeric input masks on the Mess- and Netz-Felder (#341)', () => {
+    const MEASUREMENT_FIELDS = [
+      'weight_gram',
+      'feather_span',
+      'wing_span',
+      'tarsus',
+      'notch_f2',
+      'inner_foot',
+    ];
+    const NET_FIELDS = ['net_location', 'net_height'];
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    const el = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLInputElement;
+
+    // Drive one keystroke through the mask at the given caret position.
+    const typeChar = (field: string, char: string, caret?: number): InputEvent => {
+      const input = el(field);
+      if (caret !== undefined) input.setSelectionRange(caret, caret);
+      const event = new InputEvent('beforeinput', {
+        data: char,
+        inputType: 'insertText',
+        cancelable: true,
+        bubbles: true,
+      });
+      input.dispatchEvent(event);
+      return event;
+    };
+
+    it('carries the one-decimal mask on all six measurement inputs', () => {
+      for (const field of MEASUREMENT_FIELDS) {
+        expect(el(field).getAttribute('appNumberMask')).toBe('decimal');
+      }
+    });
+
+    it('carries the integer mask on both Netz-number inputs', () => {
+      for (const field of NET_FIELDS) {
+        expect(el(field).getAttribute('appNumberMask')).toBe('integer');
+      }
+    });
+
+    it('rejects a letter typed into a measurement input', () => {
+      const event = typeChar('weight_gram', 'a', 0);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('rejects a second decimal digit in a measurement input', () => {
+      const input = el('tarsus');
+      input.value = '12.5';
+      const event = typeChar('tarsus', '3', 4);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('12.5');
+    });
+
+    it('accepts a comma in a measurement input, storing a dot', () => {
+      const input = el('weight_gram');
+      input.value = '75';
+      const event = typeChar('weight_gram', ',', 1);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('7.5');
+      expect(component.entryForm.get('weight_gram')!.value as unknown).toBe('7.5');
+    });
+
+    it('rejects a decimal separator typed into a Netz-number input', () => {
+      const input = el('net_location');
+      input.value = '12';
+      const event = typeChar('net_location', '.', 2);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input.value).toBe('12');
+    });
+
+    it('rejects a comma typed into a Netz-number input', () => {
+      const event = typeChar('net_height', ',', 0);
+      expect(event.defaultPrevented).toBe(true);
+    });
+  });
+
   describe('creating a Beringer inline from an unknown Kürzel', () => {
     const dialogMock = { open: jasmine.createSpy('open') };
     let httpMock: HttpTestingController;

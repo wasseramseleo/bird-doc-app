@@ -59,6 +59,7 @@ import {Scientist} from '../models/scientist.model';
 import {RingSize} from '../models/ring.model';
 import {AUW_SCHEME_CODE, Central, PROJEKT_ZENTRALE} from '../models/central.model';
 import {SelectOnTabDirective} from '../core/directives/select-on-tab';
+import {NumberMaskDirective} from '../shared/directives/number-mask';
 import {MatTableModule} from '@angular/material/table';
 import {DataEntryDetailDialogComponent} from './data-entry-detail-dialog/data-entry-detail-dialog';
 import {
@@ -103,6 +104,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     MatNativeDateModule,
     MatProgressSpinnerModule,
     SelectOnTabDirective,
+    NumberMaskDirective,
     MatCheckboxModule,
     MatSnackBarModule,
     MatTableModule,
