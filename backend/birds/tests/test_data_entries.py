@@ -377,6 +377,34 @@ def test_search_filters_by_species_name_partial_match(
 
 
 @pytest.mark.django_db
+def test_search_filters_by_ring_number_partial_match(
+    auth_client, species, species_other, ring, scientist, ringing_station
+):
+    target_ring = Ring.objects.create(number="778899", size=Ring.RingSizes.V)
+    target = DataEntry.objects.create(
+        species=species,
+        ring=target_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    other_ring = Ring.objects.create(number="112233", size=Ring.RingSizes.V)
+    DataEntry.objects.create(
+        species=species_other,
+        ring=other_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    response = auth_client.get(LIST_URL, {"search": "7788"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["id"] == str(target.id)
+
+
+@pytest.mark.django_db
 def test_project_list_ordered_by_created_desc(
     auth_client, species, scientist, ringing_station, project
 ):
