@@ -350,6 +350,60 @@ def test_en_home_jsonld_keeps_the_german_canonical_url_and_language(client):
     assert data["url"] == "http://testserver/"
 
 
+def _home_jsonld_blocks(client, path="/"):
+    # Parse EVERY inline JSON-LD block on the home into a list of objects. Each
+    # block must parse on its own — a malformed block must never rank silently.
+    import json
+    import re
+
+    content = client.get(path).content.decode()
+    blocks = re.findall(r'<script type="application/ld\+json">(.*?)</script>', content, re.DOTALL)
+    assert blocks, "no JSON-LD block on the home"
+    return [json.loads(block) for block in blocks]
+
+
+def _home_jsonld_of_type(client, type_, path="/"):
+    for data in _home_jsonld_blocks(client, path):
+        if data.get("@type") == type_:
+            return data
+    raise AssertionError(f"no {type_} JSON-LD block on {path}")
+
+
+def test_home_renders_parseable_organization_jsonld(client):
+    # Alongside the SoftwareApplication block, the home grounds BirdDoc as an
+    # *entity* with an inline Schema.org Organization block (issue #301) — no
+    # third-party request, server-rendered (ADR 0009) — that parses as JSON.
+    data = _home_jsonld_of_type(client, "Organization")
+    assert data["@type"] == "Organization"
+
+
+def test_organization_jsonld_carries_the_expected_shape(client):
+    # The Organization object names BirdDoc and pins its url to the absolute
+    # canonical German apex home (default language, unprefixed) — the entity's
+    # website, built off the live request (ADR 0010). A sameAs to the Wikidata
+    # item is added once that item exists (a separate slice, PRD #300).
+    data = _home_jsonld_of_type(client, "Organization")
+    assert data["@context"] == "https://schema.org"
+    assert data["name"] == "BirdDoc"
+    assert data["url"] == "http://testserver/"
+
+
+def test_home_emits_both_softwareapplication_and_organization_jsonld(client):
+    # Both blocks ship in the same initial server-rendered HTML (issue #301): the
+    # new Organization entity does not replace the SoftwareApplication block — a
+    # crawler that executes no JS still sees both, and both parse.
+    types = {data.get("@type") for data in _home_jsonld_blocks(client)}
+    assert {"SoftwareApplication", "Organization"} <= types
+
+
+def test_en_home_organization_jsonld_keeps_the_german_canonical_url(client):
+    # Like the SoftwareApplication block, the /en/ Organization block pins url to
+    # the canonical German apex home, never /en/ — the entity is the same
+    # organisation regardless of the marketing variant being read.
+    data = _home_jsonld_of_type(client, "Organization", "/en/")
+    assert data["url"] == "http://testserver/"
+
+
 def test_en_home_translates_the_head_term_title_and_h1(client):
     # The /en/ home renders a sensibly translated title and H1 through the
     # existing catalog (issue #281) — the German head term does not leak onto
