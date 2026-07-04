@@ -23,6 +23,14 @@ from .fang_karte import FANG_KARTE
 from .glossar import GlossarSitemap
 from .wissen import WissenReferenceSitemap
 
+# The BirdDoc Wikidata item (issue #310, QID Q140431012) — a human deliverable
+# curated on Wikidata. Wired into the home's JSON-LD via ``sameAs`` (issue #315)
+# so a machine reader reconciles the name „BirdDoc" to this stable identifier
+# and treats the product as a grounded entity rather than a bare string. A
+# module constant, shared by the Organization and SoftwareApplication blocks, so
+# the two never point at diverging QIDs.
+WIKIDATA_ITEM_URL = "https://www.wikidata.org/wiki/Q140431012"
+
 
 def _default_language_home_path():
     """The home's canonical path — reversed under the default language.
@@ -48,7 +56,9 @@ def software_application_jsonld(request):
     to, issue #279), built off the live request so the canonical domain keeps
     living in the host routing, not the code (ADR 0010). ``offers`` reflects
     the free beta plan: every Organisation is on the free ``beta`` plan during
-    the public beta."""
+    the public beta. ``sameAs`` points at the BirdDoc Wikidata item — the same
+    grounding identifier as the Organization block (issue #315) — so a reader
+    resolving either block reconciles BirdDoc to the one stable QID."""
     return json.dumps(
         {
             "@context": "https://schema.org",
@@ -58,6 +68,7 @@ def software_application_jsonld(request):
             "operatingSystem": "Web",
             "inLanguage": "de",
             "url": request.build_absolute_uri(_default_language_home_path()),
+            "sameAs": [WIKIDATA_ITEM_URL],
             "offers": {
                 "@type": "Offer",
                 "price": "0",
@@ -83,14 +94,17 @@ def organization_jsonld(request):
     ``url`` is pinned to the absolute canonical home URL — the German apex
     (default language, unprefixed — the URL hreflang's x-default resolves to),
     built off the live request so the canonical domain keeps living in the host
-    routing, not the code (ADR 0010). A ``sameAs`` pointing at the Wikidata item
-    is added once that item exists (a separate slice, PRD #300)."""
+    routing, not the code (ADR 0010). ``sameAs`` points at the BirdDoc Wikidata
+    item (issue #315) — the grounding identifier from the #310 human deliverable
+    — so a resolver reconciles the entity to a stable QID; it is a list because
+    Schema.org ``sameAs`` is a set of external identity URLs."""
     return json.dumps(
         {
             "@context": "https://schema.org",
             "@type": "Organization",
             "name": "BirdDoc",
             "url": request.build_absolute_uri(_default_language_home_path()),
+            "sameAs": [WIKIDATA_ITEM_URL],
         },
         ensure_ascii=False,
     )
