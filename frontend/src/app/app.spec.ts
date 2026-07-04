@@ -54,6 +54,23 @@ describe('App', () => {
       return el;
     }
 
+    // The app renders no native <select>s — every picker is an Angular Material
+    // <mat-select>. Reproduce that focusable host (and its overlay panel/trigger
+    // roles) with a plain element carrying a tabindex so document.activeElement
+    // actually lands on it.
+    function focusFocusable(
+      tag: string,
+      attrs: Record<string, string> = {},
+    ): HTMLElement {
+      const el = document.createElement(tag);
+      el.setAttribute('tabindex', '0');
+      Object.entries(attrs).forEach(([name, value]) => el.setAttribute(name, value));
+      document.body.appendChild(el);
+      cleanup.push(el);
+      el.focus();
+      return el;
+    }
+
     afterEach(() => {
       cleanup.forEach((el) => el.remove());
       cleanup.length = 0;
@@ -95,6 +112,37 @@ describe('App', () => {
       expect(document.activeElement).toBe(textarea);
 
       textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+
+      expect(navSpy).not.toHaveBeenCalled();
+    });
+
+    // Regression for the real UI: every select in the app is a Material
+    // <mat-select>, never a native <select>. A single-character option shortcut
+    // (e.g. small_feather_app's `n`) bubbles up from the mat-select — the shell
+    // must not treat that as a navigation trigger and blow away the form/dialog.
+    it('is inert while a <mat-select> host is focused', () => {
+      setup();
+      const matSelect = focusFocusable('mat-select', { role: 'combobox' });
+      expect(document.activeElement).toBe(matSelect);
+
+      matSelect.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+
+      expect(navSpy).not.toHaveBeenCalled();
+    });
+
+    it('is inert while a role="listbox" overlay panel option is focused', () => {
+      setup();
+      // The open mat-select overlay is a role=listbox DIV; keyboard focus can
+      // land on it (or an option inside it) while choosing an option.
+      const panel = focusFocusable('div', { role: 'listbox' });
+      const option = document.createElement('div');
+      option.setAttribute('role', 'option');
+      option.setAttribute('tabindex', '0');
+      panel.appendChild(option);
+      option.focus();
+      expect(document.activeElement).toBe(option);
+
+      option.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
 
       expect(navSpy).not.toHaveBeenCalled();
     });
