@@ -161,6 +161,7 @@ describe('ApiService', () => {
           { species_id: null, name: 'Übrige', counts: [7, 10] },
         ],
       },
+      hour_histogram: [0, 0, 0, 0, 0, 4, 12, 10, 8, 6, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       last_fangtag: {
         date: '2026-07-02',
         faenge: 38,
@@ -205,6 +206,7 @@ describe('ApiService', () => {
       top_species: [],
       erstnachweise: [],
       series: { days: [], lines: [] },
+      hour_histogram: new Array(24).fill(0),
       last_fangtag: null,
     } as ProjectStats);
   });

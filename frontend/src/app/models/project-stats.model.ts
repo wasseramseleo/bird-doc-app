@@ -101,6 +101,11 @@ export interface ProjectStats {
   // The season's arrival feed: newest-first, capped at five (issue #297).
   erstnachweise: Erstnachweis[];
   series: StatsSeries;
+  // Fänge per Europe/Vienna clock hour (0–23) over the range, for the
+  // Fangaktivität-nach-Tagesstunde histogram (issue #296). A fixed 24-slot array
+  // indexed by hour; an empty range is a fully-zeroed histogram, never missing.
+  // Same counting as the rest: Ring vernichtet excluded, Aves ignota included.
+  hour_histogram: number[];
   // Null when the range holds no captures (empty payload, no error).
   last_fangtag: LastFangtag | null;
 }

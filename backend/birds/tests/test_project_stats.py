@@ -345,6 +345,70 @@ def test_strongest_hour_buckets_across_vienna_day_boundary(
     assert last["strongest_hour"]["count"] == 2
 
 
+# --- hour_histogram (issue #296, Fangaktivität nach Tagesstunde) -------------
+
+
+@pytest.mark.django_db
+def test_hour_histogram_buckets_in_vienna_and_excludes_ring_vernichtet(
+    auth_client,
+    scientist,
+    project,
+    ringing_station,
+    species,
+    aves_ignota_species,
+    sentinel_species,
+):
+    """``hour_histogram`` is Fänge per Europe/Vienna clock hour (0–23) over the
+    whole range, a fixed 24-slot list indexed by hour. Hours bucket on the Vienna
+    day/hour boundary (timestamps stored UTC): a capture at 2026-07-01T23:30Z is
+    01:30 Vienna (CEST) and lands in hour 1, not 23. Same counting as the rest of
+    the module — Ring vernichtet excluded, Aves ignota counted as a Fang."""
+    # Vienna hour 1 (2026-07-02): two plain captures just before the UTC-day roll.
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 1, 23, 30, tzinfo=UTC))
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 1, 23, 45, tzinfo=UTC))
+    # Vienna hour 6 (04:00–04:20 UTC): one Aves ignota (counted) + two plain = 3.
+    _capture(
+        project,
+        aves_ignota_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 4, 0, tzinfo=UTC),
+    )
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 4, 10, tzinfo=UTC))
+    _capture(project, species, ringing_station, scientist, datetime(2026, 7, 2, 4, 20, tzinfo=UTC))
+    # Ring vernichtet, also Vienna hour 6 — excluded from every count.
+    _capture(
+        project,
+        sentinel_species,
+        ringing_station,
+        scientist,
+        datetime(2026, 7, 2, 4, 30, tzinfo=UTC),
+    )
+
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-07-01", "to": "2026-07-03"}))
+    assert response.status_code == 200
+    histogram = response.data["hour_histogram"]
+
+    # A fixed 24-slot list indexed by Vienna clock hour.
+    assert len(histogram) == 24
+    # Hour 1 carried the two pre-midnight-UTC captures (23:xx Z → 01:xx Vienna).
+    assert histogram[1] == 2
+    # Hour 6 carried the Aves ignota (counted) + two plain; Ring vernichtet excluded.
+    assert histogram[6] == 3
+    # Every other hour is zero; the total is the counted Fänge (5, not 6).
+    assert sum(histogram) == 5
+    assert [hour for hour, count in enumerate(histogram) if count] == [1, 6]
+
+
+@pytest.mark.django_db
+def test_hour_histogram_zeroed_for_empty_range(auth_client, scientist, project):
+    """An empty range yields a fully-zeroed 24-slot histogram, never a short or
+    missing array — no error state."""
+    response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-06-30"}))
+    assert response.status_code == 200
+    assert response.data["hour_histogram"] == [0] * 24
+
+
 # --- top_species (issue #202, häufigste-Arten bar chart) ---------------------
 
 

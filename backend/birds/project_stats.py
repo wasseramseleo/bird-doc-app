@@ -111,6 +111,7 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
         "top_species": _top_species(captures),
         "erstnachweise": _erstnachweise(captures),
         "series": _series(captures),
+        "hour_histogram": _hour_histogram(captures),
         "last_fangtag": _last_fangtag(captures),
     }
     return payload
@@ -272,6 +273,32 @@ def _series(captures):
         lines.append({"species_id": None, "name": UEBRIGE_LABEL, "counts": uebrige_counts})
 
     return {"days": [day.isoformat() for day in days], "lines": lines}
+
+
+HOURS_PER_DAY = 24
+
+
+def _hour_histogram(captures):
+    """Fänge per Europe/Vienna clock hour (0–23) over the whole range for the
+    Fangaktivität-nach-Tagesstunde histogram (issue #296).
+
+    A fixed 24-slot list indexed by hour, so an empty range yields a zeroed
+    histogram (``[0] * 24``) rather than a missing or short array — the chart
+    always has 24 buckets, never an error state. Hours are bucketed on the Vienna
+    clock (timestamps stored UTC, ``USE_TZ=True`` — ADR 0017): a capture at
+    2026-07-01T23:30Z lands in Vienna hour 1, not 23. Same counting as the rest
+    of the module — ``captures`` already excludes Ring vernichtet and still
+    includes Aves ignota.
+    """
+    counts = [0] * HOURS_PER_DAY
+    rows = (
+        captures.annotate(hour=ExtractHour("date_time", tzinfo=VIENNA))
+        .values("hour")
+        .annotate(c=Count("id"))
+    )
+    for row in rows:
+        counts[row["hour"]] = row["c"]
+    return counts
 
 
 def _last_fangtag(captures):
