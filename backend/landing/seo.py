@@ -8,14 +8,63 @@ specimen the hero draws (ADR 0009: server-rendered Django, no build pipeline) �
 so the shared link previews with the product's own credible capture card.
 """
 
+import json
+
+from django.conf import settings
 from django.contrib.sitemaps import Sitemap
 from django.contrib.staticfiles import finders
 from django.http import FileResponse, Http404
 from django.urls import reverse
+from django.utils import translation
 from django.views import View
 from django.views.generic import TemplateView
 
 from .fang_karte import FANG_KARTE
+
+
+def _default_language_home_path():
+    """The home's canonical path — reversed under the default language.
+
+    On the ``/en/`` variant the active language is ``en`` and a bare
+    ``reverse`` would build ``/en/``; the canonical home is the German apex
+    (``prefix_default_language=False``), so reverse under ``de``."""
+    with translation.override(settings.LANGUAGE_CODE):
+        return reverse("landing:home")
+
+
+def software_application_jsonld(request):
+    """The home's Schema.org ``SoftwareApplication`` JSON-LD, dumped to a string.
+
+    Dumped here (not hand-written in a template) so the block is parseable by
+    construction — the same rule as the Wissen breadcrumb JSON-LD. Inline only:
+    no third-party request, server-rendered (ADR 0009, issue #283).
+
+    ``inLanguage: de`` is fixed — BirdDoc is a German-language application (the
+    ``/en/`` marketing variant does not change what the software is) — and
+    ``url`` is pinned to the absolute canonical home URL: the German apex
+    (default language, unprefixed — the same URL hreflang's x-default resolves
+    to, issue #279), built off the live request so the canonical domain keeps
+    living in the host routing, not the code (ADR 0010). ``offers`` reflects
+    the free beta plan: every Organisation is on the free ``beta`` plan during
+    the public beta."""
+    return json.dumps(
+        {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "BirdDoc",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web",
+            "inLanguage": "de",
+            "url": request.build_absolute_uri(_default_language_home_path()),
+            "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "EUR",
+                "description": "Kostenlose öffentliche Beta",
+            },
+        },
+        ensure_ascii=False,
+    )
 
 
 class StaticViewSitemap(Sitemap):

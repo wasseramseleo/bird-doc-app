@@ -48,6 +48,13 @@ the view; og:url shares the canonical_url tag with base.html's canonical link
     <meta name="twitter:title" content="{{ og_title }}">
     <meta name="twitter:description" content="{{ meta_description }}">
     <meta name="twitter:image" content="{{ og_image_url }}">
+
+    {% comment %}
+    Schema.org SoftwareApplication JSON-LD (issue #283): inline only — no
+    third-party request (ADR 0009). The JSON is dumped in the view so it is
+    parseable by construction, same rule as the Wissen breadcrumb block.
+    {% endcomment %}
+    <script type="application/ld+json">{{ software_application_jsonld|safe }}</script>
 {% endblock %}
 
 {% comment %}

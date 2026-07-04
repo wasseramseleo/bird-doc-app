@@ -60,17 +60,24 @@ def test_nav_toggle_button_ships_hidden_until_javascript_reveals_it(client):
 
 
 def test_home_ships_exactly_one_script_the_landings_own(client):
-    # The landing's single light JavaScript file: exactly one script on the
-    # page, served from the landing's own statics (never a CDN or any
-    # third-party host), deferred so it cannot block first paint. No inline
-    # script rides along.
+    # The landing's single light JavaScript file: exactly one EXECUTABLE
+    # script on the page, served from the landing's own statics (never a CDN
+    # or any third-party host), deferred so it cannot block first paint. No
+    # inline executable script rides along — the only other <script> allowed
+    # is the inert SoftwareApplication JSON-LD data block (issue #283), which
+    # the browser never executes and which triggers no request.
     content = client.get("/").content.decode()
     scripts = re.findall(r"<script\b[^>]*>", content, re.IGNORECASE)
-    assert len(scripts) == 1
-    tag = scripts[0]
+    executable = [tag for tag in scripts if "application/ld+json" not in tag]
+    assert len(executable) == 1
+    tag = executable[0]
     assert 'src="/static/landing/nav.js"' in tag
     assert "defer" in tag
     assert "//" not in tag  # no protocol-relative or absolute third-party src
+    # Every other <script> on the page is a typed JSON-LD data block.
+    for data_block in scripts:
+        if data_block != tag:
+            assert 'type="application/ld+json"' in data_block
 
 
 def test_nav_script_is_vanilla_and_dependency_free():

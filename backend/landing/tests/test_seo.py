@@ -237,6 +237,53 @@ def test_meta_description_and_og_tags_survive_the_head_term_retarget(client):
         assert tag == "BirdDoc: Stationsjournal für die Vogelberingung"
 
 
+def _home_jsonld(client, path="/"):
+    # Extract and parse the home's inline JSON-LD block. json.loads fails
+    # loudly on a malformed block — a broken script must never rank silently.
+    import json
+    import re
+
+    content = client.get(path).content.decode()
+    match = re.search(r'<script type="application/ld\+json">(.*?)</script>', content, re.DOTALL)
+    assert match, "no JSON-LD block on the home"
+    return json.loads(match.group(1))
+
+
+def test_home_renders_parseable_softwareapplication_jsonld(client):
+    # The marketing home emits an inline Schema.org block (issue #283) — no
+    # third-party request, server-rendered (ADR 0009) — that parses as JSON
+    # and identifies BirdDoc as a SoftwareApplication.
+    data = _home_jsonld(client)
+    assert data["@type"] == "SoftwareApplication"
+
+
+def test_softwareapplication_jsonld_carries_the_expected_keys(client):
+    # The object identifies BirdDoc as a German-language ringing application
+    # (issue #283): @context, name, a Schema.org applicationCategory,
+    # inLanguage de, the absolute canonical home URL, and an offers entry
+    # reflecting the free beta plan (Plan `beta`, priced 0 — per Organisation).
+    data = _home_jsonld(client)
+    assert data["@context"] == "https://schema.org"
+    assert data["name"] == "BirdDoc"
+    assert data["applicationCategory"] == "BusinessApplication"
+    assert data["inLanguage"] == "de"
+    assert data["url"] == "http://testserver/"
+    offer = data["offers"]
+    assert offer["@type"] == "Offer"
+    assert offer["price"] == "0"
+    assert offer["priceCurrency"] == "EUR"
+
+
+def test_en_home_jsonld_keeps_the_german_canonical_url_and_language(client):
+    # The /en/ marketing variant does not change what the software is: the
+    # block still says inLanguage de, and url stays the canonical German apex
+    # home (the URL hreflang's x-default resolves to) — never /en/.
+    data = _home_jsonld(client, "/en/")
+    assert data["@type"] == "SoftwareApplication"
+    assert data["inLanguage"] == "de"
+    assert data["url"] == "http://testserver/"
+
+
 def test_en_home_translates_the_head_term_title_and_h1(client):
     # The /en/ home renders a sensibly translated title and H1 through the
     # existing catalog (issue #281) — the German head term does not leak onto
