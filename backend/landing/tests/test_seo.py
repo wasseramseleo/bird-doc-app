@@ -37,14 +37,15 @@ def test_robots_txt_points_at_the_sitemap(client):
     assert "/sitemap.xml" in content
 
 
-def test_sitemap_xml_is_served(client):
-    # /sitemap.xml returns 200 as XML, also at the apex root.
+def test_sitemap_xml_is_served(client, db):
+    # /sitemap.xml returns 200 as XML, also at the apex root. (The db fixture:
+    # since issue #284 the one sitemap also renders the species reference.)
     response = client.get("/sitemap.xml")
     assert response.status_code == 200
     assert "xml" in response["Content-Type"]
 
 
-def test_sitemap_lists_the_public_pages(client):
+def test_sitemap_lists_the_public_pages(client, db):
     # The sitemap advertises the marketing home and the public lead/legal pages
     # crawlers should index, by their canonical (default-language) URLs.
     from django.urls import reverse
@@ -52,6 +53,71 @@ def test_sitemap_lists_the_public_pages(client):
     content = client.get("/sitemap.xml").content.decode()
     for name in ("home", "warteliste", "gespraech", "impressum", "datenschutz", "agb"):
         assert reverse(f"landing:{name}") in content
+
+
+def test_sitemap_lists_the_wissen_reference(client, db):
+    # The species-reference sitemap (issue #284) advertises the whole /wissen/
+    # section in the same sitemap.xml robots.txt already points at: the
+    # Ringgrößen index plus one URL per species page — here a representative
+    # seeded species under its stable scientific slug.
+    content = client.get("/sitemap.xml").content.decode()
+    assert "/wissen/ringgroessen/" in content
+    assert "/wissen/art/parus-major/" in content
+
+
+def test_sitemap_advertises_exactly_one_entry_per_non_sonderart_species(client, db):
+    # One <url> per real bird, none for the non-taxon Sonderart rows: the
+    # sitemap is derived from the same Species reference (and the same slug
+    # rule) as the pages, so it can neither miss a species page nor advertise
+    # a Sonderart slug that 404s.
+    import re
+
+    from django.utils.text import slugify
+
+    from birds.models import Species
+
+    content = client.get("/sitemap.xml").content.decode()
+    species_urls = re.findall(r"<loc>[^<]*(/wissen/art/[^<]+)</loc>", content)
+
+    real_species = Species.objects.filter(special_kind=Species.SpecialKind.NORMAL)
+    assert real_species.exists(), "seed data lost the species reference"
+    assert len(species_urls) == len(set(species_urls)) == real_species.count()
+
+    sonderarten = Species.objects.exclude(special_kind=Species.SpecialKind.NORMAL)
+    assert sonderarten.count() == 2
+    for sonderart in sonderarten:
+        assert f"/wissen/art/{slugify(sonderart.scientific_name)}/" not in species_urls
+
+
+def test_wissen_sitemap_entries_are_monthly_and_the_index_outranks_the_leaves(client, db):
+    # The species data changes rarely, so every /wissen/ entry is monthly; the
+    # Ringgrößen index is the hub of the section and carries a higher priority
+    # than the species leaf pages.
+    import re
+
+    content = client.get("/sitemap.xml").content.decode()
+    entries = {
+        path: (changefreq, priority)
+        for path, changefreq, priority in re.findall(
+            r"<url>\s*<loc>[^<]*(/wissen/[^<]+)</loc>\s*"
+            r"(?:<lastmod>[^<]*</lastmod>\s*)?"
+            r"<changefreq>([^<]*)</changefreq>\s*<priority>([^<]*)</priority>\s*</url>",
+            content,
+        )
+    }
+    assert "/wissen/ringgroessen/" in entries
+    assert "/wissen/art/parus-major/" in entries
+
+    assert all(changefreq == "monthly" for changefreq, _ in entries.values())
+
+    index_priority = float(entries["/wissen/ringgroessen/"][1])
+    leaf_priorities = {
+        float(priority)
+        for path, (_, priority) in entries.items()
+        if path != "/wissen/ringgroessen/"
+    }
+    assert leaf_priorities, "no species leaf entries in the sitemap"
+    assert all(index_priority > leaf for leaf in leaf_priorities)
 
 
 def test_og_image_is_served_as_svg(client):
