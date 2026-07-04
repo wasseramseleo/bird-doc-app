@@ -140,49 +140,49 @@
       }
 
       @if (lastFangtag(); as day) {
-    <article class="stat-card">
-      <h2 class="stat-card__title">Letzter Tag</h2>
-      <p class="stat-card__date">{{ day.date }}</p>
+    <section class="fangtag-strip" aria-label="Letzter Fangtag">
+      <span class="fangtag-strip__title">Letzter Fangtag</span>
+      <span class="fangtag-strip__date">{{ fangtagDate() }}</span>
 
-      <div class="stat-card__figure">
-        <span class="stat-card__value">{{ day.faenge | number }}</span>
-        <span class="stat-card__label">Fänge</span>
-      </div>
+      @if (recency(); as rec) {
+        <span
+          class="fangtag-strip__chip"
+          [class.fangtag-strip__chip--recent]="rec.recent">
+          {{ rec.label }}
+        </span>
+      }
 
-      <div class="stat-card__trend">
+      <span class="fangtag-strip__item">
+        {{ day.faenge | number }} Fänge
         @if (day.trend.previous_fangtag) {
           <span
-            class="stat-card__delta"
-            [class.stat-card__delta--up]="day.trend.delta > 0"
-            [class.stat-card__delta--down]="day.trend.delta < 0">
-            <mat-icon aria-hidden="true">
-              {{ day.trend.delta > 0 ? 'trending_up' : day.trend.delta < 0 ? 'trending_down' : 'trending_flat' }}
-            </mat-icon>
-            {{ day.trend.delta > 0 ? '+' : '' }}{{ day.trend.delta | number }}
-          </span>
-          <span class="stat-card__trend-ref">
-            gegenüber {{ day.trend.previous_fangtag }} ({{ day.trend.previous_faenge | number }})
-          </span>
-        } @else {
-          <span class="stat-card__trend-ref">Erster Fangtag im Zeitraum</span>
+            class="fangtag-strip__delta"
+            [class.fangtag-strip__delta--up]="day.trend.delta > 0"
+            [class.fangtag-strip__delta--down]="day.trend.delta < 0"
+            >({{ day.trend.delta > 0 ? '+' : '' }}{{ day.trend.delta | number }})</span
+          >
         }
-      </div>
+      </span>
 
-      <dl class="stat-card__details">
-        @if (day.haeufigste_art; as art) {
-          <div class="stat-card__detail">
-            <dt>Häufigste Art</dt>
-            <dd>{{ art.name }} ({{ art.count | number }})</dd>
-          </div>
-        }
-        @if (day.strongest_hour; as hour) {
-          <div class="stat-card__detail">
-            <dt>Stärkste Stunde</dt>
-            <dd>{{ hour.hour }}:00 Uhr ({{ hour.count | number }})</dd>
-          </div>
-        }
-      </dl>
-    </article>
+      @if (day.haeufigste_art; as art) {
+        <span class="fangtag-strip__item">{{ art.name }} ({{ art.count | number }})</span>
+      }
+
+      @if (day.strongest_hour; as hour) {
+        <span class="fangtag-strip__item">{{ hour.hour }}:00 Uhr ({{ hour.count | number }})</span>
+      }
+    </section>
+
+    @if (recency()?.quiet) {
+      <aside class="quiet-phase">
+        <span class="quiet-phase__title">Ruhige Phase</span>
+        <p class="quiet-phase__text">
+          Seit dem letzten Fangtag ist eine Weile vergangen. Zwischen zwei Fangterminen
+          ist das ganz normal — die Zahlen bleiben stehen, bis der nächste Fangtag läuft.
+        </p>
+        <a class="quiet-phase__action" routerLink="/heute">Fangtag beginnen</a>
+      </aside>
+    }
 
     @if (topSpecies().length > 0) {
       <section class="chart-panel">

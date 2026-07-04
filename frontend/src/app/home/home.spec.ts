@@ -55,7 +55,7 @@ describe('HomeComponent', () => {
   // ADR 0018 + issue #221: `/` is purely the current Projekt's dashboard now. The
   // picker lives at /projekte (ProjectPickerComponent); Home no longer renders it,
   // nor does it fetch projects/organizations/scientists.
-  it("renders the current Projekt's dashboard (Letzter Tag card), not a picker", () => {
+  it("renders the current Projekt's dashboard (Letzter Fangtag strip), not a picker", () => {
     const { fixture, projectService, httpMock } = setup();
     const project = makeProject({ id: 'p1', title: 'Schilfgürtel Linz' });
     projectService.setCurrent(project);
@@ -77,7 +77,7 @@ describe('HomeComponent', () => {
     fixture.detectChanges();
 
     const text: string = fixture.nativeElement.textContent;
-    expect(text).toContain('Letzter Tag');
+    expect(text).toContain('Letzter Fangtag');
     expect(text).toContain('Mönchsgrasmücke');
     // The picker is not part of Home anymore — it must never render here.
     expect(fixture.nativeElement.querySelector('.project-card')).toBeNull();
