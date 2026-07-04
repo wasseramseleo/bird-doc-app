@@ -12,6 +12,7 @@ import {HttpErrorResponse} from '@angular/common/http';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {RouterLink} from '@angular/router';
 import {fromEvent} from 'rxjs';
 
 import {ApiService} from '../../service/api.service';
@@ -25,7 +26,14 @@ import {
 } from '../../models/project-stats.model';
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 import {SpeciesLineChartComponent} from './species-line-chart/species-line-chart';
-import {classifyStatsFailure, DashboardFailure} from './dashboard-state';
+import {
+  classifyStatsFailure,
+  DashboardFailure,
+  DASHBOARD_NOW,
+  FangtagRecency,
+  fangtagRecency,
+  formatFangtagDate,
+} from './dashboard-state';
 
 // The state the dashboard body renders. `loading` covers the in-flight fetch (no
 // empty/broken flash); `offline` and `error` are the two failure branches, kept
@@ -42,9 +50,9 @@ interface RangePresetOption {
   label: string;
 }
 
-// The current Projekt's dashboard (ADR 0018). Renders the "Letzter Tag" stat
-// card, the häufigste-Arten bar chart and the Top-N-Fänge/Fangtag line chart,
-// and owns the range selector that ties all three plus the card to one time
+// The current Projekt's dashboard (ADR 0018). Renders the "Letzter Fangtag"
+// strip, the häufigste-Arten bar chart and the Top-N-Fänge/Fangtag line chart,
+// and owns the range selector that ties all three plus the strip to one time
 // story. Stats are online-only (ADR 0017): with no network it shows an error
 // state, not offline data. All counting semantics live server-side; this
 // component only selects the range and maps the typed response onto the views.
@@ -55,6 +63,7 @@ interface RangePresetOption {
     PercentPipe,
     MatIconModule,
     MatProgressSpinnerModule,
+    RouterLink,
     SpeciesBarChartComponent,
     SpeciesLineChartComponent,
   ],
@@ -65,6 +74,11 @@ interface RangePresetOption {
 export class ProjectDashboardComponent {
   private readonly api = inject(ApiService);
   private readonly actions = inject(ProjectActionsService);
+  // The reference "now" for the recency chip + Ruhige-Phase threshold (injected
+  // so it is deterministic under test). This is a read-only reference clock, not
+  // a signal — the values it feeds only ever change when a fresh stats payload
+  // (a new last_fangtag) arrives, so recomputing on that change is enough.
+  private readonly now = inject(DASHBOARD_NOW);
 
   readonly project = input.required<Project>();
 
@@ -98,6 +112,22 @@ export class ProjectDashboardComponent {
   readonly failure = signal<DashboardFailure | null>(null);
 
   readonly lastFangtag = computed(() => this.stats()?.last_fangtag ?? null);
+
+  // The last Fangtag day rendered de-AT (DD.MM.YYYY) for the strip's date field.
+  readonly fangtagDate = computed(() => {
+    const day = this.lastFangtag();
+    return day ? formatFangtagDate(day.date) : '';
+  });
+
+  // How current the last Fangtag is (issue #295): drives the always-shown recency
+  // chip (`vor N Tagen`, success-tinted at ≤ 3 Tagen) and the > 14-Tage
+  // Ruhige-Phase note. Null only when there is no Fangtag in range (empty state),
+  // which keeps the quiet phase strictly distinct from the empty state — a quiet
+  // phase means data exists but is old, never that the range holds nothing.
+  readonly recency = computed<FangtagRecency | null>(() => {
+    const day = this.lastFangtag();
+    return day ? fangtagRecency(day.date, this.now()) : null;
+  });
 
   // The KPI row's figures for the selected range (issue #293). `totals` is served
   // whole; Wiederfang-Anteil and Ø Fänge/Fangtag are the two figures derived
