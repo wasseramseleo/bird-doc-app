@@ -17,7 +17,7 @@ import {fromEvent} from 'rxjs';
 
 import {ApiService} from '../../service/api.service';
 import {ProjectActionsService} from '../../service/project-actions.service';
-import {Project} from '../../models/project.model';
+import {PROJEKTTYP_LABELS, Project, Projekttyp} from '../../models/project.model';
 import {
   ProjectStats,
   ProjectStatsRangeParams,
@@ -94,6 +94,13 @@ export class ProjectDashboardComponent {
   // term for the code's historically-named `scientists` (CONTEXT.md); this is
   // just their count for the strip.
   readonly beringerCount = computed(() => this.project().scientists.length);
+
+  // The Projekt's Programme (Projekttyp, ADR 0023) as a German label for the
+  // meta strip. Descriptive only — it drives no dashboard behaviour. An unset
+  // value falls back to Sonstiges (the backend default).
+  readonly projekttypLabel = computed(
+    () => PROJEKTTYP_LABELS[this.project().projekttyp ?? Projekttyp.Sonstiges],
+  );
 
   readonly presets: readonly RangePresetOption[] = [
     {preset: 'week', label: 'Letzte Woche'},

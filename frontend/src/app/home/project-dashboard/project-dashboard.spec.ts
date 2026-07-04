@@ -18,7 +18,7 @@ import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart'
 import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
 import { HourHistogramChartComponent } from './hour-histogram-chart/hour-histogram-chart';
 import { FaengeSparklineComponent } from './faenge-sparkline/faenge-sparkline';
-import { Project } from '../../models/project.model';
+import { Project, Projekttyp } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
 import { ProjectActionsService } from '../../service/project-actions.service';
 
@@ -33,6 +33,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     title: 'Schilfgürtel Linz',
     description: '',
     show_optional_fields: false,
+    projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
     default_station: null,
     scientists: [],
@@ -655,6 +656,19 @@ describe('ProjectDashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('.projektdaten')).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('Reedbed-Monitoring am Nordufer');
     expect(fixture.nativeElement.textContent).not.toContain('Anna Huber');
+    httpMock.verify();
+  });
+
+  it('shows the Projekt Projekttyp in the meta strip', () => {
+    const project = makeProject({ projekttyp: Projekttyp.Nestlingsberingung });
+    const { fixture, httpMock } = setup(project);
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const meta: HTMLElement = fixture.nativeElement.querySelector('.dashboard__meta');
+    const text = (meta.textContent ?? '').replace(/\s+/g, ' ').trim();
+    expect(text).toContain('Nestlingsberingung');
     httpMock.verify();
   });
 

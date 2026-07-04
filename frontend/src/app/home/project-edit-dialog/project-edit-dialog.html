@@ -26,6 +26,15 @@
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Projekttyp</mat-label>
+      <mat-select formControlName="projekttyp">
+        @for (option of projekttypOptions; track option.value) {
+          <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
       <mat-label>Standard-Station (optional)</mat-label>
       <mat-select formControlName="defaultStationHandle">
         <mat-option [value]="''">Keine</mat-option>

@@ -8,6 +8,7 @@ import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatSelectModule} from '@angular/material/select';
 import {Organization} from '../../models/organization.model';
+import {PROJEKTTYP_OPTIONS, Projekttyp} from '../../models/project.model';
 import {RingingStation} from '../../models/ringing-station.model';
 import {ApiService} from '../../service/api.service';
 
@@ -19,6 +20,7 @@ export interface ProjectCreateDialogResult {
   title: string;
   description: string;
   organizationHandle: string;
+  projekttyp: Projekttyp;
   defaultStationHandle: string;
 }
 
@@ -43,11 +45,13 @@ export class ProjectCreateDialogComponent {
   readonly data = inject<ProjectCreateDialogData>(MAT_DIALOG_DATA);
 
   readonly stations = signal<RingingStation[]>([]);
+  readonly projekttypOptions = PROJEKTTYP_OPTIONS;
 
   readonly form = this.fb.nonNullable.group({
     title: ['', Validators.required],
     description: [''],
     organizationHandle: [this.data.organizations[0]?.handle ?? '', Validators.required],
+    projekttyp: [Projekttyp.Sonstiges],
     defaultStationHandle: [''],
   });
 

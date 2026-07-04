@@ -24,7 +24,7 @@ import {
 import { Species } from '../models/species.model';
 import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { ProjectService } from '../service/project.service';
-import { Project } from '../models/project.model';
+import { Project, Projekttyp } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
 import { AUW_SCHEME_CODE, Central, PROJEKT_ZENTRALE } from '../models/central.model';
@@ -52,6 +52,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
@@ -195,6 +196,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: station.organization!,
       default_station: station,
       scientists: [],
@@ -561,6 +563,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
@@ -1902,6 +1905,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
@@ -3099,6 +3103,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
@@ -3547,6 +3552,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
@@ -3822,6 +3828,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
@@ -4112,6 +4119,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
@@ -4424,6 +4432,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
@@ -4741,6 +4750,7 @@ describe('DataEntryFormComponent', () => {
       title: 'Herbst',
       description: '',
       show_optional_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
       scientists: [],
