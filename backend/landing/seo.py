@@ -20,6 +20,7 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from .fang_karte import FANG_KARTE
+from .glossar import GlossarSitemap
 from .wissen import WissenReferenceSitemap
 
 
@@ -68,11 +69,40 @@ def software_application_jsonld(request):
     )
 
 
+def organization_jsonld(request):
+    """The home's Schema.org ``Organization`` JSON-LD, dumped to a string.
+
+    Grounds BirdDoc as an *entity* (issue #301) alongside the
+    ``SoftwareApplication`` block, so a machine reader resolving „Was ist
+    BirdDoc?" has a named organisation to attach the answer to rather than a
+    bare string. Dumped in Python (not hand-written in a template) so the block
+    is parseable by construction — the same rule as the SoftwareApplication and
+    Wissen breadcrumb blocks. Inline only: no third-party request,
+    server-rendered (ADR 0009).
+
+    ``url`` is pinned to the absolute canonical home URL — the German apex
+    (default language, unprefixed — the URL hreflang's x-default resolves to),
+    built off the live request so the canonical domain keeps living in the host
+    routing, not the code (ADR 0010). A ``sameAs`` pointing at the Wikidata item
+    is added once that item exists (a separate slice, PRD #300)."""
+    return json.dumps(
+        {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "BirdDoc",
+            "url": request.build_absolute_uri(_default_language_home_path()),
+        },
+        ensure_ascii=False,
+    )
+
+
 class StaticViewSitemap(Sitemap):
     """The public, indexable pages of the marketing + trust surface.
 
-    A static set of named routes — the marketing home, the two lead funnels and
-    the legal pages — reversed to their canonical (default-language, apex) URLs.
+    A static set of named routes — the marketing home, the two lead funnels, the
+    BirdDoc-vs-Excel/Papierlisten comparison (issue #302), the feature overview
+    (issue #303), the pricing-model page (issue #304) and the legal pages —
+    reversed to their canonical (default-language, apex) URLs.
     The transactional token flows (registration, password reset, invitation
     accept) are deliberately left out: they are reached by mailed links, not
     crawled."""
@@ -85,6 +115,9 @@ class StaticViewSitemap(Sitemap):
             "landing:home",
             "landing:warteliste",
             "landing:gespraech",
+            "landing:vergleich",
+            "landing:funktionen",
+            "landing:preise",
             "landing:impressum",
             "landing:datenschutz",
             "landing:agb",
@@ -98,10 +131,14 @@ class StaticViewSitemap(Sitemap):
         return 1.0 if item == "landing:home" else 0.5
 
 
-# The static marketing/trust pages plus the /wissen/ species reference
-# (issue #284) — both sections render into the ONE sitemap.xml that
-# robots.txt already advertises.
-SITEMAPS = {"static": StaticViewSitemap, "wissen": WissenReferenceSitemap}
+# The static marketing/trust pages, the /wissen/ species reference (issue #284)
+# and the Beringungs-Glossar (issue #306) — every section renders into the ONE
+# sitemap.xml that robots.txt already advertises.
+SITEMAPS = {
+    "static": StaticViewSitemap,
+    "wissen": WissenReferenceSitemap,
+    "glossar": GlossarSitemap,
+}
 
 
 class RobotsTxtView(TemplateView):

@@ -20,7 +20,7 @@ from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
 
-from landing import seo, wissen
+from landing import glossar, seo, wissen
 
 # The headless API and the Django admin are not part of the bilingual surface —
 # they carry no language prefix.
@@ -46,6 +46,14 @@ urlpatterns += [
 # the DACH audience, so it lives at the apex root OUTSIDE i18n_patterns: there
 # is exactly one canonical URL per page and no `/en/` variant is served.
 urlpatterns += [
+    # The index hub of the whole Wissen reference (issue #314): describes what
+    # the reference contains and links its sections. It sits at the top of the
+    # Wissen breadcrumb trail and joins the sitemap.
+    path(
+        "wissen/",
+        wissen.WissenHubView.as_view(),
+        name="wissen_index",
+    ),
     path(
         "wissen/ringgroessen/",
         wissen.RinggroessenTabelleView.as_view(),
@@ -57,6 +65,19 @@ urlpatterns += [
         "wissen/art/<slug:slug>/",
         wissen.ArtSeiteView.as_view(),
         name="wissen_art",
+    ),
+    # The Beringungs-Glossar (issue #306): repo-versioned editorial entries, one
+    # page per term plus an index — the field-domain vocabulary of the
+    # Beringung, German-only like the rest of the reference.
+    path(
+        "wissen/glossar/",
+        glossar.GlossarIndexView.as_view(),
+        name="wissen_glossar",
+    ),
+    path(
+        "wissen/glossar/<slug:slug>/",
+        glossar.GlossarTermView.as_view(),
+        name="wissen_glossar_term",
     ),
 ]
 

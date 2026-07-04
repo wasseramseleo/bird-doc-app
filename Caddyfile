@@ -15,6 +15,28 @@
 birddoc.eu {
 	encode gzip
 
+	# Structured JSON access log for server-side AI-visibility measurement
+	# (PRD #300, issue #307). Every apex request is recorded as one JSON line;
+	# Caddy's JSON access log carries the full request headers by default
+	# (credentials redacted), so User-Agent and Referer — the two fields the
+	# measurement needs — are always present. The repo script
+	# `landing/ai_visibility.py` (`manage.py ai_visibility`) parses this file to
+	# aggregate AI answer-fetcher hits (ChatGPT-User/Perplexity-User/Claude-User),
+	# general AI-crawler activity and AI referrals. No client-side analytics, no
+	# GA4, no consent banner — the public surface stays script-free (ADR 0009).
+	#
+	# Deploy note (verified manually on deploy — cannot be exercised in CI): the
+	# log directory is bind-mounted in docker-compose.prod.yml
+	# (`/opt/bird-doc-app/caddy_logs:/var/log/caddy`) so the rolled file persists
+	# on the host, where the analysis script reads it.
+	log {
+		output file /var/log/caddy/birddoc-access.log {
+			roll_size 20MiB
+			roll_keep 10
+		}
+		format json
+	}
+
 	# Brand assets + the landing's own CSS, collected into the shared volume.
 	handle_path /static/* {
 		root * /srv/staticfiles

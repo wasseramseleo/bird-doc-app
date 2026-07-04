@@ -1,0 +1,72 @@
+{% extends "landing/base.html" %}
+{% load i18n %}
+
+{% comment %}
+Die Bottom-Funnel-Seite /funktionen/ (issue #303, PRD #300): die zitierbare
+Funktionsübersicht „was eine Beringungssoftware können muss". Zweisprachig wie
+die Startseite (issue #107) — Deutsch am Apex, Englisch unter /en/ —,
+server-gerendert und skriptfrei (ADR 0009). Sie trägt denselben
+selbstreferenziellen Canonical + hreflang-Cluster wie die Home; die Antwort
+steht zuerst (issue #305), damit der Such-/KI-Snippet und der Seiten-Lead nie
+auseinanderdriften. Jede der vier Funktionen ist als in sich geschlossene,
+zitierbare Aussage formuliert. Preise und die numerische Artennorm sind bewusst
+NICHT Thema — genannt werden die Funktionen, nicht eine Preisliste.
+{% endcomment %}
+
+{% block body_class %}page--marketing{% endblock %}
+
+{% block title %}{% translate "Funktionen einer Beringungssoftware – was BirdDoc können muss" %} · BirdDoc{% endblock %}
+
+{% block head_meta %}
+    {% include "landing/_hreflang_alternates.html" %}
+    {% comment %}
+    Antwortzuerst (issue #305): die <meta description> ist derselbe Satz, der die
+    Seite eröffnet — der Snippet, den eine Suchmaschine oder ein KI-Reader hebt,
+    ist damit exakt der Seiten-Lead. Preise/Artennorm bleiben außen vor.
+    {% endcomment %}
+    {% blocktranslate trimmed asvar meta_description %}Eine Beringungssoftware sollte am Ringtisch offline erfassen, Fänge als IWM-Datei an die Vogelwarte exportieren, unplausible Eingaben sofort als Warnung anzeigen und Ringnummern fortlaufend aus der Ringserie vorschlagen – das sind die vier Kernfunktionen, die BirdDoc erfüllt.{% endblocktranslate %}
+    <meta name="description" content="{{ meta_description }}">
+{% endblock %}
+
+{% comment %}
+Der DE/EN-Umschalter im Header (issue #107): wechselt genau diese Seite zwischen
+Deutsch (Apex) und Englisch (/en/), ohne sie zu verlassen — wie bei den Funnels.
+{% endcomment %}
+{% block header_back %}
+    {% include "landing/_lang_toggle.html" %}
+{% endblock %}
+
+{% block content %}
+    <p class="eyebrow">{% translate "Funktionen" %}</p>
+    <h1 class="features__title">{% blocktranslate trimmed %}Funktionen einer Beringungssoftware{% endblocktranslate %}</h1>
+    <p class="features__lead">{% blocktranslate trimmed %}Eine Beringungssoftware sollte am Ringtisch offline erfassen, Fänge als IWM-Datei an die Vogelwarte exportieren, unplausible Eingaben sofort als Warnung anzeigen und Ringnummern fortlaufend aus der Ringserie vorschlagen – das sind die vier Kernfunktionen, die BirdDoc erfüllt.{% endblocktranslate %}</p>
+
+    {% include "landing/_app_german_only_note.html" %}
+
+    <ul class="features__grid">
+        <li class="features__item">
+            <h2 class="features__name">{% translate "Offline-Fähigkeit" %}</h2>
+            <p class="features__desc">{% blocktranslate trimmed %}Offline-Fähigkeit heißt, dass jeder Fang direkt am Ringtisch erfasst wird, auch ganz ohne Internet. Die Daten liegen sicher auf dem Gerät und werden abgeglichen, sobald wieder eine Verbindung besteht.{% endblocktranslate %}</p>
+        </li>
+        <li class="features__item">
+            <h2 class="features__name">{% translate "IWM-Export" %}</h2>
+            <p class="features__desc">{% blocktranslate trimmed %}Der IWM-Export erzeugt aus allen Fängen eines Projekts eine fertige Meldedatei im IWM-Format der Vogelwarte – ohne die Tabelle von Hand umzubauen.{% endblocktranslate %}</p>
+        </li>
+        <li class="features__item">
+            <h2 class="features__name">{% translate "Plausibilitätswarnung" %}</h2>
+            <p class="features__desc">{% blocktranslate trimmed %}Eine Plausibilitätswarnung zeigt schon beim Erfassen an, wenn ein Maß oder eine Angabe für die gewählte Art außerhalb des üblichen Bereichs liegt – der Fehler fällt am Ringtisch auf, nicht erst Monate später.{% endblocktranslate %}</p>
+        </li>
+        <li class="features__item">
+            <h2 class="features__name">{% translate "Ringserien-Logik" %}</h2>
+            <p class="features__desc">{% blocktranslate trimmed %}Die Ringserien-Logik führt jede Ringserie fortlaufend und schlägt die nächste freie Ringnummer automatisch vor – Zahlendreher und doppelt vergebene Ringe werden vermieden.{% endblocktranslate %}</p>
+        </li>
+    </ul>
+
+    {% comment %}
+    Die Funktionsübersicht führt in den bestehenden Beringer-Funnel (issue #80).
+    {% endcomment %}
+    <p class="wissen-cta">
+        {% blocktranslate trimmed %}BirdDoc ist das digitale Stationsjournal für die Vogelberingung.{% endblocktranslate %}
+        <a class="button" href="{% url 'landing:warteliste' %}">{% translate "Zugang anfragen" %}</a>
+    </p>
+{% endblock %}

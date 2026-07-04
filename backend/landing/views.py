@@ -24,7 +24,7 @@ from .fang_formular import FANG_FORMULAR
 from .fang_karte import FANG_KARTE
 from .forms import GespraechForm, RegistrationForm, WartelisteForm
 from .models import Warteliste
-from .seo import software_application_jsonld
+from .seo import organization_jsonld, software_application_jsonld
 from .stats import STATION_STATS
 
 
@@ -87,6 +87,10 @@ class HomeView(TemplateView):
             # Python so it is parseable by construction — a rich-result shot
             # in a niche where no competitor bothers.
             "software_application_jsonld": software_application_jsonld(self.request),
+            # Schema.org Organization block (issue #301): grounds BirdDoc as an
+            # entity alongside the SoftwareApplication block, dumped in Python
+            # so it too is parseable by construction.
+            "organization_jsonld": organization_jsonld(self.request),
         }
 
 
@@ -137,6 +141,65 @@ class GespraechDoneView(TemplateView):
     """Confirms the Gespräch request was received (issue #103)."""
 
     template_name = "landing/gespraech_done.html"
+
+
+class VergleichView(TemplateView):
+    """`/vergleich/` — the bilingual BirdDoc-vs-Excel/Papierlisten comparison
+    (issue #302, PRD #300).
+
+    A citable bottom-funnel page that lifts the homepage's Excel-comparison
+    section (issue #116) into its own indexable URL, so that when a
+    Stationsleiter asks an AI chat „BirdDoc oder Excel?" the answer can be
+    grounded in BirdDoc's actual differences instead of a hallucinated summary.
+    Part of the bilingual marketing surface (issue #107): German at the apex,
+    English under ``/en/``; server-rendered and script-free (ADR 0009), with the
+    self-referential canonical + hreflang cluster of the home. The meta
+    description states the answer first (issue #305) — the same sentence that
+    opens the page — so the search/AI snippet and the on-page lead never drift.
+
+    Prices and the numeric Artennorm are deliberately out of scope: this page
+    contrasts the *workflow* against paper and Excel, not a price list."""
+
+    template_name = "landing/vergleich.html"
+
+
+class FunktionenView(TemplateView):
+    """`/funktionen/` — the bilingual feature-overview page (issue #303, PRD #300).
+
+    A citable bottom-funnel page describing what a Beringungssoftware should do
+    — offline capture, IWM export, plausibility warnings and ring-series logic —
+    so that when someone asks an AI chat „Welche Funktionen sollte eine
+    Beringungssoftware haben?" the answer can be grounded in BirdDoc's actual
+    capabilities. Each capability is framed as a self-contained, quotable
+    passage. Part of the bilingual marketing surface (issue #107): German at the
+    apex, English under ``/en/``; server-rendered and script-free (ADR 0009),
+    with the self-referential canonical + hreflang cluster of the home. The meta
+    description states the answer first (issue #305) — the same sentence that
+    opens the page — so the search/AI snippet and the on-page lead never drift.
+
+    Prices and the numeric Artennorm are deliberately out of scope: this page
+    names the *capabilities* a ringing software should have, not a price list."""
+
+    template_name = "landing/funktionen.html"
+
+
+class PreiseView(TemplateView):
+    """`/preise/` — the bilingual pricing-model page (issue #304, PRD #300).
+
+    A citable bottom-funnel page that describes the *durable pricing model* —
+    licensed per Organisation not per head, no-account Beringer free, and the
+    beta cohort keeps its preferential price — so that when an Organisation
+    decision-maker asks an AI chat „Was kostet BirdDoc?" the answer quoted
+    months later is still roughly right. The page leads with the *model*, not a
+    price point: the current beta status is stated honestly, but no specific
+    price number is the quotable core (a figure dates fast; the model does not).
+    Part of the bilingual marketing surface (issue #107): German at the apex,
+    English under ``/en/``; server-rendered and script-free (ADR 0009), with the
+    self-referential canonical + hreflang cluster of the home. The meta
+    description states the answer first (issue #305) — the same sentence that
+    opens the page — so the search/AI snippet and the on-page lead never drift."""
+
+    template_name = "landing/preise.html"
 
 
 class ImpressumView(TemplateView):

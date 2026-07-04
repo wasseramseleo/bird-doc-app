@@ -44,6 +44,11 @@ services:
       - /opt/bird-doc-app/Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/bird-doc-app/caddy_data:/data
       - /opt/bird-doc-app/caddy_config:/config
+      # Structured JSON access log for AI-visibility measurement (PRD #300,
+      # issue #307): the Caddyfile writes /var/log/caddy/birddoc-access.log,
+      # bind-mounted here so the rolled file persists on the host where the
+      # repo analysis script (`manage.py ai_visibility`) reads it.
+      - /opt/bird-doc-app/caddy_logs:/var/log/caddy
       - staticfiles:/srv/staticfiles:ro
     depends_on:
       - backend

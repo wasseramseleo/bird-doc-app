@@ -24,6 +24,7 @@ GERMAN_PAGES = [
     "/impressum/",
     "/datenschutz/",
     "/agb/",
+    "/funktionen/",
     "/zugang-anfragen/",
     "/zugang-anfragen/gesendet/",
     "/gespraech/",

@@ -165,6 +165,115 @@ def test_artseite_without_ring_size_shows_keine_standard_empfehlung(client, db):
     assert "None" not in content
 
 
+def _meta_description(content):
+    # The <meta name="description"> content of a rendered page. Fails loudly
+    # when the tag is missing — an answer-first page without a description
+    # snippet is the bug this slice fixes (issue #305).
+    match = re.search(r'<meta name="description" content="([^"]*)"', content)
+    assert match, 'no <meta name="description"> on the page'
+    return match.group(1)
+
+
+def test_artseite_meta_description_states_the_recommended_ring_size(client, db):
+    # Answer-first (issue #305): the Artenseite carries a <meta description>
+    # that states the answer — the Empfohlene Ringgröße — so a search snippet
+    # and an AI passage-retriever can lift the exact ring size.
+    kohlmeise = Species.objects.get(scientific_name="Parus major")
+    assert kohlmeise.ring_size, "seed data lost Parus major's Empfohlene Ringgröße"
+
+    description = _meta_description(client.get("/wissen/art/parus-major/").content.decode())
+    assert kohlmeise.common_name_de in description
+    assert f"Ringgröße {kohlmeise.ring_size}" in description
+    assert "Artenliste" in description
+
+
+def test_artseite_meta_description_no_recommendation_is_honest(client, db):
+    # The no-recommendation case states the answer honestly in the meta
+    # description too — no fabricated value, never Python's literal None.
+    Species.objects.create(
+        common_name_de="Testart ohne Empfehlung",
+        common_name_en="Test species without recommendation",
+        scientific_name="Avis probationis",
+        family_name="Testidae",
+        order_name="Testiformes",
+        ring_size=None,
+    )
+
+    description = _meta_description(client.get("/wissen/art/avis-probationis/").content.decode())
+    assert "keine Standard-Empfehlung" in description
+    assert "None" not in description
+
+
+def test_artseite_opens_with_an_answer_first_lead(client, db):
+    # The first content sentence — the lead directly after the H1 — states the
+    # answer (issue #305), so the answer leads the page, not the taxonomy. The
+    # visible lead is the very sentence the <meta description> carries.
+    kohlmeise = Species.objects.get(scientific_name="Parus major")
+    assert kohlmeise.ring_size, "seed data lost Parus major's Empfohlene Ringgröße"
+
+    content = client.get("/wissen/art/parus-major/").content.decode()
+
+    lead = re.search(r'</h1>\s*<p class="lead">(.*?)</p>', content, re.DOTALL)
+    assert lead, "the answer-first lead must open the content, right after the H1"
+    lead_text = lead.group(1)
+    assert f"Ringgröße {kohlmeise.ring_size}" in lead_text
+    # The lead precedes the taxonomy line — the answer leads, not the taxonomy.
+    assert content.index('<p class="lead">') < content.index("wissen-art__taxonomy")
+
+
+def test_artseite_answer_first_lead_no_recommendation_is_honest(client, db):
+    # The answer-first lead renders the no-recommendation case honestly: the
+    # explicit „keine Standard-Empfehlung" state, never a fabricated value and
+    # never Python's literal None.
+    Species.objects.create(
+        common_name_de="Testart ohne Empfehlung",
+        common_name_en="Test species without recommendation",
+        scientific_name="Avis probationis",
+        family_name="Testidae",
+        order_name="Testiformes",
+        ring_size=None,
+    )
+
+    content = client.get("/wissen/art/avis-probationis/").content.decode()
+
+    lead = re.search(r'</h1>\s*<p class="lead">(.*?)</p>', content, re.DOTALL)
+    assert lead, "the answer-first lead must open the content, right after the H1"
+    lead_text = lead.group(1)
+    assert "keine Standard-Empfehlung" in lead_text
+    assert "None" not in lead_text
+
+
+def test_ringgroessen_table_carries_an_answer_first_meta_description(client, db):
+    # The Ringgrößen-Tabelle carries an answer-first <meta description> (issue
+    # #305): it states what the page answers — the Empfohlene Ringgröße of every
+    # Art in der österreichischen Artenliste.
+    description = _meta_description(client.get(WISSEN_RINGGROESSEN_URL).content.decode())
+    assert "Ringgröße" in description
+    assert "österreichischen Artenliste" in description
+
+
+def test_no_numeric_artennorm_leaks_via_the_meta_description(client, db):
+    # The meta description states the ring size (public) but never an Artennorm
+    # value (PRD #245 stays gated): a globale Standard-Artennorm on the species
+    # must not surface any of its numbers in the description snippet.
+    kohlmeise = Species.objects.get(scientific_name="Parus major")
+    SpeciesNorm.objects.update_or_create(
+        species=kohlmeise,
+        organization=None,
+        defaults={
+            "weight_mean": Decimal("18.734"),
+            "weight_sd": Decimal("1.219"),
+            "wing_mean": Decimal("74.618"),
+            "wing_sd": Decimal("2.437"),
+        },
+    )
+
+    content = client.get("/wissen/art/parus-major/").content.decode()
+    description = _meta_description(content)
+    for gated_value in ("18,7", "18.7", "1,219", "1.219", "74,6", "74.6", "2,437", "2.437"):
+        assert gated_value not in description
+
+
 def test_sonderart_and_unknown_slugs_404(client, db):
     # Sonderart rows are not birds and get no page: their slugified scientific
     # names 404 exactly like a slug that never existed.

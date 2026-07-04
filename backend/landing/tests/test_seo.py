@@ -51,7 +51,17 @@ def test_sitemap_lists_the_public_pages(client, db):
     from django.urls import reverse
 
     content = client.get("/sitemap.xml").content.decode()
-    for name in ("home", "warteliste", "gespraech", "impressum", "datenschutz", "agb"):
+    for name in (
+        "home",
+        "warteliste",
+        "gespraech",
+        "vergleich",
+        "funktionen",
+        "preise",
+        "impressum",
+        "datenschutz",
+        "agb",
+    ):
         assert reverse(f"landing:{name}") in content
 
 
@@ -350,6 +360,60 @@ def test_en_home_jsonld_keeps_the_german_canonical_url_and_language(client):
     assert data["url"] == "http://testserver/"
 
 
+def _home_jsonld_blocks(client, path="/"):
+    # Parse EVERY inline JSON-LD block on the home into a list of objects. Each
+    # block must parse on its own — a malformed block must never rank silently.
+    import json
+    import re
+
+    content = client.get(path).content.decode()
+    blocks = re.findall(r'<script type="application/ld\+json">(.*?)</script>', content, re.DOTALL)
+    assert blocks, "no JSON-LD block on the home"
+    return [json.loads(block) for block in blocks]
+
+
+def _home_jsonld_of_type(client, type_, path="/"):
+    for data in _home_jsonld_blocks(client, path):
+        if data.get("@type") == type_:
+            return data
+    raise AssertionError(f"no {type_} JSON-LD block on {path}")
+
+
+def test_home_renders_parseable_organization_jsonld(client):
+    # Alongside the SoftwareApplication block, the home grounds BirdDoc as an
+    # *entity* with an inline Schema.org Organization block (issue #301) — no
+    # third-party request, server-rendered (ADR 0009) — that parses as JSON.
+    data = _home_jsonld_of_type(client, "Organization")
+    assert data["@type"] == "Organization"
+
+
+def test_organization_jsonld_carries_the_expected_shape(client):
+    # The Organization object names BirdDoc and pins its url to the absolute
+    # canonical German apex home (default language, unprefixed) — the entity's
+    # website, built off the live request (ADR 0010). A sameAs to the Wikidata
+    # item is added once that item exists (a separate slice, PRD #300).
+    data = _home_jsonld_of_type(client, "Organization")
+    assert data["@context"] == "https://schema.org"
+    assert data["name"] == "BirdDoc"
+    assert data["url"] == "http://testserver/"
+
+
+def test_home_emits_both_softwareapplication_and_organization_jsonld(client):
+    # Both blocks ship in the same initial server-rendered HTML (issue #301): the
+    # new Organization entity does not replace the SoftwareApplication block — a
+    # crawler that executes no JS still sees both, and both parse.
+    types = {data.get("@type") for data in _home_jsonld_blocks(client)}
+    assert {"SoftwareApplication", "Organization"} <= types
+
+
+def test_en_home_organization_jsonld_keeps_the_german_canonical_url(client):
+    # Like the SoftwareApplication block, the /en/ Organization block pins url to
+    # the canonical German apex home, never /en/ — the entity is the same
+    # organisation regardless of the marketing variant being read.
+    data = _home_jsonld_of_type(client, "Organization", "/en/")
+    assert data["url"] == "http://testserver/"
+
+
 def test_en_home_translates_the_head_term_title_and_h1(client):
     # The /en/ home renders a sensibly translated title and H1 through the
     # existing catalog (issue #281) — the German head term does not leak onto
@@ -362,3 +426,242 @@ def test_en_home_translates_the_head_term_title_and_h1(client):
     assert "Bird ringing software" in title
     assert h1.strip().startswith("Bird ringing software")
     assert "Beringungssoftware" not in content
+
+
+# ---------------------------------------------------------------------------
+# /vergleich/ — the bilingual BirdDoc-vs-Excel/Papierlisten comparison page
+# (issue #302, PRD #300). A citable bottom-funnel comparison that expands the
+# homepage's Excel-comparison section into its own indexable DE/EN cluster.
+# ---------------------------------------------------------------------------
+
+
+def test_vergleich_de_and_en_return_200(client):
+    # The comparison page is bilingual like the marketing home: German at the
+    # apex (no prefix) and English under /en/, both server-rendered.
+    assert client.get("/vergleich/").status_code == 200
+    assert client.get("/en/vergleich/").status_code == 200
+
+
+def test_vergleich_renders_self_canonical_and_hreflang_cluster(client):
+    # The German apex variant is self-canonical and advertises the full DE/EN/
+    # x-default cluster, driven by the same language-switch logic as the home;
+    # x-default resolves to the German apex URL (default language, unprefixed).
+    content = client.get("/vergleich/").content.decode()
+    de_url = "http://testserver/vergleich/"
+    en_url = "http://testserver/en/vergleich/"
+    assert f'<link rel="canonical" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_vergleich_en_variant_is_self_canonical_with_the_same_cluster(client):
+    # The /en/ variant canonicalises to itself (never to the German apex) and
+    # renders the SAME alternate cluster as its German counterpart (issue #279).
+    content = client.get("/en/vergleich/").content.decode()
+    de_url = "http://testserver/vergleich/"
+    en_url = "http://testserver/en/vergleich/"
+    assert f'<link rel="canonical" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_vergleich_carries_an_answer_first_title_and_meta_description(client):
+    # A <title> and a <meta name="description"> are present and answer-first:
+    # the description opens by naming the comparison and BirdDoc's answer to it
+    # (issue #305), so the search/AI snippet states the difference up front.
+    import re
+
+    content = client.get("/vergleich/").content.decode()
+    title = re.search(r"<title>(.*?)</title>", content, re.DOTALL).group(1)
+    assert "BirdDoc" in title
+    assert "Excel" in title
+    description = re.search(r'<meta name="description" content="([^"]+)"', content).group(1)
+    assert description.startswith("BirdDoc vs. Excel und Papierlisten")
+
+
+def test_sitemap_lists_the_vergleich_page(client, db):
+    # The comparison joins the static sitemap section so a crawler discovers it
+    # by its canonical (default-language, apex) URL.
+    from django.urls import reverse
+
+    content = client.get("/sitemap.xml").content.decode()
+    assert reverse("landing:vergleich") in content
+
+
+# ---------------------------------------------------------------------------
+# /funktionen/ — the bilingual feature-overview page (issue #303, PRD #300). A
+# citable bottom-funnel page describing what a Beringungssoftware should do, so
+# BirdDoc is retrievable for capability prompts („Welche Funktionen sollte eine
+# Beringungssoftware haben?"). Same DE/EN cluster as the home + /vergleich/.
+# ---------------------------------------------------------------------------
+
+
+def test_funktionen_de_and_en_return_200(client):
+    # The feature overview is bilingual like the marketing home: German at the
+    # apex (no prefix) and English under /en/, both server-rendered.
+    assert client.get("/funktionen/").status_code == 200
+    assert client.get("/en/funktionen/").status_code == 200
+
+
+def test_funktionen_describes_the_four_named_capabilities_as_standalone_passages(client):
+    # Each of the four named capabilities is a self-contained, quotable passage
+    # — its own heading plus a standalone descriptive statement — so a machine
+    # reader can lift any one capability whole (issue #303).
+    import re
+
+    content = client.get("/funktionen/").content.decode()
+    headings = [h.strip() for h in re.findall(r"<h2[^>]*>(.*?)</h2>", content, re.DOTALL)]
+    for capability in (
+        "Offline-Fähigkeit",
+        "IWM-Export",
+        "Plausibilitätswarnung",
+        "Ringserien-Logik",
+    ):
+        assert capability in headings, f"{capability} is not a standalone passage heading"
+    for fragment in (
+        "sicher auf dem Gerät",
+        "fertige Meldedatei im IWM-Format",
+        "außerhalb des üblichen Bereichs",
+        "nächste freie Ringnummer",
+    ):
+        assert fragment in content, fragment
+
+
+def test_funktionen_renders_self_canonical_and_hreflang_cluster(client):
+    # The German apex variant is self-canonical and advertises the full DE/EN/
+    # x-default cluster, driven by the same language-switch logic as the home;
+    # x-default resolves to the German apex URL (default language, unprefixed).
+    content = client.get("/funktionen/").content.decode()
+    de_url = "http://testserver/funktionen/"
+    en_url = "http://testserver/en/funktionen/"
+    assert f'<link rel="canonical" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_funktionen_en_variant_is_self_canonical_with_the_same_cluster(client):
+    # The /en/ variant canonicalises to itself (never to the German apex) and
+    # renders the SAME alternate cluster as its German counterpart (issue #279).
+    content = client.get("/en/funktionen/").content.decode()
+    de_url = "http://testserver/funktionen/"
+    en_url = "http://testserver/en/funktionen/"
+    assert f'<link rel="canonical" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_funktionen_carries_an_answer_first_title_and_meta_description(client):
+    # A <title> and a <meta name="description"> are present and answer-first: the
+    # description opens by answering what a Beringungssoftware should do (issue
+    # #305), so the search/AI snippet states the capabilities up front. The
+    # <title> carries both „Funktionen" and the „Beringungssoftware" head term.
+    import re
+
+    content = client.get("/funktionen/").content.decode()
+    title = re.search(r"<title>(.*?)</title>", content, re.DOTALL).group(1)
+    assert "Funktionen" in title
+    assert "Beringungssoftware" in title
+    assert "BirdDoc" in title
+    description = re.search(r'<meta name="description" content="([^"]+)"', content).group(1)
+    assert description.startswith("Eine Beringungssoftware sollte")
+
+
+def test_sitemap_lists_the_funktionen_page(client, db):
+    # The feature overview joins the static sitemap section so a crawler
+    # discovers it by its canonical (default-language, apex) URL.
+    from django.urls import reverse
+
+    content = client.get("/sitemap.xml").content.decode()
+    assert reverse("landing:funktionen") in content
+
+
+# ---------------------------------------------------------------------------
+# /preise/ — the bilingual pricing-model page (issue #304, PRD #300). A citable
+# bottom-funnel page that describes the DURABLE pricing model — licensed per
+# Organisation not per head, no-account Beringer free, the beta cohort keeps its
+# preferential price — so an AI answer quoted months later is still roughly
+# right. Same DE/EN cluster as the home + /vergleich/ + /funktionen/.
+# ---------------------------------------------------------------------------
+
+
+def test_preise_de_and_en_return_200(client):
+    # The pricing page is bilingual like the marketing home: German at the apex
+    # (no prefix) and English under /en/, both server-rendered.
+    assert client.get("/preise/").status_code == 200
+    assert client.get("/en/preise/").status_code == 200
+
+
+def test_preise_lead_describes_the_pricing_model_not_a_price_figure(client):
+    # The quotable lead describes the pricing *model* — licensed per Organisation
+    # (not per head), no-account Beringer free, the beta cohort keeps its
+    # preferential price — and NOT a single price figure (a number dates fast;
+    # the model does not). Assert the lead paragraph names all three model
+    # pillars, and that no currency amount is the quotable core of the page
+    # (issue #304): an AI answer quoted months later must still be roughly right.
+    import re
+
+    content = client.get("/preise/").content.decode()
+    lead = re.search(r'<p class="features__lead">(.*?)</p>', content, re.DOTALL).group(1)
+    assert "pro Organisation" in lead
+    assert "nie pro Kopf" in lead
+    assert "kostenlos" in lead
+    assert "Beta-Kohorte" in lead
+    assert "Vorzugspreis" in lead
+    # No price figure anywhere on the page: no currency symbol, no „X €/EUR/Euro
+    # pro Monat/Jahr" amount — the durable model, never a datable number.
+    assert "€" not in content
+    assert not re.search(r"\d+\s*(?:€|EUR|Euro)", content)
+    assert not re.search(r"\d+\s*(?:€|EUR|Euro)?\s*(?:pro|/)\s*(?:Monat|Jahr)", content)
+
+
+def test_preise_renders_self_canonical_and_hreflang_cluster(client):
+    # The German apex variant is self-canonical and advertises the full DE/EN/
+    # x-default cluster, driven by the same language-switch logic as the home;
+    # x-default resolves to the German apex URL (default language, unprefixed).
+    content = client.get("/preise/").content.decode()
+    de_url = "http://testserver/preise/"
+    en_url = "http://testserver/en/preise/"
+    assert f'<link rel="canonical" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_preise_en_variant_is_self_canonical_with_the_same_cluster(client):
+    # The /en/ variant canonicalises to itself (never to the German apex) and
+    # renders the SAME alternate cluster as its German counterpart (issue #279).
+    content = client.get("/en/preise/").content.decode()
+    de_url = "http://testserver/preise/"
+    en_url = "http://testserver/en/preise/"
+    assert f'<link rel="canonical" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_preise_carries_an_answer_first_title_and_meta_description(client):
+    # A <title> and a <meta name="description"> are present and answer-first: the
+    # description opens by stating the pricing model (issue #305), so the
+    # search/AI snippet leads with „pro Organisation" rather than a price figure.
+    # The <title> carries „Preise" and the brand.
+    import re
+
+    content = client.get("/preise/").content.decode()
+    title = re.search(r"<title>(.*?)</title>", content, re.DOTALL).group(1)
+    assert "Preise" in title
+    assert "BirdDoc" in title
+    description = re.search(r'<meta name="description" content="([^"]+)"', content).group(1)
+    assert description.startswith("BirdDoc wird pro Organisation lizenziert")
+
+
+def test_sitemap_lists_the_preise_page(client, db):
+    # The pricing page joins the static sitemap section so a crawler discovers it
+    # by its canonical (default-language, apex) URL.
+    from django.urls import reverse
+
+    content = client.get("/sitemap.xml").content.decode()
+    assert reverse("landing:preise") in content

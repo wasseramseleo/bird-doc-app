@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-04 00:19+0200\n"
+"POT-Creation-Date: 2026-07-04 19:04+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -672,6 +672,64 @@ msgstr ""
 msgid "Stationsjournal für die Vogelberingung"
 msgstr ""
 
+msgid "Funktionen einer Beringungssoftware – was BirdDoc können muss"
+msgstr ""
+
+msgid ""
+"Eine Beringungssoftware sollte am Ringtisch offline erfassen, Fänge als IWM-"
+"Datei an die Vogelwarte exportieren, unplausible Eingaben sofort als Warnung "
+"anzeigen und Ringnummern fortlaufend aus der Ringserie vorschlagen – das "
+"sind die vier Kernfunktionen, die BirdDoc erfüllt."
+msgstr ""
+
+msgid "Funktionen"
+msgstr ""
+
+msgid "Funktionen einer Beringungssoftware"
+msgstr ""
+
+msgid "Offline-Fähigkeit"
+msgstr ""
+
+msgid ""
+"Offline-Fähigkeit heißt, dass jeder Fang direkt am Ringtisch erfasst wird, "
+"auch ganz ohne Internet. Die Daten liegen sicher auf dem Gerät und werden "
+"abgeglichen, sobald wieder eine Verbindung besteht."
+msgstr ""
+
+msgid "IWM-Export"
+msgstr ""
+
+msgid ""
+"Der IWM-Export erzeugt aus allen Fängen eines Projekts eine fertige "
+"Meldedatei im IWM-Format der Vogelwarte – ohne die Tabelle von Hand "
+"umzubauen."
+msgstr ""
+
+msgid "Plausibilitätswarnung"
+msgstr ""
+
+msgid ""
+"Eine Plausibilitätswarnung zeigt schon beim Erfassen an, wenn ein Maß oder "
+"eine Angabe für die gewählte Art außerhalb des üblichen Bereichs liegt – der "
+"Fehler fällt am Ringtisch auf, nicht erst Monate später."
+msgstr ""
+
+msgid "Ringserien-Logik"
+msgstr ""
+
+msgid ""
+"Die Ringserien-Logik führt jede Ringserie fortlaufend und schlägt die "
+"nächste freie Ringnummer automatisch vor – Zahlendreher und doppelt "
+"vergebene Ringe werden vermieden."
+msgstr ""
+
+msgid "BirdDoc ist das digitale Stationsjournal für die Vogelberingung."
+msgstr ""
+
+msgid "Zugang anfragen"
+msgstr ""
+
 msgid "Gespräch vereinbaren"
 msgstr ""
 
@@ -722,9 +780,6 @@ msgstr ""
 msgid "Menü"
 msgstr ""
 
-msgid "Funktionen"
-msgstr ""
-
 msgid "Für Organisationen"
 msgstr ""
 
@@ -744,7 +799,13 @@ msgid ""
 "Tabellen."
 msgstr ""
 
-msgid "Zugang anfragen"
+msgid ""
+"BirdDoc ist eine Beringungssoftware für die Vogelberingung: ein digitales "
+"Stationsjournal, in dem Beringerinnen und Beringer jeden gefangenen und "
+"beringten Vogel direkt am Ringtisch als sauberen Datensatz erfassen – statt "
+"auf Papier und in Excel – und ihre Fänge als IWM-Datei an die Vogelwarte "
+"melden. BirdDoc läuft im Browser, wird in Österreich gehostet und ist "
+"während der öffentlichen Beta kostenlos."
 msgstr ""
 
 msgid "Ringserie: fortlaufende Ringnummern"
@@ -793,8 +854,8 @@ msgid "Eine saubere Fang-Karte"
 msgstr ""
 
 msgid ""
-"Alle Angaben eines Fangs an einem Ort, direkt am Ringtisch erfasst: ein "
-"Datensatz pro Vogel statt loser Zettel."
+"BirdDoc bündelt alle Angaben eines Fangs an einem Ort, direkt am Ringtisch "
+"erfasst: ein Datensatz pro Vogel statt loser Zettel."
 msgstr ""
 
 msgid "Intelligente Ringnummerierung"
@@ -944,14 +1005,15 @@ msgid "Schon einen Zugangscode? Organisation gründen"
 msgstr ""
 
 msgid ""
-"<strong>Gehostet in Österreich.</strong> Alle Beringungsdaten bleiben in "
-"Österreich bzw. der EU, DSGVO-konform und ohne Drittanbieter-Tracking."
+"<strong>BirdDoc wird in Österreich gehostet.</strong> Alle Beringungsdaten "
+"bleiben in Österreich bzw. der EU, DSGVO-konform und ohne Drittanbieter-"
+"Tracking."
 msgstr ""
 
 msgid "Jetzt"
 msgstr ""
 
-msgid "Während der öffentlichen Beta <strong>kostenlos</strong>."
+msgid "BirdDoc ist während der öffentlichen Beta <strong>kostenlos</strong>."
 msgstr ""
 
 msgid "Ab 1.0"
@@ -963,6 +1025,135 @@ msgstr ""
 msgid ""
 "Wer während der Beta gründet, behält <strong>dauerhaft</strong> einen "
 "<strong>Vorzugspreis</strong>, auch nach 1.0."
+msgstr ""
+
+msgid "Preise – das Preismodell von BirdDoc: pro Organisation, nie pro Kopf"
+msgstr ""
+
+msgid ""
+"BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer ohne "
+"eigenes Konto erfassen kostenlos mit, und Organisationen der Beta-Kohorte "
+"behalten dauerhaft ihren Vorzugspreis – das ist das Preismodell, unabhängig "
+"vom späteren Betrag."
+msgstr ""
+
+msgid "Was kostet BirdDoc?"
+msgstr ""
+
+msgid "Pro Organisation, nie pro Kopf"
+msgstr ""
+
+msgid ""
+"Die Lizenz gilt pro Organisation, nicht pro Person. Eine Station oder ein "
+"Verein zahlt einmal für die ganze Gruppe, statt jede beringende Person "
+"einzeln zu lizenzieren – der Preis wächst nicht mit jedem zusätzlichen "
+"Beringer."
+msgstr ""
+
+msgid "Beringer ohne Konto kostenlos"
+msgstr ""
+
+msgid ""
+"Beringer ohne eigenes Konto erfassen ihre Fänge kostenlos mit. Wer nur "
+"gelegentlich an der Station beringt, belegt keinen kostenpflichtigen Platz "
+"und verursacht keine zusätzlichen Kosten."
+msgstr ""
+
+msgid "Beta-Kohorte behält den Vorzugspreis"
+msgstr ""
+
+msgid ""
+"Organisationen, die während der öffentlichen Beta einsteigen, gehören zur "
+"Beta-Kohorte und behalten dauerhaft ihren Vorzugspreis. Ein späterer "
+"Regelpreis gilt für sie nicht, auch wenn die Beta endet."
+msgstr ""
+
+msgid ""
+"Aktueller Stand: BirdDoc ist in geschlossener Beta und für alle Beta-"
+"Organisationen derzeit kostenlos. Ein konkreter Regelpreis steht noch nicht "
+"fest – das Preismodell oben bleibt bestehen, unabhängig vom späteren Betrag."
+msgstr ""
+
+msgid "BirdDoc vs. Excel und Papierlisten – Beringungssoftware im Vergleich"
+msgstr ""
+
+msgid ""
+"BirdDoc vs. Excel und Papierlisten: BirdDoc ersetzt handschriftliche "
+"Fanglisten und Excel-Tabellen durch die direkte Erfassung am Ringtisch — ein "
+"sauberer Datensatz pro Vogel, ohne Abtippen, mit fortlaufenden Ringnummern, "
+"festen Feldern und einheitlichem Format, exportierbar als IWM- und EURING-"
+"Datei."
+msgstr ""
+
+msgid "BirdDoc vs. Excel und Papierlisten"
+msgstr ""
+
+msgid "BirdDoc vs. Excel und Papierlisten: die Beringungssoftware im Vergleich"
+msgstr ""
+
+msgid ""
+"BirdDoc ersetzt handschriftliche Fanglisten und Excel-Tabellen durch die "
+"direkte Erfassung am Ringtisch: ein sauberer Datensatz pro gefangenem und "
+"beringtem Vogel, ohne zweites Abtippen, mit fortlaufenden Ringnummern, "
+"festen Feldern und einheitlichem Format — jederzeit exportierbar als IWM- "
+"und EURING-Datei."
+msgstr ""
+
+msgid "Erfassung"
+msgstr ""
+
+msgid "Excel und Papier"
+msgstr ""
+
+msgid ""
+"Jeder Fang wird am Ringtisch auf Papier notiert und später ein zweites Mal "
+"in eine Tabelle abgetippt."
+msgstr ""
+
+msgid ""
+"Direkt am Ringtisch erfasst, während der Vogel in der Hand ist — ohne zweite "
+"Eingabe."
+msgstr ""
+
+msgid "Ringnummern"
+msgstr ""
+
+msgid ""
+"Ringnummern werden von Hand weitergezählt — ein Zahlendreher fällt oft erst "
+"spät auf."
+msgstr ""
+
+msgid "Die nächste Nummer der Ringserie wird fortlaufend vorgeschlagen."
+msgstr ""
+
+msgid ""
+"Datum, Maße und Codes werden je nach Zeile und Person unterschiedlich "
+"geschrieben."
+msgstr ""
+
+msgid "Feste Felder mit einheitlichem Format für jeden Fang."
+msgstr ""
+
+msgid "Suchen und Auswerten"
+msgstr ""
+
+msgid ""
+"Fänge liegen über lose Zettel und verstreute Tabellen verteilt und sind "
+"schwer zu durchsuchen."
+msgstr ""
+
+msgid "Alle Fänge liegen als ein durchsuchbarer Datensatz vor."
+msgstr ""
+
+msgid "Meldung an die Vogelwarte"
+msgstr ""
+
+msgid ""
+"Für die Meldung wird die Tabelle mühsam in das geforderte Format umgebaut."
+msgstr ""
+
+msgid ""
+"Ein Schema für alle Fänge, sauber als IWM- und EURING-Datei exportierbar."
 msgstr ""
 
 msgid "Warteliste · Beringung"
