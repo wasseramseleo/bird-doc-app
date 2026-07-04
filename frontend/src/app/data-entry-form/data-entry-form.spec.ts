@@ -2287,6 +2287,153 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #340: the non-blocking Stundenwechsel-Hinweis on the Uhrzeit field. The
+  // suggested time snaps to the top of the hour and is re-read from the clock on
+  // each save-reset; when that freshly-suggested hour differs from the hour of the
+  // entry just saved, a calm alert with a one-click „auf HH:00 zurück" revert
+  // appears — never a modal, never sticky, never within the same hour.
+  describe('Stundenwechsel-Hinweis on the Uhrzeit field (#340)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    // Freeze the wall clock the auto-advance reads, so the freshly-suggested
+    // top-of-hour is deterministic (each call gets a fresh Date — getInitialDateTime
+    // mutates it via setMinutes).
+    function freezeClockAt(local: string): void {
+      spyOn(component as unknown as { currentDate: () => Date }, 'currentDate').and.callFake(
+        () => new Date(local),
+      );
+    }
+
+    // Save the current form (a valid Wiederfang) and drain the post-save timers so
+    // cleanReset() — which raises/clears the hint — has fully run.
+    function save(): void {
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      tick(50);
+      fixture.detectChanges();
+    }
+
+    it('raises a non-blocking hint on the time field after a save that crossed an hour boundary', fakeAsync(() => {
+      // Clock now reads 14:20 → the next suggestion snaps to 14:00, but the bird was
+      // still being stamped 13:00 from the previous net-round.
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      const hint = component.hourChangeHint();
+      expect(hint).not.toBeNull();
+      expect(hint!.previousDateTime).toBe('2026-07-04T13:00');
+      expect(hint!.suggestedDateTime).toBe('2026-07-04T14:00');
+
+      // The note names the new hour; the revert names the previous hour.
+      expect(component.hourChangeMessage()).toContain('14:00');
+      expect(component.hourChangeRevertLabel()).toBe('auf 13:00 zurück');
+
+      // Surfaced on the time field in the DOM, and no blocking modal was opened.
+      const el = fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]');
+      expect(el).not.toBeNull();
+      expect(el.textContent).toContain('Stunde gewechselt auf 14:00');
+
+      tick(900);
+    }));
+
+    it('opens no modal for the hour-change signal — it is purely non-blocking', fakeAsync(() => {
+      const openSpy = spyOn(
+        (component as unknown as { dialog: MatDialog }).dialog,
+        'open',
+      ).and.callThrough();
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      expect(component.hourChangeHint()).not.toBeNull();
+      expect(openSpy).not.toHaveBeenCalled();
+
+      tick(900);
+    }));
+
+    it('raises no hint when the suggested hour is unchanged (same-hour save)', fakeAsync(() => {
+      // Clock reads 14:20 and the bird was stamped 14:00 — same hour, no signal.
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T14:00' });
+
+      save();
+
+      expect(component.hourChangeHint()).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]')).toBeNull();
+
+      tick(900);
+    }));
+
+    it('reverts the time field to the previous hour on a one-click „auf HH:00 zurück"', fakeAsync(() => {
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      // Post-reset the field auto-advanced to the new hour…
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+
+      // …until the one-click revert writes the previous hour back and clears the hint.
+      const revert = fixture.nativeElement.querySelector(
+        '[data-testid="hour-change-revert"]',
+      ) as HTMLButtonElement;
+      revert.click();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T13:00');
+      expect(component.hourChangeHint()).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]')).toBeNull();
+
+      tick(900);
+    }));
+
+    it('is not sticky — a following same-hour save clears the hint and keeps the clock-driven suggestion', fakeAsync(() => {
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+      save();
+      expect(component.hourChangeHint()).not.toBeNull();
+      tick(900);
+
+      // Next capture is saved within the (now current) 14:00 hour — no forced revert
+      // to 13:00, the suggestion tracks the clock and the hint is gone.
+      fillValidWiederfang();
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+      save();
+
+      expect(component.hourChangeHint()).toBeNull();
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+
+      tick(900);
+    }));
+  });
+
   describe('capture idempotency key (#155, offline outbox groundwork)', () => {
     const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let httpMock: HttpTestingController;
