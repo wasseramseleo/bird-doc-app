@@ -14,9 +14,28 @@ internals.
 import json
 import re
 
-from landing.glossar import GLOSSAR_ENTRIES
+from landing.glossar import GLOSSAR_BY_SLUG, GLOSSAR_ENTRIES
 
 GLOSSAR_INDEX_URL = "/wissen/glossar/"
+
+# The first-wave field-domain vocabulary the Beringungs-Glossar ships with
+# (PRD #300, issue #313) — roughly a dozen terms including the #306 seed terms.
+# Pinned here so the whole wave is asserted routable, listed and in the sitemap;
+# a subset check (not equality) lets later waves add terms without editing this.
+FIRST_WAVE_SLUGS = {
+    "beringung",
+    "erstfang",
+    "wiederfang",
+    "ringgroesse",
+    "empfohlene-ringgroesse",
+    "ringserie",
+    "kuerzel",
+    "fangmethode",
+    "lockmittel",
+    "fangtag",
+    "artennorm-plausibilitaet",
+    "zentrale",
+}
 
 
 def test_glossar_index_returns_200_and_lists_every_seeded_term(client):
@@ -202,3 +221,74 @@ def test_glossar_sitemap_entries_are_monthly_and_index_outranks_the_terms(client
     }
     assert term_priorities, "no glossar term entries in the sitemap"
     assert all(index_priority > term for term in term_priorities)
+
+
+# --- First-wave content (issue #313) ----------------------------------------
+# The whole first wave is authored on the #306 mechanism; these guards assert
+# the wave is complete and honour the editorial acceptance criteria structurally
+# (the prose quality itself is reviewed by humans at PR review).
+
+
+def test_the_full_first_wave_is_routable_listed_and_in_the_sitemap(client, db):
+    # Every first-wave term has its own /wissen/glossar/<slug>/ page (200), is
+    # named and linked on the index, and is advertised in the Glossar sitemap
+    # section — asserted over public HTTP for the complete wave, not just a seed.
+    slugs = {entry.slug for entry in GLOSSAR_ENTRIES}
+    missing = FIRST_WAVE_SLUGS - slugs
+    assert not missing, f"first-wave terms not authored: {sorted(missing)}"
+
+    index = client.get(GLOSSAR_INDEX_URL).content.decode()
+    sitemap = _sitemap_glossar_urls(client)
+    for slug in FIRST_WAVE_SLUGS:
+        url = f"/wissen/glossar/{slug}/"
+        assert client.get(url).status_code == 200, f"{slug} is not routable"
+        assert f'href="/wissen/glossar/{slug}/"' in index, f"{slug} is missing on the index"
+        assert url in sitemap, f"{slug} is missing from the sitemap"
+
+
+def test_every_entry_is_150_to_300_words_of_public_prose():
+    # Acceptance criterion (#313): each entry is 150–300 words — long enough to
+    # answer and explain, short enough to stay a scannable reference. Counts the
+    # visible body prose (the answer-first lead plus the explaining paragraphs).
+    for entry in GLOSSAR_ENTRIES:
+        words = len((entry.lead + " " + " ".join(entry.absaetze)).split())
+        assert 150 <= words <= 300, f"{entry.slug} has {words} words (want 150-300)"
+
+
+# Product / tenancy vocabulary the glossar deliberately excludes: it defines the
+# field craft, not BirdDoc's account model (issue #313, CONTEXT.md Beringungs-
+# Glossar). Matched whole-word, case-insensitively, across every text field.
+PRODUCT_TENANCY_TERMS = (
+    "Mitgliedschaft",
+    "Mitglied",
+    "Zugangscode",
+    "Rolle",
+    "Seat-Limit",
+    "Mitgliedsplatz",
+    "Warteliste",
+    "Org-Einladung",
+    "Einladung",
+)
+
+
+def test_no_entry_uses_product_or_tenancy_vocabulary():
+    # Acceptance criterion (#313): product/tenancy vocabulary (Mitgliedschaft,
+    # Zugangscode, Rolle, …) is explicitly excluded — it would dilute the
+    # reference and interests no outside reader.
+    for entry in GLOSSAR_ENTRIES:
+        haystack = " ".join((entry.begriff, entry.meta_description, entry.lead, *entry.absaetze))
+        for term in PRODUCT_TENANCY_TERMS:
+            assert not re.search(rf"\b{re.escape(term)}\b", haystack, re.IGNORECASE), (
+                f"{entry.slug} uses excluded product/tenancy term {term!r}"
+            )
+
+
+def test_artennorm_entry_explains_the_concept_without_publishing_numbers():
+    # Acceptance criterion (#313): the Artennorm/Plausibilität entry explains the
+    # concept, but the numeric norm values stay signup-gated and are never
+    # published on the public reference — so the entry carries no digit at all.
+    entry = GLOSSAR_BY_SLUG["artennorm-plausibilitaet"]
+    body = " ".join((entry.meta_description, entry.lead, *entry.absaetze))
+    assert not any(char.isdigit() for char in body), (
+        "no numeric Artennorm value may be published on the public glossar"
+    )
