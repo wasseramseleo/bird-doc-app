@@ -1,8 +1,15 @@
+import { LOCALE_ID } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { registerLocaleData } from '@angular/common';
+import localeDeAt from '@angular/common/locales/de-AT';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
+
+// The KPI row's derived figures (Wiederfang-Anteil, Ø/Fangtag) are formatted
+// de-AT (comma decimals, percent), so the tests need the locale data registered.
+registerLocaleData(localeDeAt);
 
 import { ProjectDashboardComponent } from './project-dashboard';
 import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
@@ -29,7 +36,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
   return {
     range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
-    totals: { faenge: 142, artenzahl: 17 },
+    totals: { faenge: 120, artenzahl: 17, fangtage: 16, erstfaenge: 90, wiederfaenge: 30 },
     top_species: [
       { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
       { species_id: 'sp-2', name: 'Amsel', count: 21 },
@@ -68,6 +75,7 @@ function setup(project: Project) {
       provideHttpClient(),
       provideHttpClientTesting(),
       provideNoopAnimations(),
+      { provide: LOCALE_ID, useValue: 'de-AT' },
       { provide: ProjectActionsService, useValue: actions },
     ],
   });
@@ -99,6 +107,61 @@ describe('ProjectDashboardComponent', () => {
     expect(text).toContain('13');
     expect(text).toContain('2026-06-28');
 
+    httpMock.verify();
+  });
+
+  it('issues its initial stats request with the year preset (Dieses Jahr)', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges(); // fires the load effect
+
+    // The dashboard opens on „Dieses Jahr" so it answers „Wie läuft die Saison?"
+    // immediately (issue #293) — the endpoint's own default (week) is untouched.
+    const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    expect(req.request.params.get('preset')).toBe('year');
+    req.flush(makeStats());
+
+    // The year preset button is the active selection.
+    fixture.detectChanges();
+    const active: HTMLButtonElement | null = fixture.nativeElement.querySelector(
+      '.range-selector__preset--active',
+    );
+    expect(active?.textContent?.trim()).toBe('Dieses Jahr');
+    httpMock.verify();
+  });
+
+  it('renders the four-tile KPI row from the stats totals for the selected range', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+
+    // totals: faenge 120 (90 Erstfänge + 30 Wiederfänge), 17 Arten, 16 Fangtage.
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    const tiles: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.kpi-tile'),
+    );
+    expect(tiles.length).toBe(4);
+    // Normalise the locale's narrow/no-break spaces (de-AT percent) to plain ones.
+    const textOf = (el: HTMLElement) => (el.textContent ?? '').replace(/[  ]/g, ' ');
+
+    // Fänge — total captures + the Erstfang composition as a sub-detail.
+    expect(textOf(tiles[0])).toContain('Fänge');
+    expect(textOf(tiles[0])).toContain('120');
+    expect(textOf(tiles[0])).toContain('davon 90 Erstfänge');
+
+    // Arten — species richness (Artenzahl), unchanged semantics.
+    expect(textOf(tiles[1])).toContain('Arten');
+    expect(textOf(tiles[1])).toContain('17');
+
+    // Fangtage — count + Ø Fänge/Fangtag (120 / 16 = 7,5), derived client-side, de-AT.
+    expect(textOf(tiles[2])).toContain('Fangtage');
+    expect(textOf(tiles[2])).toContain('16');
+    expect(textOf(tiles[2])).toContain('7,5');
+
+    // Wiederfang-Anteil — recapture share (30 / 120 = 25 %) + the absolute count.
+    expect(textOf(tiles[3])).toContain('Wiederfang-Anteil');
+    expect(textOf(tiles[3])).toContain('25 %');
+    expect(textOf(tiles[3])).toContain('30');
     httpMock.verify();
   });
 
@@ -139,9 +202,9 @@ describe('ProjectDashboardComponent', () => {
     const { fixture, httpMock } = setup(makeProject());
     fixture.detectChanges();
 
-    // Default range is Letzte Woche (preset=week).
+    // Default range is Dieses Jahr (preset=year) — the season-opening default (issue #293).
     const first = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
-    expect(first.request.params.get('preset')).toBe('week');
+    expect(first.request.params.get('preset')).toBe('year');
     first.flush(makeStats());
     fixture.detectChanges();
 
@@ -201,7 +264,12 @@ describe('ProjectDashboardComponent', () => {
 
     httpMock
       .expectOne((r) => r.url.endsWith('/projects/p1/stats/'))
-      .flush(makeStats({ totals: { faenge: 0, artenzahl: 0 }, last_fangtag: null }));
+      .flush(
+        makeStats({
+          totals: { faenge: 0, artenzahl: 0, fangtage: 0, erstfaenge: 0, wiederfaenge: 0 },
+          last_fangtag: null,
+        }),
+      );
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.stat-card')).toBeNull();

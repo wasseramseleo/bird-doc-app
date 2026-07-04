@@ -7,7 +7,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import {DecimalPipe} from '@angular/common';
+import {DecimalPipe, PercentPipe} from '@angular/common';
 import {HttpErrorResponse} from '@angular/common/http';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {MatIconModule} from '@angular/material/icon';
@@ -20,6 +20,7 @@ import {Project} from '../../models/project.model';
 import {
   ProjectStats,
   ProjectStatsRangeParams,
+  ProjectStatsTotals,
   StatsRangePreset,
 } from '../../models/project-stats.model';
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
@@ -51,6 +52,7 @@ interface RangePresetOption {
   selector: 'app-project-dashboard',
   imports: [
     DecimalPipe,
+    PercentPipe,
     MatIconModule,
     MatProgressSpinnerModule,
     SpeciesBarChartComponent,
@@ -73,9 +75,11 @@ export class ProjectDashboardComponent {
     {preset: 'all', label: 'Alles'},
   ];
 
-  // The selected range. Letzte Woche is the default (issue #203); a custom range
-  // clears the preset and carries explicit from/to ISO dates.
-  readonly range = signal<ProjectStatsRangeParams>({preset: 'week'});
+  // The selected range. „Dieses Jahr" is the default so the dashboard answers
+  // „Wie läuft die Saison?" the moment it opens (issue #293); a custom range
+  // clears the preset and carries explicit from/to ISO dates. This is a
+  // client-only default — the endpoint's own default (week) is untouched.
+  readonly range = signal<ProjectStatsRangeParams>({preset: 'year'});
   readonly activePreset = computed(() => this.range().preset ?? null);
   // Whether the custom-range panel (explicit from/to) is the active selection.
   readonly customActive = computed(() => this.activePreset() === null);
@@ -94,6 +98,25 @@ export class ProjectDashboardComponent {
   readonly failure = signal<DashboardFailure | null>(null);
 
   readonly lastFangtag = computed(() => this.stats()?.last_fangtag ?? null);
+
+  // The KPI row's figures for the selected range (issue #293). `totals` is served
+  // whole; Wiederfang-Anteil and Ø Fänge/Fangtag are the two figures derived
+  // client-side from the served counts (guarded against an empty range so they
+  // never divide by zero). The absolute Wiederfang count travels with the share
+  // so a small sample is not misread as a strong rate.
+  readonly totals = computed<ProjectStatsTotals>(
+    () => this.stats()?.totals ?? {faenge: 0, artenzahl: 0, fangtage: 0, erstfaenge: 0, wiederfaenge: 0},
+  );
+  // A fraction (0–1); the template's PercentPipe renders it as a de-AT percentage.
+  readonly wiederfangAnteil = computed(() => {
+    const t = this.totals();
+    return t.faenge > 0 ? t.wiederfaenge / t.faenge : 0;
+  });
+  readonly faengeProFangtag = computed(() => {
+    const t = this.totals();
+    return t.fangtage > 0 ? t.faenge / t.fangtage : 0;
+  });
+
   readonly topSpecies = computed(() => this.stats()?.top_species ?? []);
   readonly series = computed(() => this.stats()?.series ?? {days: [], lines: []});
   readonly hasSeries = computed(() => this.series().days.length > 0);

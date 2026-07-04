@@ -113,6 +113,32 @@
       </div>
     }
     @case ('populated') {
+      @if (totals(); as kpi) {
+        <section class="kpi-row" aria-label="Kennzahlen">
+          <div class="kpi-tile">
+            <span class="kpi-tile__label">Fänge</span>
+            <span class="kpi-tile__value">{{ kpi.faenge | number }}</span>
+            <span class="kpi-tile__detail">davon {{ kpi.erstfaenge | number }} Erstfänge</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile__label">Arten</span>
+            <span class="kpi-tile__value">{{ kpi.artenzahl | number }}</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile__label">Fangtage</span>
+            <span class="kpi-tile__value">{{ kpi.fangtage | number }}</span>
+            <span class="kpi-tile__detail"
+              >Ø {{ faengeProFangtag() | number: '1.1-1' }} Fänge/Fangtag</span
+            >
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile__label">Wiederfang-Anteil</span>
+            <span class="kpi-tile__value">{{ wiederfangAnteil() | percent: '1.0-1' }}</span>
+            <span class="kpi-tile__detail">{{ kpi.wiederfaenge | number }} Wiederfänge</span>
+          </div>
+        </section>
+      }
+
       @if (lastFangtag(); as day) {
     <article class="stat-card">
       <h2 class="stat-card__title">Letzter Tag</h2>
