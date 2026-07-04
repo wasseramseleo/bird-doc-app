@@ -86,16 +86,73 @@ def breadcrumb_context(breadcrumbs):
     }
 
 
+class WissenHubView(TemplateView):
+    """`/wissen/` — the index hub of the Wissen reference (issue #314).
+
+    The front door of the whole reference: it describes what Wissen contains and
+    links its sections — the Ringgrößen-Tabelle (#280), the Artenseiten (#282)
+    and the Beringungs-Glossar (#306) — so a reader and a machine reader can
+    grasp and link the section as a whole (PRD #300, user story 10). German-only
+    and server-rendered like the rest of the reference (ADR 0009): it sits at the
+    top of the Wissen breadcrumb trail and joins the sitemap.
+
+    The Artenseiten have no dedicated index of their own — the Ringgrößen-Tabelle
+    is their list — so the hub links a *representative* Artseite, derived from the
+    same `Species` reference (and the same slug rule) as the table itself, so the
+    example can never drift to a page that 404s.
+    """
+
+    template_name = "landing/wissen_index.html"
+
+    PAGE_NAME = "Wissen"
+
+    # Answer-first <meta name="description"> (PRD #300, story 8/10): states what
+    # the reference contains — the ring-size reference, the per-species pages and
+    # the field-vocabulary glossar — so the snippet is useful and a machine
+    # reader can grasp the section as a whole.
+    META_DESCRIPTION = (
+        "Die Wissen-Referenz von BirdDoc bündelt die öffentliche Beringungs-"
+        "Referenz für Österreich: die Ringgrößen-Tabelle mit der Empfohlenen "
+        "Ringgröße jeder Art, eine Artenseite je Art und das Beringungs-Glossar "
+        "mit den Fachbegriffen der Vogelberingung."
+    )
+
+    def get_context_data(self, **kwargs):
+        example_species = (
+            Species.objects.filter(special_kind=Species.SpecialKind.NORMAL)
+            .order_by("common_name_de")
+            .first()
+        )
+        example_art_url = (
+            reverse("wissen_art", kwargs={"slug": art_slug(example_species)})
+            if example_species is not None
+            else None
+        )
+        return {
+            **super().get_context_data(**kwargs),
+            "meta_description": self.META_DESCRIPTION,
+            "example_species": example_species,
+            "example_art_url": example_art_url,
+            **breadcrumb_context(
+                [
+                    ("BirdDoc", self.request.build_absolute_uri(reverse("landing:home"))),
+                    (self.PAGE_NAME, self.request.build_absolute_uri(self.request.path)),
+                ]
+            ),
+        }
+
+
 class WissenReferenceSitemap(Sitemap):
-    """The /wissen/ reference in sitemap.xml (issue #284).
+    """The /wissen/ reference in sitemap.xml (issue #284, #314).
 
     Advertises the whole programmatic reference so the crawler discovers the
-    section, not just the marketing pages: the Ringgrößen index plus one URL
-    per non-Sonderart species page, derived from the same `Species` reference
-    data (and the same slug rule) as the pages themselves — so the sitemap can
-    never advertise a page that 404s or miss one that exists. Registered
-    alongside the static-pages sitemap in `seo.SITEMAPS`; `robots.txt` already
-    points at the one resulting sitemap.xml.
+    section, not just the marketing pages: the /wissen/ index hub (#314), the
+    Ringgrößen index and one URL per non-Sonderart species page. The hub and the
+    Ringgrößen index are reversed from their routes; the species pages are
+    derived from the same `Species` reference data (and the same slug rule) as
+    the pages themselves — so the sitemap can never advertise a page that 404s or
+    miss one that exists. Registered alongside the static-pages sitemap in
+    `seo.SITEMAPS`; `robots.txt` already points at the one resulting sitemap.xml.
     """
 
     protocol = "https"
@@ -103,11 +160,15 @@ class WissenReferenceSitemap(Sitemap):
     changefreq = "monthly"
 
     @cached_property
+    def _hub_url(self):
+        return reverse("wissen_index")
+
+    @cached_property
     def _index_url(self):
         return reverse("wissen_ringgroessen")
 
     def items(self):
-        return [self._index_url] + [
+        return [self._hub_url, self._index_url] + [
             reverse("wissen_art", kwargs={"slug": art_slug(species)})
             for species in Species.objects.filter(special_kind=Species.SpecialKind.NORMAL).order_by(
                 "common_name_de"
@@ -118,7 +179,10 @@ class WissenReferenceSitemap(Sitemap):
         return item
 
     def priority(self, item):
-        # The index is the hub of the section; the species pages are leaves.
+        # The hub is the front door of the whole reference; the Ringgrößen index
+        # is the hub of the section below it; the species pages are leaves.
+        if item == self._hub_url:
+            return 0.8
         return 0.7 if item == self._index_url else 0.5
 
 
