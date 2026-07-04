@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-04 17:38+0200\n"
+"POT-Creation-Date: 2026-07-04 18:22+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -973,6 +973,91 @@ msgstr ""
 msgid ""
 "Wer während der Beta gründet, behält <strong>dauerhaft</strong> einen "
 "<strong>Vorzugspreis</strong>, auch nach 1.0."
+msgstr ""
+
+msgid "BirdDoc vs. Excel und Papierlisten – Beringungssoftware im Vergleich"
+msgstr ""
+
+msgid ""
+"BirdDoc vs. Excel und Papierlisten: BirdDoc ersetzt handschriftliche "
+"Fanglisten und Excel-Tabellen durch die direkte Erfassung am Ringtisch — ein "
+"sauberer Datensatz pro Vogel, ohne Abtippen, mit fortlaufenden Ringnummern, "
+"festen Feldern und einheitlichem Format, exportierbar als IWM- und EURING-"
+"Datei."
+msgstr ""
+
+msgid "BirdDoc vs. Excel und Papierlisten"
+msgstr ""
+
+msgid "BirdDoc vs. Excel und Papierlisten: die Beringungssoftware im Vergleich"
+msgstr ""
+
+msgid ""
+"BirdDoc ersetzt handschriftliche Fanglisten und Excel-Tabellen durch die "
+"direkte Erfassung am Ringtisch: ein sauberer Datensatz pro gefangenem und "
+"beringtem Vogel, ohne zweites Abtippen, mit fortlaufenden Ringnummern, "
+"festen Feldern und einheitlichem Format — jederzeit exportierbar als IWM- "
+"und EURING-Datei."
+msgstr ""
+
+msgid "Erfassung"
+msgstr ""
+
+msgid "Excel und Papier"
+msgstr ""
+
+msgid ""
+"Jeder Fang wird am Ringtisch auf Papier notiert und später ein zweites Mal "
+"in eine Tabelle abgetippt."
+msgstr ""
+
+msgid ""
+"Direkt am Ringtisch erfasst, während der Vogel in der Hand ist — ohne zweite "
+"Eingabe."
+msgstr ""
+
+msgid "Ringnummern"
+msgstr ""
+
+msgid ""
+"Ringnummern werden von Hand weitergezählt — ein Zahlendreher fällt oft erst "
+"spät auf."
+msgstr ""
+
+msgid "Die nächste Nummer der Ringserie wird fortlaufend vorgeschlagen."
+msgstr ""
+
+msgid ""
+"Datum, Maße und Codes werden je nach Zeile und Person unterschiedlich "
+"geschrieben."
+msgstr ""
+
+msgid "Feste Felder mit einheitlichem Format für jeden Fang."
+msgstr ""
+
+msgid "Suchen und Auswerten"
+msgstr ""
+
+msgid ""
+"Fänge liegen über lose Zettel und verstreute Tabellen verteilt und sind "
+"schwer zu durchsuchen."
+msgstr ""
+
+msgid "Alle Fänge liegen als ein durchsuchbarer Datensatz vor."
+msgstr ""
+
+msgid "Meldung an die Vogelwarte"
+msgstr ""
+
+msgid ""
+"Für die Meldung wird die Tabelle mühsam in das geforderte Format umgebaut."
+msgstr ""
+
+msgid ""
+"Ein Schema für alle Fänge, sauber als IWM- und EURING-Datei exportierbar."
+msgstr ""
+
+msgid "BirdDoc ist das digitale Stationsjournal für die Vogelberingung."
 msgstr ""
 
 msgid "Warteliste · Beringung"

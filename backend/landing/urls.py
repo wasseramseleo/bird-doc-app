@@ -24,6 +24,10 @@ urlpatterns = [
         views.GespraechDoneView.as_view(),
         name="gespraech_done",
     ),
+    # Public bottom-funnel comparison — the citable BirdDoc-vs-Excel/Papierlisten
+    # page (issue #302). Bilingual like the home: German at the apex, English
+    # under /en/ (this urlconf is wrapped by i18n_patterns in birddoc/urls.py).
+    path("vergleich/", views.VergleichView.as_view(), name="vergleich"),
     # Zugangscode-gated public registration: found an Organisation + email
     # verification, reachable unauthenticated at the apex (issue #79).
     path("registrierung/", views.RegisterView.as_view(), name="register"),

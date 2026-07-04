@@ -150,3 +150,28 @@ def test_auth_pages_stay_german_under_an_en_prefix(client, db):
     en_reset = client.get("/en/passwort-zuruecksetzen/")
     assert en_reset.status_code == 200
     assert "Zurück" in en_reset.content.decode()
+
+
+def test_vergleich_switches_between_german_and_english(client):
+    # The comparison page is bilingual (issue #302): the full comparison content
+    # renders German at the apex and English under /en/, with the German gone
+    # from the English page. Exercised through the initial server-rendered HTML,
+    # so the content is present with no client-side JS required (ADR 0009).
+    de = client.get("/vergleich/").content.decode()
+    en = client.get("/en/vergleich/").content.decode()
+    # The German comparison at the apex...
+    assert "Excel und Papierlisten" in de
+    assert "Direkt am Ringtisch erfasst" in de
+    # ...and the English comparison under /en/, with the German gone.
+    assert "Excel and paper lists" in en
+    assert "Captured directly at the ringing table" in en
+    assert "Direkt am Ringtisch erfasst" not in en
+
+
+def test_vergleich_carries_a_working_de_en_toggle(client):
+    # The header toggle on the comparison switches THAT page's language — from
+    # the German apex to /en/vergleich/ and back — rather than bouncing home.
+    de = client.get("/vergleich/").content.decode()
+    en = client.get("/en/vergleich/").content.decode()
+    assert 'class="lang-toggle__other" href="/en/vergleich/"' in de
+    assert 'class="lang-toggle__other" href="/vergleich/"' in en

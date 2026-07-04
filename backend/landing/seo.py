@@ -99,8 +99,9 @@ def organization_jsonld(request):
 class StaticViewSitemap(Sitemap):
     """The public, indexable pages of the marketing + trust surface.
 
-    A static set of named routes — the marketing home, the two lead funnels and
-    the legal pages — reversed to their canonical (default-language, apex) URLs.
+    A static set of named routes — the marketing home, the two lead funnels, the
+    BirdDoc-vs-Excel/Papierlisten comparison (issue #302) and the legal pages —
+    reversed to their canonical (default-language, apex) URLs.
     The transactional token flows (registration, password reset, invitation
     accept) are deliberately left out: they are reached by mailed links, not
     crawled."""
@@ -113,6 +114,7 @@ class StaticViewSitemap(Sitemap):
             "landing:home",
             "landing:warteliste",
             "landing:gespraech",
+            "landing:vergleich",
             "landing:impressum",
             "landing:datenschutz",
             "landing:agb",

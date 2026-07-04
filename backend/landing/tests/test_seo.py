@@ -51,7 +51,15 @@ def test_sitemap_lists_the_public_pages(client, db):
     from django.urls import reverse
 
     content = client.get("/sitemap.xml").content.decode()
-    for name in ("home", "warteliste", "gespraech", "impressum", "datenschutz", "agb"):
+    for name in (
+        "home",
+        "warteliste",
+        "gespraech",
+        "vergleich",
+        "impressum",
+        "datenschutz",
+        "agb",
+    ):
         assert reverse(f"landing:{name}") in content
 
 
@@ -416,3 +424,65 @@ def test_en_home_translates_the_head_term_title_and_h1(client):
     assert "Bird ringing software" in title
     assert h1.strip().startswith("Bird ringing software")
     assert "Beringungssoftware" not in content
+
+
+# ---------------------------------------------------------------------------
+# /vergleich/ — the bilingual BirdDoc-vs-Excel/Papierlisten comparison page
+# (issue #302, PRD #300). A citable bottom-funnel comparison that expands the
+# homepage's Excel-comparison section into its own indexable DE/EN cluster.
+# ---------------------------------------------------------------------------
+
+
+def test_vergleich_de_and_en_return_200(client):
+    # The comparison page is bilingual like the marketing home: German at the
+    # apex (no prefix) and English under /en/, both server-rendered.
+    assert client.get("/vergleich/").status_code == 200
+    assert client.get("/en/vergleich/").status_code == 200
+
+
+def test_vergleich_renders_self_canonical_and_hreflang_cluster(client):
+    # The German apex variant is self-canonical and advertises the full DE/EN/
+    # x-default cluster, driven by the same language-switch logic as the home;
+    # x-default resolves to the German apex URL (default language, unprefixed).
+    content = client.get("/vergleich/").content.decode()
+    de_url = "http://testserver/vergleich/"
+    en_url = "http://testserver/en/vergleich/"
+    assert f'<link rel="canonical" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_vergleich_en_variant_is_self_canonical_with_the_same_cluster(client):
+    # The /en/ variant canonicalises to itself (never to the German apex) and
+    # renders the SAME alternate cluster as its German counterpart (issue #279).
+    content = client.get("/en/vergleich/").content.decode()
+    de_url = "http://testserver/vergleich/"
+    en_url = "http://testserver/en/vergleich/"
+    assert f'<link rel="canonical" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="de" href="{de_url}">' in content
+    assert f'<link rel="alternate" hreflang="en" href="{en_url}">' in content
+    assert f'<link rel="alternate" hreflang="x-default" href="{de_url}">' in content
+
+
+def test_vergleich_carries_an_answer_first_title_and_meta_description(client):
+    # A <title> and a <meta name="description"> are present and answer-first:
+    # the description opens by naming the comparison and BirdDoc's answer to it
+    # (issue #305), so the search/AI snippet states the difference up front.
+    import re
+
+    content = client.get("/vergleich/").content.decode()
+    title = re.search(r"<title>(.*?)</title>", content, re.DOTALL).group(1)
+    assert "BirdDoc" in title
+    assert "Excel" in title
+    description = re.search(r'<meta name="description" content="([^"]+)"', content).group(1)
+    assert description.startswith("BirdDoc vs. Excel und Papierlisten")
+
+
+def test_sitemap_lists_the_vergleich_page(client, db):
+    # The comparison joins the static sitemap section so a crawler discovers it
+    # by its canonical (default-language, apex) URL.
+    from django.urls import reverse
+
+    content = client.get("/sitemap.xml").content.decode()
+    assert reverse("landing:vergleich") in content
