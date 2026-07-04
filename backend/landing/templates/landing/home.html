@@ -1,5 +1,5 @@
 {% extends "landing/base.html" %}
-{% load static i18n humanize %}
+{% load static i18n humanize seo_landing %}
 
 {% comment %}
 `page--marketing` carries the shared marketing surface (wide measure, top nav);
@@ -10,14 +10,25 @@ default centred main, so the full-bleed treatment must key on `page--home`.
 {% block body_class %}page--marketing page--home{% endblock %}
 
 {% comment %}
+Head-term retarget (issue #281): the <title> leads the brand with the category
+term „Beringungssoftware" — what a Beringer shopping for a tool actually
+searches — while the distinctive „Stationsjournal für die Vogelberingung"
+voice survives in the same breath. The string is shared with the hero H1
+below so title and heading can never drift apart.
+{% endcomment %}
+{% block title %}BirdDoc – {% translate "Beringungssoftware &amp; Stationsjournal für die Vogelberingung" %}{% endblock %}
+
+{% comment %}
 SEO + Open-Graph share baseline (issue #108): a shared BirdDoc link previews
 with a title, a description and the hero Fang-Karte as the share image, so it
 reads credibly in chat and on social. The image is a server-rendered SVG of the
 same FANG_KARTE specimen (ADR 0009). The copy is translatable like the rest of
-the bilingual marketing surface (issue #107); og:image/og:url are absolute,
-built in the view.
+the bilingual marketing surface (issue #107); og:image is absolute, built in
+the view; og:url shares the canonical_url tag with base.html's canonical link
+(issue #279) so the two can never drift apart.
 {% endcomment %}
 {% block head_meta %}
+    {% include "landing/_hreflang_alternates.html" %}
     {% blocktranslate trimmed asvar meta_description %}Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal für die Vogelberingung. Ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst, während der Vogel in der Hand ist.{% endblocktranslate %}
     {% translate "BirdDoc: Stationsjournal für die Vogelberingung" as og_title %}
     <meta name="description" content="{{ meta_description }}">
@@ -26,7 +37,7 @@ built in the view.
     <meta property="og:site_name" content="BirdDoc">
     <meta property="og:title" content="{{ og_title }}">
     <meta property="og:description" content="{{ meta_description }}">
-    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:url" content="{% canonical_url %}">
     <meta property="og:image" content="{{ og_image_url }}">
     <meta property="og:image:type" content="image/svg+xml">
     <meta property="og:image:width" content="1200">
@@ -37,6 +48,13 @@ built in the view.
     <meta name="twitter:title" content="{{ og_title }}">
     <meta name="twitter:description" content="{{ meta_description }}">
     <meta name="twitter:image" content="{{ og_image_url }}">
+
+    {% comment %}
+    Schema.org SoftwareApplication JSON-LD (issue #283): inline only — no
+    third-party request (ADR 0009). The JSON is dumped in the view so it is
+    parseable by construction, same rule as the Wissen breadcrumb block.
+    {% endcomment %}
+    <script type="application/ld+json">{{ software_application_jsonld|safe }}</script>
 {% endblock %}
 
 {% comment %}
@@ -93,9 +111,16 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     {% endcomment %}
     <section class="hero" id="top">
         <div class="hero__copy">
+            {% comment %}
+            Head-term retarget (issue #281): the H1 leads with the searched
+            category term „Beringungssoftware" (same string as the <title>),
+            and the distinctive „Stationsjournal für die Vogelberingung …
+            Schluss mit Papier und Excel" voice survives as the brand tagline
+            opening the lead.
+            {% endcomment %}
             <p class="eyebrow">{% translate "Stationsjournal · Beringung" %}</p>
-            <h1 class="hero__thesis">{% translate "Schluss mit Papier und Excel" %}</h1>
-            <p class="lead">{% blocktranslate trimmed %}BirdDoc ist das Stationsjournal für die Beringung: ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten Tabellen.{% endblocktranslate %}
+            <h1 class="hero__thesis">{% translate "Beringungssoftware &amp; Stationsjournal für die Vogelberingung" %}</h1>
+            <p class="lead">{% blocktranslate trimmed %}Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal für die Vogelberingung – ein sauberer Datensatz pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten Tabellen.{% endblocktranslate %}
                 <span class="badge badge--beta">Beta</span></p>
             {% include "landing/_app_german_only_note.html" %}
             {% comment %}

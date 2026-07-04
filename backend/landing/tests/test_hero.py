@@ -162,8 +162,14 @@ def test_home_ships_only_the_landings_own_first_party_script(client):
     # landing's single light JavaScript file — the progressive nav-toggle
     # enhancement, served from the landing's own statics — and nothing else:
     # no third-party script, no inline script (test_nav_toggle pins the rest).
+    # The inert SoftwareApplication JSON-LD data block (issue #283) is not a
+    # script: the browser never executes `type="application/ld+json"`.
+    import re
+
     content = client.get("/").content.decode()
-    assert content.lower().count("<script") == 1
+    scripts = re.findall(r"<script\b[^>]*>", content, re.IGNORECASE)
+    executable = [tag for tag in scripts if "application/ld+json" not in tag]
+    assert len(executable) == 1
     assert 'src="/static/landing/nav.js"' in content
 
 

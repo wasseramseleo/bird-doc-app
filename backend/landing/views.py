@@ -24,6 +24,7 @@ from .fang_formular import FANG_FORMULAR
 from .fang_karte import FANG_KARTE
 from .forms import GespraechForm, RegistrationForm, WartelisteForm
 from .models import Warteliste
+from .seo import software_application_jsonld
 from .stats import STATION_STATS
 
 
@@ -76,11 +77,16 @@ class HomeView(TemplateView):
             # Hand-maintained production figures for the stats row (issue #140):
             # constants, never a live cross-tenant aggregate (ADR 0005, ADR 0012).
             "station_stats": STATION_STATS,
-            # Absolute URLs for the Open-Graph card (issue #108): social scrapers
+            # Absolute URL for the Open-Graph card (issue #108): social scrapers
             # need scheme + host, not a relative path. The share image is the
             # Fang-Karte rendering, served language-independently at the root.
+            # (og:url and the canonical link come from the `canonical_url`
+            # template tag — one request-time source, issue #279.)
             "og_image_url": self.request.build_absolute_uri(reverse("og_fang_karte")),
-            "canonical_url": self.request.build_absolute_uri(self.request.path),
+            # Schema.org SoftwareApplication block (issue #283), dumped in
+            # Python so it is parseable by construction — a rich-result shot
+            # in a niche where no competitor bothers.
+            "software_application_jsonld": software_application_jsonld(self.request),
         }
 
 

@@ -13,6 +13,15 @@ edged panel; the form styling is inherited from the brand layer (ADR 0009).
 {% block body_class %}page--marketing page--funnel{% endblock %}
 
 {% comment %}
+The funnels are bilingual (issue #107), so — like the marketing home — every
+funnel page advertises its DE/EN hreflang alternates next to base.html's
+self-referential canonical (issue #279).
+{% endcomment %}
+{% block head_meta %}
+    {% include "landing/_hreflang_alternates.html" %}
+{% endblock %}
+
+{% comment %}
 The lead funnels are part of the bilingual surface (issue #107), so their
 header carries the DE/EN toggle: it switches each page between German (apex)
 and English (/en/) without leaving it.

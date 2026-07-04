@@ -1,0 +1,57 @@
+{% extends "landing/base_destination.html" %}
+
+{% comment %}
+Eine öffentliche Artenseite (issue #282, PRD #278): beantwortet die Suche
+„Ringgröße <Art>" — deutscher Name als H1, wissenschaftlicher Name, Familie
+und Ordnung, dazu die Empfohlene Ringgröße. Server-gerendert, skriptfrei
+(ADR 0009), Deutsch-only außerhalb der i18n_patterns.
+{% endcomment %}
+
+{% block body_class %}page--marketing{% endblock %}
+
+{% block title %}Ringgröße {{ species.common_name_de }} ({{ species.scientific_name }}) · BirdDoc{% endblock %}
+
+{% block content %}
+    {% include "landing/_wissen_breadcrumb.html" %}
+
+    <p class="eyebrow">Wissen</p>
+    <h1>{{ species.common_name_de }}</h1>
+    <p class="wissen-art__taxonomy">
+        <em>{{ species.scientific_name }}</em>
+        · Familie: {{ species.family_name }}
+        · Ordnung: {{ species.order_name }}
+    </p>
+
+    <h2>Empfohlene Ringgröße</h2>
+    {% if species.ring_size %}
+        <p>
+            Die Empfohlene Ringgröße für die Art
+            {{ species.common_name_de }} (<em>{{ species.scientific_name }}</em>)
+            ist <strong class="wissen-art__size">{{ species.ring_size }}</strong>
+            nach der österreichischen Artenliste, mit der BirdDoc bei der
+            Beringung arbeitet.
+        </p>
+    {% else %}
+        {# Ehrlicher Leerzustand — die Referenz erfindet nie einen Wert. #}
+        <p>
+            Für die Art {{ species.common_name_de }}
+            (<em>{{ species.scientific_name }}</em>) gibt es
+            keine Standard-Empfehlung in der österreichischen Artenliste.
+        </p>
+    {% endif %}
+
+    {# Artennorm-Teaser: reine Prosa — die Normwerte (PRD #245) bleiben #}
+    {# bewusst hinter der Anmeldung; hier wird nie ein Zahlenwert gerendert. #}
+    <h2>Plausibilitätsprüfung</h2>
+    <p>
+        BirdDoc warnt bei biologisch unplausiblen Messwerten — im Tool. Beim
+        Erfassen prüft BirdDoc Gewicht, Flügellänge und weitere Maße gegen die
+        Artennorm der jeweiligen Art und meldet Ausreißer sofort.
+    </p>
+
+    {# Warteliste-CTA: die Referenz führt in den bestehenden Funnel (issue #80). #}
+    <p class="wissen-cta">
+        BirdDoc schlägt die Ringgröße automatisch vor —
+        <a class="button" href="{% url 'landing:warteliste' %}">Zugang anfragen</a>
+    </p>
+{% endblock %}

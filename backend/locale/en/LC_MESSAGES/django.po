@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-02 06:51+0200\n"
+"POT-Creation-Date: 2026-07-04 00:19+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -22,6 +22,36 @@ msgid "Eingelöst"
 msgstr ""
 
 msgid "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
+msgstr ""
+
+msgid ""
+"Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang."
+msgstr ""
+
+msgid ""
+"Erstfänge und vernichtete Ringe müssen unter der Projekt-Zentrale erfasst "
+"werden."
+msgstr ""
+
+msgid "Keine gültige österreichische Ringgröße."
+msgstr ""
+
+msgid "Für eine ausländische Zentrale ist eine Ringgröße erforderlich."
+msgstr ""
+
+msgid "Zentralen-Code"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "Land"
+msgstr ""
+
+msgid "Zentrale"
+msgstr ""
+
+msgid "Zentralen"
 msgstr ""
 
 msgid "AS"
@@ -142,12 +172,6 @@ msgid "Kürzel"
 msgstr ""
 
 msgid "Beta"
-msgstr ""
-
-msgid "Name"
-msgstr ""
-
-msgid "Land"
 msgstr ""
 
 msgid "Plan"
@@ -483,10 +507,64 @@ msgstr ""
 msgid "Bemerkungen"
 msgstr ""
 
+msgid "Idempotenzschlüssel"
+msgstr ""
+
 msgid "List Name"
 msgstr ""
 
 msgid "Active for Autocomplete"
+msgstr ""
+
+msgid "Gewicht Ø (g)"
+msgstr ""
+
+msgid "Gewicht SD (g)"
+msgstr ""
+
+msgid "Federl. Ø (mm)"
+msgstr ""
+
+msgid "Federl. SD (mm)"
+msgstr ""
+
+msgid "Flügell. Ø (mm)"
+msgstr ""
+
+msgid "Flügell. SD (mm)"
+msgstr ""
+
+msgid "Tarsus Ø (mm)"
+msgstr ""
+
+msgid "Tarsus SD (mm)"
+msgstr ""
+
+msgid "Kerbe F2 Ø (mm)"
+msgstr ""
+
+msgid "Kerbe F2 SD (mm)"
+msgstr ""
+
+msgid "Innenfuß Ø (mm)"
+msgstr ""
+
+msgid "Innenfuß SD (mm)"
+msgstr ""
+
+msgid "Quotient Ø"
+msgstr ""
+
+msgid "Quotient Toleranz %"
+msgstr ""
+
+msgid "SD-Faktor"
+msgstr ""
+
+msgid "Geschlechtsbestimmung möglich"
+msgstr ""
+
+msgid "bei dj. Großgefiedermauser möglich"
 msgstr ""
 
 msgid "Ein Name ist erforderlich."
@@ -501,7 +579,24 @@ msgstr ""
 msgid "Ein Längengrad ist erforderlich."
 msgstr ""
 
+msgid ""
+"Dieser Beringer hat bereits Fänge erfasst und kann daher nicht mehr von "
+"seinem Konto getrennt oder einem anderen Konto zugeordnet werden."
+msgstr ""
+
+msgid "Die Mitgliedschaft gehört nicht zu deiner Organisation."
+msgstr ""
+
+msgid "Dieses Konto ist bereits mit einem Beringer verknüpft."
+msgstr ""
+
+msgid "Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel."
+msgstr ""
+
 msgid "Die Station muss zur Organisation des Projekts gehören."
+msgstr ""
+
+msgid "Unbekannter Zentralen-Code."
 msgstr ""
 
 msgid "Nachricht"
@@ -613,6 +708,9 @@ msgstr ""
 "After you send the form, we review your request and get in touch by email to "
 "arrange the conversation."
 
+msgid "Beringungssoftware &amp; Stationsjournal für die Vogelberingung"
+msgstr "Bird ringing software &amp; station journal"
+
 msgid ""
 "Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal für die "
 "Vogelberingung. Ein sauberer Datensatz pro gefangenem und beringtem Vogel, "
@@ -649,17 +747,15 @@ msgstr "Sign in"
 msgid "Stationsjournal · Beringung"
 msgstr "Station journal · Bird ringing"
 
-msgid "Schluss mit Papier und Excel"
-msgstr "Done with paper and Excel"
-
 msgid ""
-"BirdDoc ist das Stationsjournal für die Beringung: ein sauberer Datensatz "
-"pro gefangenem und beringtem Vogel, direkt am Ringtisch erfasst statt auf "
-"losen Zetteln und in verstreuten Tabellen."
+"Schluss mit Papier und Excel: BirdDoc ist das Stationsjournal für die "
+"Vogelberingung – ein sauberer Datensatz pro gefangenem und beringtem Vogel, "
+"direkt am Ringtisch erfasst statt auf losen Zetteln und in verstreuten "
+"Tabellen."
 msgstr ""
-"BirdDoc is the station journal for bird ringing: one clean record per "
-"captured and ringed bird, entered right at the ringing table instead of on "
-"loose notes and in scattered spreadsheets."
+"Done with paper and Excel: BirdDoc is the station journal for bird ringing – "
+"one clean record per captured and ringed bird, entered right at the ringing "
+"table instead of on loose notes and in scattered spreadsheets."
 
 msgid "Zugang anfragen"
 msgstr "Request access"
@@ -932,8 +1028,8 @@ msgid ""
 "Danke! Wir haben deine Anfrage notiert und dich auf die Warteliste gesetzt. "
 "Sobald ein Zugangscode für dich frei wird, melden wir uns per E-Mail."
 msgstr ""
-"Thank you! We've noted your request and put you on the waiting list. As "
-"soon as an access code opens up for you, we'll get in touch by email."
+"Thank you! We've noted your request and put you on the waiting list. As soon "
+"as an access code opens up for you, we'll get in touch by email."
 
 msgid ""
 "BirdDoc ist in geschlossener Beta. Trag dich in die Warteliste ein und wir "
@@ -958,3 +1054,6 @@ msgstr ""
 
 msgid "Für diese E-Mail-Adresse gibt es bereits ein Konto."
 msgstr ""
+
+#~ msgid "Schluss mit Papier und Excel"
+#~ msgstr "Done with paper and Excel"

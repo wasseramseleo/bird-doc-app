@@ -1,0 +1,18 @@
+{% comment %}
+Sichtbarer Brotkrümelpfad + BreadcrumbList-JSON-LD der /wissen/-Seiten, beide
+aus denselben `breadcrumbs`-Paaren erzeugt (siehe wissen.breadcrumb_context).
+{% endcomment %}
+<nav class="breadcrumb" aria-label="Brotkrümelnavigation">
+    <ol class="breadcrumb__trail">
+        {% for name, item in breadcrumbs %}
+            <li class="breadcrumb__crumb">
+                {% if forloop.last %}
+                    <span aria-current="page">{{ name }}</span>
+                {% else %}
+                    <a href="{{ item }}">{{ name }}</a>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ol>
+</nav>
+<script type="application/ld+json">{{ breadcrumb_jsonld|safe }}</script>
