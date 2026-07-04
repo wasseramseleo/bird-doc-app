@@ -98,6 +98,9 @@
             <span class="kpi-tile__label">Fänge</span>
             <span class="kpi-tile__value">{{ kpi.faenge | number }}</span>
             <span class="kpi-tile__detail">davon {{ kpi.erstfaenge | number }} Erstfänge</span>
+            @if (faengeSparkline().length >= 2) {
+              <app-faenge-sparkline [values]="faengeSparkline()" />
+            }
           </div>
           <div class="kpi-tile">
             <span class="kpi-tile__label">Arten</span>
@@ -194,7 +197,45 @@
     @if (hasSeries()) {
       <section class="chart-panel">
         <h2 class="chart-panel__title">Fänge pro Fangtag</h2>
-        <app-species-line-chart [series]="series()" />
+        <button
+          type="button"
+          class="chart-panel__table-toggle"
+          [attr.aria-pressed]="showSeriesTable()"
+          (click)="toggleSeriesTable()">
+          {{ showSeriesTable() ? 'Als Diagramm anzeigen' : 'Als Tabelle anzeigen' }}
+        </button>
+
+        @if (showSeriesTable()) {
+          <!-- The same served series the chart draws, as an accessible table: one
+               column per Fangtag, one row per Art (Übrige folded in). -->
+          <div class="series-table-wrap">
+            <table class="series-table">
+              <caption>
+                Fänge pro Fangtag
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Art</th>
+                  @for (day of series().days; track day) {
+                    <th scope="col">{{ day | date: 'dd.MM.yyyy' }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (line of series().lines; track line.name) {
+                  <tr>
+                    <th scope="row">{{ line.name }}</th>
+                    @for (count of line.counts; track $index) {
+                      <td>{{ count | number }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <app-species-line-chart [series]="series()" />
+        }
       </section>
     }
 

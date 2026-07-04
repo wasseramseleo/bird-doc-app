@@ -1,5 +1,23 @@
 import {InjectionToken} from '@angular/core';
 
+import {StatsSeries} from '../../models/project-stats.model';
+
+// The Fänge-KPI-Tile sparkline series (issue #299): the season's *cumulative*
+// Fänge trajectory, derived client-side from the already-served per-Fangtag
+// series — no backend change (ADR 0017). Each entry is the running total of all
+// Fänge up to and including that Fangtag: for every day it sums every series line
+// (the identified Arten plus the folded Übrige), then accumulates across the
+// season, so the sparkline reads as a rising trajectory rather than per-day bars.
+// One value per Fangtag, aligned to `series.days`; an empty series yields [].
+export function cumulativeFaenge(series: StatsSeries): number[] {
+  let running = 0;
+  return series.days.map((_day, index) => {
+    const dayTotal = series.lines.reduce((sum, line) => sum + (line.counts[index] ?? 0), 0);
+    running += dayTotal;
+    return running;
+  });
+}
+
 // The dashboard's reference "now", injected so the recency chip and Ruhige-Phase
 // threshold are deterministic in tests. Defaults to the real wall clock; a spec
 // overrides it with a fixed Date to pin how many Tage ago the last Fangtag lies.

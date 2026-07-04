@@ -1,0 +1,11 @@
+// A compact trend slot inside the Fänge KPI tile — full tile width, a short
+// fixed height so it never dominates the tile's value.
+.sparkline-host {
+  position: relative;
+  width: 100%;
+  height: 2.25rem;
+}
+
+canvas {
+  max-width: 100%;
+}

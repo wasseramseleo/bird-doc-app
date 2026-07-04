@@ -1,9 +1,11 @@
 import {
   classifyStatsFailure,
+  cumulativeFaenge,
   daysSinceFangtag,
   fangtagRecency,
   formatFangtagDate,
 } from './dashboard-state';
+import { StatsSeries } from '../../models/project-stats.model';
 
 describe('classifyStatsFailure', () => {
   it('treats a status-0 response as offline (the app\'s "no route to server" signal)', () => {
@@ -46,6 +48,41 @@ describe('formatFangtagDate', () => {
   it('renders a YYYY-MM-DD day de-AT (DD.MM.YYYY), timezone-independent', () => {
     expect(formatFangtagDate('2026-07-02')).toBe('02.07.2026');
     expect(formatFangtagDate('2026-01-09')).toBe('09.01.2026');
+  });
+});
+
+describe('cumulativeFaenge', () => {
+  it('sums all series lines per Fangtag, then runs a cumulative total across the season', () => {
+    // Per-Fangtag totals across every line (identified Arten + Übrige): the
+    // sparkline shows the season's rising trajectory, not per-day bars — so the
+    // running sum, not the daily count.
+    const series: StatsSeries = {
+      days: ['2026-06-26', '2026-06-28', '2026-07-02'],
+      lines: [
+        { species_id: 'sp-1', name: 'Mönchsgrasmücke', counts: [10, 12, 12] },
+        { species_id: 'sp-2', name: 'Amsel', counts: [5, 8, 8] },
+        { species_id: null, name: 'Übrige', counts: [2, 3, 4] },
+      ],
+    };
+    // Daily totals 17, 23, 24 → cumulative 17, 40, 64.
+    expect(cumulativeFaenge(series)).toEqual([17, 40, 64]);
+  });
+
+  it('is empty for a series with no Fangtage', () => {
+    expect(cumulativeFaenge({ days: [], lines: [] })).toEqual([]);
+  });
+
+  it('handles a single Fangtag (the running total is just that day)', () => {
+    expect(
+      cumulativeFaenge({
+        days: ['2026-07-02'],
+        lines: [{ species_id: 'sp-1', name: 'Amsel', counts: [7] }],
+      }),
+    ).toEqual([7]);
+  });
+
+  it('treats a series with days but no lines as an all-zero trajectory', () => {
+    expect(cumulativeFaenge({ days: ['2026-07-01', '2026-07-02'], lines: [] })).toEqual([0, 0]);
   });
 });
 
