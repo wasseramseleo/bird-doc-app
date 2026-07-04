@@ -375,6 +375,30 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     resetAcknowledgedSignatures(),
   );
 
+  // #340: when a save-reset re-reads the clock and the freshly-suggested Uhrzeit
+  // snaps to a *different* top-of-hour than the entry just saved, this holds the
+  // two hours so the time field can raise a calm, non-blocking „Stunde gewechselt"
+  // hint with a one-click revert to the previous hour. Never blocking, never a
+  // modal, and never sticky — recomputed fresh on every save (null = no hint),
+  // cleared the moment the user reverts. Transient, never persisted.
+  readonly hourChangeHint = signal<{ previousDateTime: string; suggestedDateTime: string } | null>(
+    null,
+  );
+  // The alert note surfaced on the time field: „⚠ Stunde gewechselt auf HH:00 —
+  // noch Vögel aus der letzten Runde?" — HH:00 is the freshly-suggested new hour.
+  readonly hourChangeMessage = computed<string>(() => {
+    const hint = this.hourChangeHint();
+    return hint
+      ? `⚠ Stunde gewechselt auf ${this.hourLabel(hint.suggestedDateTime)} — noch Vögel aus der letzten Runde?`
+      : '';
+  });
+  // The one-click revert action label „auf HH:00 zurück" — HH:00 is the previous
+  // (just-saved) hour it writes back into the time field.
+  readonly hourChangeRevertLabel = computed<string>(() => {
+    const hint = this.hourChangeHint();
+    return hint ? `auf ${this.hourLabel(hint.previousDateTime)} zurück` : '';
+  });
+
   // #155: a fresh client-generated UUID identifies this capture-create attempt
   // end-to-end, so a retried/replayed offline-outbox create is never duplicated
   // server-side (the idempotency keystone for PRD #152). Regenerated after
@@ -1412,9 +1436,60 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   }
 
   private getInitialDateTime(): string {
-    const now = new Date();
+    const now = this.currentDate();
     now.setMinutes(0, 0, 0);
     return this.datePipe.transform(now, 'yyyy-MM-ddTHH:mm')!;
+  }
+
+  // #340: a single wall-clock seam so the auto-advancing Uhrzeit is deterministic
+  // under test — every "now" the suggestion reads flows through here.
+  protected currentDate(): Date {
+    return new Date();
+  }
+
+  // #340: the "HH" hour component of a "yyyy-MM-ddTHH:mm" local datetime string,
+  // or null when it can't be read. Compares wall-clock hour-of-day, so crossing
+  // any hour boundary (incl. 23→00) counts as a change.
+  private hourOf(dateTime: string | null | undefined): string | null {
+    if (!dateTime || dateTime.length < 13) {
+      return null;
+    }
+    return dateTime.slice(11, 13);
+  }
+
+  // #340: the top-of-hour label "HH:00" for a "yyyy-MM-ddTHH:mm" datetime string.
+  private hourLabel(dateTime: string): string {
+    const hour = this.hourOf(dateTime);
+    return hour ? `${hour}:00` : '';
+  }
+
+  // #340: raise the non-blocking hour-change hint iff the freshly-suggested hour
+  // differs from the hour of the entry just saved — never within the same hour.
+  // The previous hour is stored snapped to its top-of-hour, which is exactly what
+  // the revert writes back.
+  private maybeSignalHourChange(savedDateTime: string | null, suggestedDateTime: string): void {
+    const savedHour = this.hourOf(savedDateTime);
+    const suggestedHour = this.hourOf(suggestedDateTime);
+    if (savedHour !== null && suggestedHour !== null && savedHour !== suggestedHour) {
+      this.hourChangeHint.set({
+        previousDateTime: `${savedDateTime!.slice(0, 11)}${savedHour}:00`,
+        suggestedDateTime,
+      });
+    } else {
+      this.hourChangeHint.set(null);
+    }
+  }
+
+  // #340: the one-click „auf HH:00 zurück" — write the previous hour back into the
+  // time field and dismiss the hint. Non-sticky: the next save re-reads the clock
+  // and decides afresh whether to warn again.
+  revertToPreviousHour(): void {
+    const hint = this.hourChangeHint();
+    if (!hint) {
+      return;
+    }
+    this.entryForm.get('date_time')?.setValue(hint.previousDateTime);
+    this.hourChangeHint.set(null);
   }
 
   private transformToForm(entry: DataEntry): any {
@@ -1762,6 +1837,11 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       staff: this.entryForm.get('staff')?.value,
     };
 
+    // #340: capture the Uhrzeit of the entry just saved *before* the reset
+    // overwrites it, so we can compare it against the freshly-suggested hour below.
+    const savedDateTime = this.entryForm.get('date_time')?.value as string | null;
+    const suggestedDateTime = this.getInitialDateTime();
+
     // #273: the focus shift below blurs the Ringnummer while it still holds the
     // just-saved ring. Seed the "last searched ring" key with it first so that
     // incidental blur is recognised as already-handled and the auto-search
@@ -1782,7 +1862,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       // a foreign recapture is an exception, not session state — so each save
       // resets it to the Projekt default.
       central: PROJEKT_ZENTRALE,
-      date_time: this.getInitialDateTime(),
+      date_time: suggestedDateTime,
       age_class: AgeClass.Unknown,
       sex: Sex.Unknown,
       has_mites: false,
@@ -1803,6 +1883,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     // (this same form instance, no navigation) must mint its own.
     this.idempotencyKey = crypto.randomUUID();
     this.lastFailedSubmission = null;
+
+    // #340: last — raise (or clear) the non-blocking Stundenwechsel-Hinweis based
+    // on whether the clock rolled to a new hour while the previous bird was saved.
+    this.maybeSignalHourChange(savedDateTime, suggestedDateTime);
   }
 
   // #24: restore the loaded record's saved values, dropping the user's edits and

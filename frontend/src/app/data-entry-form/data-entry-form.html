@@ -179,6 +179,24 @@
         <input matInput type="datetime-local" formControlName="date_time">
         <mat-error>Datum und Uhrzeit ist erforderlich.</mat-error>
       </mat-form-field>
+
+      <!-- #340: a calm, non-blocking (never a modal) signal that the auto-advancing
+           Uhrzeit silently rolled to a new hour while the last bird was saved, with
+           a one-click revert to the previous hour. Shown only when the hour actually
+           changed; never sticky — the next save re-reads the clock and decides afresh. -->
+      @if (hourChangeHint()) {
+        <div class="hour-change-hint" role="alert" data-testid="hour-change-hint">
+          <span class="hour-change-hint__note">{{ hourChangeMessage() }}</span>
+          <button
+            mat-button
+            type="button"
+            class="hour-change-hint__revert"
+            data-testid="hour-change-revert"
+            (click)="revertToPreviousHour()">
+            {{ hourChangeRevertLabel() }}
+          </button>
+        </div>
+      }
     </div>
 
     <div class="form-section">
