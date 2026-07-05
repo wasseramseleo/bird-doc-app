@@ -39,26 +39,38 @@
 // #340: the non-blocking Stundenwechsel-Hinweis on the Uhrzeit field — an alert
 // colour plus a short note and a one-click revert to the previous hour. Mirrors
 // the .sex-contradiction warning idiom; never a modal, never blocking.
+// #357: the hour-change hint is a full-width top banner sharing the Caps-Lock
+// warning's look (warning background, paper text, bold) but laid out text-left /
+// actions-right because it is actionable — a revert and a ✕ dismiss.
 .hour-change-hint {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background-color: var(--bd-warning-soft, rgba(216, 67, 21, 0.1));
-  border: 1px solid var(--bd-warning, #d84315);
-  color: var(--bd-warning-deep, #b53a12);
-  font-size: 0.85rem;
-  font-weight: 500;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background-color: var(--bd-warning);
+  color: var(--bd-paper);
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 
   &__note {
     flex: 1 1 auto;
+    text-align: left;
   }
 
-  &__revert {
+  &__actions {
     flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  // Controls sit on the warning-colored banner, so they inherit the paper text.
+  &__revert,
+  &__dismiss {
+    color: var(--bd-paper);
+    font-weight: 600;
   }
 }
 

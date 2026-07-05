@@ -386,8 +386,8 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   readonly hourChangeHint = signal<{ previousDateTime: string; suggestedDateTime: string } | null>(
     null,
   );
-  // The alert note surfaced on the time field: „⚠ Stunde gewechselt auf HH:00 —
-  // noch Vögel aus der letzten Runde?" — HH:00 is the freshly-suggested new hour.
+  // The alert note surfaced in the top banner (#357): „⚠ Stunde gewechselt auf
+  // HH:00 — noch Vögel aus der letzten Runde?" — HH:00 is the freshly-suggested hour.
   readonly hourChangeMessage = computed<string>(() => {
     const hint = this.hourChangeHint();
     return hint
@@ -1505,6 +1505,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       return;
     }
     this.entryForm.get('date_time')?.setValue(hint.previousDateTime);
+    this.hourChangeHint.set(null);
+  }
+
+  // #357: the ✕ dismiss on the top banner — accept the new hour. Unlike the revert,
+  // it only clears the hint and leaves the clock-driven time untouched. Non-sticky:
+  // the next save re-reads the clock and decides afresh whether to warn again.
+  dismissHourChangeHint(): void {
     this.hourChangeHint.set(null);
   }
 

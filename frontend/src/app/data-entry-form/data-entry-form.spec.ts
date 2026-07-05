@@ -2433,12 +2433,13 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
-  // #340: the non-blocking Stundenwechsel-Hinweis on the Uhrzeit field. The
-  // suggested time snaps to the top of the hour and is re-read from the clock on
-  // each save-reset; when that freshly-suggested hour differs from the hour of the
-  // entry just saved, a calm alert with a one-click „auf HH:00 zurück" revert
+  // #340/#357: the non-blocking Stundenwechsel-Hinweis. The suggested time snaps to
+  // the top of the hour and is re-read from the clock on each save-reset; when that
+  // freshly-suggested hour differs from the hour of the entry just saved, a calm
+  // full-width top banner (relocated from the Uhrzeit field to below the Caps-Lock
+  // warning, #357) with a one-click „auf HH:00 zurück" revert and a ✕ dismiss
   // appears — never a modal, never sticky, never within the same hour.
-  describe('Stundenwechsel-Hinweis on the Uhrzeit field (#340)', () => {
+  describe('Stundenwechsel-Hinweis top banner (#340, #357)', () => {
     let httpMock: HttpTestingController;
 
     afterEach(() => localStorage.clear());
@@ -2478,7 +2479,7 @@ describe('DataEntryFormComponent', () => {
       fixture.detectChanges();
     }
 
-    it('raises a non-blocking hint on the time field after a save that crossed an hour boundary', fakeAsync(() => {
+    it('raises a non-blocking top banner after a save that crossed an hour boundary', fakeAsync(() => {
       // Clock now reads 14:20 → the next suggestion snaps to 14:00, but the bird was
       // still being stamped 13:00 from the previous net-round.
       freezeClockAt('2026-07-04T14:20:00');
@@ -2496,7 +2497,7 @@ describe('DataEntryFormComponent', () => {
       expect(component.hourChangeMessage()).toContain('14:00');
       expect(component.hourChangeRevertLabel()).toBe('auf 13:00 zurück');
 
-      // Surfaced on the time field in the DOM, and no blocking modal was opened.
+      // Surfaced as the top banner in the DOM, and no blocking modal was opened.
       const el = fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]');
       expect(el).not.toBeNull();
       expect(el.textContent).toContain('Stunde gewechselt auf 14:00');
@@ -2575,6 +2576,79 @@ describe('DataEntryFormComponent', () => {
 
       expect(component.hourChangeHint()).toBeNull();
       expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+
+      tick(900);
+    }));
+
+    // #357: the hint moved to a full-width top banner and gained a ✕ dismiss that
+    // accepts the new hour — it clears the hint but, unlike the revert, leaves the
+    // clock-driven time untouched.
+    it('dismisses the hint without changing the time via the ✕ dismiss control', fakeAsync(() => {
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      // The field auto-advanced to the new hour and the hint is up.
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+      expect(component.hourChangeHint()).not.toBeNull();
+
+      const dismiss = fixture.nativeElement.querySelector(
+        '[data-testid="hour-change-dismiss"]',
+      ) as HTMLButtonElement;
+      dismiss.click();
+      fixture.detectChanges();
+
+      // Hint gone, but the new hour is kept (accepted) — not reverted to 13:00.
+      expect(component.hourChangeHint()).toBeNull();
+      expect(component.entryForm.get('date_time')!.value).toBe('2026-07-04T14:00');
+      expect(fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]')).toBeNull();
+
+      tick(900);
+    }));
+
+    // #357: the hint is a top-of-form banner, no longer nested under the Uhrzeit field.
+    it('renders the hint as a top-of-form banner, not inside a form-section', fakeAsync(() => {
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]');
+      expect(banner).not.toBeNull();
+      // Relocated out of the datetime field's .form-section to the top of the form.
+      expect(banner.closest('.form-section')).toBeNull();
+      expect(banner.closest('form.data-entry-form')).not.toBeNull();
+
+      tick(900);
+    }));
+
+    // #357: the two banners are independent — when Caps-Lock is on AND an hour change
+    // is pending, both show, stacked with Caps-Lock above the hour-change banner.
+    it('stacks both banners with Caps-Lock above when both conditions hold', fakeAsync(() => {
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+
+      save();
+
+      // Turn Caps-Lock on via a keystroke that reports the modifier active.
+      component.onKeydown({
+        key: 'a',
+        getModifierState: (m: string) => m === 'CapsLock',
+        preventDefault: () => {},
+      } as unknown as KeyboardEvent);
+      fixture.detectChanges();
+
+      const caps = fixture.nativeElement.querySelector('[data-testid="capslock-hint"]');
+      const hint = fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]');
+      expect(caps).not.toBeNull();
+      expect(hint).not.toBeNull();
+
+      // Caps-Lock banner precedes the hour-change banner in document order.
+      expect(caps.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
       tick(900);
     }));
