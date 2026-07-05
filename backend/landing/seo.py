@@ -168,20 +168,48 @@ class RobotsTxtView(TemplateView):
         }
 
 
-class FaviconView(View):
-    """Serve /favicon.ico from the landing's own static assets (issue #137).
+class LandingIconView(View):
+    """Serve one self-hosted app icon at a prefix-free apex URL (issue #137).
 
-    The icon is derived from the existing BirdDoc brand asset and shipped in
+    The icon set is derived from the existing BirdDoc brand asset and shipped in
     ``landing/static/landing/`` — self-hosted, no third-party request. Serving
-    it through a view at the apex root (rather than only a ``/static/…`` link)
-    gives it one canonical, prefix-free URL and keeps the classic blind
-    ``/favicon.ico`` probe from 404ing."""
+    each icon through a view at the apex root (rather than only a ``/static/…``
+    link) gives it one canonical, prefix-free URL that matches the app (Angular
+    SPA) surface and keeps the classic blind probes (``/favicon.ico``,
+    ``/apple-touch-icon.png``) from 404ing.
+
+    Subclasses set ``static_path`` (relative to a static root) and the served
+    ``content_type``."""
+
+    static_path = None
+    content_type = None
 
     def get(self, request):
-        path = finders.find("landing/favicon.ico")
+        path = finders.find(self.static_path)
         if path is None:  # pragma: no cover — the asset ships in the repo
-            raise Http404("favicon.ico is not in the landing static assets")
-        return FileResponse(open(path, "rb"), content_type="image/x-icon")
+            raise Http404(f"{self.static_path} is not in the landing static assets")
+        return FileResponse(open(path, "rb"), content_type=self.content_type)
+
+
+class FaviconView(LandingIconView):
+    """The legacy ``/favicon.ico`` (issue #137) — the blind-probe baseline."""
+
+    static_path = "landing/favicon.ico"
+    content_type = "image/x-icon"
+
+
+class FaviconPngView(LandingIconView):
+    """The crisp 96×96 PNG favicon modern browsers prefer over the .ico."""
+
+    static_path = "landing/favicon-96x96.png"
+    content_type = "image/png"
+
+
+class AppleTouchIconView(LandingIconView):
+    """The iOS home-screen (Apple touch) icon, also blind-probed at the root."""
+
+    static_path = "landing/apple-touch-icon.png"
+    content_type = "image/png"
 
 
 class FangKarteOgImageView(TemplateView):

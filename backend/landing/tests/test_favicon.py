@@ -23,6 +23,23 @@ def test_favicon_resolves_with_the_icon_content_type(client):
 @pytest.mark.parametrize(
     "url",
     [
+        "/favicon-96x96.png",  # crisp PNG for modern browsers
+        "/apple-touch-icon.png",  # iOS home-screen bookmark icon
+    ],
+)
+def test_modern_icon_assets_resolve_as_png(client, url):
+    # The app (Angular SPA) advertises a full modern icon set; the marketing
+    # surface must not lag behind with only the legacy .ico. Each modern icon is
+    # self-hosted at the apex root (like /favicon.ico, ADR 0009) and answers with
+    # the PNG itself — 200, image/png, no 404.
+    response = client.get(url)
+    assert response.status_code == 200
+    assert response["Content-Type"] == "image/png"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
         "/",  # marketing home
         "/en/",  # marketing home, English catalog
         "/zugang-anfragen/",  # Warteliste lead form
@@ -41,3 +58,25 @@ def test_every_landing_page_links_the_favicon(client, url):
     content = client.get(url).content.decode()
     assert 'rel="icon"' in content
     assert "/favicon.ico" in content
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/",  # marketing home
+        "/en/",  # marketing home, English catalog
+        "/impressum/",  # legal surface
+        "/registrierung/",  # Zugangscode-gated registration
+        "/passwort-zuruecksetzen/",  # auth destination pages
+    ],
+)
+def test_every_landing_page_links_the_modern_icon_set(client, url):
+    # Favicon parity with the app: every marketing page also links the crisp PNG
+    # and the Apple touch icon (iOS home screen) and carries the brand theme
+    # colour — so the icon experience is consistent across the whole application,
+    # not just a low-res .ico on the public surface.
+    content = client.get(url).content.decode()
+    assert "/favicon-96x96.png" in content
+    assert 'rel="apple-touch-icon"' in content
+    assert "/apple-touch-icon.png" in content
+    assert 'name="theme-color"' in content
