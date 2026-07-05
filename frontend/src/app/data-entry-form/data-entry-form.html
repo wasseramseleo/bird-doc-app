@@ -117,6 +117,36 @@
         ⚠️ Feststelltaste (Caps Lock) ist aktiv
       </div>
     }
+    <!-- #357: the hour-change hint (relocated from below the Uhrzeit field, #340) is a
+         full-width top banner stacked directly below the Caps-Lock warning — text-left,
+         actions-right because it is actionable. The two banners are independent; when
+         both conditions hold, both show with Caps-Lock on top. Revert writes the previous
+         hour back; ✕ dismiss accepts the new hour (clears the hint, keeps the time). The
+         trigger (maybeSignalHourChange) is unchanged — this is presentation + dismiss. -->
+    @if (hourChangeHint()) {
+      <div class="hour-change-hint" role="alert" data-testid="hour-change-hint">
+        <span class="hour-change-hint__note">{{ hourChangeMessage() }}</span>
+        <span class="hour-change-hint__actions">
+          <button
+            mat-button
+            type="button"
+            class="hour-change-hint__revert"
+            data-testid="hour-change-revert"
+            (click)="revertToPreviousHour()">
+            {{ hourChangeRevertLabel() }}
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="hour-change-hint__dismiss"
+            data-testid="hour-change-dismiss"
+            aria-label="Hinweis schließen"
+            (click)="dismissHourChangeHint()">
+            ✕
+          </button>
+        </span>
+      </div>
+    }
     @if (isEditMode()) {
       <div class="edit-mode-badge">Bearbeitungsmodus</div>
     }
@@ -179,24 +209,6 @@
         <input matInput type="datetime-local" formControlName="date_time">
         <mat-error>Datum und Uhrzeit ist erforderlich.</mat-error>
       </mat-form-field>
-
-      <!-- #340: a calm, non-blocking (never a modal) signal that the auto-advancing
-           Uhrzeit silently rolled to a new hour while the last bird was saved, with
-           a one-click revert to the previous hour. Shown only when the hour actually
-           changed; never sticky — the next save re-reads the clock and decides afresh. -->
-      @if (hourChangeHint()) {
-        <div class="hour-change-hint" role="alert" data-testid="hour-change-hint">
-          <span class="hour-change-hint__note">{{ hourChangeMessage() }}</span>
-          <button
-            mat-button
-            type="button"
-            class="hour-change-hint__revert"
-            data-testid="hour-change-revert"
-            (click)="revertToPreviousHour()">
-            {{ hourChangeRevertLabel() }}
-          </button>
-        </div>
-      }
     </div>
 
     <div class="form-section">
