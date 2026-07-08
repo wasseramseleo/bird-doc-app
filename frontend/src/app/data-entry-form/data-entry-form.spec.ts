@@ -92,6 +92,20 @@ describe('DataEntryFormComponent', () => {
     return httpMock;
   }
 
+  // PRD #361 (#363): the akustisches „Pling" defaults ON, so every
+  // warning-producing test below would otherwise construct a REAL AudioContext
+  // through the default AUDIO_CONTEXT_FACTORY (`() => new AudioContext()`) via
+  // the root SoundService. Mute the cue at the storage layer before EVERY test
+  // (playWarning() reads loadSoundEnabled() lazily and returns before touching
+  // the factory), so the pre-existing plausibility specs never build one. This
+  // is TestBed-independent, so it holds across the per-block resetTestingModule
+  // setups. The dedicated #363 block below stays self-contained (spy
+  // SoundService / spy factory) and is unaffected. Key mirrors
+  // WorkbenchStorageService.SOUND_ENABLED_KEY.
+  beforeEach(() => {
+    localStorage.setItem('birddoc.soundEnabled', 'false');
+  });
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DataEntryFormComponent],
