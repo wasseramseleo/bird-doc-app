@@ -1802,6 +1802,15 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       this.entryForm.get(controlName)?.setValue(matchingOption.value);
       selectComponent.close();
       this.focusNext(controlName);
+      // #362: setValue() does NOT emit MatSelect.selectionChange, so the central
+      // Plausibilitätskontrolle the mouse-selection path runs (onCategoricalChange)
+      // would be skipped — a keyboard-picked implausible value would only surface
+      // on a later numeric-field blur. Re-run the same recompute here for EVERY
+      // categorical select, so future categorical fields inherit correct timing.
+      // focusNext already advanced focus, so pass controlName: a newly-appeared
+      // warning modal then restores focus to the picked field on dismissal,
+      // keeping keyboard entry flowing.
+      this.evaluatePlausibility(controlName);
     }
   }
 
