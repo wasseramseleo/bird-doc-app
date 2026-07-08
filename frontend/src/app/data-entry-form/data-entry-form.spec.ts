@@ -24,6 +24,8 @@ import {
 import { Species } from '../models/species.model';
 import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { ProjectService } from '../service/project.service';
+import { AUDIO_CONTEXT_FACTORY, SoundService } from '../service/sound.service';
+import { WorkbenchStorageService } from '../service/workbench-storage.service';
 import { Project, Projekttyp } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
@@ -3996,6 +3998,263 @@ describe('DataEntryFormComponent', () => {
         expect(warning).withContext(c.label).not.toBeNull();
         expect(warning!.getAttribute('title')).toContain(c.message);
       }
+    });
+  });
+
+  // PRD #361, issue #363: the akustisches „Pling" is bound to the SAME reconcile
+  // event that opens the „Verstanden" modal — the moment a warning is decided to
+  // have newly appeared. So the form must call SoundService.playWarning() exactly
+  // once per newly-appeared warning, stay silent on the edit-load/seed path (which
+  // raises no modal), and never let a muted/absent cue disturb the visual check.
+  describe('akustisches Pling bei neuer Plausibilitätswarnung (#363)', () => {
+    const norm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: null,
+      dj_grossgefiedermauser_moeglich: null,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      show_net_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [norm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const sound = { playWarning: jasmine.createSpy('playWarning') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    afterEach(() => localStorage.clear());
+
+    async function setupCreate(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      sound.playWarning.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: {
+            providers: [
+              { provide: MatDialog, useValue: dialogMock },
+              { provide: SoundService, useValue: sound },
+            ],
+          },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    it('plays the Pling exactly once when a new implausible value produces a warning', async () => {
+      await setupCreate();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+
+      component.onMeasurementBlur('weight_gram');
+
+      expect(sound.playWarning).toHaveBeenCalledTimes(1);
+      // The cue rides the same event as the modal (a non-Geschlecht warning here).
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-alerts when an already-flagged value changes to a different implausible value', async () => {
+      await setupCreate();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur('weight_gram');
+      expect(sound.playWarning).toHaveBeenCalledTimes(1);
+
+      // A second, *different* out-of-range value is a fresh newly-appeared warning.
+      component.entryForm.get('weight_gram')!.setValue(30);
+      component.onMeasurementBlur('weight_gram');
+
+      expect(sound.playWarning).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not re-play when the same flagged value is re-triggered unchanged', async () => {
+      await setupCreate();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur('weight_gram');
+
+      // Same value, blurred again: already acknowledged → no fresh warning, no Pling.
+      component.onMeasurementBlur('weight_gram');
+
+      expect(sound.playWarning).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays silent on the edit-load/seed path (an existing warning raises no Pling)', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '77' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      sound.playWarning.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: {
+            providers: [
+              { provide: MatDialog, useValue: dialogMock },
+              { provide: SoundService, useValue: sound },
+            ],
+          },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/77/'))
+        .flush({
+          id: '77',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          weight_gram: 25,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      // The stored value already breaches (icon is active) but the load raises no
+      // modal — and so no Pling.
+      expect(sound.playWarning).not.toHaveBeenCalled();
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+
+    it('keeps the visual safety check intact when muted (modal opens, no audio synthesized)', async () => {
+      // Real SoundService this time, with a spy AudioContext factory: muting must
+      // make playWarning a no-op (factory never called) WITHOUT suppressing the
+      // modal — audio muted/unavailable never costs the visual check.
+      const audioFactory = jasmine.createSpy('audioContextFactory');
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+          { provide: AUDIO_CONTEXT_FACTORY, useValue: audioFactory },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      TestBed.inject(WorkbenchStorageService).saveSoundEnabled(false);
+
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur('weight_gram');
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(audioFactory).not.toHaveBeenCalled();
     });
   });
 
