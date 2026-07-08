@@ -49,6 +49,7 @@ import {DataAccessFacadeService} from '../service/data-access-facade.service';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
 import {WorkbenchStorageService} from '../service/workbench-storage.service';
+import {SoundService} from '../service/sound.service';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {resolveQueuedEntryDisplay} from '../core/offline/queued-entry-display';
 import {OutboxEntry} from '../models/outbox-entry.model';
@@ -142,6 +143,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   private readonly router = inject(Router);
   private readonly projectService = inject(ProjectService);
   private readonly storage = inject(WorkbenchStorageService);
+  private readonly sound = inject(SoundService);
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -1298,6 +1300,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     );
     this.acknowledgedSignatures.set(nextAcknowledged);
     if (toShow.length > 0) {
+      // PRD #361 (#363): bound to the SAME newly-appeared-warning event as the
+      // „Verstanden" modal — one gentle „Pling" per new warning, silent on the
+      // seed path, and muted/unavailable audio never blocks the modal below.
+      this.sound.playWarning();
       this.openPlausibilityInfoDialog(toShow, triggerField);
     }
   }
