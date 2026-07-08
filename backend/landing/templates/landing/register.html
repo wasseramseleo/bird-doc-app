@@ -2,6 +2,16 @@
 
 {% block title %}Registrieren · BirdDoc{% endblock %}
 
+{% comment %}
+The auth flows are German-only (GermanAuthFormMixin forces the German catalog),
+so — like the legal pages — they carry no hreflang cluster, only a plain meta
+description so a crawler never indexes them description-less (Bing Webmaster
+Tools flagged these as "Meta Description tag missing").
+{% endcomment %}
+{% block head_meta %}
+    <meta name="description" content="Mit einem gültigen Zugangscode gründest du deine Organisation in BirdDoc und wirst ihr Administrator – anschließend bestätigst du deine E-Mail-Adresse.">
+{% endblock %}
+
 {% block content %}
     <h1>Organisation gründen</h1>
     <p>Mit einem gültigen Zugangscode gründest du deine Organisation und wirst ihr

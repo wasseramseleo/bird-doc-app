@@ -10,6 +10,16 @@ pages and the home.
 
 {% block title %}AGB &amp; Auftragsverarbeitung · BirdDoc{% endblock %}
 
+{% comment %}
+The legal pages are German-only (no {% translate %}), so — unlike the home and
+the funnels — they carry no hreflang cluster, only a plain meta description so a
+crawler never indexes them description-less (Bing Webmaster Tools flagged the
+legal/auth pages as "Meta Description tag missing").
+{% endcomment %}
+{% block head_meta %}
+    <meta name="description" content="AGB von BirdDoc: Bedingungen für die Nutzung zwischen Betreiber und nutzender Organisation samt Vereinbarung zur Auftragsverarbeitung (DPA) nach Art. 28 DSGVO.">
+{% endblock %}
+
 {% block content %}
     {% include "landing/_legal_draft_notice.html" %}
 

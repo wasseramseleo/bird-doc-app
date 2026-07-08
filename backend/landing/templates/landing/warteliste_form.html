@@ -3,6 +3,18 @@
 
 {% block title %}{% translate "Zugang anfragen" %} · BirdDoc{% endblock %}
 
+{% comment %}
+The funnels are bilingual, so the meta description is translated per language
+(the funnel base already emits the hreflang cluster — {{ block.super }} keeps
+it). Antwortzuerst (issue #305): the description is the same reassurance the
+page opens with — waitlist, no cost, no commitment.
+{% endcomment %}
+{% block head_meta %}
+    {{ block.super }}
+    {% blocktranslate trimmed asvar meta_description %}BirdDoc ist in geschlossener Beta: Trag dich in die Warteliste ein und wir melden uns, sobald ein Zugangscode frei wird – kostenlos und unverbindlich.{% endblocktranslate %}
+    <meta name="description" content="{{ meta_description }}">
+{% endblock %}
+
 {% block content %}
     <p class="eyebrow">{% translate "Warteliste · Beringung" %}</p>
     <h1>{% translate "Zugang anfragen" %}</h1>
