@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, Component, computed, effect, inject} from '@angular/core';
+import {ChangeDetectionStrategy, Component, computed, effect, inject, signal} from '@angular/core';
 import {toSignal} from '@angular/core/rxjs-interop';
 import {NavigationEnd, Router, RouterLink, RouterLinkActive} from '@angular/router';
 import {filter, map} from 'rxjs';
@@ -11,6 +11,7 @@ import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {AuthService} from '../service/auth.service';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
+import {WorkbenchStorageService} from '../service/workbench-storage.service';
 import {Project} from '../models/project.model';
 import {FeedbackDialogComponent} from '../feedback/feedback-dialog/feedback-dialog';
 import {environment} from '../../environments/environment';
@@ -46,11 +47,19 @@ export class NavBar {
   private readonly projectService = inject(ProjectService);
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
+  private readonly storage = inject(WorkbenchStorageService);
 
   readonly adminUrl = environment.adminUrl;
   readonly legalLinks = LEGAL_LINKS;
   readonly currentProject = this.projectService.currentProject;
   readonly projects = this.projectService.projects;
+
+  // Issue #364: the per-device „akustisches Pling" preference, surfaced as a
+  // mute toggle in the user menu (the first entry of the app's settings home).
+  // Seeded from storage so the menu reflects the persisted choice on open; the
+  // SoundService reads the same preference, so muting silences the cue while the
+  // visual Plausibilitätswarnung is untouched.
+  readonly soundEnabled = signal(this.storage.loadSoundEnabled());
 
   private listRequested = false;
 
@@ -110,6 +119,15 @@ export class NavBar {
     // deliberately does NOT clear the current Projekt, so the switcher stays
     // visible and the user can return to their dashboard.
     this.router.navigateByUrl('/projekte');
+  }
+
+  // Issue #364: flip and persist the per-device Pling preference. The signal
+  // update re-renders the menu label/icon; SoundService reads the same stored
+  // value, so the next warning is (or isn't) audible accordingly.
+  toggleSound(): void {
+    const next = !this.soundEnabled();
+    this.storage.saveSoundEnabled(next);
+    this.soundEnabled.set(next);
   }
 
   // Beta users report problems straight from the app (issue #81); the dialog
