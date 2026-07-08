@@ -11,6 +11,8 @@ import { NavBar } from './nav-bar';
 import { ProjectService } from '../service/project.service';
 import { AuthService } from '../service/auth.service';
 import { OutboxService } from '../service/outbox.service';
+import { WorkbenchStorageService } from '../service/workbench-storage.service';
+import { AUDIO_CONTEXT_FACTORY, SoundService } from '../service/sound.service';
 import { IndexedDbStore } from '../core/offline/indexed-db-store';
 import { Project, Projekttyp } from '../models/project.model';
 import { environment } from '../../environments/environment';
@@ -37,7 +39,40 @@ function page0<T>(results: T[]) {
   return { count: results.length, next: null, previous: null, results };
 }
 
-function setup() {
+// A minimal fake of the Web Audio surface SoundService touches, so the nav-bar
+// specs can assert the audible cue is (or isn't) synthesized without ever
+// constructing a real AudioContext or emitting sound.
+function makeFakeAudioContext() {
+  const oscillator = {
+    type: '',
+    frequency: { setValueAtTime: jasmine.createSpy('frequency.setValueAtTime') },
+    connect: jasmine.createSpy('oscillator.connect'),
+    start: jasmine.createSpy('oscillator.start'),
+    stop: jasmine.createSpy('oscillator.stop'),
+  };
+  const gain = {
+    gain: {
+      setValueAtTime: jasmine.createSpy('gain.setValueAtTime'),
+      exponentialRampToValueAtTime: jasmine.createSpy('gain.exponentialRampToValueAtTime'),
+    },
+    connect: jasmine.createSpy('gain.connect'),
+  };
+  const context = {
+    state: 'running' as AudioContextState,
+    currentTime: 0,
+    destination: {},
+    resume: jasmine.createSpy('resume').and.resolveTo(undefined),
+    createOscillator: jasmine.createSpy('createOscillator').and.returnValue(oscillator),
+    createGain: jasmine.createSpy('createGain').and.returnValue(gain),
+  };
+  return { context, oscillator };
+}
+
+function setup(seed?: (storage: WorkbenchStorageService) => void) {
+  const fakeAudio = makeFakeAudioContext();
+  const audioFactory = jasmine
+    .createSpy('audioContextFactory')
+    .and.returnValue(fakeAudio.context);
   TestBed.configureTestingModule({
     imports: [NavBar],
     providers: [
@@ -45,14 +80,19 @@ function setup() {
       provideHttpClient(),
       provideHttpClientTesting(),
       provideNoopAnimations(),
+      { provide: AUDIO_CONTEXT_FACTORY, useValue: audioFactory },
     ],
   });
+  // Seed any persisted preference before the component reads it on construction.
+  if (seed) {
+    seed(TestBed.inject(WorkbenchStorageService));
+  }
   const fixture: ComponentFixture<NavBar> = TestBed.createComponent(NavBar);
   const projectService = TestBed.inject(ProjectService);
   const router = TestBed.inject(Router);
   const httpMock = TestBed.inject(HttpTestingController);
   const overlay = TestBed.inject(OverlayContainer);
-  return { fixture, projectService, router, httpMock, overlay };
+  return { fixture, projectService, router, httpMock, overlay, fakeAudio, audioFactory };
 }
 
 /**
@@ -84,13 +124,20 @@ function signIn(
   });
 }
 
-function openUserMenu(ctx: ReturnType<typeof setup>): HTMLElement[] {
+function openUserMenu(ctx: {
+  fixture: ComponentFixture<NavBar>;
+  overlay: OverlayContainer;
+}): HTMLElement[] {
   const trigger = ctx.fixture.nativeElement.querySelector('.user-trigger') as HTMLElement;
   trigger.click();
   ctx.fixture.detectChanges();
   return Array.from(
     ctx.overlay.getContainerElement().querySelectorAll('.mat-mdc-menu-item'),
   ) as HTMLElement[];
+}
+
+function findSoundToggle(items: HTMLElement[]): HTMLElement | undefined {
+  return items.find((i) => i.classList.contains('sound-toggle'));
 }
 
 function openSwitcher(ctx: ReturnType<typeof setup>): HTMLElement[] {
@@ -626,5 +673,79 @@ describe('NavBar', () => {
       .withContext('no Administration in the user menu for non-staff')
       .toBeFalse();
     expect(labels.some((t) => t.includes('Abmelden'))).toBeTrue();
+  });
+
+  // Issue #364: a Plausibilitäts-Pling mute toggle — the first entry of the
+  // app's settings home — lives in the user menu, flips the per-device
+  // `soundEnabled` preference, and audibly silences the cue without touching the
+  // visual warning.
+  describe('Plausibilitäts-Pling mute toggle', () => {
+    it('shows a sound toggle in the user menu, offering to mute while the Pling is on (default)', () => {
+      const ctx = setup();
+      ctx.fixture.detectChanges();
+
+      const item = findSoundToggle(openUserMenu(ctx));
+      expect(item).withContext('sound toggle present in the user menu').toBeTruthy();
+      // Default is ON, so the item offers to silence it and shows the "on" icon.
+      expect(item!.textContent).toContain('stummschalten');
+      expect(item!.querySelector('mat-icon')?.textContent).toContain('volume_up');
+    });
+
+    it('mutes the Pling when activated, round-tripping the preference through WorkbenchStorageService', () => {
+      const ctx = setup();
+      ctx.fixture.detectChanges();
+      const storage = TestBed.inject(WorkbenchStorageService);
+      expect(storage.loadSoundEnabled()).withContext('on by default').toBeTrue();
+
+      findSoundToggle(openUserMenu(ctx))!.click();
+      ctx.fixture.detectChanges();
+
+      expect(storage.loadSoundEnabled()).withContext('preference flipped to muted').toBeFalse();
+    });
+
+    it('reflects a mute persisted from a previous session on this device', () => {
+      // A prior session muted the Pling; the choice is already on this device.
+      const ctx = setup((storage) => storage.saveSoundEnabled(false));
+      ctx.fixture.detectChanges();
+
+      const item = findSoundToggle(openUserMenu(ctx));
+      expect(item).withContext('sound toggle present').toBeTruthy();
+      // Muted, so the item offers to re-enable it and shows the "off" icon.
+      expect(item!.textContent).toContain('einschalten');
+      expect(item!.querySelector('mat-icon')?.textContent).toContain('volume_off');
+    });
+
+    it('silences the SoundService cue on a new warning once muted (visual warning untouched)', () => {
+      const ctx = setup();
+      ctx.fixture.detectChanges();
+      const sound = TestBed.inject(SoundService);
+
+      findSoundToggle(openUserMenu(ctx))!.click();
+      ctx.fixture.detectChanges();
+
+      sound.playWarning();
+
+      expect(ctx.fakeAudio.context.createOscillator)
+        .withContext('muted: no Pling synthesized')
+        .not.toHaveBeenCalled();
+    });
+
+    it('restores the SoundService cue when unmuted from a persisted mute', () => {
+      const ctx = setup((storage) => storage.saveSoundEnabled(false));
+      ctx.fixture.detectChanges();
+      const sound = TestBed.inject(SoundService);
+      const storage = TestBed.inject(WorkbenchStorageService);
+
+      findSoundToggle(openUserMenu(ctx))!.click();
+      ctx.fixture.detectChanges();
+
+      expect(storage.loadSoundEnabled()).withContext('preference flipped back on').toBeTrue();
+
+      sound.playWarning();
+
+      expect(ctx.fakeAudio.context.createOscillator)
+        .withContext('unmuted: the Pling is synthesized again')
+        .toHaveBeenCalledTimes(1);
+    });
   });
 });

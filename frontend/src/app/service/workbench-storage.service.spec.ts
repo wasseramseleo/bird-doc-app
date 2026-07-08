@@ -76,6 +76,25 @@ describe('WorkbenchStorageService', () => {
     });
   });
 
+  describe('sound preference', () => {
+    it('defaults the Pling to on before anything is stored', () => {
+      expect(service.loadSoundEnabled()).toBeTrue();
+    });
+
+    it('round-trips a muted preference once saved', () => {
+      service.saveSoundEnabled(false);
+
+      expect(service.loadSoundEnabled()).toBeFalse();
+    });
+
+    it('round-trips an enabled preference once saved', () => {
+      service.saveSoundEnabled(false);
+      service.saveSoundEnabled(true);
+
+      expect(service.loadSoundEnabled()).toBeTrue();
+    });
+  });
+
   describe('last Beringer per Projekt', () => {
     it('round-trips the last Beringer for a Projekt', () => {
       const beringer = makeBeringer();

@@ -138,6 +138,27 @@
       </a>
       <mat-divider></mat-divider>
     }
+    <!--
+      Issue #364: the app's settings home starts here with a single item — a
+      mute toggle for the Plausibilitäts-Pling. It flips the per-device
+      `soundEnabled` preference the SoundService reads; the label and icon
+      reflect the current state (offer to silence while on, to re-enable while
+      muted). The visual warning is unaffected either way.
+    -->
+    <button
+      mat-menu-item
+      type="button"
+      class="sound-toggle"
+      [attr.aria-label]="
+        soundEnabled() ? 'Plausibilitäts-Pling stummschalten' : 'Plausibilitäts-Pling einschalten'
+      "
+      [attr.aria-pressed]="!soundEnabled()"
+      (click)="toggleSound()"
+    >
+      <mat-icon>{{ soundEnabled() ? 'volume_up' : 'volume_off' }}</mat-icon>
+      <span>{{ soundEnabled() ? 'Pling stummschalten' : 'Pling einschalten' }}</span>
+    </button>
+    <mat-divider></mat-divider>
     <button mat-menu-item (click)="onLogout()">
       <mat-icon>logout</mat-icon>
       <span>Abmelden</span>

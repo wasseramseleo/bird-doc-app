@@ -15,6 +15,7 @@ export class WorkbenchStorageService {
   private static readonly CURRENT_PROJECT_KEY = 'birddoc.currentProject';
   private static readonly LAST_BERINGER_KEY = 'birddoc.lastBeringerByProject';
   private static readonly BETA_BANNER_DISMISSED_KEY = 'birddoc.betaBannerDismissed';
+  private static readonly SOUND_ENABLED_KEY = 'birddoc.soundEnabled';
 
   loadCurrentProject(): Project | null {
     return this.read<Project>(WorkbenchStorageService.CURRENT_PROJECT_KEY);
@@ -48,6 +49,19 @@ export class WorkbenchStorageService {
 
   saveBetaBannerDismissed(): void {
     this.write(WorkbenchStorageService.BETA_BANNER_DISMISSED_KEY, true);
+  }
+
+  /**
+   * The per-device „akustisches Pling" preference (PRD #361, issue #363).
+   * Defaults to ON so the warning cue is audible out of the box; only an
+   * explicit mute persists `false`. Mirrors the beta-banner load/save pair.
+   */
+  loadSoundEnabled(): boolean {
+    return this.read<boolean>(WorkbenchStorageService.SOUND_ENABLED_KEY) ?? true;
+  }
+
+  saveSoundEnabled(enabled: boolean): void {
+    this.write(WorkbenchStorageService.SOUND_ENABLED_KEY, enabled);
   }
 
   private read<T>(key: string): T | null {

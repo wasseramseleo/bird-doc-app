@@ -7,9 +7,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSelect } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { DataEntryFormComponent } from './data-entry-form';
 import {
@@ -17,6 +18,7 @@ import {
   BirdStatus,
   DataEntry,
   HandWingMoult,
+  SelectOption,
   Sex,
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
@@ -24,6 +26,8 @@ import {
 import { Species } from '../models/species.model';
 import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { ProjectService } from '../service/project.service';
+import { AUDIO_CONTEXT_FACTORY, SoundService } from '../service/sound.service';
+import { WorkbenchStorageService } from '../service/workbench-storage.service';
 import { Project, Projekttyp } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
@@ -89,6 +93,20 @@ describe('DataEntryFormComponent', () => {
       .flush({ count: 0, next: null, previous: null, results: [] });
     return httpMock;
   }
+
+  // PRD #361 (#363): the akustisches „Pling" defaults ON, so every
+  // warning-producing test below would otherwise construct a REAL AudioContext
+  // through the default AUDIO_CONTEXT_FACTORY (`() => new AudioContext()`) via
+  // the root SoundService. Mute the cue at the storage layer before EVERY test
+  // (playWarning() reads loadSoundEnabled() lazily and returns before touching
+  // the factory), so the pre-existing plausibility specs never build one. This
+  // is TestBed-independent, so it holds across the per-block resetTestingModule
+  // setups. The dedicated #363 block below stays self-contained (spy
+  // SoundService / spy factory) and is unaffected. Key mirrors
+  // WorkbenchStorageService.SOUND_ENABLED_KEY.
+  beforeEach(() => {
+    localStorage.setItem('birddoc.soundEnabled', 'false');
+  });
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -3999,6 +4017,263 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // PRD #361, issue #363: the akustisches „Pling" is bound to the SAME reconcile
+  // event that opens the „Verstanden" modal — the moment a warning is decided to
+  // have newly appeared. So the form must call SoundService.playWarning() exactly
+  // once per newly-appeared warning, stay silent on the edit-load/seed path (which
+  // raises no modal), and never let a muted/absent cue disturb the visual check.
+  describe('akustisches Pling bei neuer Plausibilitätswarnung (#363)', () => {
+    const norm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: null,
+      dj_grossgefiedermauser_moeglich: null,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      show_net_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [norm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const sound = { playWarning: jasmine.createSpy('playWarning') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    afterEach(() => localStorage.clear());
+
+    async function setupCreate(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      sound.playWarning.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: {
+            providers: [
+              { provide: MatDialog, useValue: dialogMock },
+              { provide: SoundService, useValue: sound },
+            ],
+          },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    it('plays the Pling exactly once when a new implausible value produces a warning', async () => {
+      await setupCreate();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+
+      component.onMeasurementBlur('weight_gram');
+
+      expect(sound.playWarning).toHaveBeenCalledTimes(1);
+      // The cue rides the same event as the modal (a non-Geschlecht warning here).
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-alerts when an already-flagged value changes to a different implausible value', async () => {
+      await setupCreate();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur('weight_gram');
+      expect(sound.playWarning).toHaveBeenCalledTimes(1);
+
+      // A second, *different* out-of-range value is a fresh newly-appeared warning.
+      component.entryForm.get('weight_gram')!.setValue(30);
+      component.onMeasurementBlur('weight_gram');
+
+      expect(sound.playWarning).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not re-play when the same flagged value is re-triggered unchanged', async () => {
+      await setupCreate();
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur('weight_gram');
+
+      // Same value, blurred again: already acknowledged → no fresh warning, no Pling.
+      component.onMeasurementBlur('weight_gram');
+
+      expect(sound.playWarning).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays silent on the edit-load/seed path (an existing warning raises no Pling)', async () => {
+      const routeStub = {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '77' : null) } },
+      };
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      sound.playWarning.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: routeStub },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: {
+            providers: [
+              { provide: MatDialog, useValue: dialogMock },
+              { provide: SoundService, useValue: sound },
+            ],
+          },
+        })
+        .compileComponents();
+      const f = TestBed.createComponent(DataEntryFormComponent);
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/77/'))
+        .flush({
+          id: '77',
+          species: zaunkoenig,
+          ring: { id: 'r1', number: '901234', size: RingSize.S },
+          staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+          ringing_station: { handle: 'STAMT', name: 'Linz', organization: project.organization },
+          project: null,
+          weight_gram: 25,
+          bird_status: BirdStatus.ReCatch,
+          age_class: AgeClass.ThisYear,
+          sex: Sex.Female,
+          date_time: '2024-05-01T08:30:00Z',
+          has_mites: false,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        } as unknown as DataEntry);
+      await settle();
+
+      // The stored value already breaches (icon is active) but the load raises no
+      // modal — and so no Pling.
+      expect(sound.playWarning).not.toHaveBeenCalled();
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+
+    it('keeps the visual safety check intact when muted (modal opens, no audio synthesized)', async () => {
+      // Real SoundService this time, with a spy AudioContext factory: muting must
+      // make playWarning a no-op (factory never called) WITHOUT suppressing the
+      // modal — audio muted/unavailable never costs the visual check.
+      const audioFactory = jasmine.createSpy('audioContextFactory');
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+          { provide: AUDIO_CONTEXT_FACTORY, useValue: audioFactory },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      TestBed.inject(WorkbenchStorageService).saveSoundEnabled(false);
+
+      component.selectedSpecies.set(zaunkoenig);
+      component.entryForm.get('weight_gram')!.setValue(25);
+      component.onMeasurementBlur('weight_gram');
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(audioFactory).not.toHaveBeenCalled();
+    });
+  });
+
   // Issue #248: the Quotient rule surfaced in the capture form. The derived
   // Federlänge/Flügellänge ratio is checked against a relative band; its inline
   // Plausibilitätswarnung sits under its own dedicated slot (keyed by the
@@ -5187,6 +5462,244 @@ describe('DataEntryFormComponent', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
       post.flush({});
+    });
+  });
+
+  // Issue #362 (PRD #361): picking an implausible categorical value by its
+  // keyboard shortcut must re-run the Plausibilitätskontrolle the instant focus
+  // leaves the field — exactly as the mouse selectionChange path already does.
+  // The keyboard handler sets the value with setValue(), which does NOT emit
+  // MatSelect.selectionChange, so before this fix the warning only surfaced on a
+  // later numeric blur. The recompute is wired for ALL categorical selects, and
+  // because the keyboard flow also advances focus, the newly-appeared-warning
+  // modal restores focus to the picked field on dismissal.
+  describe('Plausibilitätskontrolle bei Tastatur-Auswahl kategorialer Felder (#362)', () => {
+    // A Zaunkönig norm arming one numeric rule (Gewicht) plus both categorical
+    // flags, so a keyboard-picked implausible value yields a warning.
+    const norm: SpeciesNorm = {
+      species_id: 's1',
+      species_name: 'Zaunkönig',
+      weight_mean: '9.1',
+      weight_sd: '0.82',
+      feather_mean: null,
+      feather_sd: null,
+      wing_mean: null,
+      wing_sd: null,
+      tarsus_mean: null,
+      tarsus_sd: null,
+      notch_f2_mean: null,
+      notch_f2_sd: null,
+      inner_foot_mean: null,
+      inner_foot_sd: null,
+      quotient_mean: null,
+      quotient_tolerance_pct: null,
+      sd_factor: '1.96',
+      geschlechtsbestimmung_moeglich: false,
+      dj_grossgefiedermauser_moeglich: false,
+    };
+    const zaunkoenig: Species = {
+      id: 's1',
+      common_name_de: 'Zaunkönig',
+      common_name_en: 'Wren',
+      scientific_name: 'Troglodytes troglodytes',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    const unnormedSpecies: Species = { ...zaunkoenig, id: 's3', common_name_de: 'Amsel' };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      show_net_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const bundle: OfflineBundle = {
+      identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+      species: [],
+      ringing_stations: [],
+      scientists: [],
+      projects: [],
+      centrals: [],
+      norms: [norm],
+      last_consumed_ring_numbers: [],
+    };
+    const cacheStub = {
+      load: () => Promise.resolve({ bundle, refreshedAt: '2026-07-02T08:00:00.000Z' }),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const sexMessage = 'Geschlechtsbestimmung laut Artennorm nicht möglich (Zaunkönig)';
+    const handWingMessage =
+      'Großgefiedermauser bei diesjährigem Vogel laut Artennorm nicht zu erwarten (Zaunkönig)';
+
+    async function setup(): Promise<HttpTestingController> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(undefined) });
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+          { provide: ReferenceBundleCacheService, useValue: cacheStub },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      await settle();
+      return httpMock;
+    }
+
+    const icon = (field: string) =>
+      fixture.nativeElement.querySelector(
+        `[data-testid="plausibility-${field}-icon"]`,
+      ) as HTMLElement | null;
+    const lastDialogComponent = () => dialogMock.open.calls.mostRecent().args[0];
+    const lastDialogMessage = () =>
+      (dialogMock.open.calls.mostRecent().args[1].data as { message: string }).message;
+
+    // Drive a single-character keyboard shortcut through the MatSelect keydown
+    // handler, mimicking a Beringer typing the option key on a focused select.
+    // A stub MatSelect (only close() is touched) keeps the test off real Material.
+    const keyPick = (controlName: string, options: SelectOption<unknown>[], key: string): void => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      const select = { close: jasmine.createSpy('close') } as unknown as MatSelect;
+      component.onSelectKeydown(event, controlName, options, select);
+    };
+
+    // focusNext() schedules a real setTimeout(50) to advance focus. Let it settle
+    // so it neither leaks into a later spec nor races the focus assertions.
+    const drainFocusTimers = () => new Promise<void>((resolve) => setTimeout(resolve, 60));
+
+    it('surfaces the Plausibilitätswarnung immediately when an implausible Geschlecht is picked by keyboard shortcut (no later blur needed)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      // "1" → Sex.Male against a not-sexable Art. The shortcut alone must trigger
+      // the check — no measurement blur follows.
+      keyPick('sex', component.sexOptions, '1');
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('sex')!.value).toBe(Sex.Male);
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogComponent()).toBe(InfoDialogComponent);
+      expect(lastDialogMessage()).toContain(sexMessage);
+      const el = icon('sex');
+      expect(el).not.toBeNull();
+      expect(el!.getAttribute('title')).toContain(sexMessage);
+
+      await drainFocusTimers();
+    });
+
+    it('wires the trigger for a NON-Geschlecht categorical select too (Handschwingenmauser), so all categorical fields inherit the timing', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      // dj-Großgefiedermauser rule: a diesjähriger Vogel with moult present.
+      component.entryForm.get('age_class')!.setValue(AgeClass.ThisYear);
+
+      // "2" → HandWingMoult.AtLeastOne, picked purely by keyboard shortcut.
+      keyPick('hand_wing', component.handWingMoultOptions, '2');
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('hand_wing')!.value).toBe(HandWingMoult.AtLeastOne);
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogMessage()).toContain(handWingMessage);
+      expect(icon('hand_wing')).not.toBeNull();
+
+      await drainFocusTimers();
+    });
+
+    it('opens no modal when the keyboard-picked value is plausible (mirrors mouse selection — the rules are unchanged)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      // "0" → Sex.Unknown: a claimed absence, never implausible.
+      keyPick('sex', component.sexOptions, '0');
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('sex')!.value).toBe(Sex.Unknown);
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      expect(icon('sex')).toBeNull();
+
+      await drainFocusTimers();
+    });
+
+    it('honours fire-once, stays silent on an unchanged re-pick, and re-alerts when the keyboard changes an already-flagged value to a different implausible one', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      // Male against a not-sexable Art → the warning fires once.
+      keyPick('sex', component.sexOptions, '1');
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(icon('sex')).not.toBeNull();
+
+      // Re-picking the SAME value is acknowledged — it must not nag again.
+      keyPick('sex', component.sexOptions, '1');
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+
+      // A DIFFERENT still-implausible value (Weiblich) re-alerts.
+      keyPick('sex', component.sexOptions, '2');
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(2);
+
+      await drainFocusTimers();
+    });
+
+    it('returns keyboard focus to the picked field once the newly-appeared-warning modal is dismissed', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+
+      // The modal stays open until the ringer dismisses it — model that with a
+      // Subject we complete ourselves, AFTER the keyboard flow has advanced focus.
+      const afterClosed = new Subject<void>();
+      dialogMock.open.and.returnValue({ afterClosed: () => afterClosed });
+
+      keyPick('sex', component.sexOptions, '1');
+      fixture.detectChanges();
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+
+      // The keyboard flow advances focus off the picked field first (focusNext).
+      await drainFocusTimers();
+      const sexEl = fixture.nativeElement.querySelector(
+        '[formControlName="sex"]',
+      ) as HTMLElement;
+      expect(document.activeElement).not.toBe(sexEl);
+
+      // Dismissing the modal restores focus to the picked field so entry continues.
+      afterClosed.next();
+      afterClosed.complete();
+      expect(document.activeElement).toBe(sexEl);
     });
   });
 

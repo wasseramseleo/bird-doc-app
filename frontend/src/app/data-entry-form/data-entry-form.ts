@@ -49,6 +49,7 @@ import {DataAccessFacadeService} from '../service/data-access-facade.service';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
 import {WorkbenchStorageService} from '../service/workbench-storage.service';
+import {SoundService} from '../service/sound.service';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {resolveQueuedEntryDisplay} from '../core/offline/queued-entry-display';
 import {OutboxEntry} from '../models/outbox-entry.model';
@@ -142,6 +143,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   private readonly router = inject(Router);
   private readonly projectService = inject(ProjectService);
   private readonly storage = inject(WorkbenchStorageService);
+  private readonly sound = inject(SoundService);
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -1298,6 +1300,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     );
     this.acknowledgedSignatures.set(nextAcknowledged);
     if (toShow.length > 0) {
+      // PRD #361 (#363): bound to the SAME newly-appeared-warning event as the
+      // „Verstanden" modal — one gentle „Pling" per new warning, silent on the
+      // seed path, and muted/unavailable audio never blocks the modal below.
+      this.sound.playWarning();
       this.openPlausibilityInfoDialog(toShow, triggerField);
     }
   }
@@ -1802,6 +1808,15 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       this.entryForm.get(controlName)?.setValue(matchingOption.value);
       selectComponent.close();
       this.focusNext(controlName);
+      // #362: setValue() does NOT emit MatSelect.selectionChange, so the central
+      // Plausibilitätskontrolle the mouse-selection path runs (onCategoricalChange)
+      // would be skipped — a keyboard-picked implausible value would only surface
+      // on a later numeric-field blur. Re-run the same recompute here for EVERY
+      // categorical select, so future categorical fields inherit correct timing.
+      // focusNext already advanced focus, so pass controlName: a newly-appeared
+      // warning modal then restores focus to the picked field on dismissal,
+      // keeping keyboard entry flowing.
+      this.evaluatePlausibility(controlName);
     }
   }
 
