@@ -21,6 +21,14 @@ _Avoid_: Membership (English), affiliation
 A Mitgliedschaft's permission level within its Organisation. **Admin** manages the Organisation (invite/remove Mitglieder, manage Stationen, create/edit/delete Projekte, manage Beringer, edit the Organisation, pull the IWM export); **Mitglied** records and edits captures across the whole Organisation but cannot manage its structure. No-account Beringer have no Rolle.
 _Avoid_: Role (English), permission, Berechtigung
 
+**Betreiber**:
+The party operating BirdDoc as a service — currently **Alpine Coders e.U.**, Korneuburg (Inhaber: Dipl.-Ing. Leonard Guelmino; FN 662283x). The Betreiber issues Zugangscodes, admits Organisationen and is every Träger's AGB contract partner. Under the DSGVO the Betreiber is **Auftragsverarbeiter** for an Organisation's Beringungsdaten (its Träger is the Verantwortliche) and itself **Verantwortlicher** for the service's own account, Warteliste/lead and technical data.
+_Avoid_: Operator (English — prose only), Anbieter, Hersteller; "BirdDoc" as a party (the product name, not a legal person)
+
+**Träger**:
+The natural person or Rechtsträger (Verein, institute, company) legally behind an Organisation — the AGB contract partner and the datenschutzrechtliche **Verantwortliche** for the Organisation's Beringungsdaten. An Organisation is a product tenant, not necessarily a legal person: a loose group of hobby ringers can neither contract nor bear DSGVO duties, so the founding person either is the Träger herself or acts for one. The audience is mixed by design — a Träger may be a Verbraucher (a private person, or a non-commercial Verein), so AGB clauses are drafted KSchG-safe rather than B2B-only.
+_Avoid_: Owner, Inhaber (that's the e.U. proprietor), "die Organisation" as a contract party
+
 **Zugangscode**:
 The invite code that gates **org creation** — the only door through which a newcomer founds a new Organisation (and becomes its Admin) during the beta. Issued by the operator. Without a valid code there is no new Organisation. The public **Warteliste** ("Zugang anfragen" on the landing page) collects demand for codes but grants nothing by itself.
 _Avoid_: Invite code (English), registration key, license key

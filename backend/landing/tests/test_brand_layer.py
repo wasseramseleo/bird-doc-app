@@ -26,11 +26,25 @@ def test_landing_does_not_leak_raw_template_comment_markup(client):
 
 def test_landing_loads_lora_and_inter_the_way_the_app_does(client):
     content = client.get("/").content.decode()
-    # Same Google Fonts css2 request the Angular app issues in its index.html:
-    # Lora (display) + Inter (body).
-    assert "fonts.googleapis.com/css2" in content
-    assert "Lora" in content
-    assert "Inter" in content
+    # Lora (display) + Inter (body), self-hosted like the Angular app's bundled
+    # @fontsource files (ADR 0025) — no request may leave for Google's CDN.
+    assert "landing/fonts.css" in content
+    assert "fonts.googleapis.com" not in content
+    assert "fonts.gstatic.com" not in content
+
+
+def test_landing_font_css_declares_lora_and_inter_from_local_files(settings):
+    from pathlib import Path
+
+    static = Path(settings.BASE_DIR) / "landing" / "static" / "landing"
+    css = (static / "fonts.css").read_text()
+    assert "font-family: 'Lora'" in css
+    assert "font-family: 'Inter'" in css
+    # Every referenced woff2 is actually vendored next to the stylesheet.
+    for line in css.splitlines():
+        if "url(./fonts/" in line:
+            filename = line.split("url(./fonts/")[1].split(")")[0]
+            assert (static / "fonts" / filename).is_file(), f"missing font file {filename}"
 
 
 def test_landing_header_wears_the_real_logo_not_a_css_ring(client):

@@ -34,6 +34,12 @@
               }
             ],
             "styles": [
+              "node_modules/@fontsource/inter/400.css",
+              "node_modules/@fontsource/inter/500.css",
+              "node_modules/@fontsource/inter/600.css",
+              "node_modules/@fontsource/lora/500.css",
+              "node_modules/@fontsource/lora/600.css",
+              "node_modules/material-icons/iconfont/material-icons.css",
               "src/brand-tokens.css",
               "src/styles.scss"
             ]
@@ -101,6 +107,12 @@
               }
             ],
             "styles": [
+              "node_modules/@fontsource/inter/400.css",
+              "node_modules/@fontsource/inter/500.css",
+              "node_modules/@fontsource/inter/600.css",
+              "node_modules/@fontsource/lora/500.css",
+              "node_modules/@fontsource/lora/600.css",
+              "node_modules/material-icons/iconfont/material-icons.css",
               "src/brand-tokens.css",
               "src/styles.scss"
             ]

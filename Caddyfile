@@ -33,6 +33,9 @@ birddoc.eu {
 		output file /var/log/caddy/birddoc-access.log {
 			roll_size 20MiB
 			roll_keep 10
+			# IP-bearing logs expire after 30 days — the Datenschutzerklärung
+			# states this retention ("Server-Logs … längstens 30 Tage").
+			roll_keep_for 720h
 		}
 		format json
 	}

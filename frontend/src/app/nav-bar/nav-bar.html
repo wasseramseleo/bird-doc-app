@@ -142,5 +142,11 @@
       <mat-icon>logout</mat-icon>
       <span>Abmelden</span>
     </button>
+    <mat-divider></mat-divider>
+    <nav class="user-menu__legal" aria-label="Rechtliches">
+      @for (link of legalLinks; track link.label) {
+        <a [href]="link.href" target="_blank" rel="noopener">{{ link.label }}</a>
+      }
+    </nav>
   </mat-menu>
 </mat-toolbar>

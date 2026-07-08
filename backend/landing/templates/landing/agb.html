@@ -11,14 +11,15 @@ pages and the home.
 {% block title %}AGB &amp; Auftragsverarbeitung · BirdDoc{% endblock %}
 
 {% block content %}
-    {% include "landing/_legal_draft_notice.html" %}
-
     <p class="eyebrow">Rechtliches</p>
     <h1>Allgemeine Geschäftsbedingungen (AGB)</h1>
     <p>
         Diese AGB regeln die Nutzung von BirdDoc zwischen dem Betreiber (laut
-        <a href="{% url 'landing:impressum' %}">Impressum</a>) und der
-        nutzenden Organisation.
+        <a href="{% url 'landing:impressum' %}">Impressum</a>) und dem
+        <strong>Träger der nutzenden Organisation</strong> – der gründenden
+        natürlichen Person oder dem Rechtsträger (z.&nbsp;B. Verein, Institut),
+        für den sie handelt. Der Träger wird im Folgenden kurz „die
+        Organisation" genannt.
     </p>
 
     <h2>1. Leistungsgegenstand</h2>
@@ -32,7 +33,8 @@ pages and the home.
     <p>
         Die Gründung einer Organisation erfolgt über einen Zugangscode. Mit der
         Gründung erkennt die gründende Person diese AGB samt der nachstehenden
-        Vereinbarung zur Auftragsverarbeitung (DPA) an.
+        Vereinbarung zur Auftragsverarbeitung (DPA) an und sichert zu, für den
+        Träger der Organisation handeln zu dürfen.
     </p>
 
     <h2>3. Pflichten der Organisation</h2>
@@ -43,15 +45,61 @@ pages and the home.
 
     <h2>4. Verfügbarkeit und Haftung</h2>
     <p>
-        Während der Beta besteht kein Anspruch auf eine bestimmte Verfügbarkeit.
-        Die Haftung richtet sich nach den gesetzlichen Bestimmungen.
-        [PLATZHALTER: Haftungsbeschränkung nach rechtlicher Prüfung].
+        BirdDoc wird während der Beta unentgeltlich und ohne Zusicherung einer
+        bestimmten Verfügbarkeit oder bestimmter Eigenschaften bereitgestellt.
+    </p>
+    <p>
+        Der Betreiber haftet unbeschränkt für Schäden aus der Verletzung von
+        Leben, Körper oder Gesundheit sowie für Schäden, die auf Vorsatz oder
+        grober Fahrlässigkeit beruhen. Die Haftung für leichte Fahrlässigkeit
+        ist – mit Ausnahme von Personenschäden – ausgeschlossen. Gegenüber
+        Unternehmern ist die Haftung für entgangenen Gewinn und mittelbare
+        Schäden ausgeschlossen.
+    </p>
+    <p>
+        Zwingende gesetzliche Haftungsbestimmungen (insbesondere nach dem
+        Konsumentenschutzgesetz) bleiben unberührt.
+    </p>
+    <p>
+        Die Organisation bleibt angehalten, ihre Daten in angemessenen
+        Abständen zu exportieren (z.&nbsp;B. über den IWM-Export), soweit ihr
+        dies zumutbar ist.
     </p>
 
     <h2>5. Laufzeit und Kündigung</h2>
     <p>
-        Das Nutzungsverhältnis ist während der Beta jederzeit kündbar.
-        [PLATZHALTER: Kündigungsfristen ab Version 1.0].
+        Das Nutzungsverhältnis ist während der Beta von beiden Seiten jederzeit
+        ohne Frist kündbar.
+    </p>
+    <p>
+        Stellt der Betreiber den Dienst ein oder schränkt ihn wesentlich ein,
+        kündigt er dies mindestens 30 Tage im Voraus per E-Mail an. Die
+        Organisation erhält in diesem Zeitraum Gelegenheit, ihre Daten zu
+        exportieren; im Übrigen gilt Abschnitt A6 der Vereinbarung zur
+        Auftragsverarbeitung (Löschung oder Rückgabe).
+    </p>
+    <p>
+        Für künftige kostenpflichtige Pläne gelten eigene, bei ihrer Einführung
+        mitgeteilte Bedingungen. Ein Wechsel auf einen kostenpflichtigen Plan
+        erfolgt nur mit ausdrücklicher Zustimmung der Organisation.
+    </p>
+
+    <h2>6. Änderungen dieser AGB</h2>
+    <p>
+        Der Betreiber kann diese AGB ändern, soweit dies aus sachlichen Gründen
+        (z.&nbsp;B. Weiterentwicklung des Dienstes, geänderte Rechtslage)
+        erforderlich ist. Änderungen werden mindestens 30 Tage vor Inkrafttreten
+        per E-Mail an die Organisation angekündigt.
+    </p>
+    <p>
+        Widerspricht die Organisation nicht bis zum Inkrafttreten oder nutzt
+        sie den Dienst danach weiter, gelten die geänderten AGB als angenommen;
+        auf diese Folge wird in der Ankündigung gesondert hingewiesen. Die
+        Organisation kann stattdessen jederzeit kündigen (Punkt 5).
+    </p>
+    <p>
+        Der Wechsel auf einen kostenpflichtigen Plan ist von dieser Klausel
+        ausgenommen und bedarf stets ausdrücklicher Zustimmung (Punkt 5).
     </p>
 
     <hr class="legal-rule">
@@ -65,8 +113,8 @@ pages and the home.
 
     <h2>A1. Rollen der Parteien</h2>
     <p>
-        Die <strong>Organisation ist Verantwortliche</strong> im Sinne des
-        Art. 4 Z 7 DSGVO. Der <strong>Betreiber von BirdDoc ist
+        Der <strong>Träger der Organisation ist Verantwortlicher</strong> im
+        Sinne des Art. 4 Z 7 DSGVO. Der <strong>Betreiber von BirdDoc ist
         Auftragsverarbeiter</strong> im Sinne des Art. 4 Z 8 DSGVO und
         verarbeitet die Daten ausschließlich nach dokumentierter Weisung der
         Organisation.
@@ -89,23 +137,56 @@ pages and the home.
     <h2>A4. Unterauftragsverarbeiter</h2>
     <p>
         Der Auftragsverarbeiter setzt folgende Unterauftragsverarbeiter ein:
-        <strong>IPAX OG</strong> (Hosting, Österreich) und <strong>Brevo</strong>
-        (transaktionale E-Mails). Die Daten werden in Österreich bzw. der EU
-        verarbeitet.
+        <strong>IPAX OG</strong> (Hosting und Datensicherung, Österreich) und
+        <strong>Brevo</strong> (Sendinblue GmbH, Deutschland – transaktionale
+        E-Mails). Die Daten werden in Österreich bzw. der EU verarbeitet.
     </p>
 
     <h2>A5. Technische und organisatorische Maßnahmen</h2>
     <p>
-        Der Auftragsverarbeiter trifft angemessene Maßnahmen nach Art. 32 DSGVO
-        (Verschlüsselung der Übertragung, Zugriffskontrolle, Mandantentrennung
-        je Organisation). [PLATZHALTER: vollständiges TOM-Verzeichnis].
+        Der Auftragsverarbeiter trifft insbesondere folgende Maßnahmen nach
+        Art. 32 DSGVO:
     </p>
+    <ul>
+        <li>
+            Verschlüsselung sämtlicher Übertragungen (TLS/HTTPS mit
+            automatischer Zertifikatsverwaltung).
+        </li>
+        <li>
+            Betrieb in einem Rechenzentrum in Österreich (IPAX OG); keine
+            Verarbeitung in Drittländern.
+        </li>
+        <li>
+            Mandantentrennung je Organisation auf Anwendungsebene: jeder
+            Datenzugriff ist an die Organisation des angemeldeten Kontos
+            gebunden.
+        </li>
+        <li>
+            Rollenbasierte Zugriffskontrolle innerhalb der Organisation
+            (Admin/Mitglied); Passwörter werden ausschließlich als gesalzene
+            Hashes gespeichert.
+        </li>
+        <li>
+            Zugriff auf Produktionssysteme nur durch den Betreiber über
+            SSH mit Schlüssel-Authentifizierung; Firewall mit ausschließlich
+            benötigten Ports; regelmäßige Sicherheitsupdates.
+        </li>
+        <li>
+            Regelmäßige Datensicherungen als Server-Snapshots beim
+            Hosting-Anbieter in Österreich.
+        </li>
+        <li>
+            Server-Logs werden längstens 30 Tage aufbewahrt.
+        </li>
+    </ul>
 
     <h2>A6. Löschung und Rückgabe</h2>
     <p>
         Nach Beendigung werden die Daten nach Wahl der Organisation gelöscht oder
         zurückgegeben, soweit keine gesetzliche Aufbewahrungspflicht besteht.
     </p>
+
+    <p>Stand: Juli 2026</p>
 
     <p class="legal-back"><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
 {% endblock %}
