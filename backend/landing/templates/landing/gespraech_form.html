@@ -3,6 +3,18 @@
 
 {% block title %}{% translate "Gespräch vereinbaren" %} · BirdDoc{% endblock %}
 
+{% comment %}
+The funnels are bilingual, so the meta description is translated per language
+(the funnel base already emits the hreflang cluster — {{ block.super }} keeps
+it). Antwortzuerst (issue #305): the description is the same pitch the page
+opens with — a whole ringing landscape, GDPR-compliant, hosted in Austria.
+{% endcomment %}
+{% block head_meta %}
+    {{ block.super }}
+    {% blocktranslate trimmed asvar meta_description %}BirdDoc trägt eine ganze Beringungs-Landschaft: DSGVO-konform, in Österreich gehostet, ohne Lock-in. Erzähl uns von eurer Stelle – wir melden uns für ein Gespräch.{% endblocktranslate %}
+    <meta name="description" content="{{ meta_description }}">
+{% endblock %}
+
 {% block content %}
     <p class="eyebrow">{% translate "Für Organisationen &amp; Vogelwarten" %}</p>
     <h1>{% translate "Gespräch vereinbaren" %}</h1>

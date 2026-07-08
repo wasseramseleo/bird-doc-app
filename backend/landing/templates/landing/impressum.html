@@ -9,6 +9,16 @@ footer measure so the Impressum renders at the same width as the home.
 
 {% block title %}Impressum · BirdDoc{% endblock %}
 
+{% comment %}
+The legal pages are German-only (no {% translate %}), so they carry no hreflang
+cluster, only a plain meta description so a crawler never indexes them
+description-less (Bing Webmaster Tools flagged these as "Meta Description tag
+missing").
+{% endcomment %}
+{% block head_meta %}
+    <meta name="description" content="Impressum von BirdDoc: Angaben zu Medieninhaber und Diensteanbieter gemäß § 5 E-Commerce-Gesetz (ECG) und § 25 Mediengesetz (MedienG).">
+{% endblock %}
+
 {% block content %}
     {% include "landing/_legal_draft_notice.html" %}
 

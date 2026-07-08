@@ -244,6 +244,46 @@ def test_german_only_pages_are_self_canonical_without_alternates(client):
         assert '<link rel="alternate"' not in content, path
 
 
+def test_legal_and_auth_pages_carry_a_meta_description(client):
+    # Every public legal + auth destination page carries a non-empty
+    # <meta name="description"> so a crawler never indexes it description-less
+    # (Bing Webmaster Tools flagged these as "Meta Description tag missing").
+    # These pages are German-only (no {% translate %}), so the description is a
+    # plain German sentence — no hreflang cluster (that stays home-/funnel-only).
+    import re
+
+    for path in ("/impressum/", "/datenschutz/", "/agb/", "/registrierung/"):
+        content = client.get(path).content.decode()
+        match = re.search(r'<meta name="description" content="([^"]+)"', content)
+        assert match, f"{path} has no meta description"
+        assert match.group(1).strip(), f"{path} meta description is blank"
+
+
+def test_funnels_carry_a_translated_meta_description(client):
+    # The two lead funnels (Warteliste, Gespräch) are bilingual, so each carries
+    # a translated <meta name="description"> — German at the apex, English under
+    # /en/ — alongside the hreflang cluster the funnel base already emits. Adding
+    # the description must not drop that cluster (block.super must survive).
+    import re
+
+    cases = {
+        "/zugang-anfragen/": ("Warteliste", "waiting list"),
+        "/gespraech/": ("Beringungs-Landschaft", "ringing landscape"),
+    }
+    for path, (de_marker, en_marker) in cases.items():
+        de = client.get(path).content.decode()
+        de_desc = re.search(r'<meta name="description" content="([^"]+)"', de)
+        assert de_desc, f"{path} has no meta description"
+        assert de_marker in de_desc.group(1), path
+        assert '<link rel="alternate" hreflang="de"' in de, path
+
+        en = client.get(f"/en{path}").content.decode()
+        en_desc = re.search(r'<meta name="description" content="([^"]+)"', en)
+        assert en_desc, f"/en{path} has no meta description"
+        assert en_marker in en_desc.group(1), f"/en{path} description not translated"
+        assert '<link rel="alternate" hreflang="en"' in en, f"/en{path}"
+
+
 def test_home_canonical_equals_the_og_url(client):
     # The canonical link points at the SAME absolute URL the page already feeds
     # og:url (issue #108) — the crawler tag and the share tag never drift apart.

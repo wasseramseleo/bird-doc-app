@@ -9,6 +9,16 @@ footer measure so the Datenschutzerklärung renders at the same width as the hom
 
 {% block title %}Datenschutzerklärung · BirdDoc{% endblock %}
 
+{% comment %}
+The legal pages are German-only (no {% translate %}), so they carry no hreflang
+cluster, only a plain meta description so a crawler never indexes them
+description-less (Bing Webmaster Tools flagged these as "Meta Description tag
+missing").
+{% endcomment %}
+{% block head_meta %}
+    <meta name="description" content="Datenschutzerklärung von BirdDoc: Verarbeitung personenbezogener Daten nach DSGVO – Hosting in Österreich, keine Tracking-Cookies, klare Betroffenenrechte.">
+{% endblock %}
+
 {% block content %}
     {% include "landing/_legal_draft_notice.html" %}
 
