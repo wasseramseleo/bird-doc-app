@@ -20,34 +20,78 @@ missing").
 {% endblock %}
 
 {% block content %}
-    {% include "landing/_legal_draft_notice.html" %}
-
     <p class="eyebrow">Rechtliches</p>
     <h1>Impressum</h1>
-    <p>Angaben gemäß § 5 E-Commerce-Gesetz (ECG) und § 25 Mediengesetz (MedienG).</p>
+    <p>
+        Offenlegung gemäß § 25 Mediengesetz (MedienG) und Informationspflicht
+        gemäß § 5 E-Commerce-Gesetz (ECG) und § 14 Unternehmensgesetzbuch (UGB).
+    </p>
 
     <h2>Medieninhaber und Diensteanbieter</h2>
     <p>
-        BirdDoc wird als <strong>Einzelunternehmen</strong> betrieben von:<br>
-        [PLATZHALTER: Vor- und Nachname]<br>
-        [PLATZHALTER: Straße und Hausnummer]<br>
-        [PLATZHALTER: PLZ und Ort], Österreich
+        BirdDoc wird betrieben von:<br>
+        <strong>Alpine Coders e.U.</strong> (Einzelunternehmen)<br>
+        Inhaber: Dipl.-Ing. Leonard Guelmino<br>
+        Jahnstraße 4/31<br>
+        2100 Korneuburg, Österreich
+    </p>
+    <p>
+        Firmenbuchnummer: FN 662283x<br>
+        Firmenbuchgericht: Landesgericht Korneuburg
     </p>
 
     <h2>Kontakt</h2>
     <p>
-        E-Mail: [PLATZHALTER: kontakt@birddoc.eu]<br>
-        Telefon: [PLATZHALTER: Telefonnummer]
+        E-Mail: <a href="mailto:contact@birddoc.eu">contact@birddoc.eu</a><br>
+        Telefon: +43&nbsp;678&nbsp;78&nbsp;225&nbsp;08
     </p>
 
     <h2>Unternehmensgegenstand</h2>
     <p>
-        Bereitstellung einer Web-Anwendung zur Dokumentation der Vogelberingung
-        (Beringung) für Beringerinnen und Beringer sowie Organisationen.
+        Dienstleistungen in der automatischen Datenverarbeitung und
+        Informationstechnik; konkret die Bereitstellung der Web-Anwendung
+        BirdDoc zur Dokumentation der Vogelberingung (Beringung) für
+        Beringerinnen und Beringer sowie Organisationen.
     </p>
 
-    <h2>Umsatzsteuer / UID</h2>
-    <p>[PLATZHALTER: UID-Nummer bzw. Hinweis auf Kleinunternehmerregelung]</p>
+    <h2>Umsatzsteuer</h2>
+    <p>
+        Kleinunternehmer gemäß § 6 Abs 1 Z 27 UStG – es wird keine Umsatzsteuer
+        ausgewiesen; keine UID-Nummer.
+    </p>
+
+    <h2>Zuständige Aufsichtsbehörde</h2>
+    <p>Bezirkshauptmannschaft Korneuburg</p>
+
+    <h2>Kammerzugehörigkeit</h2>
+    <p>
+        Wirtschaftskammer Niederösterreich (WKNÖ),<br>
+        Fachgruppe Unternehmensberatung, Buchhaltung und
+        Informationstechnologie (UBIT)
+    </p>
+
+    <h2>Anwendbare Rechtsvorschriften</h2>
+    <p>
+        Gewerbeordnung 1994 (GewO), abrufbar unter
+        <a href="https://www.ris.bka.gv.at/GeltendeFassung.wxe?Abfrage=Bundesnormen&amp;Gesetzesnummer=10007517"
+           rel="noopener noreferrer">www.ris.bka.gv.at</a>.
+    </p>
+
+    <h2>Blattlinie (grundlegende Richtung)</h2>
+    <p>
+        Informationen über die Web-Anwendung BirdDoc sowie Fachinformationen
+        zur Vogelberingung.
+    </p>
+
+    <h2>Verbraucherstreitbeilegung</h2>
+    <p>
+        Der Betreiber ist nicht verpflichtet und nicht bereit, an
+        Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle
+        teilzunehmen. Beschwerden richten Sie bitte an die oben angegebene
+        E-Mail-Adresse.
+    </p>
+
+    <p>Stand: Juli 2026</p>
 
     <p class="legal-back"><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
 {% endblock %}

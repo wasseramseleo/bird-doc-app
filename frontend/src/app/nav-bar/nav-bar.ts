@@ -14,6 +14,7 @@ import {ProjectService} from '../service/project.service';
 import {Project} from '../models/project.model';
 import {FeedbackDialogComponent} from '../feedback/feedback-dialog/feedback-dialog';
 import {environment} from '../../environments/environment';
+import {LEGAL_LINKS} from '../core/legal-links';
 import {OfflineReadiness} from './offline-readiness/offline-readiness';
 import {OfflineIndicator} from './offline-indicator/offline-indicator';
 import {OutboxIndicator} from './outbox-indicator/outbox-indicator';
@@ -47,6 +48,7 @@ export class NavBar {
   private readonly dialog = inject(MatDialog);
 
   readonly adminUrl = environment.adminUrl;
+  readonly legalLinks = LEGAL_LINKS;
   readonly currentProject = this.projectService.currentProject;
   readonly projects = this.projectService.projects;
 

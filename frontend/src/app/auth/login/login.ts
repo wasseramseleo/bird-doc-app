@@ -7,6 +7,7 @@ import {MatInputModule} from '@angular/material/input';
 import {MatButtonModule} from '@angular/material/button';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {AuthService} from '../../service/auth.service';
+import {LEGAL_LINKS} from '../../core/legal-links';
 
 @Component({
   selector: 'app-login',
@@ -34,6 +35,7 @@ export class LoginComponent {
 
   readonly submitting = signal(false);
   readonly errorMessage = signal<string | null>(null);
+  readonly legalLinks = LEGAL_LINKS;
 
   onSubmit(): void {
     if (this.form.invalid || this.submitting()) {

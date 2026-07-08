@@ -54,4 +54,10 @@
       }
     </button>
   </form>
+
+  <nav class="login-legal" aria-label="Rechtliches">
+    @for (link of legalLinks; track link.label) {
+      <a [href]="link.href" target="_blank" rel="noopener">{{ link.label }}</a>
+    }
+  </nav>
 </div>

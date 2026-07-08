@@ -20,8 +20,6 @@ missing").
 {% endblock %}
 
 {% block content %}
-    {% include "landing/_legal_draft_notice.html" %}
-
     <p class="eyebrow">Rechtliches</p>
     <h1>Datenschutzerklärung</h1>
     <p>
@@ -31,63 +29,119 @@ missing").
 
     <h2>Verantwortlicher</h2>
     <p>
-        Verantwortlicher im Sinne der DSGVO ist der Betreiber laut
-        <a href="{% url 'landing:impressum' %}">Impressum</a>. Für die in einer
-        Organisation erfassten Beringungsdaten ist die jeweilige Organisation
-        Verantwortliche; BirdDoc verarbeitet diese Daten als Auftragsverarbeiter
+        Verantwortlicher im Sinne der DSGVO für den Betrieb der Website und des
+        Dienstes (Konten, Anfragen, technische Daten) ist der Betreiber laut
+        <a href="{% url 'landing:impressum' %}">Impressum</a>:
+        Alpine Coders e.U., Jahnstraße 4/31, 2100 Korneuburg, Österreich.
+        Für die in einer Organisation erfassten Beringungsdaten ist der
+        <strong>Träger der jeweiligen Organisation</strong> (die gründende
+        Person oder der Rechtsträger, für den sie handelt) Verantwortlicher;
+        der Betreiber verarbeitet diese Daten als Auftragsverarbeiter
         (siehe <a href="{% url 'landing:agb' %}">AGB &amp; Auftragsverarbeitung</a>).
     </p>
 
     <h2>Welche Daten verarbeitet werden</h2>
     <ul>
         <li>
-            <strong>Kontodaten:</strong> E-Mail-Adresse und Passwort-Hash zur
-            Anmeldung, Name und Kürzel der Beringerin/des Beringers.
+            <strong>Kontodaten:</strong> E-Mail-Adresse und Passwort (nur als
+            Hash gespeichert) zur Anmeldung, Name und Kürzel der Beringerin/des
+            Beringers. Zweck: Bereitstellung des Kontos und des Dienstes;
+            Rechtsgrundlage: Vertragserfüllung (Art. 6 Abs. 1 lit. b DSGVO).
+            Speicherdauer: bis zur Löschung des Kontos bzw. zum Ende des
+            Nutzungsverhältnisses.
         </li>
         <li>
             <strong>Beringungsdaten:</strong> die fachlichen Felddaten je
-            gefangenem Vogel (Ring, Art, Maße, Station, Datum), erfasst innerhalb
-            einer Organisation.
+            gefangenem Vogel (Ring, Art, Maße, Station, Datum) samt der
+            erfassenden Beringerin/dem erfassenden Beringer, erfasst innerhalb
+            einer Organisation. Diese Daten verarbeitet der Betreiber
+            ausschließlich im Auftrag und nach Weisung des Trägers der
+            Organisation (Art. 28 DSGVO); Speicherdauer und Rechtsgrundlage
+            bestimmt der Träger.
+        </li>
+        <li>
+            <strong>Anfragen (Warteliste und Gespräch):</strong> die über die
+            Formulare „Zugang anfragen" und „Gespräch vereinbaren" übermittelten
+            Angaben (E-Mail-Adresse, Name der Organisation, Rolle, Nachricht).
+            Zweck: Bearbeitung der Anfrage und Vergabe von Zugangscodes;
+            Rechtsgrundlage: Durchführung vorvertraglicher Maßnahmen
+            (Art. 6 Abs. 1 lit. b DSGVO). Speicherdauer: bis zur Bearbeitung,
+            längstens 12 Monate.
+        </li>
+        <li>
+            <strong>Einladungen:</strong> lädt eine Organisation eine Person per
+            E-Mail ein, verarbeiten wir deren E-Mail-Adresse bis zur Annahme
+            oder dem Verfall der Einladung. Rechtsgrundlage: berechtigtes
+            Interesse der Organisation an der Aufnahme ihrer Mitglieder
+            (Art. 6 Abs. 1 lit. f DSGVO).
+        </li>
+        <li>
+            <strong>Feedback:</strong> über die Feedback-Funktion übermittelte
+            Nachrichten samt Absender-E-Mail, zur Bearbeitung der Meldung.
+            Rechtsgrundlage: berechtigtes Interesse an der Verbesserung des
+            Dienstes (Art. 6 Abs. 1 lit. f DSGVO).
         </li>
         <li>
             <strong>Technische Daten:</strong> Server-Logs (IP-Adresse,
-            Zeitpunkt) zur Bereitstellung und Absicherung des Dienstes.
+            Zeitpunkt, aufgerufene Seite, User-Agent) zur Bereitstellung und
+            Absicherung des Dienstes. Rechtsgrundlage: berechtigtes Interesse
+            am sicheren Betrieb (Art. 6 Abs. 1 lit. f DSGVO). Speicherdauer:
+            längstens 30 Tage.
         </li>
     </ul>
 
     <h2>Hosting in Österreich</h2>
     <p>
         BirdDoc wird bei der <strong>IPAX OG</strong> in einem Rechenzentrum in
-        <strong>Österreich</strong> betrieben. Die Daten verbleiben damit in
-        Österreich bzw. der EU. IPAX handelt als <strong>Auftragsverarbeiter</strong>
-        nach Art. 28 DSGVO.
+        <strong>Österreich</strong> betrieben; Datensicherungen erfolgen als
+        Server-Snapshots beim selben Anbieter in Österreich. Die Daten
+        verbleiben damit in Österreich bzw. der EU; eine Übermittlung in
+        Drittländer findet nicht statt. IPAX handelt als
+        <strong>Auftragsverarbeiter</strong> nach Art. 28 DSGVO.
     </p>
 
     <h2>Eingesetzte Auftragsverarbeiter</h2>
     <ul>
         <li>
-            <strong>IPAX OG</strong> (Österreich): Hosting und Serverbetrieb.
+            <strong>IPAX OG</strong> (Österreich): Hosting, Serverbetrieb und
+            Datensicherung.
         </li>
         <li>
-            <strong>Brevo</strong> (Sendinblue GmbH): Versand transaktionaler
-            E-Mails (z.&nbsp;B. Passwort-Zurücksetzen, Bestätigungen).
+            <strong>Brevo</strong> (Sendinblue GmbH, Deutschland): Versand
+            transaktionaler E-Mails (z.&nbsp;B. Passwort-Zurücksetzen,
+            Bestätigungen, Einladungen).
         </li>
     </ul>
 
-    <h2>Cookies und Tracking</h2>
+    <h2>Cookies, lokale Speicherung und Tracking</h2>
     <p>
         BirdDoc setzt <strong>keine Tracking-Cookies und keine Dienste von
-        Drittanbietern zur Analyse</strong> ein. Verwendet werden ausschließlich
-        technisch notwendige Cookies (Anmelde-Session, CSRF-Schutz). Ein
-        Cookie-Banner ist daher nicht erforderlich.
+        Drittanbietern</strong> ein – auch Schriften werden selbst gehostet, es
+        werden keine Inhalte von fremden Servern geladen. Verwendet werden
+        ausschließlich technisch notwendige Cookies (Anmelde-Session,
+        CSRF-Schutz). Ein Cookie-Banner ist daher nicht erforderlich.
+    </p>
+    <p>
+        Für die Offline-Funktion speichert die Anwendung Daten lokal auf dem
+        eigenen Gerät (localStorage/IndexedDB): noch nicht synchronisierte
+        Erfassungen, zwischengespeicherte Referenzdaten der eigenen Organisation
+        und die Anmelde-Identität. Diese Daten verbleiben auf dem Gerät und
+        werden erst beim Synchronisieren an den Server übertragen; diese
+        Speicherung ist für den angebotenen Dienst technisch erforderlich.
     </p>
 
     <h2>Ihre Rechte</h2>
     <p>
         Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung,
         Datenübertragbarkeit und Widerspruch sowie ein Beschwerderecht bei der
-        Datenschutzbehörde. Kontakt: [PLATZHALTER: Datenschutz-Kontakt-E-Mail].
+        österreichischen Datenschutzbehörde
+        (<a href="https://www.dsb.gv.at" rel="noopener noreferrer">dsb.gv.at</a>).
+        Kontakt: <a href="mailto:contact@birddoc.eu">contact@birddoc.eu</a>.
+        Für Beringungsdaten einer Organisation wenden Sie sich bitte zunächst an
+        deren Träger als Verantwortlichen.
     </p>
+
+    <p>Stand: Juli 2026</p>
 
     <p class="legal-back"><a href="{% url 'landing:home' %}">Zurück zur Startseite</a></p>
 {% endblock %}

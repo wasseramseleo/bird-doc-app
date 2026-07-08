@@ -23,10 +23,8 @@
     <link rel="icon" href="{% url 'favicon_png' %}" type="image/png" sizes="96x96">
     <link rel="apple-touch-icon" href="{% url 'apple_touch_icon' %}" sizes="180x180">
     <meta name="theme-color" content="#F7F2E8">
-    {# Lora (display) + Inter (body) — loaded the same way the Angular app does. #}
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+    {# Lora (display) + Inter (body), self-hosted (ADR 0025): no request leaves for a third-party host — the Datenschutzerklärung's "keine Drittanbieter" claim depends on it. #}
+    <link rel="stylesheet" href="{% static 'landing/fonts.css' %}">
     {# Canonical brand layer (ADR 0009), linked before landing.css so the --bd-* tokens are defined when it consumes them. #}
     <link rel="stylesheet" href="{% static 'landing/brand-tokens.css' %}">
     <link rel="stylesheet" href="{% static 'landing/landing.css' %}">

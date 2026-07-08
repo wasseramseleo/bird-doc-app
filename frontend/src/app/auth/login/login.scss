@@ -1,10 +1,30 @@
 .login-page {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
   padding: 1.5rem;
   background-color: var(--bd-paper);
+}
+
+// Legal links out to the public apex (§ 5 ECG — reachable from the app
+// surface, not just the marketing site), styled like the landing footer.
+.login-legal {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  font-size: 0.8125rem;
+
+  a {
+    color: var(--bd-ink-soft);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
 }
 
 .login-card {
