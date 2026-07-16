@@ -593,7 +593,15 @@ class ParasitCodeField(serializers.ChoiceField):
         super().__init__(**kwargs)
 
     def to_internal_value(self, data):
-        return super().to_internal_value(DataEntry.PARASIT_ALIASES.get(data, data))
+        # Only a string can be an alias, and only a string is guaranteed
+        # hashable: a malformed ``["x"]``/``{}`` element would otherwise raise
+        # TypeError inside the dict lookup and surface as a 500. Anything
+        # non-str falls through to ChoiceField, which rejects it as a clean 400
+        # — and the offline replay skips-and-flags a 4xx per entry, where a 5xx
+        # would stop the whole run (sync.service.ts::syncEntry).
+        if isinstance(data, str):
+            data = DataEntry.PARASIT_ALIASES.get(data, data)
+        return super().to_internal_value(data)
 
 
 class DataEntrySerializer(serializers.ModelSerializer):

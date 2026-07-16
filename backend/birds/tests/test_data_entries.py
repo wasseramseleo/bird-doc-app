@@ -1254,6 +1254,41 @@ def test_unknown_parasite_code_is_rejected(auth_client, species, scientist, ring
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("ring_number", "parasites"),
+    [
+        ("913a", [["nested"]]),
+        ("913b", [{}]),
+        ("913c", [{"a": 1}]),
+        ("913d", [42]),
+        ("913e", [None]),
+    ],
+)
+def test_malformed_parasite_json_is_rejected_not_a_server_error(
+    auth_client, species, scientist, ringing_station, ring_number, parasites
+):
+    """A non-string element is a *client* error (400), never a 500 (issue #406).
+
+    The alias rewrite must not assume the incoming value is hashable: a bare
+    ``PARASIT_ALIASES.get(data, data)`` raises ``TypeError: unhashable type`` on
+    a list or dict and turns a malformed payload into an unhandled server fault.
+
+    A 500 is strictly worse here than the 4xx it replaces, because of the very
+    mechanism the alias exists to protect: ``sync.service.ts::syncEntry`` flags a
+    4xx per entry (skip-and-flag) but treats a 5xx as *transient* and stops the
+    whole replay run. One malformed queued payload would head-of-line-block the
+    entire outbox on every reconnect and never drain."""
+    payload = _payload(species, scientist, ringing_station, ring_number=ring_number)
+    payload["parasites"] = parasites
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400, response.json()
+    assert "parasites" in response.json()
+    assert not DataEntry.objects.filter(ring__number=ring_number).exists()
+
+
+@pytest.mark.django_db
 def test_retired_mites_code_is_accepted_and_rewritten(
     auth_client, species, scientist, ringing_station
 ):
