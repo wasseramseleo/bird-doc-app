@@ -4,10 +4,12 @@
       <h1>Projekte</h1>
       <p class="picker__subhead">Wähle ein Projekt, um mit der Dateneingabe zu beginnen.</p>
     </div>
-    <button mat-flat-button color="primary" (click)="create()">
-      <mat-icon>add</mat-icon>
-      Neues Projekt
-    </button>
+    @if (canCreateProject()) {
+      <button mat-flat-button color="primary" (click)="create()">
+        <mat-icon>add</mat-icon>
+        Neues Projekt
+      </button>
+    }
   </header>
 
   @if (loading()) {
@@ -20,7 +22,40 @@
         aria-hidden="true"
         class="picker__empty-logo"
         width="96" height="96" />
-      <p>Du bist noch keinem Projekt zugeordnet. Lege ein neues Projekt an, um mit der Dateneingabe zu beginnen.</p>
+      @switch (emptyCase()) {
+        @case ('no-beringer-admin') {
+          <p>
+            Dein Konto hat noch keinen Beringer. Projekte sind immer Beringern zugeordnet — deshalb
+            ist hier nichts zu sehen, auch wenn deine Organisation Projekte hat.
+          </p>
+          <p>
+            Lege unter „Beringer verwalten“ einen Beringer an und ordne ihn deinem Konto zu.
+          </p>
+          <a mat-stroked-button color="primary" routerLink="/beringer" class="picker__empty-action">
+            <mat-icon>groups</mat-icon>
+            Beringer verwalten
+          </a>
+        }
+        @case ('no-beringer-mitglied') {
+          <p>
+            Dein Konto hat noch keinen Beringer. Projekte sind immer Beringern zugeordnet — deshalb
+            ist hier nichts zu sehen, auch wenn deine Organisation Projekte hat.
+          </p>
+          <p>
+            Einen Beringer kann dir nur eine Administratorin oder ein Administrator deiner
+            Organisation zuordnen. Bitte wende dich an eine Administratorin oder einen Administrator.
+          </p>
+        }
+        @case ('no-projects-admin') {
+          <p>Du bist noch keinem Projekt zugeordnet. Lege ein neues Projekt an, um mit der Dateneingabe zu beginnen.</p>
+        }
+        @case ('no-projects-mitglied') {
+          <p>
+            Du bist noch keinem Projekt zugeordnet. Eine Administratorin oder ein Administrator
+            deiner Organisation fügt dich einem Projekt hinzu.
+          </p>
+        }
+      }
     </div>
   } @else {
     <div class="picker__list">
