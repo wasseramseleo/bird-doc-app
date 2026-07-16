@@ -73,7 +73,11 @@ export class ProjectCreateDialogComponent {
     // starts empty and has to pick someone, rather than silently creating a
     // Projekt with zero Beringer (issue #389).
     scientistIds: [this.creatorScientistIds(), Validators.required],
-    showOptionalFields: [false],
+    // Default on, matching the model default (``Project.show_optional_fields``
+    // is ``default=True``) and the reader's fallback in data-entry-form.ts. The
+    // create payload now always carries this value, so a default of false here
+    // would silently hand every new Projekt a reduced Erfassungsformular.
+    showOptionalFields: [true],
     // Netzfelder anzeigen (issue #336): default on, parallel to the edit dialog's
     // "Optionale Felder anzeigen". Nestlingsberingung may seed it off below.
     showNetFields: [true],

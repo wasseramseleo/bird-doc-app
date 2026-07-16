@@ -176,12 +176,34 @@ describe('ProjectCreateDialogComponent', () => {
     expect('organizationHandle' in component.form.controls).toBe(false);
   });
 
+  it('offers an „Optionale Felder" checkbox defaulting to on, matching the model default', () => {
+    const {component} = setup();
+
+    expect(component.form.controls.showOptionalFields.value).toBe(true);
+  });
+
+  it('submits show_optional_fields on when the Admin never touches the checkbox', () => {
+    // The create payload always carries this value, so an untouched dialog must
+    // reproduce the model default (Project.show_optional_fields = True) rather
+    // than quietly create a Projekt with a reduced Erfassungsformular.
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Unangetastet');
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({showOptionalFields: true}),
+    );
+  });
+
   it('round-trips the four settings the Anlegen-Dialog gained into the result', () => {
     const {component, dialogRef} = setup();
 
     component.form.controls.title.setValue('Schilfgürtel');
     component.form.controls.scientistIds.setValue(['s-alice', 's-bob']);
-    component.form.controls.showOptionalFields.setValue(true);
+    // Set away from the default (true) so this genuinely proves the round-trip
+    // rather than passing on the default value.
+    component.form.controls.showOptionalFields.setValue(false);
     component.form.controls.saisonStartMonth.setValue(11);
     component.form.controls.saisonEndMonth.setValue(3);
     component.submit();
@@ -189,7 +211,7 @@ describe('ProjectCreateDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalledWith(
       jasmine.objectContaining({
         scientistIds: ['s-alice', 's-bob'],
-        showOptionalFields: true,
+        showOptionalFields: false,
         saisonStartMonth: 11,
         saisonEndMonth: 3,
       }),
