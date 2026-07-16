@@ -449,6 +449,83 @@ describe('SyncService', () => {
     // work per entry. Every other 4xx is a condition of the *run*: it aborts,
     // touching nothing, and the next sync simply carries on.
 
+    it('flags a 422 — the positive list\'s other refusal of the payload on its own merits', async () => {
+      // 400's twin, and the only member of the list no backend emits today
+      // (DRF answers a ValidationError with 400), which is precisely why it
+      // needs its own assertion: dropping it would change nothing any other
+      // spec, or any server we run, could notice.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(
+        makeEntry({id: 'uuid-1', queuedAt: '2026-07-02T09:00:00.000Z', payload: {idempotency_key: 'uuid-1'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-2', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+      );
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectCreatePost().flush(
+        {detail: 'Der Eintrag konnte nicht verarbeitet werden.'},
+        {status: 422, statusText: 'Unprocessable Entity'},
+      );
+      await settle();
+
+      // Skip-and-flag, exactly like a 400: uuid-2 still syncs behind it.
+      expectCreatePost().flush({id: 'server-2'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 2, synced: 1, flagged: 1});
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
+      expect(remaining[0].syncError).toBe('Der Eintrag konnte nicht verarbeitet werden.');
+    });
+
+    it('aborts on a 4xx nobody enumerated (418) — the list is positive, so the default does not flag', async () => {
+      // The fence around the *default*, which is the whole reason ADR 0033 chose
+      // a positive list over enumerating statuses. Every other spec in this block
+      // names a status someone thought about; an enumeration wearing an
+      // allowlist's clothes (`4xx && ![401,403,404,429].includes(status)`) would
+      // satisfy all of them and still flag real field data here. So this one
+      // deliberately uses a status the app has no opinion on whatsoever: what it
+      // pins is that recognising nothing earns nothing — not flagging, and no
+      // remedy either.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(
+        makeEntry({id: 'uuid-1', queuedAt: '2026-07-02T09:00:00.000Z', payload: {idempotency_key: 'uuid-1'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-2', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+      );
+      const appUpdate = TestBed.inject(AppUpdateService);
+      const navigate = spyOn(router, 'navigate').and.stub();
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      // uuid-2 is never POSTed — httpMock.verify() in afterEach fails on a stray
+      // create — so the run really stopped rather than carrying on past it.
+      expectCreatePost().flush({detail: "I'm a teapot"}, {status: 418, statusText: "I'm a teapot"});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 2, synced: 0, flagged: 0});
+
+      // The whole queue is intact and unflagged: nothing for the Beringer to
+      // re-open and re-save by hand over a status we simply did not recognise.
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1', 'uuid-2']);
+      expect(remaining.every((e) => !e.syncError)).toBeTrue();
+
+      // And no remedy was invented on no evidence: this is not drift (that is
+      // 404's meaning, not any 4xx's) and the session is not expired.
+      expect(appUpdate.versionStale()).toBeFalse();
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
     it('aborts the run on a CSRF refusal mid-replay (403) instead of flagging real field data', async () => {
       auth.currentUser.set(authUser());
       await outboxStore.add(
@@ -565,6 +642,57 @@ describe('SyncService', () => {
       // proved this Version is stale, which is what "Jetzt aktualisieren" is
       // for (the indicator renders this in offline-readiness.spec.ts).
       expect(appUpdate.versionStale()).toBeTrue();
+    });
+
+    it('reports the Version stale when the CSRF refresh 404s — the run\'s first request is on the replay path too', async () => {
+      // `GET /api/auth/me/` opens every run that has anything to replay, ahead of
+      // both POST phases, so it is the request that meets a drifted server first.
+      // It takes no id and returns the current session's own user, so it cannot
+      // 404 for any reason but the one 404 means here: this bundle is calling an
+      // endpoint the server no longer has. ADR 0033 decision 5 carves out no
+      // exception for which request runs into the drift, and aborting quietly
+      // would leave a green "Offline bereit" over a sync that cannot succeed.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(makeEntry({id: 'uuid-1', payload: {idempotency_key: 'uuid-1'}}));
+      const appUpdate = TestBed.inject(AppUpdateService);
+      expect(appUpdate.versionStale()).toBeFalse();
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush({detail: 'Not found.'}, {status: 404, statusText: 'Not Found'});
+      await settle();
+
+      // Nothing was attempted (httpMock.verify() in afterEach would fail on a
+      // create), so the run reports "nothing to do" and the queue is untouched.
+      expect(await resultPromise).toEqual({total: 0, synced: 0, flagged: 0});
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
+      expect(remaining[0].syncError).toBeFalsy();
+
+      // The device now knows it is not offline bereit, rather than showing a
+      // reassurance the server has just disproved.
+      expect(appUpdate.versionStale()).toBeTrue();
+    });
+
+    it('starts no remedy when the run cannot even read its queue (a failure that is not HTTP at all)', async () => {
+      // The run opens with a local, account-scoped read, so the same handler that
+      // sees the CSRF refresh's status also sees errors that carry no status at
+      // all. None of them is evidence of drift or of an expired session, and the
+      // abort is the whole response: everything stays queued for the next sync.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(makeEntry({id: 'uuid-1', payload: {idempotency_key: 'uuid-1'}}));
+      spyOn(outboxStore, 'listForAccount').and.rejectWith(new Error('IndexedDB is unavailable'));
+      const appUpdate = TestBed.inject(AppUpdateService);
+      const navigate = spyOn(router, 'navigate').and.stub();
+
+      const result = await firstValueFrom(service.syncNow());
+      await settle();
+
+      expect(result).toEqual({total: 0, synced: 0, flagged: 0});
+      expect(appUpdate.versionStale()).toBeFalse();
+      expect(navigate).not.toHaveBeenCalled();
+      expect(service.syncing()).toBeFalse();
+      expect((await outboxStore.list()).map((e) => e.id)).toEqual(['uuid-1']);
     });
 
     it('aborts on a rate limit (429) and holds the next run off until Retry-After has elapsed', async () => {

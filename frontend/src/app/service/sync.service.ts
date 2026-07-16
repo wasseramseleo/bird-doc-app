@@ -212,21 +212,20 @@ export class SyncService {
       }
       return {total: entries.length, synced, flagged};
     } catch (error) {
-      if (isSessionExpired(error)) {
-        // The session expired while the device was offline — a 401 from the
-        // CSRF refresh, the first request of a run, since a device offline for
-        // up to ~30 days may hold a cookie the server has since let expire
-        // (issue #165). Pause the whole replay — the queue is untouched — and
-        // prompt a normal re-login; the same account's queue resumes on the
-        // next sync after re-login (its entries are still safely queued under
-        // its accountKey).
-        this.promptReLogin();
-        return NOTHING_TO_SYNC;
-      }
-      // The CSRF refresh (or the initial account-scoped read) itself never
-      // reached the server — nothing was attempted, so report it exactly
-      // like "nothing to do" rather than a misleading partial failure.
-      console.error('Offline outbox sync could not start', error);
+      // The run's opening steps — the account-scoped read and the CSRF refresh
+      // that precedes the first POST — are on the replay path like the two POST
+      // phases, so a run-level condition surfaces *here* when it is the first
+      // request that meets it (issue #409, ADR 0033). It is the same condition
+      // and takes the same remedy: a 401 is the long-standing expired-session
+      // case (a device offline for up to ~30 days holds a cookie the server has
+      // since let go, issue #165), and a 404 on `/api/auth/me/` is drift in its
+      // purest form — that endpoint takes no id, so nothing but a server that no
+      // longer has it can answer 404. Aborting quietly instead would leave a
+      // green "Offline bereit" over a sync that cannot succeed.
+      //
+      // Nothing was attempted either way, so this reports exactly "nothing to
+      // do" rather than a misleading partial failure.
+      this.startRunRemedy(error);
       return NOTHING_TO_SYNC;
     }
   }
@@ -344,9 +343,14 @@ export class SyncService {
    * this only starts the remedy a given run-level condition has — where one can
    * be started from here at all.
    *
-   * Shared by **both** replay phases — the quick-added Beringer create (#167) and
-   * the capture create — because a run-level condition is a property of the run,
-   * not of which POST happened to meet it first.
+   * Shared by **every** request a run makes — the opening CSRF refresh, the
+   * quick-added Beringer create (#167) and the capture create — because a
+   * run-level condition is a property of the run, not of which request happened
+   * to meet it first.
+   *
+   * Takes `unknown`, not an `HttpErrorResponse`: the opening steps include a
+   * local read, so an error with no status at all reaches here too. It earns no
+   * remedy, which is the same answer an unrecognised status gets.
    *
    * A `403` (typically a CSRF refusal mid-run) needs nothing: every run already
    * refreshes CSRF before its first POST, so the next sync *is* the remedy.
@@ -355,10 +359,15 @@ export class SyncService {
     if (error instanceof HttpErrorResponse) {
       switch (error.status) {
         case 401:
-          // The session expired *mid-replay*, not on the CSRF refresh — so this
-          // never reaches the run-level `isSessionExpired` handler, because
-          // `syncEntry` catches its own errors (issue #409). Same remedy, and
-          // the queue is just as untouched.
+          // The session expired: either on the CSRF refresh opening the run —
+          // a device offline for weeks holds a cookie the server has since let
+          // expire (issue #165) — or *mid-replay*, because a long replay can
+          // outlive a short session. A mid-replay 401 reaches no run-level
+          // handler of its own, since `syncEntry` catches its own errors (issue
+          // #409). One remedy for both: the queue is untouched either way, so a
+          // normal re-login is all it takes, and the same account's queue
+          // resumes on the next sync (its entries are still queued under its
+          // accountKey).
           this.promptReLogin();
           return;
         case 404:
@@ -435,14 +444,4 @@ export class SyncService {
     }
     return error.message || 'Der Server hat den Eintrag abgelehnt.';
   }
-}
-
-/**
- * A 401 means the *server* rejected the session (expired), as opposed to a
- * connectivity failure (`status === 0`) — the `/api/auth/me/` CSRF refresh
- * returns 401 when not authenticated. Used to route an expired session to the
- * re-login prompt rather than the silent "sync could not start" pause.
- */
-function isSessionExpired(error: unknown): boolean {
-  return error instanceof HttpErrorResponse && error.status === 401;
 }
