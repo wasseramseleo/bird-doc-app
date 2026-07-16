@@ -1263,13 +1263,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // stripping every space would search "AB1234" and never find it).
   private trimmedRingNumber(): string {
     const ringNumber = this.entryForm.get('ring_number')?.value;
-    return typeof ringNumber === 'string' ? ringNumber.trim() : (ringNumber ?? '');
+    return typeof ringNumber === 'string' ? ringNumber.trim() : String(ringNumber ?? '');
   }
 
-  // #404: keyed on the TRIMMED number, in lockstep with fetchRingHistory() —
-  // which writes that trimmed value back into the field. Keying on the raw value
-  // would make the key stop matching the moment the field is rewritten, so
-  // Enter-then-Tab would fetch the same ring twice.
+  // #404: keyed on the TRIMMED number so that padding a ring the auto-search
+  // already ran for ("901234" → "901234 ") stays recognisable as that same ring
+  // and the blur path stands down. Keyed raw, the padded value would miss the
+  // recorded key and refetch a ring whose history is already on screen.
   private ringLookupKey(): string {
     const ringSize = this.entryForm.get('ring_size')?.value ?? '';
     return `${ringSize}::${this.trimmedRingNumber()}`;

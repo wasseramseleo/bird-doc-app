@@ -2832,12 +2832,33 @@ describe('DataEntryFormComponent', () => {
       enterWiederfangRing(' 901234 ');
 
       // Enter runs the lookup and writes "901234" back; the Tab-out blur that
-      // follows must recognise that ring as already searched. If ringLookupKey()
-      // did not trim in lockstep, the rewritten value would no longer match the
-      // recorded key and the blur would fetch a second time.
+      // follows must recognise that ring as already searched. What holds this
+      // together is the order inside fetchRingHistory(): the trimmed value is
+      // written to the field BEFORE the key is recorded, so the key already
+      // describes the rewritten field whichever value ringLookupKey() reads.
       ringNumberInput().dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
       );
+      fixture.detectChanges();
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not look the same ring up again when whitespace is appended to an already-searched Ringnummer', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing('901234');
+
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      // The Beringer returns to the searched field and leaves a trailing space
+      // behind. That is the same ring — the lookup would trim it back to
+      // "901234" — so the blur must stand down. Without the trim in
+      // ringLookupKey() the padded value no longer matches the recorded key and
+      // the identical ring is fetched a second time.
+      component.entryForm.get('ring_number')!.setValue('901234 ');
       fixture.detectChanges();
       ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
       fixture.detectChanges();
