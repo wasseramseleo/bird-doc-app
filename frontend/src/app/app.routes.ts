@@ -5,6 +5,7 @@ import {authGuard} from './core/guards/auth.guard';
 import {guestGuard} from './core/guards/guest.guard';
 import {orgAdminGuard} from './core/guards/org-admin.guard';
 import {projectSelectedGuard} from './core/guards/project-selected.guard';
+import {unsavedChangesGuard} from './core/guards/unsaved-changes.guard';
 
 export const routes: Routes = [
   {
@@ -44,8 +45,22 @@ export const routes: Routes = [
       import('./today-session/today-session').then((m) => m.TodaySessionComponent),
     canActivate: [authGuard],
   },
-  {path: 'data-entry', component: DataEntryFormComponent, canActivate: [authGuard]},
-  {path: 'data-entry/:id', component: DataEntryFormComponent, canActivate: [authGuard]},
+  // Issue #407 (ADR 0032): leaving a capture with unsaved input asks first —
+  // there is no autosave, so a half-entered Wiederfang lives in the form and
+  // nowhere else. This also closes the bare `n` shortcut, which navigated here
+  // from anywhere and threw an in-progress form away unguarded.
+  {
+    path: 'data-entry',
+    component: DataEntryFormComponent,
+    canActivate: [authGuard],
+    canDeactivate: [unsavedChangesGuard],
+  },
+  {
+    path: 'data-entry/:id',
+    component: DataEntryFormComponent,
+    canActivate: [authGuard],
+    canDeactivate: [unsavedChangesGuard],
+  },
   {
     path: 'stationen',
     loadComponent: () => import('./stationen/stationen').then((m) => m.StationenComponent),
