@@ -10,7 +10,7 @@ _Avoid_: Scientist, Staff, Ringer (English)
 _Code note_: the model and the `/scientists/` endpoint are historically named `Scientist` (and the form field `staff`); the domain term is **Beringer**. Renaming the code to match is a tracked follow-up.
 
 **Mitglied**:
-A Beringer who has a login account and a Mitgliedschaft in an Organisation — i.e. an *actor* who logs in, as opposed to a no-account Beringer (a mere selectable name). Every Mitglied is a Beringer; not every Beringer is a Mitglied. An Admin promotes a no-account Beringer to a Mitglied by linking it to a Mitgliedschaft, or demotes it back by unlinking — the latter only while the Beringer owns no captures, so a recorded identity is never stripped from its account (ADR 0016).
+An account that holds a Mitgliedschaft in an Organisation — i.e. an *actor* who logs in, as opposed to a no-account Beringer (a mere selectable name). Not every Beringer is a Mitglied — and a Mitgliedschaft does not by itself confer a Beringer identity: an account can hold a Mitgliedsplatz, an Organisation and a full Rolle while having no Beringer at all, and then carries no Kürzel and sees no Projekte. Two paths lead there (ADR 0016): accepting an Org-Einladung creates the Mitgliedschaft only, never a Beringer; and an Admin unlinking a capture-free Beringer from its seat leaves the account its login and Rolle but takes its Beringer identity. That state is **pending work, not an account category** — this domain has no administration-only account — and an Admin sees it listed as "Mitglieder ohne Beringer-Eintrag". Only an explicit Admin act ends it: linking an existing no-account Beringer to the seat promotes it to a Mitglied, or the Admin creates one and links it. Linking is deliberately never automatic, so the helper who has been ringing all season is reconciled with the account they were later given rather than shadowed by an auto-created duplicate. Unlinking demotes back to a no-account Beringer, and only while the Beringer owns no captures, so a recorded identity is never stripped from its account (ADR 0016).
 _Avoid_: Member (English), user, account-Beringer
 
 **Mitgliedschaft**:
@@ -34,7 +34,7 @@ The invite code that gates **org creation** — the only door through which a ne
 _Avoid_: Invite code (English), registration key, license key
 
 **Org-Einladung**:
-An existing Admin inviting someone into their **already-admitted** Organisation as a Mitglied. Distinct from a Zugangscode: it grows a team inside one Organisation and is **not** gated by the operator. Do not conflate the two — the operator controls Organisations, not headcount. Blocked once the Organisation's Seat-Limit is reached.
+An existing Admin inviting someone into their **already-admitted** Organisation as a Mitglied. Distinct from a Zugangscode: it grows a team inside one Organisation and is **not** gated by the operator. Do not conflate the two — the operator controls Organisations, not headcount. Blocked once the Organisation's Seat-Limit is reached. Accepting one yields a **Mitgliedschaft — a seat, not a Beringer**: the invitee's Beringer identity is reconciled separately, by an explicit Admin act (ADR 0016).
 _Avoid_: Invite (unqualified), Beitritt
 
 **Plan**:
