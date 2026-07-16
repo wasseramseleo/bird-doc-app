@@ -26,6 +26,31 @@ export class AuthService {
   readonly isAuthenticated = computed(() => this.currentUser() !== null);
 
   /**
+   * Admin of the *active* Organisation (ADR 0005): the Rolle is per
+   * Mitgliedschaft, so this says nothing about the account's Rolle elsewhere.
+   * An unresolved Rolle — no active Organisation — is deliberately *not* an
+   * Admin: surfaces gate Admin-only powers on this signal, and an unresolved
+   * Rolle must hide them rather than invent a case for them.
+   *
+   * Lives here rather than on a single surface because more than one asks the
+   * same question: the nav-bar's Admin-only menu entries and the Projekt-Picker's
+   * create action (issue #415) must never disagree about who is an Admin.
+   */
+  readonly isOrgAdmin = computed(() => this.currentUser()?.rolle === 'admin');
+
+  /**
+   * Whether the account has a Beringer at all. `handle` — the Beringer's Kürzel
+   * — is null exactly when no Beringer is linked to the account, which is the
+   * state an invited Mitglied lands in: accepting an Org-Einladung creates a
+   * Mitgliedschaft only, never a Beringer (ADR 0016), and the Admin-side
+   * "Mitglieder ohne Beringer-Eintrag" panel is the sanctioned reconciliation
+   * path. It matters beyond cosmetics: Projekt visibility is scoped to the
+   * account's Beringer, so an account without one can never see a Projekt —
+   * not even one it created itself (issue #415).
+   */
+  readonly hasBeringer = computed(() => !!this.currentUser()?.handle);
+
+  /**
    * Verifies the session against the server and adopts the result as
    * `currentUser`, exactly as before — issue #156 makes no change to *online*
    * behaviour. A genuine connectivity failure — no response reached at all,

@@ -41,6 +41,17 @@
 .picker__empty p {
   margin: 0;
   color: var(--bd-ink-soft);
+  max-width: 52ch;
+}
+
+// The no-Beringer states explain the cause and the remedy in two beats.
+.picker__empty p + p {
+  margin-top: 8px;
+}
+
+// The Admin's own remedy: a link to "Beringer verwalten" (issue #415).
+.picker__empty-action {
+  margin-top: 24px;
 }
 
 .picker__list {
