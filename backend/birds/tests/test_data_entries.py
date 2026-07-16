@@ -966,6 +966,79 @@ def test_filter_by_ring_size_and_number(auth_client, species, scientist, ringing
 
 
 @pytest.mark.django_db
+def test_ring_filter_trims_whitespace_around_the_ring_number(
+    auth_client, species, scientist, ringing_station
+):
+    """A ring searched with surrounding whitespace still finds its captures (#404).
+
+    DRF's ``CharField`` trims on write (``trim_whitespace=True``), so a posted
+    `" 123 "` is *stored* as `"123"`. Filtering on the raw query param made the
+    read path asymmetric to the write path: the Wiederfang-Historie of a pasted
+    ring came back empty and the Beringer was told the bird was unknown, while it
+    sat in the database all along. Trimming the param closes the asymmetry at its
+    origin, rather than trusting every client to remember.
+    """
+    ring = Ring.objects.create(number="123", size=Ring.RingSizes.V)
+    target = DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    response = auth_client.get(LIST_URL, {"ring_size": "V", "ring_number": " 123 "})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["id"] == str(target.id)
+
+
+@pytest.mark.django_db
+def test_ring_filter_preserves_whitespace_inside_the_ring_number(
+    auth_client, species, scientist, ringing_station
+):
+    """Inner whitespace is part of the number, not noise around it (#404).
+
+    A foreign Zentrale's ring may legitimately read `"AB 1234"`, and that is how
+    it is stored. Only the surrounding whitespace is stripped — a „remove every
+    space" rule would make such a ring unfindable, trading one failure for
+    another.
+    """
+    spaced_ring = Ring.objects.create(number="AB 1234", size=Ring.RingSizes.V)
+    target = DataEntry.objects.create(
+        species=species,
+        ring=spaced_ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    found = auth_client.get(LIST_URL, {"ring_size": "V", "ring_number": " AB 1234 "})
+    assert found.status_code == 200
+    assert [row["id"] for row in found.json()["results"]] == [str(target.id)]
+
+    # The inner space is load-bearing: collapsing it must not silently match.
+    collapsed = auth_client.get(LIST_URL, {"ring_size": "V", "ring_number": "AB1234"})
+    assert collapsed.json()["count"] == 0
+
+
+@pytest.mark.django_db
+def test_ring_filter_ignores_an_all_whitespace_ring_number(auth_client, data_entry):
+    """A blank-after-trim ring number is no filter at all (#404).
+
+    `" "` carries no ring to search for. It must fall through to the unfiltered
+    list exactly like an absent param — never narrow the queryset to the empty
+    string and report „nichts gefunden" for a ring nobody asked about.
+    """
+    response = auth_client.get(LIST_URL, {"ring_size": "V", "ring_number": "   "})
+
+    assert response.status_code == 200
+    assert response.json()["count"] == DataEntry.objects.filter(is_cancelled=False).count()
+
+
+@pytest.mark.django_db
 def test_deleted_erstfang_frees_its_ring_number_for_a_new_erstfang(
     auth_client, species, scientist, ringing_station
 ):

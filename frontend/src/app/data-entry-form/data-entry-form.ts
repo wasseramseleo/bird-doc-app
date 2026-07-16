@@ -1257,10 +1257,22 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // lookup, so the blur path stands down and lets the click own it.
   private readonly ringSearchButton = viewChild('ringSearchButton', { read: ElementRef });
 
+  // #404: the ring number a lookup actually searches for — the field's value
+  // stripped of surrounding whitespace. Only the ends: an inner space belongs to
+  // the number itself (a foreign Zentrale's "AB 1234" is stored that way, and
+  // stripping every space would search "AB1234" and never find it).
+  private trimmedRingNumber(): string {
+    const ringNumber = this.entryForm.get('ring_number')?.value;
+    return typeof ringNumber === 'string' ? ringNumber.trim() : String(ringNumber ?? '');
+  }
+
+  // #404: keyed on the TRIMMED number so that padding a ring the auto-search
+  // already ran for ("901234" → "901234 ") stays recognisable as that same ring
+  // and the blur path stands down. Keyed raw, the padded value would miss the
+  // recorded key and refetch a ring whose history is already on screen.
   private ringLookupKey(): string {
     const ringSize = this.entryForm.get('ring_size')?.value ?? '';
-    const ringNumber = this.entryForm.get('ring_number')?.value ?? '';
-    return `${ringSize}::${ringNumber}`;
+    return `${ringSize}::${this.trimmedRingNumber()}`;
   }
 
   // #273: leaving the Ringnummer field auto-runs the ring-history lookup — the
@@ -1284,9 +1296,19 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
 
   fetchRingHistory(): void {
     const ringSize = this.entryForm.get('ring_size')?.value;
-    const ringNumber = this.entryForm.get('ring_number')?.value;
+    // #404: search the TRIMMED ring. DRF trims on write (trim_whitespace=True),
+    // so a pasted " 901234 " is stored as "901234" — searching the raw value
+    // found nothing and told the Beringer the bird was unknown while it sat in
+    // the database. All three triggers (blur, Enter, the magnifier button) route
+    // through here, so this one trim covers every route into the lookup.
+    const ringNumber = this.trimmedRingNumber();
     if (!ringSize || !ringNumber) {
       return;
+    }
+    // #404: show the Beringer the clean value that was actually searched. Written
+    // back before the key is recorded, so both describe the same ring.
+    if (this.entryForm.get('ring_number')?.value !== ringNumber) {
+      this.entryForm.get('ring_number')?.setValue(ringNumber);
     }
     // #273: record the searched ring so a later blur on the same ring is a no-op.
     this.lastSearchedRingKey = this.ringLookupKey();
@@ -1762,6 +1784,19 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     const payload: any = {...formValue};
     for (const field of DataEntryFormComponent.MASKED_NUMERIC_CONTROLS) {
       payload[field] = DataEntryFormComponent.normalizeMaskedNumeric(payload[field]);
+    }
+    // #404: store the ring under the same value the lookup searches for. DRF
+    // already trims a CharField on write, so an online POST lands trimmed either
+    // way — but a capture queued OFFLINE is matched by assembleLocalRingHistory
+    // with a strict ===, and a raw " AB1234 " there is invisible to the next
+    // Wiederfang on the very device that recorded it. Trimming here makes the
+    // outbox agree with the server. Only the ends: an inner space belongs to a
+    // foreign Zentrale's number ("AB 1234"). A domestic ring never reaches this
+    // holding whitespace — the `^[0-9]*$` pattern refuses it at the field (#232) —
+    // but a foreign ring drops that pattern, which is exactly where a pasted
+    // number arrives padded.
+    if (typeof payload.ring_number === 'string') {
+      payload.ring_number = payload.ring_number.trim();
     }
     payload.species_id = formValue.species?.id;
     payload.ringing_station_id = formValue.ringing_station?.handle;
