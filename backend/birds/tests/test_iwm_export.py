@@ -341,11 +341,36 @@ def test_multi_station_project_exports_each_entrys_own_station_geography(
 
 @pytest.mark.django_db
 def test_deferred_columns_remain_blank(species, scientist, ringing_station, project):
+    # Zustand is the one breeding/condition column still deferred (issue #375
+    # filled Brutfleck & Kloake — see their own tests below). It stays blank.
     ringing_station.country = "Austria"
     ringing_station.save()
     DataEntry.objects.create(
         species=species,
         ring=Ring.objects.create(number="900", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Zustand"] is None
+
+
+# --- Brutfleck & Kloake breeding-indicator columns (issue #375) ----------------
+# The two breeding-indicator columns are filled from the flags the app already
+# records: Brutfleck ← has_brood_patch, Kloake ← has_cpl_plus. Each is written
+# "J" when the flag is set and left empty otherwise. The Bemerkung flag tokens
+# stay in place (nothing an Auswerter relies on today is removed).
+
+
+@pytest.mark.django_db
+def test_brutfleck_column_is_j_when_has_brood_patch(species, scientist, ringing_station, project):
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="930", size=Ring.RingSizes.V),
         staff=scientist,
         ringing_station=ringing_station,
         project=project,
@@ -355,8 +380,80 @@ def test_deferred_columns_remain_blank(species, scientist, ringing_station, proj
 
     row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
 
-    for column in ("Zustand", "Brutfleck", "Kloake"):
-        assert row[column] is None
+    assert row["Brutfleck"] == "J"
+
+
+@pytest.mark.django_db
+def test_brutfleck_column_blank_without_brood_patch(species, scientist, ringing_station, project):
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="931", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        has_brood_patch=False,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Brutfleck"] is None
+
+
+@pytest.mark.django_db
+def test_kloake_column_is_j_when_has_cpl_plus(species, scientist, ringing_station, project):
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="932", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        has_cpl_plus=True,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Kloake"] == "J"
+
+
+@pytest.mark.django_db
+def test_kloake_column_blank_without_cpl_plus(species, scientist, ringing_station, project):
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="933", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        has_cpl_plus=False,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Kloake"] is None
+
+
+@pytest.mark.django_db
+def test_brutfleck_and_kloake_do_not_remove_bemerkung_flag_tokens(
+    species, scientist, ringing_station, project
+):
+    # Filling the columns is purely additive: the "Brutfleck" / "CPL+" tokens the
+    # export already writes into the Bemerkungen column stay put (issue #375).
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="934", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        has_brood_patch=True,
+        has_cpl_plus=True,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Bemerkungen"] == "Brutfleck CPL+"
 
 
 @pytest.mark.django_db

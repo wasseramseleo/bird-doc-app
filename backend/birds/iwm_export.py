@@ -58,6 +58,12 @@ def _geo_coordinates(entry):
     return f"{station.latitude}, {station.longitude}"
 
 
+def _breeding_flag(value):
+    """A breeding-indicator column (Brutfleck, Kloake) carries "J" when the flag
+    is set and stays blank otherwise (issue #375)."""
+    return "J" if value else None
+
+
 def _build_comment(entry):
     parts = [entry.comment] if entry.comment else []
     if entry.has_mites:
@@ -72,8 +78,8 @@ def _build_comment(entry):
 
 
 # IWM header text → callable(entry) -> cell value (None = leave blank).
-# Headers absent from this map (Zustand, Brutfleck, Kloake) are still deferred
-# per the task brief and written as empty.
+# Zustand is the one breeding/condition header absent from this map — still
+# deferred per the task brief and written as empty.
 COLUMN_MAP = {
     # The ring's own issuing Zentrale — an EURING scheme code, never free prose.
     # The AUW backfill (ADR 0019) guarantees ``central`` is never null, so a
@@ -97,6 +103,10 @@ COLUMN_MAP = {
     "Intensität": lambda e: _text_code(e.small_feather_int),
     "Fortschritt": lambda e: e.small_feather_app,
     "Handschwingen": lambda e: _text_code(e.hand_wing),
+    # Breeding indicators (issue #375): "J" or blank. The flags also stay as
+    # text tokens in the Bemerkungen column (see ``_build_comment``).
+    "Brutfleck": lambda e: _breeding_flag(e.has_brood_patch),
+    "Kloake": lambda e: _breeding_flag(e.has_cpl_plus),
     "Netz": lambda e: _text_code(e.net_location),
     "Ort": lambda e: e.ringing_station.name if e.ringing_station else None,
     "Land": lambda e: e.ringing_station.country or None if e.ringing_station else None,
