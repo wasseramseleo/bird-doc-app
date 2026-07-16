@@ -3,10 +3,12 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.conf import settings
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
-from birds.models import DataEntry, Project, Ring
+from birds.models import DataEntry, Project, Ring, UnmigratablePayload
+from birds.payload_schema import PAYLOAD_SCHEMA_VERSION
 
 LIST_URL = "/api/birds/data-entries/"
 VIENNA = ZoneInfo("Europe/Vienna")
@@ -1584,3 +1586,190 @@ def test_stored_mites_migrates_to_red_mites_and_back():
     finally:
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+# --- Payload-Schema-Stempel: der Replay-Pfad ist nachsichtig (ADR 0033, #408) --
+# An outbox payload is frozen at queue time and lives in IndexedDB, which
+# outlives any bundle swap: a device can be offline ~30 days and then replays a
+# month-old payload against today's contract with nothing detecting the drift.
+# The stamp makes that drift legible. Migration is server-side — not a
+# preference but the only option, since the bundle replaying a June payload *is*
+# the June bundle and has never heard of July. A payload the server cannot bring
+# onto today's contract is nonetheless ALWAYS accepted: it is held raw and the
+# operator is alerted, rather than rejected (which would strand it) or recorded
+# (which would put a measurement nobody can interpret into the Fangdaten).
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("ring_number", "schema_version"),
+    [
+        # Too old: from a contract whose migration step has since been retired.
+        # The case ADR 0033 names, and unreachable today by construction — the
+        # floor sits at the pre-versioning contract, so nothing real is below it.
+        ("940a", -1),
+        # Too new: a contract this server has never heard of. Reachable only by
+        # rolling the server back behind the bundle its devices still run.
+        ("940b", 99),
+        # Not a version at all. Held like the rest rather than 400'd — and it must
+        # never become a 500, which is what reading it as a number would do.
+        ("940c", "banana"),
+        ("940d", None),
+        ("940e", {"nested": 1}),
+        # ``bool`` is an ``int`` subclass: ``True`` must not pass for version 1.
+        ("940f", True),
+    ],
+)
+def test_unmigratable_payload_is_accepted_but_never_reaches_the_fangdaten(
+    auth_client, species, scientist, ringing_station, ring_number, schema_version
+):
+    """A payload the server cannot migrate is accepted (200), not recorded (ADR 0033).
+
+    Rejecting it is the ADR 0031 trap: a 4xx is skip-and-flag, which strands a
+    real capture and blames the Beringer for the bundle we shipped him. But
+    recording it is worse than either — the server by definition cannot say what
+    an unmigratable payload *means*, so a possibly-misinterpreted Flügellänge
+    would travel on to the Zentrale looking like every other row.
+
+    Every face of "unmigratable" takes the same lenient exit, because they all
+    mean the one thing: the server cannot say what this payload means.
+    """
+    payload = _payload(species, scientist, ringing_station, ring_number=ring_number)
+    payload["schema_version"] = schema_version
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    # Always accepted — the device dequeues, nothing strands, nothing loops.
+    assert response.status_code == 200, response.json()
+    # ...but it is not a Fang, and it drew no ring off the rope either.
+    assert not DataEntry.objects.filter(ring__number=ring_number).exists()
+    assert not Ring.objects.filter(number=ring_number).exists()
+    # It is parked instead, so nothing is silently dropped.
+    assert UnmigratablePayload.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_unmigratable_payload_is_held_verbatim_and_alerts_the_operator(
+    auth_client, user, species, scientist, ringing_station, mailoutbox
+):
+    """The capture is parked raw, with its stamp, and a human is told (ADR 0033).
+
+    An alarm with a data attachment, not an inbox: the row is the evidence (the
+    server could not read the payload, so it must not paraphrase it) and the mail
+    is the alarm. Reaching here at all means something is broken — an alias or a
+    migration step was retired while the outbox could still be holding a payload
+    that old (ADR 0031's invariant) — so it has to be loud.
+    """
+    payload = _payload(species, scientist, ringing_station, ring_number="941")
+    payload["schema_version"] = 99
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 200, response.json()
+    held = UnmigratablePayload.objects.get()
+    # Verbatim: exactly what arrived, stamp included — nothing normalised away.
+    assert held.payload == payload
+    assert held.schema_version == 99
+    # Whose device it was, so a human knows whom to ask.
+    assert held.submitted_by == user
+    # And the operator hears about it, once.
+    assert len(mailoutbox) == 1
+    assert mailoutbox[0].to == [settings.OPERATOR_EMAIL]
+
+
+@pytest.mark.django_db
+def test_current_stamp_is_recorded_as_an_ordinary_capture(
+    auth_client, species, scientist, ringing_station, mailoutbox
+):
+    """A payload speaking today's contract is just a Fang (ADR 0033).
+
+    ``schema_version == PAYLOAD_SCHEMA_VERSION`` is the all-clear — which is the
+    whole reason the stamp is a *schema* version and not a build version, since a
+    build version churns on every release and would make every payload look
+    drifted. The stamp is a fact about the contract, not about the bird: it
+    steers the replay and is then dropped, never persisted onto the capture.
+    """
+    payload = _payload(species, scientist, ringing_station, ring_number="942")
+    payload["schema_version"] = PAYLOAD_SCHEMA_VERSION
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get(ring__number="942")
+    assert entry.ring.size == "V"
+    # Nothing was held and nobody was woken up.
+    assert not UnmigratablePayload.objects.exists()
+    assert mailoutbox == []
+    # The stamp steered the replay; it is not part of the capture.
+    assert "schema_version" not in response.json()
+
+
+@pytest.mark.django_db
+def test_missing_stamp_is_the_pre_versioning_contract_and_is_recorded(
+    auth_client, species, scientist, ringing_station, mailoutbox
+):
+    """An unstamped payload is the contract as it stood before stamping (ADR 0033).
+
+    Stamping is itself a contract change, so it has to tolerate its own absence
+    from day one: on the morning this ships, every payload already sitting in a
+    real device's outbox carries no stamp. Treating "no stamp" as anything but a
+    known contract would strand exactly the captures the stamp exists to protect.
+    """
+    payload = _payload(species, scientist, ringing_station, ring_number="943")
+    assert "schema_version" not in payload
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert DataEntry.objects.filter(ring__number="943").exists()
+    assert not UnmigratablePayload.objects.exists()
+    assert mailoutbox == []
+
+
+@pytest.mark.django_db
+def test_stamp_check_leaves_a_form_encoded_create_intact(
+    auth_client, species, scientist, ringing_station
+):
+    """Reading the stamp must not disturb a non-JSON create.
+
+    DRF hands a form-encoded request a ``QueryDict``, and copying one with
+    ``dict()`` lifts every value into a list — which would quietly corrupt a
+    payload the migration is only meant to pass through. Every other test here
+    posts JSON, so nothing else covers the parser the stamp check now sits in
+    front of.
+    """
+    payload = _payload(species, scientist, ringing_station, ring_number="944")
+
+    # APIClient's default format — multipart, not JSON.
+    response = auth_client.post(LIST_URL, payload)
+
+    assert response.status_code == 201, response.json()
+    assert DataEntry.objects.filter(ring__number="944").exists()
+
+
+@pytest.mark.django_db
+def test_unmigratable_payload_survives_a_failing_alert(
+    auth_client, species, scientist, ringing_station, monkeypatch
+):
+    """A broken mail channel must not cost the capture (ADR 0033).
+
+    Letting the send failure escape would be worse than the outage it reports: a
+    500 reads as transient to the replay, so the device would retry the same
+    payload forever and mint a fresh held row every time — breaking the very
+    promise ("nothing strands, nothing loops") this path exists to keep.
+    """
+
+    def explode(self):
+        raise OSError("SMTP is down")
+
+    monkeypatch.setattr("birds.payload_schema.EmailMessage.send", explode)
+    payload = _payload(species, scientist, ringing_station, ring_number="945")
+    payload["schema_version"] = 99
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    # Still accepted, so the device still dequeues...
+    assert response.status_code == 200, response.json()
+    # ...and the evidence — the durable half of the alarm — is still parked.
+    assert UnmigratablePayload.objects.get().payload["schema_version"] == 99
+    assert not DataEntry.objects.filter(ring__number="945").exists()

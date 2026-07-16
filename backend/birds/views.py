@@ -41,6 +41,11 @@ from .models import (
     SpeciesNorm,
     SpeciesRingSizeOverride,
 )
+from .payload_schema import (
+    UnmigratablePayloadError,
+    hold_unmigratable_payload,
+    migrate_payload,
+)
 from .permissions import (
     OTHER_ORG_MESSAGE,
     IsOrgAdmin,
@@ -83,6 +88,15 @@ SEAT_LIMIT_MESSAGE = (
 LAST_ADMIN_MESSAGE = (
     "Die Organisation braucht mindestens eine:n Administrator:in. "
     "Ernenne zuerst eine andere Person zur Administratorin oder zum Administrator."
+)
+
+
+# The 200 a payload gets that the server could not migrate onto today's contract
+# (ADR 0033). It is an acceptance, not a refusal: the device dequeues and nothing
+# strands. Only a replay can realistically see it, and the replay ignores the
+# body — it is worded for a human reading a log or a response by hand.
+UNMIGRATABLE_PAYLOAD_MESSAGE = (
+    "Der Fang wurde übernommen, konnte aber nicht ausgewertet werden und wird geprüft."
 )
 
 
@@ -250,6 +264,40 @@ class DataEntryViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(project=project).order_by("-created")
 
         return queryset
+
+    def create(self, request, *args, **kwargs):
+        """Record a capture, migrating a replayed payload onto today's contract first.
+
+        The replay path is lenient (ADR 0033). An offline payload is frozen at
+        queue time and IndexedDB outlives any bundle swap, so a device offline
+        ~30 days replays a month-old contract; ``migrate_payload`` brings it
+        forward, server-side, because the replaying bundle predates the change
+        and could not possibly do it itself.
+
+        A payload it cannot bring forward is **always accepted** — 200, so the
+        device dequeues and nothing strands or loops — but deliberately **not**
+        admitted to the Fangdaten: it is held raw and the operator is alerted
+        instead. Rejecting it would be the ADR 0031 trap (a 4xx is skip-and-flag,
+        stranding a real capture over a bundle we shipped); recording it would be
+        worse, since the server by definition cannot say what an unmigratable
+        payload means, and a misread Flügellänge reaches the Zentrale looking
+        exactly like a good row.
+        """
+        try:
+            migrated = migrate_payload(request.data)
+        except UnmigratablePayloadError as unmigratable:
+            hold_unmigratable_payload(
+                payload=request.data,
+                schema_version=unmigratable.schema_version,
+                submitted_by=request.user,
+            )
+            return Response({"detail": UNMIGRATABLE_PAYLOAD_MESSAGE})
+
+        serializer = self.get_serializer(data=migrated)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         """Attach the new capture to the requester's active Organisation.

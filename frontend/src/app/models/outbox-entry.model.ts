@@ -18,6 +18,28 @@
  * inherits, sees, or (once #161 lands) syncs another account's queued
  * captures under their own session/Organisation.
  */
+/**
+ * The payload contract the current bundle speaks (issue #408, ADR 0033).
+ *
+ * A **payload schema version, not a build version**: a build version churns on
+ * every release, which would make every queued payload look drifted and could
+ * only answer "has this payload drifted?" through a lookup table of which builds
+ * changed the contract — the schema version wearing a disguise. This rises
+ * **only** when the capture-create payload's contract actually changes, which is
+ * what makes `schemaVersion === PAYLOAD_SCHEMA_VERSION` a meaningful all-clear.
+ *
+ * Its counterpart is `PAYLOAD_SCHEMA_VERSION` in `backend/birds/payload_schema.py`,
+ * which is what migrates a replayed payload forward: raise the two together, and
+ * only ever add the server-side migration step — the client cannot migrate at
+ * all, since the bundle replaying a June payload *is* the June bundle and has
+ * never heard of July.
+ *
+ * Deliberately not `OFFLINE_DB_VERSION` (`core/offline/indexed-db-store.ts`),
+ * which versions the IndexedDB *schema* — the shape of the box — never the
+ * *content* of the record inside it.
+ */
+export const PAYLOAD_SCHEMA_VERSION = 1;
+
 export interface OutboxEntry {
   id: string;
   // The `AuthUser.username` of the Mitglied whose session queued this entry
@@ -27,6 +49,19 @@ export interface OutboxEntry {
   // ISO 8601 timestamp of when the entry was queued — the capture order that
   // issue #161's sync replays entries in.
   queuedAt: string;
+  // The payload contract the queueing bundle spoke (issue #408, ADR 0033), frozen
+  // with the payload itself: `payload` is captured verbatim at queue time and
+  // IndexedDB outlives any bundle swap, so a device offline ~30 days replays a
+  // month-old contract with nothing else able to detect the drift. `SyncService`
+  // puts it on the wire and the server migrates forward from it.
+  //
+  // Optional, and absent means the **pre-versioning contract** — not "unknown".
+  // Stamping is itself a contract change, so it must tolerate its own absence
+  // from day one: every entry already queued on a real device when this ships
+  // carries no stamp, and those are exactly the captures the stamp exists to
+  // protect. Never backfill one onto them — the bundle that froze that payload
+  // made no claim about its contract, and the server reads it as precisely that.
+  schemaVersion?: number;
   // The server's rejection message when a sync attempt was refused (issue
   // #164, PRD #152): the entry is left in the queue, flagged with this
   // message, while the rest of the queue syncs on. Absent/`null` means the

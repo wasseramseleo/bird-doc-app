@@ -254,9 +254,30 @@ export class SyncService {
     this.router.navigate(['/login'], {queryParams: {next}});
   }
 
+  /**
+   * The payload as it goes on the wire: the verbatim frozen payload plus the
+   * schema stamp of the bundle that froze it (issue #408, ADR 0033).
+   *
+   * The stamp is carried *beside* the payload in IndexedDB rather than inside
+   * it, so `payload` stays exactly what the form would have POSTed — and it is
+   * merged in only here, on the way out, because the server is the one who needs
+   * it: it migrates a drifted payload forward, which the replaying bundle could
+   * never do for itself (it predates the change it would have to apply).
+   *
+   * An entry queued before stamping existed carries no stamp, and none is
+   * invented for it: an absent `schema_version` is how the server is told "the
+   * pre-versioning contract", which is exactly true of those entries.
+   */
+  private outgoingPayload(entry: OutboxEntry): Record<string, unknown> {
+    if (entry.schemaVersion === undefined) {
+      return entry.payload;
+    }
+    return {...entry.payload, schema_version: entry.schemaVersion};
+  }
+
   private async syncEntry(entry: OutboxEntry): Promise<EntryOutcome> {
     try {
-      await firstValueFrom(this.api.createDataEntry(entry.payload));
+      await firstValueFrom(this.api.createDataEntry(this.outgoingPayload(entry)));
       await this.outbox.dequeue(entry.id);
       return 'synced';
     } catch (error) {
