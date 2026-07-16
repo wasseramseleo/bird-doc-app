@@ -21,16 +21,20 @@ interface Option {
       @for (option of options; track option.id) {
         <mat-option [value]="option">{{ option.name }}</mat-option>
       }
+      @if (showAction) {
+        <mat-option [value]="null">➕ Neuer Eintrag</mat-option>
+      }
     </mat-autocomplete>
   `,
 })
 class HostComponent {
   @ViewChild(MatAutocompleteTrigger) trigger!: MatAutocompleteTrigger;
   readonly control = new FormControl<Option | string | null>(null);
-  readonly options: Option[] = [
+  options: Option[] = [
     {id: 1, name: 'Station Hohenau'},
     {id: 2, name: 'Station Marchegg'},
   ];
+  showAction = false;
   display(option: Option | null): string {
     return option ? option.name : '';
   }
@@ -72,5 +76,27 @@ describe('SelectOnTabDirective', () => {
     fixture.detectChanges();
 
     expect(host.control.value).toBe('Hohe');
+  });
+
+  // Issue #374 (#4): an action option (e.g. "➕ Neuer Beringer") carries a null
+  // value and must never be committed by Tab, even when autoActiveFirstOption
+  // highlights it as the only remaining option — creating stays a deliberate click.
+  it('does not commit an active option whose value is null', () => {
+    host.options = [];
+    host.showAction = true;
+    host.control.setValue('Neu');
+    fixture.detectChanges();
+
+    host.trigger.openPanel();
+    fixture.detectChanges();
+
+    // The lone action option is highlighted but carries a null value.
+    expect(host.trigger.activeOption?.value).toBeNull();
+
+    input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Tab', bubbles: true}));
+    fixture.detectChanges();
+
+    // The typed text is kept; the null-valued action option is not committed.
+    expect(host.control.value).toBe('Neu');
   });
 });

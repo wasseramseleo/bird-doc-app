@@ -28,6 +28,7 @@ import {provideNativeDateAdapter} from '@angular/material/core';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatIconModule} from '@angular/material/icon';
+import {MatBadgeModule} from '@angular/material/badge';
 
 import {debounceTime, distinctUntilChanged, switchMap, startWith, map, tap} from 'rxjs/operators';
 import {Observable} from 'rxjs';
@@ -111,6 +112,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     MatTableModule,
     MatDialogModule,
     MatIconModule,
+    MatBadgeModule,
   ],
   providers: [provideNativeDateAdapter(), DatePipe, DecimalPipe],
   templateUrl: './data-entry-form.html',

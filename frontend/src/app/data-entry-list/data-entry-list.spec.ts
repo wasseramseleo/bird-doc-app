@@ -245,4 +245,41 @@ describe('DataEntryListComponent', () => {
     expect(newEntryButton).withContext('Neuer Eintrag button exists').toBeTruthy();
     expect(newEntryButton!.textContent).toContain('(n)');
   });
+
+  // Issue #374 (#2): the "Letzte Fänge" list defaults to 50 entries instead of
+  // 10, so a Beringer scrolls a full session at a glance. The 10/50/100 page-size
+  // options are unchanged; nothing is persisted.
+  it('defaults the Letzte-Fänge list to 50 entries, keeping the 10/50/100 options', () => {
+    const initial = flushEntries([row({})]);
+
+    expect(component.pageSize()).toBe(50);
+    // The very first server read already asks for 50 rows, not 10.
+    expect(initial.request.params.get('page_size')).toBe('50');
+    // The selectable page sizes are untouched.
+    expect(component.pageSizeOptions).toEqual([10, 50, 100]);
+  });
+
+  // Issue #374 (#1): a yellow Bemerkung indicator marks the rows whose capture
+  // carries a non-empty comment — the same marker the Wiederfang-Historie shows.
+  it('shows the Bemerkung indicator only on rows whose capture carries a comment', () => {
+    flushEntries([
+      row({ id: 'noted', comment: 'linker Flügel verletzt' }),
+      row({ id: 'plain', comment: null }),
+    ]);
+
+    const rows = Array.from(fixture.nativeElement.querySelectorAll('tr.entry-row')) as HTMLElement[];
+    expect(rows.length).toBe(2);
+    expect(rows[0].querySelector('.bemerkung-indicator'))
+      .withContext('row with a comment carries the indicator')
+      .not.toBeNull();
+    expect(rows[1].querySelector('.bemerkung-indicator'))
+      .withContext('row without a comment carries no indicator')
+      .toBeNull();
+  });
+
+  it('does not mark any row when no capture carries a comment', () => {
+    flushEntries([row({ comment: null }), row({ comment: '' })]);
+
+    expect(fixture.nativeElement.querySelector('.bemerkung-indicator')).toBeNull();
+  });
 });
