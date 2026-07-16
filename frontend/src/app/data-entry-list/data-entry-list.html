@@ -75,6 +75,19 @@
           @if (element.species.special_kind === 'ring_destroyed') {
             <span class="sentinel-badge">vernichtet</span>
           }
+          <!-- #374 (#1): a yellow Bemerkung indicator marks a capture that carries
+               a note — the same marker the Wiederfang-Historie shows on its info
+               button. Rendered only for a non-empty comment. -->
+          @if (element.comment) {
+            <mat-icon
+              class="bemerkung-indicator bemerkung-badge"
+              matBadge="●"
+              matBadgeSize="small"
+              matBadgeOverlap="true"
+              aria-label="Bemerkung vorhanden"
+              title="Bemerkung vorhanden"
+            >info_outline</mat-icon>
+          }
           <!-- #371: distinct Fangmarker row icons (ADR 0026). -->
           @if (element.is_dead_recovery) {
             <mat-icon class="fangmarker-icon fangmarker-icon--dead" inline

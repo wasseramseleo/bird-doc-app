@@ -6,10 +6,14 @@ import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSelect } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
+import {
+  MatAutocompleteSelectedEvent,
+  MatAutocompleteTrigger,
+} from '@angular/material/autocomplete';
 import { of, Subject } from 'rxjs';
 
 import { DataEntryFormComponent } from './data-entry-form';
@@ -661,6 +665,177 @@ describe('DataEntryFormComponent', () => {
       expect(cellText('feather_span')).toBe('54,0');
       expect(cellText('wing_span')).toBe('73,3');
       expect(cellText('weight_gram')).toBe('19,0');
+    });
+
+    // Issue #374 (#1): a past Fang that carries a Bemerkung gets a yellow
+    // mat-badge dot on its info button, so the Beringer sees which recaptures
+    // carry a note before opening the detail dialog.
+    const infoButton = (): HTMLElement =>
+      fixture.nativeElement.querySelector('td.mat-column-actions button') as HTMLElement;
+
+    it('marks a past Fang that carries a comment with the Bemerkung indicator on its info button', () => {
+      component.recaptureHistory.set([historyRow({ comment: 'linker Flügel verletzt' })]);
+      fixture.detectChanges();
+
+      expect(infoButton()).not.toBeNull();
+      // MatBadge only renders the badge span when its content is non-empty.
+      expect(infoButton().querySelector('.mat-badge-content')).not.toBeNull();
+    });
+
+    it('shows no Bemerkung indicator for a past Fang without a comment', () => {
+      component.recaptureHistory.set([historyRow({ comment: null })]);
+      fixture.detectChanges();
+
+      expect(infoButton()).not.toBeNull();
+      expect(infoButton().querySelector('.mat-badge-content')).toBeNull();
+    });
+  });
+
+  // Issue #374 (#4): the Beringer autocomplete gains autoActiveFirstOption so
+  // the highlighted first existing match is committed by the existing Tab-select
+  // directive — exactly as the Art field already does. The "➕ Neuer Beringer"
+  // create option (value null) must never be auto-committed by Tab; creating a
+  // Beringer stays a deliberate click.
+  describe('Beringer first-match on Tab (#4)', () => {
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const emptyPage = { count: 0, next: null, previous: null, results: [] as never[] };
+    const scientist = (over: Partial<Scientist> = {}): Scientist =>
+      ({ id: '7', handle: 'FRE', full_name: 'Filip Reiter', ...over }) as Scientist;
+
+    let facade: {
+      getSpecies: jasmine.Spy;
+      getRingingStations: jasmine.Spy;
+      getScientists: jasmine.Spy;
+      getCentrals: jasmine.Spy;
+      getNextRingNumber: jasmine.Spy;
+      getRingHistory: jasmine.Spy;
+      createScientist: jasmine.Spy;
+    };
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      facade = {
+        getSpecies: jasmine.createSpy('getSpecies').and.returnValue(of(emptyPage)),
+        getRingingStations: jasmine.createSpy('getRingingStations').and.returnValue(of(emptyPage)),
+        // A typed term that matches an existing Beringer returns it; anything
+        // else returns nothing (so only the create option is offered).
+        getScientists: jasmine.createSpy('getScientists').and.callFake((term?: string) =>
+          of({
+            ...emptyPage,
+            results:
+              term && 'filip reiter (fre)'.includes(term.toLowerCase()) ? [scientist()] : [],
+          }),
+        ),
+        getCentrals: jasmine.createSpy('getCentrals').and.returnValue(of(emptyPage)),
+        getNextRingNumber: jasmine.createSpy('getNextRingNumber').and.returnValue(
+          of({ next_number: null }),
+        ),
+        getRingHistory: jasmine
+          .createSpy('getRingHistory')
+          .and.returnValue(of({ entries: [], possiblyIncomplete: false })),
+        createScientist: jasmine.createSpy('createScientist').and.returnValue(of(scientist())),
+      };
+
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: LOCALE_ID, useValue: 'de-AT' },
+          { provide: DataAccessFacadeService, useValue: facade },
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(createProject()),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+    });
+
+    const staffTrigger = (): MatAutocompleteTrigger =>
+      fixture.debugElement
+        .query(By.css('input[formControlName="staff"]'))
+        .injector.get(MatAutocompleteTrigger);
+
+    const staffInput = (): HTMLInputElement =>
+      fixture.nativeElement.querySelector('input[formControlName="staff"]') as HTMLInputElement;
+
+    const pressTab = (): void => {
+      staffInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    };
+
+    it('marks the Beringer autocomplete with autoActiveFirstOption, like the Art field', () => {
+      expect(staffTrigger().autocomplete.autoActiveFirstOption).toBe(true);
+    });
+
+    it('confirms the highlighted first existing match on Tab', () => {
+      const match = scientist();
+      // Feed the panel a real match (the debounced pipe is bypassed here).
+      component.filteredScientists = of([match]);
+      fixture.detectChanges();
+
+      const trigger = staffTrigger();
+      trigger.openPanel();
+      fixture.detectChanges();
+
+      // autoActiveFirstOption highlights the first existing match.
+      expect(trigger.activeOption?.value).toEqual(match);
+
+      pressTab();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('staff')!.value).toEqual(match);
+
+      trigger.closePanel();
+      fixture.detectChanges();
+    });
+
+    it('never commits the "Neuer Beringer" create option on Tab', () => {
+      // An unknown Kürzel with no matching Beringer: the only option offered is
+      // the "➕ Neuer Beringer" create row, whose value is null.
+      const internals = component as unknown as {
+        staffSearchTerm: { set(value: string): void };
+        staffResults: { set(value: Scientist[]): void };
+      };
+      internals.staffSearchTerm.set('FREX');
+      internals.staffResults.set([]);
+      component.filteredScientists = of([]);
+      component.entryForm.get('staff')!.setValue('FREX' as never);
+      fixture.detectChanges();
+
+      expect(component.showCreateBeringer()).toBe(true);
+
+      const trigger = staffTrigger();
+      trigger.openPanel();
+      fixture.detectChanges();
+
+      // autoActiveFirstOption highlights the lone create option, whose value is null.
+      expect(trigger.activeOption?.value).toBeNull();
+
+      pressTab();
+      fixture.detectChanges();
+
+      // The Tab-select guard refuses the create option: the typed text stays,
+      // the control is never set to null, and no create dialog is opened.
+      expect(component.entryForm.get('staff')!.value as unknown).toBe('FREX');
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      trigger.closePanel();
+      fixture.detectChanges();
     });
   });
 

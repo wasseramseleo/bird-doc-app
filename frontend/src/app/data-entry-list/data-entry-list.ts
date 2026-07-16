@@ -9,6 +9,7 @@ import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
+import {MatBadgeModule} from '@angular/material/badge';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatDialog} from '@angular/material/dialog';
 import {debounceTime, distinctUntilChanged} from 'rxjs/operators';
@@ -32,6 +33,7 @@ import {
     MatInputModule,
     MatButtonModule,
     MatIconModule,
+    MatBadgeModule,
     MatProgressSpinnerModule,
   ],
   templateUrl: './data-entry-list.html',
@@ -54,7 +56,10 @@ export class DataEntryListComponent implements OnInit {
 
   // Server-side pagination state. MatPaginator is zero-based; the API is one-based.
   readonly pageIndex = signal<number>(0);
-  readonly pageSize = signal<number>(10);
+  // #374 (#2): the "Letzte Fänge" list defaults to 50 rows so a Beringer sees a
+  // full session at a glance; the 10/50/100 options are unchanged and nothing is
+  // persisted.
+  readonly pageSize = signal<number>(50);
   readonly pageSizeOptions = [10, 50, 100];
 
   readonly searchControl = new FormControl('', {nonNullable: true});

@@ -12,6 +12,11 @@ import {MatAutocompleteTrigger} from '@angular/material/autocomplete';
  * Calling `activeOption.select()` emits `optionSelected`, so Material assigns the
  * option value to the control and updates the displayed text via `displayWith`.
  * Native Tab is left untouched so focus still advances to the next field.
+ *
+ * An active option whose `value` is null is a non-committing *action* option
+ * (e.g. the "➕ Neuer Beringer" create row, issue #374 #4) — Tab must never
+ * commit it, even when `autoActiveFirstOption` highlights it as the only
+ * remaining option. Creating stays a deliberate click.
  */
 @Directive({
   selector: 'input[selectOnTab]',
@@ -25,7 +30,7 @@ export class SelectOnTabDirective implements OnInit, OnDestroy {
       return;
     }
     const activeOption = this.autoTrigger?.activeOption;
-    if (this.autoTrigger?.panelOpen && activeOption) {
+    if (this.autoTrigger?.panelOpen && activeOption && activeOption.value != null) {
       activeOption.select();
     }
   };
