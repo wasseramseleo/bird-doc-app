@@ -250,7 +250,13 @@ export class SyncService {
       );
       return created.id;
     } catch (error) {
-      console.error('Failed to sync a quick-added Beringer; it and its captures remain queued', error);
+      // Phase 1 is on the replay path like any other POST, and it runs FIRST —
+      // so a run-level condition surfaces *here* before the capture loop ever
+      // gets a say (issue #409). Aborting silently would leave a 404's drift
+      // unreported (a green "Offline bereit" over a sync that cannot succeed)
+      // and a 401 stalling until the Beringer happened to re-login. Same
+      // remedies, same untouched queue.
+      this.startRunRemedy(error);
       return null;
     }
   }
@@ -338,6 +344,10 @@ export class SyncService {
    * this only starts the remedy a given run-level condition has — where one can
    * be started from here at all.
    *
+   * Shared by **both** replay phases — the quick-added Beringer create (#167) and
+   * the capture create — because a run-level condition is a property of the run,
+   * not of which POST happened to meet it first.
+   *
    * A `403` (typically a CSRF refusal mid-run) needs nothing: every run already
    * refreshes CSRF before its first POST, so the next sync *is* the remedy.
    */
@@ -366,7 +376,10 @@ export class SyncService {
           return;
       }
     }
-    console.error('Failed to sync a queued capture; it remains queued', error);
+    // A condition with no remedy to start from here (connectivity dropped, a
+    // 5xx, an unrecognised status). The abort is the whole response: everything
+    // stays queued, and the next sync retries it under the same idempotency key.
+    console.error('Offline outbox sync stopped; the queue is untouched and will be retried', error);
   }
 
   /**

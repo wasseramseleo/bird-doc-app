@@ -887,5 +887,86 @@ describe('SyncService', () => {
       expect((await pendingStore.list()).map((b) => b.id)).toEqual(['local-b']);
       expect((await outboxStore.list()).map((e) => e.id)).toEqual(['uuid-1']);
     });
+
+    it('reports the Version stale when the Beringer create 404s — phase 1 is on the replay path too (issue #409)', async () => {
+      // The quick-added Beringer is POSTed FIRST, before any capture, so drift
+      // surfaces here before the capture path ever gets a say. A 404 on
+      // `/birds/scientists/` is the same systemic evidence as one on
+      // `/birds/data-entries/`: this bundle is talking to an endpoint the server
+      // no longer has. Aborting without saying so left the indicator on a green
+      // "Offline bereit" — the false all-clear ADR 0033 exists to kill.
+      auth.currentUser.set(authUser());
+      await pendingStore.add(makePending());
+      await outboxStore.add(
+        makeEntry({
+          id: 'uuid-1',
+          queuedAt: '2026-07-02T09:00:00.000Z',
+          payload: {idempotency_key: 'uuid-1', staff_id: 'local-b'},
+        }),
+      );
+      const appUpdate = TestBed.inject(AppUpdateService);
+      expect(appUpdate.versionStale()).toBeFalse();
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectScientistPost().flush({detail: 'Not found.'}, {status: 404, statusText: 'Not Found'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 0, flagged: 0});
+
+      // The run aborted before any capture was POSTed; everything stays queued
+      // and unflagged — nothing for the Beringer to re-save by hand.
+      expect((await pendingStore.list()).map((b) => b.id)).toEqual(['local-b']);
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
+      expect(remaining.every((e) => !e.syncError)).toBeTrue();
+
+      // And the Offline-Bereitschaft now tells the truth: veraltet, not bereit.
+      expect(appUpdate.versionStale()).toBeTrue();
+    });
+
+    it('pauses and prompts a re-login when the session expires on the Beringer create (a 401 in phase 1)', async () => {
+      // Same subtlety as the per-entry 401: `syncBeringer` catches its own
+      // errors, so this never reaches the run-level `isSessionExpired` handler.
+      // Without a remedy the sync just stalls silently until the Beringer
+      // happens to re-login of their own accord.
+      auth.currentUser.set(authUser());
+      await pendingStore.add(makePending());
+      await outboxStore.add(
+        makeEntry({
+          id: 'uuid-1',
+          queuedAt: '2026-07-02T09:00:00.000Z',
+          payload: {idempotency_key: 'uuid-1', staff_id: 'local-b'},
+        }),
+      );
+      const navigate = spyOn(router, 'navigate').and.stub();
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectScientistPost().flush(
+        {detail: 'Authentication credentials were not provided.'},
+        {status: 401, statusText: 'Unauthorized'},
+      );
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 0, flagged: 0});
+
+      // The queue — Beringer and dependent capture alike — is untouched, and
+      // resumes on the first sync after a normal re-login.
+      expect((await pendingStore.list()).map((b) => b.id)).toEqual(['local-b']);
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
+      expect(remaining[0].syncError).toBeFalsy();
+
+      expect(navigate.calls.mostRecent().args[0]).toEqual(['/login']);
+      expect(auth.currentUser()).toBeNull();
+      expect(service.syncing()).toBeFalse();
+    });
   });
 });
