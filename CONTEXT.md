@@ -172,12 +172,18 @@ _Avoid_: Beifang, Zufallsfang (one cause of it, not the marker itself), Sonderar
 **Parasit**:
 A capture's recorded ectoparasite findings, held as a **multi-valued** selection
 from a fixed, app-wide vocabulary of parasite types (shared reference data, not
-tenant-configurable — ADR 0027). Generalises the former single **Milben** flag:
-Milben is now one option among several, and a capture may record more than one.
-Rendered as a Mehrfachauswahl beside the Ja/Nein flags (Brutfleck, CPL+,
-Hungerstreifen). No IWM export column exists, so selected types are written into
-the Bemerkung. The concrete option set is still being finalised (feedback #7b).
-_Avoid_: Milben (now one option, not the field), Ektoparasit, Befall
+tenant-configurable — ADR 0027). Generalises the former single **Milben** flag,
+and a capture may record more than one type — Zecke *and* Rote Milben is an
+ordinary finding. The five types, in order: **Rote Milben**, **Weiße Milben**,
+**Zecke**, **Federlinge**, **Lausfliege** (`red_mites`, `white_mites`, `tick`,
+`feather_lice`, `louse_fly`). Rendered as a Mehrfachauswahl beside the Ja/Nein
+flags (Brutfleck, CPL+, Hungerstreifen). No IWM export column exists, so selected
+types are written into the Bemerkung, comma-separated.
+**Milben** is no longer a type: the user's ruling is that it always meant
+_Dermanyssus gallinae_, so it is retired in favour of **Rote Milben** (ADR 0031 —
+migrated at rest, still accepted and rewritten on write for the ~30-day offline
+window).
+_Avoid_: Milben (retired — say Rote Milben), Ektoparasit, Befall
 
 **Fangmethode**:
 How a bird was caught, recorded as an IWM code (e.g. M = Japannetz). A property of the Projekt, constant across its captures.

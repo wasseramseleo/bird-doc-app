@@ -121,39 +121,13 @@
            (ⓘ Bemerkung │ ♥ Tot-Fund │ ⚑ Nicht-Standard); ein Marker sitzt damit in
            jeder Zeile an derselben Stelle, die Spalte wird vertikal scanbar. Ein
            Fang kann beide Fangmarker zugleich tragen (ADR 0026), alle drei Slots
-           sind also gleichzeitig belegbar. -->
+           sind also gleichzeitig belegbar.
+           #405: die Slots selbst liegen in app-marker-slots — die Wiederfang-
+           Historie rendert dieselbe Zelle. -->
       <ng-container matColumnDef="marker">
         <th mat-header-cell *matHeaderCellDef class="marker-header"></th>
         <td mat-cell *matCellDef="let element" data-testid="marker-cell">
-          <div class="marker-slots">
-            <span class="marker-slot" data-testid="marker-slot-bemerkung">
-              <!-- #374 (#1): Bemerkungs-Indikator. Der Tooltip trägt den echten
-                   Bemerkungstext — beide Fangmarker erzwingen eine Bemerkung, ein
-                   bloßes "Bemerkung vorhanden" wäre genau dort redundant. -->
-              @if (element.comment) {
-                <mat-icon class="marker-icon bemerkung-indicator" inline
-                          data-testid="bemerkung-icon"
-                          [title]="element.comment"
-                          [attr.aria-label]="'Bemerkung: ' + element.comment"
-                >info_outline</mat-icon>
-              }
-            </span>
-            <span class="marker-slot" data-testid="marker-slot-tot-fund">
-              <!-- #371: distinct Fangmarker row icons (ADR 0026). -->
-              @if (element.is_dead_recovery) {
-                <mat-icon class="marker-icon fangmarker-icon fangmarker-icon--dead" inline
-                          data-testid="tot-fund-icon"
-                          title="Tot-Fund" aria-label="Tot-Fund">heart_broken</mat-icon>
-              }
-            </span>
-            <span class="marker-slot" data-testid="marker-slot-non-standard">
-              @if (element.is_non_standard) {
-                <mat-icon class="marker-icon fangmarker-icon fangmarker-icon--non-standard" inline
-                          data-testid="non-standard-icon"
-                          title="Nicht-Standard-Fang" aria-label="Nicht-Standard-Fang">flag</mat-icon>
-              }
-            </span>
-          </div>
+          <app-marker-slots [entry]="element"></app-marker-slots>
         </td>
       </ng-container>
 

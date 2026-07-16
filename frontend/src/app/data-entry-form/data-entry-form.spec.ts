@@ -283,6 +283,64 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #404: the lookup trims, so the write must trim too — otherwise read and write
+  // disagree again, one layer down. A foreign Zentrale is the reachable case: it
+  // drops the `^[0-9]*$` pattern (#232), so a pasted, whitespace-padded ring
+  // actually validates and reaches the payload. A domestic ring is still held to
+  // the digits-only pattern, which refuses whitespace with a visible error long
+  // before submit — that field stays as strict as it was.
+  describe('trims the Ringnummer on the write payload (#404)', () => {
+    let httpMock: HttpTestingController;
+
+    const SLOVAK: Central = {
+      id: 'c-skb',
+      scheme_code: 'SKB',
+      name: 'Slowakei Bratislava',
+      country: 'Slowakei',
+    };
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillForeignWiederfang(ringNumber: string): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+      });
+      fixture.detectChanges();
+      component.entryForm.get('central')!.setValue(SLOVAK as never);
+      fixture.detectChanges();
+      // A foreign Zentrale's Ringgröße is free text (#232), not an Austrian code.
+      component.entryForm.patchValue({ ring_size: 'SKB1' as never, ring_number: ringNumber });
+      fixture.detectChanges();
+    }
+
+    const submitAndReadBody = (): Record<string, unknown> => {
+      component.onSubmit();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      post.flush({});
+      return body;
+    };
+
+    it('posts a pasted foreign ring number without its surrounding whitespace', () => {
+      fillForeignWiederfang(' AB1234 ');
+
+      expect(submitAndReadBody()['ring_number']).toBe('AB1234');
+    });
+
+    it('keeps whitespace inside a foreign ring number on the write payload', () => {
+      fillForeignWiederfang(' AB 1234 ');
+
+      expect(submitAndReadBody()['ring_number']).toBe('AB 1234');
+    });
+  });
+
   describe('creating a Beringer inline from an unknown Kürzel', () => {
     const dialogMock = { open: jasmine.createSpy('open') };
     let httpMock: HttpTestingController;
@@ -507,7 +565,9 @@ describe('DataEntryFormComponent', () => {
         'weight_gram',
         'age_class',
         'sex',
-        'actions',
+        // #405: die frühere 'actions'-Spalte trägt keine Aktion mehr, sondern
+        // die drei Marker-Slots — den Detail-Dialog öffnet der Zeilenklick.
+        'marker',
       ]);
       expect(component.displayedHistoryColumns).not.toContain('ringing_station');
       expect(component.displayedHistoryColumns).not.toContain('fat_deposit');
@@ -671,27 +731,245 @@ describe('DataEntryFormComponent', () => {
       expect(cellText('weight_gram')).toBe('19,0');
     });
 
-    // Issue #374 (#1): a past Fang that carries a Bemerkung gets a yellow
-    // mat-badge dot on its info button, so the Beringer sees which recaptures
-    // carry a note before opening the detail dialog.
-    const infoButton = (): HTMLElement =>
-      fixture.nativeElement.querySelector('td.mat-column-actions button') as HTMLElement;
+    // #405 (#374 (#1) abgelöst): der Bemerkungs-Indikator ist jetzt das ⓘ selbst,
+    // das nur bei vorhandener Bemerkung rendert — der frühere Badge-Punkt auf dem
+    // immer sichtbaren Info-Button ist damit weg. Dasselbe Glyph bedeutet in
+    // beiden Tabellen wieder dasselbe: „hat Bemerkung", nicht „hier klicken".
+    it('shows the ⓘ only on a past Fang that carries a comment', () => {
+      component.recaptureHistory.set([
+        historyRow({ comment: 'linker Flügel verletzt' }),
+        historyRow({ comment: null }),
+      ]);
+      fixture.detectChanges();
 
-    it('marks a past Fang that carries a comment with the Bemerkung indicator on its info button', () => {
+      const rows = Array.from(
+        fixture.nativeElement.querySelectorAll('tr.history-entry'),
+      ) as HTMLElement[];
+      expect(rows[0].querySelector('[data-testid="bemerkung-icon"]'))
+        .withContext('Fang mit Bemerkung trägt das ⓘ')
+        .not.toBeNull();
+      expect(rows[1].querySelector('[data-testid="bemerkung-icon"]'))
+        .withContext('Fang ohne Bemerkung trägt kein ⓘ')
+        .toBeNull();
+    });
+
+    // #405: beide Fangmarker erzwingen eine Bemerkung — ein ⓘ, das nur
+    // "Bemerkung vorhanden" sagt, wäre genau dort redundant; der Tooltip trägt
+    // deshalb den echten Text.
+    it('shows the actual Bemerkung text on the ⓘ instead of a generic hint', () => {
       component.recaptureHistory.set([historyRow({ comment: 'linker Flügel verletzt' })]);
       fixture.detectChanges();
 
-      expect(infoButton()).not.toBeNull();
-      // MatBadge only renders the badge span when its content is non-empty.
-      expect(infoButton().querySelector('.mat-badge-content')).not.toBeNull();
+      const icon = fixture.nativeElement.querySelector(
+        '[data-testid="bemerkung-icon"]',
+      ) as HTMLElement;
+      expect(icon.getAttribute('title')).toBe('linker Flügel verletzt');
+      expect(icon.getAttribute('aria-label')).toContain('linker Flügel verletzt');
     });
 
-    it('shows no Bemerkung indicator for a past Fang without a comment', () => {
-      component.recaptureHistory.set([historyRow({ comment: null })]);
+    // #405: das ⓘ rendert nur, *wenn* eine Bemerkung existiert — ein Badge-Punkt
+    // würde bloß die Existenz des Icons wiederholen. Der Badge wechselt den Job
+    // und sitzt jetzt an der Überschrift, nicht mehr in der Zeile.
+    it('renders the history rows without a badge dot', () => {
+      component.recaptureHistory.set([historyRow({ comment: 'linker Flügel verletzt' })]);
       fixture.detectChanges();
 
-      expect(infoButton()).not.toBeNull();
-      expect(infoButton().querySelector('.mat-badge-content')).toBeNull();
+      const row = fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
+      expect(row.querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+      expect(row.querySelector('.mat-badge-content')).toBeNull();
+      expect(row.querySelector('[matBadge], .mat-badge')).toBeNull();
+    });
+
+    // #405 (ADR 0026): ein Fangmarker markiert den Fang, nicht die Art — die
+    // Icons leben in der Marker-Spalte, nie in der Art-Zelle. Diese beiden
+    // Marker-Icons hatten zuvor null Testabdeckung.
+    it('renders the Fangmarker icons in the marker cell and not in the Art cell', () => {
+      component.recaptureHistory.set([
+        historyRow({
+          comment: 'tot unter dem Netz',
+          is_dead_recovery: true,
+          is_non_standard: true,
+        } as Partial<DataEntry>),
+      ]);
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
+      const markerCell = row.querySelector('[data-testid="marker-cell"]') as HTMLElement;
+      const speciesCell = row.querySelector('td.mat-column-species') as HTMLElement;
+
+      for (const testid of ['bemerkung-icon', 'tot-fund-icon', 'non-standard-icon']) {
+        expect(markerCell.querySelector(`[data-testid="${testid}"]`))
+          .withContext(`${testid} sitzt in der Marker-Spalte`)
+          .not.toBeNull();
+      }
+      // Die Art-Zelle trägt nur noch den Artnamen.
+      expect(speciesCell.textContent).toContain('Kohlmeise');
+      expect(speciesCell.querySelector('mat-icon')).toBeNull();
+    });
+
+    it('renders a distinct Tot-Fund icon and none on a plain past Fang', () => {
+      component.recaptureHistory.set([
+        historyRow({}),
+        historyRow({ comment: 'tot unter dem Netz', is_dead_recovery: true } as Partial<DataEntry>),
+      ]);
+      fixture.detectChanges();
+
+      const rows = Array.from(
+        fixture.nativeElement.querySelectorAll('tr.history-entry'),
+      ) as HTMLElement[];
+      expect(rows[0].querySelector('[data-testid="tot-fund-icon"]')).toBeNull();
+      expect(rows[1].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+      // Die beiden Fangmarker tragen verschiedene Icons.
+      expect(rows[1].querySelector('[data-testid="non-standard-icon"]')).toBeNull();
+    });
+
+    it('renders a distinct Nicht-Standard icon', () => {
+      component.recaptureHistory.set([
+        historyRow({ comment: 'Handfang', is_non_standard: true } as Partial<DataEntry>),
+      ]);
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
+      expect(row.querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+      expect(row.querySelector('[data-testid="tot-fund-icon"]')).toBeNull();
+    });
+
+    // #405: die Historie übernimmt die Marker-Konvention aus #388 — drei
+    // reservierte Slots in fixer Reihenfolge (ⓘ, ♥, ⚑), damit ein Marker in
+    // jeder Zeile im selben Slot sitzt. Geprüft wird die Struktur, nicht die
+    // Geometrie: dass die Slots vertikal fluchten, ist eine CSS-Eigenschaft.
+    it('reserves three marker slots in fixed order in every history row, occupied or not', () => {
+      component.recaptureHistory.set([
+        historyRow({}),
+        historyRow({ is_non_standard: true } as Partial<DataEntry>),
+        historyRow({
+          comment: 'tot unter dem Netz',
+          is_dead_recovery: true,
+          is_non_standard: true,
+        } as Partial<DataEntry>),
+      ]);
+      fixture.detectChanges();
+
+      const rows = Array.from(
+        fixture.nativeElement.querySelectorAll('tr.history-entry'),
+      ) as HTMLElement[];
+      expect(rows.length).toBe(3);
+      for (const r of rows) {
+        const slots = Array.from(
+          r.querySelectorAll('[data-testid="marker-cell"] .marker-slot'),
+        ) as HTMLElement[];
+        expect(slots.map((s) => s.dataset['testid'])).toEqual([
+          'marker-slot-bemerkung',
+          'marker-slot-tot-fund',
+          'marker-slot-non-standard',
+        ]);
+      }
+
+      // Ein einzelner Nicht-Standard-Marker bleibt in seinem eigenen Slot; die
+      // vorderen Slots bleiben leer und rücken nicht nach.
+      const nsSlots = rows[1].querySelectorAll('[data-testid="marker-cell"] .marker-slot');
+      expect(nsSlots[0].children.length).toBe(0);
+      expect(nsSlots[1].children.length).toBe(0);
+      expect(nsSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+
+      // Beide Fangmarker plus ⓘ sind gleichzeitig belegbar (ADR 0026).
+      const bothSlots = rows[2].querySelectorAll('[data-testid="marker-cell"] .marker-slot');
+      expect(bothSlots[0].querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+      expect(bothSlots[1].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+      expect(bothSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+    });
+
+    // #405: das ⓘ ist kein Button mehr — die Zeile trägt die Interaktion, wie in
+    // „Letzte Fänge". Sie darf aber *nicht* navigieren: der Beringer ist mitten
+    // in einer Erfassung und würde den laufenden Fang verlieren.
+    it('opens the detail dialog on a row click without navigating away', () => {
+      // MatDialogModule bringt MatDialog als eigenen Provider mit, den die
+      // standalone-Komponente in ihrem Node-Injector auflöst — TestBed.inject()
+      // liefert eine *andere* Instanz. Der Spy muss auf der Instanz sitzen, die
+      // die Komponente tatsächlich benutzt.
+      const open = spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate');
+      const navigateByUrl = spyOn(router, 'navigateByUrl');
+
+      const entry = historyRow({ comment: 'linker Flügel verletzt' });
+      component.recaptureHistory.set([entry]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(open).toHaveBeenCalledTimes(1);
+      const config = open.calls.mostRecent().args[1] as { data: DataEntry };
+      expect(config.data).toBe(entry);
+
+      // Die laufende Erfassung bleibt stehen — kein Routenwechsel.
+      expect(navigate).not.toHaveBeenCalled();
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    // #405: die Anzahl erscheint als hochgestellter Badge, nicht in Klammern.
+    it('shows the history count as a superscript badge instead of in brackets', () => {
+      component.recaptureHistory.set([historyRow({}), historyRow({}), historyRow({})]);
+      fixture.detectChanges();
+
+      const heading = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"]',
+      ) as HTMLElement;
+
+      // Die Klammern sind weg; die Zahl sitzt im Badge.
+      expect(heading.textContent).not.toContain('(3)');
+      const badge = heading.querySelector('.mat-badge-content') as HTMLElement;
+      expect(badge).not.toBeNull();
+      expect(badge.textContent!.trim()).toBe('3');
+    });
+
+    // #405: die Anzahl muss auch WIRKLICH LESBAR sein, nicht nur im textContent
+    // stehen. matBadgeSize="small" ist in Material 3 die Punkt-Variante: die Regel
+    // `.mat-badge-small .mat-badge-content { font-size: var(--mat-badge-small-size-text-size, 0) }`
+    // fällt auf 0 zurück, weil mat.theme() nur --mat-sys-*-Tokens emittiert und
+    // --mat-badge-small-size-text-size nirgends definiert ist (nur die alten
+    // M2-prebuilt-themes setzen es). Die Ziffer wäre dann zwar im DOM, aber mit
+    // font-size: 0 unsichtbar — die Überschrift läse sich als „Bisherige Fänge •".
+    // Eine textContent-Assertion kann das nicht sehen, deshalb hier der
+    // gerenderte Zustand.
+    it('renders the count legibly rather than collapsing it to a dot', () => {
+      component.recaptureHistory.set([historyRow({}), historyRow({}), historyRow({})]);
+      fixture.detectChanges();
+
+      const badge = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"] .mat-badge-content',
+      ) as HTMLElement;
+
+      const fontSize = parseFloat(getComputedStyle(badge).fontSize);
+      expect(fontSize).toBeGreaterThan(0);
+      // Die Ziffer muss zusätzlich in ihre Box passen: .mat-badge-content trägt
+      // overflow: hidden, eine 11px-Ziffer in einer 6px-Zeile wäre abgeschnitten.
+      expect(badge.offsetHeight).toBeGreaterThanOrEqual(fontSize);
+    });
+
+    // #405: der Badge-Inhalt ist aria-hidden (MatBadge setzt das selbst), ein
+    // Screenreader liest ihn also nie. Ohne eigene Beschreibung bliebe die Anzahl
+    // für ihn komplett unsichtbar — die Überschrift muss sie selbst tragen.
+    it('describes the count for screen readers instead of reading a bare number', () => {
+      component.recaptureHistory.set([historyRow({}), historyRow({}), historyRow({})]);
+      fixture.detectChanges();
+
+      const heading = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"]',
+      ) as HTMLElement;
+      expect(heading.querySelector('.mat-badge-content')!.getAttribute('aria-hidden')).toBe('true');
+      expect(heading.getAttribute('aria-label')).toBe('Bisherige Fänge, 3 Einträge');
+    });
+
+    it('describes a single past Fang in the singular', () => {
+      component.recaptureHistory.set([historyRow({})]);
+      fixture.detectChanges();
+
+      const heading = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"]',
+      ) as HTMLElement;
+      expect(heading.getAttribute('aria-label')).toBe('Bisherige Fänge, 1 Eintrag');
     });
   });
 
@@ -1467,6 +1745,73 @@ describe('DataEntryFormComponent', () => {
       expect(form.get('ring_number')!.value).toBe('901234');
       expect(form.get('bird_status')!.value).toBe(BirdStatus.ReCatch);
       expect(form.get('comment')!.value).toBe('Wiederfang am Hauptnetz');
+    });
+
+    // #385: a failed GET used to leave `loading` true forever — the spinner sat
+    // over an empty form, the Speichern button stayed disabled via
+    // `entryForm.invalid || loading()`, and nothing said why. The GET has no
+    // retry: any 5xx / timeout / dropped connection / status 0 (offline) lands
+    // here. The error state follows the Fänge-Liste idiom (`error.set(true)` +
+    // an inline message) rather than navigating away with a snackbar, which
+    // would lose the context of which entry failed.
+    it('ends the spinner and shows the error state instead of the form when the GET fails (#385)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush('boom', { status: 500, statusText: 'Internal Server Error' });
+      f.detectChanges();
+
+      expect(f.componentInstance.loading()).toBe(false);
+      expect(f.componentInstance.loadError()).toBe(true);
+
+      const el = f.nativeElement as HTMLElement;
+      expect(el.querySelector('[data-testid="load-error"]')).toBeTruthy();
+      expect(el.querySelector('mat-spinner')).toBeNull();
+      // "instead of the form" — an empty form behind an error message is exactly
+      // the dead end #385 reports.
+      expect(el.querySelector('form')).toBeNull();
+    });
+
+    // #385: „einen Ausweg anbieten" — the error state's only action must actually
+    // leave. Without this the state is a nicer-looking dead end.
+    it('offers "Zur Liste" as the way out of the failed-load state (#385)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      const router = TestBed.inject(Router);
+      const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush('boom', { status: 500, statusText: 'Internal Server Error' });
+      f.detectChanges();
+
+      const back = (f.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+        '[data-testid="load-error-back"]',
+      );
+      back!.click();
+
+      expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+    });
+
+    // #385 explicitly: this is not an offline-only bug, but offline IS one of the
+    // two reported reproductions. A dropped connection surfaces as status 0 (the
+    // auth interceptor sends `ngsw-bypass` so the SW cannot turn it into a
+    // synthetic 504) and must land in the same error state as a 5xx — no
+    // offline-only special case.
+    it('shows the same error state when the GET fails offline with status 0 (#385)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+      f.detectChanges();
+
+      expect(f.componentInstance.loading()).toBe(false);
+      expect(f.componentInstance.loadError()).toBe(true);
+      expect((f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')).toBeTruthy();
     });
 
     it('saves an edit via PUT, then returns to the list without clearing the form', async () => {
@@ -2467,6 +2812,138 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #404: DRF trims on write, so a pasted " 901234 " is STORED as "901234".
+  // Searching the raw value found nothing and told the Beringer the bird was
+  // unknown while it sat in the database. Read and write must trim alike.
+  describe('Ringnummer whitespace is trimmed before the lookup (#404)', () => {
+    function spyGetRingHistory() {
+      const facade = TestBed.inject(DataAccessFacadeService);
+      return spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries: [], possiblyIncomplete: false }),
+      );
+    }
+
+    function ringNumberInput(): HTMLInputElement {
+      return fixture.nativeElement.querySelector('input[formControlName="ring_number"]');
+    }
+
+    function enterWiederfangRing(ringNumber: string, ringSize = RingSize.S) {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: ringSize,
+        ring_number: ringNumber,
+      });
+      fixture.detectChanges();
+    }
+
+    it('searches the trimmed ring when the Ringnummer is left with surrounding whitespace', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.S, '901234');
+    });
+
+    it('searches the trimmed ring when Enter is pressed (Enter never blurs, so the blur path alone would miss it)', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+
+      ringNumberInput().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.S, '901234');
+    });
+
+    it('searches the trimmed ring when the magnifier button is clicked', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+      const searchButton = fixture.nativeElement.querySelector(
+        'button[aria-label="Ringhistorie suchen"]',
+      ) as HTMLButtonElement;
+
+      searchButton.click();
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.S, '901234');
+    });
+
+    it('writes the trimmed value back into the field so the Beringer sees the clean ring', () => {
+      spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+
+      component.fetchRingHistory();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+      expect(ringNumberInput().value).toBe('901234');
+    });
+
+    it('leaves whitespace INSIDE a foreign ring number untouched ("AB 1234" stays findable)', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' AB 1234 ');
+
+      component.fetchRingHistory();
+
+      // Stripping every space would search "AB1234" and never find the stored
+      // "AB 1234" — one failure traded for another.
+      expect(spy).toHaveBeenCalledWith(RingSize.S, 'AB 1234');
+      expect(component.entryForm.get('ring_number')!.value).toBe('AB 1234');
+    });
+
+    it('fires exactly one lookup for Enter followed by Tab on a whitespace-padded ring', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+
+      // Enter runs the lookup and writes "901234" back; the Tab-out blur that
+      // follows must recognise that ring as already searched. What holds this
+      // together is the order inside fetchRingHistory(): the trimmed value is
+      // written to the field BEFORE the key is recorded, so the key already
+      // describes the rewritten field whichever value ringLookupKey() reads.
+      ringNumberInput().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      fixture.detectChanges();
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not look the same ring up again when whitespace is appended to an already-searched Ringnummer', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing('901234');
+
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      // The Beringer returns to the searched field and leaves a trailing space
+      // behind. That is the same ring — the lookup would trim it back to
+      // "901234" — so the blur must stand down. Without the trim in
+      // ringLookupKey() the padded value no longer matches the recorded key and
+      // the identical ring is fetched a second time.
+      component.entryForm.get('ring_number')!.setValue('901234 ');
+      fixture.detectChanges();
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not look up a Ringnummer that is nothing but whitespace', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing('   ');
+
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('local Wiederfang history panel offline (issue #168)', () => {
     const incompleteHint = () =>
       fixture.nativeElement.querySelector(
@@ -3397,6 +3874,39 @@ describe('DataEntryFormComponent', () => {
       expect(entries[0].id).toMatch(UUID_PATTERN);
       expect((entries[0].payload as {idempotency_key?: string}).idempotency_key).toBe(entries[0].id);
       expect((entries[0].payload as {ring_number?: string}).ring_number).toBe('901234');
+    });
+
+    // #404: a capture queued offline is the bug seen from the other side —
+    // assembleLocalRingHistory matches the outbox payload with a strict ===, so a
+    // raw ring number in the queue is invisible to the next Wiederfang on the very
+    // device that recorded it. A foreign Zentrale is the reachable case (it drops
+    // the digits-only pattern, so a pasted ring validates).
+    it('enqueues an offline foreign capture under its trimmed ring number, so the later Wiederfang finds it', async () => {
+      const outboxStore = TestBed.inject(OutboxStoreService);
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+      });
+      fixture.detectChanges();
+      component.entryForm.get('central')!.setValue({
+        id: 'c-skb',
+        scheme_code: 'SKB',
+        name: 'Slowakei Bratislava',
+        country: 'Slowakei',
+      } as never);
+      fixture.detectChanges();
+      component.entryForm.patchValue({ ring_size: 'SKB1' as never, ring_number: ' AB1234 ' });
+      fixture.detectChanges();
+
+      component.onSubmit();
+      respondOffline();
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      const entries = await outboxStore.list();
+      expect(entries.length).toBe(1);
+      expect((entries[0].payload as {ring_number?: string}).ring_number).toBe('AB1234');
     });
 
     it('increments the visible pending count in the outbox service', async () => {
@@ -6567,9 +7077,9 @@ describe('DataEntryFormComponent', () => {
     });
 
     it('carries the selected parasite codes onto the form value', () => {
-      component.entryForm.get('parasites')!.setValue([Parasit.Mites]);
+      component.entryForm.get('parasites')!.setValue([Parasit.RedMites]);
       fixture.detectChanges();
-      expect(component.entryForm.getRawValue().parasites).toEqual([Parasit.Mites]);
+      expect(component.entryForm.getRawValue().parasites).toEqual([Parasit.RedMites]);
     });
   });
 

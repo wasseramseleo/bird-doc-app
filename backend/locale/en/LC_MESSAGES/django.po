@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-04 19:04+0200\n"
+"POT-Creation-Date: 2026-07-16 18:09+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -22,6 +22,10 @@ msgid "Eingelöst"
 msgstr ""
 
 msgid "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
+msgstr ""
+
+msgid ""
+"Bei einem Tot-Fund oder Nicht-Standard-Fang ist eine Bemerkung erforderlich."
 msgstr ""
 
 msgid ""
@@ -321,6 +325,21 @@ msgstr ""
 msgid "Lockpfeife"
 msgstr ""
 
+msgid "IWM"
+msgstr ""
+
+msgid "IMS"
+msgstr ""
+
+msgid "Zugvogelmonitoring"
+msgstr ""
+
+msgid "Nestlingsberingung"
+msgstr ""
+
+msgid "Sonstiges"
+msgstr ""
+
 msgid "Titel"
 msgstr ""
 
@@ -331,6 +350,18 @@ msgid "Standard-Station"
 msgstr ""
 
 msgid "Optionale Felder anzeigen"
+msgstr ""
+
+msgid "Netzfelder anzeigen"
+msgstr ""
+
+msgid "Projekttyp"
+msgstr ""
+
+msgid "Saison-Startmonat"
+msgstr ""
+
+msgid "Saison-Endmonat"
 msgstr ""
 
 msgid "Umstand"
@@ -429,6 +460,21 @@ msgstr ""
 msgid "3"
 msgstr ""
 
+msgid "Rote Milben"
+msgstr "Red mites"
+
+msgid "Weiße Milben"
+msgstr "White mites"
+
+msgid "Zecke"
+msgstr "Tick"
+
+msgid "Federlinge"
+msgstr "Feather lice"
+
+msgid "Lausfliege"
+msgstr "Louse fly"
+
 msgid "Art"
 msgstr ""
 
@@ -489,7 +535,7 @@ msgstr ""
 msgid "Handschwinge"
 msgstr ""
 
-msgid "Milben"
+msgid "Parasit"
 msgstr ""
 
 msgid "Hungerstreifen"
@@ -501,6 +547,12 @@ msgstr ""
 msgid "CPL+"
 msgstr ""
 
+msgid "Tot-Fund"
+msgstr ""
+
+msgid "Nicht-Standard-Fang"
+msgstr ""
+
 msgid "Datum"
 msgstr ""
 
@@ -508,6 +560,9 @@ msgid "Bemerkungen"
 msgstr ""
 
 msgid "Idempotenzschlüssel"
+msgstr ""
+
+msgid "Gelöscht"
 msgstr ""
 
 msgid "List Name"
@@ -591,6 +646,9 @@ msgid "Dieses Konto ist bereits mit einem Beringer verknüpft."
 msgstr ""
 
 msgid "Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel."
+msgstr ""
+
+msgid "Ein Projekt braucht mindestens eine:n Beringer:in."
 msgstr ""
 
 msgid "Die Station muss zur Organisation des Projekts gehören."
@@ -766,6 +824,15 @@ msgid "Zurück zur Startseite"
 msgstr "Back to the home page"
 
 msgid ""
+"BirdDoc trägt eine ganze Beringungs-Landschaft: DSGVO-konform, in Österreich "
+"gehostet, ohne Lock-in. Erzähl uns von eurer Stelle – wir melden uns für ein "
+"Gespräch."
+msgstr ""
+"BirdDoc supports an entire ringing landscape: GDPR-compliant, hosted in "
+"Austria, with no lock-in. Tell us about your organisation and we'll get in "
+"touch for a conversation."
+
+msgid ""
 "BirdDoc kann eine ganze Beringungs-Landschaft tragen: DSGVO-konform, in "
 "Österreich gehostet, ohne Lock-in. Erzähl uns kurz von eurer Stelle, und wir "
 "melden uns für ein Gespräch. Es entstehen keine Kosten und du gehst keine "
@@ -774,15 +841,6 @@ msgstr ""
 "BirdDoc can carry a whole ringing landscape: GDPR-compliant, hosted in "
 "Austria, with no lock-in. Tell us briefly about your body and we'll get in "
 "touch for a conversation. There is no cost and no obligation."
-
-msgid ""
-"BirdDoc trägt eine ganze Beringungs-Landschaft: DSGVO-konform, in Österreich "
-"gehostet, ohne Lock-in. Erzähl uns von eurer Stelle – wir melden uns für ein "
-"Gespräch."
-msgstr ""
-"BirdDoc supports an entire ringing landscape: GDPR-compliant, hosted in "
-"Austria, with no lock-in. Tell us about your organisation and we'll get in "
-"touch for a conversation."
 
 msgid ""
 "Nach dem Absenden sehen wir uns deine Anfrage an und melden uns per E-Mail, "
@@ -1165,8 +1223,8 @@ msgid ""
 "Regelpreis gilt für sie nicht, auch wenn die Beta endet."
 msgstr ""
 "Organisations that join during the public beta belong to the beta cohort and "
-"keep their preferential price for good. A later standard price does not apply "
-"to them, even once the beta ends."
+"keep their preferential price for good. A later standard price does not "
+"apply to them, even once the beta ends."
 
 msgid ""
 "Aktueller Stand: BirdDoc ist in geschlossener Beta und für alle Beta-"
@@ -1293,19 +1351,19 @@ msgstr ""
 "as an access code opens up for you, we'll get in touch by email."
 
 msgid ""
+"BirdDoc ist in geschlossener Beta: Trag dich in die Warteliste ein und wir "
+"melden uns, sobald ein Zugangscode frei wird – kostenlos und unverbindlich."
+msgstr ""
+"BirdDoc is in closed beta: join the waiting list and we'll get in touch as "
+"soon as an access code opens up — free and without obligation."
+
+msgid ""
 "BirdDoc ist in geschlossener Beta. Trag dich in die Warteliste ein und wir "
 "melden uns, sobald ein Zugangscode frei wird. Es entstehen keine Kosten und "
 "du gehst keine Verpflichtung ein."
 msgstr ""
 "BirdDoc is in closed beta. Join the waiting list and we'll get in touch as "
 "soon as an access code opens up. There is no cost and no obligation."
-
-msgid ""
-"BirdDoc ist in geschlossener Beta: Trag dich in die Warteliste ein und wir "
-"melden uns, sobald ein Zugangscode frei wird – kostenlos und unverbindlich."
-msgstr ""
-"BirdDoc is in closed beta: join the waiting list and we'll get in touch as "
-"soon as an access code opens up — free and without obligation."
 
 msgid ""
 "Nach dem Absenden sehen wir uns deine Anfrage an. Sobald ein Platz frei "

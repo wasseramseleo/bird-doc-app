@@ -87,7 +87,12 @@ def _build_comment(entry):
         parts.append("Brutfleck")
     if entry.has_cpl_plus:
         parts.append("CPL+")
-    return " ".join(parts) or None
+    # Comma-joined, not space-joined (issue #406): several parasite labels are
+    # themselves multi-word ("Rote Milben"), and recording more than one type is
+    # routine — Zecken *and* Rote Milben is an ordinary finding. Joined by a bare
+    # space, "Frischer Fang Rote Milben Zecke Brutfleck" gives the human reader at
+    # the Meldestelle no token boundary, and this is the official Meldung.
+    return ", ".join(parts) or None
 
 
 # IWM header text → callable(entry) -> cell value (None = leave blank).

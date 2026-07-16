@@ -1053,6 +1053,53 @@ describe('DataAccessFacadeService', () => {
       expect(result.entries[0].sex).toBe(2);
     });
 
+    // #404: the ring a queued capture is stored under must be matched by the ring
+    // the lookup searches for. The lookup now trims, but the outbox may still hold
+    // a raw, whitespace-padded number queued by an earlier build — the bird's own
+    // Erstfang, invisible at its next Wiederfang on the very device that recorded
+    // it. Matching on the trimmed payload value makes that entry findable again
+    // without rewriting anything already sitting in the queue.
+    it('matches a queued capture whose stored ring number carries stray whitespace', async () => {
+      await saveBundleWithReferences();
+      await queueEntry({
+        species_id: 's1',
+        staff_id: 'sci-1',
+        ring_size: RingSize.V,
+        ring_number: ' 0043 ',
+        bird_status: 'e',
+        date_time: '2026-07-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getRingHistory(RingSize.V, '0043'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.entries.length).toBe(1);
+      expect(result.entries[0].ring.number).toBe('0043');
+    });
+
+    it('does not match a queued capture whose ring number differs by an INNER space', async () => {
+      await saveBundleWithReferences();
+      await queueEntry({
+        species_id: 's1',
+        staff_id: 'sci-1',
+        ring_size: RingSize.V,
+        ring_number: 'AB 1234',
+        bird_status: 'e',
+        date_time: '2026-07-01T09:00:00.000Z',
+      });
+
+      // "AB1234" is a different ring from "AB 1234" — only the ends are noise.
+      const resultPromise = firstValueFrom(service.getRingHistory(RingSize.V, 'AB1234'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+
+      expect((await resultPromise).entries.length).toBe(0);
+    });
+
     it('assembles the history from cached recent captures for that ring when offline', async () => {
       await TestBed.inject(RecentEntriesCacheService).save({
         projectId: 'p1',

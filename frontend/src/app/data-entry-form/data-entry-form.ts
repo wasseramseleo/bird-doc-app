@@ -89,6 +89,7 @@ import {
   resetAcknowledgedSignatures,
 } from '../core/plausibility/plausibility-acknowledgment';
 import {InfoDialogComponent, InfoDialogData} from '../shared/info-dialog/info-dialog';
+import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
 
 // #232: the strict Austrian (AUW) ring-size codes. When the Zentrale switches
 // back from a foreign scheme to the Projekt-Zentrale, a free-text Größe that is
@@ -118,6 +119,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     MatDialogModule,
     MatIconModule,
     MatBadgeModule,
+    MarkerSlotsComponent,
   ],
   providers: [provideNativeDateAdapter(), DatePipe, DecimalPipe],
   templateUrl: './data-entry-form.html',
@@ -197,6 +199,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // without re-reading the reference cache.
   private readonly loadedQueuedFormValue = signal<Record<string, unknown> | null>(null);
   readonly loading = signal<boolean>(false);
+  // #385: the GET behind /data-entry/:id failed. Distinct from `syncError`
+  // (the server rejected a *queued* entry during sync): this one means the
+  // record never arrived, so there is nothing to edit and the form must not
+  // render. Any failure lands here — 5xx, timeout, dropped connection, or
+  // status 0 while offline. Only the server path can set it; the queued path
+  // reads local state and cannot fail this way.
+  readonly loadError = signal<boolean>(false);
   // MO-3 submit feedback: drives the brief green "Gespeichert ✓" button state.
   readonly saved = signal<boolean>(false);
   // #23: a prominent CapsLock warning. Beringer type ring numbers and codes
@@ -211,11 +220,21 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // unvollständig" label so the Beringer knows captures made on another device
   // or before this device's cache snapshot may be missing.
   readonly historyPossiblyIncomplete = signal<boolean>(false);
+  // #405: 'marker' ersetzt die frühere 'actions'-Spalte — sie trägt keine Aktion
+  // mehr, sondern die drei Marker-Slots aus #388. Den Detail-Dialog öffnet jetzt
+  // der Zeilenklick.
   readonly displayedHistoryColumns: string[] = [
     'date_time', 'species', 'bird_status', 'staff', 'tarsus', 'feather_span', 'wing_span', 'weight_gram',
-    'age_class', 'sex', 'actions'
+    'age_class', 'sex', 'marker'
   ];
   readonly BirdStatus = BirdStatus;
+
+  // #405: die Beschreibung des Anzahl-Badges für Screenreader — ohne sie liest
+  // ein Screenreader die nackte Zahl („Bisherige Fänge 3").
+  readonly historyCountDescription = computed(() => {
+    const count = this.recaptureHistory().length;
+    return count === 1 ? '1 Eintrag' : `${count} Einträge`;
+  });
 
   // #115: a determined-sex contradiction across the recapture history. Only
   // determined sexes (Männchen/Weibchen) count towards the set; Unbekannt is
@@ -810,21 +829,33 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       }
 
       this.loading.set(true);
-      this.apiService.getDataEntry(id).subscribe(entry => {
-        this.loadedEntry.set(entry);
-        this.entryForm.patchValue(this.transformToForm(entry));
-        // #273: seed the "last searched ring" key so leaving the Ringnummer on a
-        // saved Wiederfang does not silently re-fetch and clobber edits. A
-        // changed Ringnummer still differs from this key and triggers a lookup.
-        this.lastSearchedRingKey = this.ringLookupKey();
-        // Issue #19/#57: a loaded Sonderart entry must apply the same
-        // collapse / mandatory-comment behaviour as a freshly selected one.
-        this.selectedSpecies.set(entry.species ?? null);
-        this.loading.set(false);
-        // PRD #261 (#267): surface the quiet suffix icons for any stored value
-        // already out of range, without a modal (the norm may still be loading;
-        // loadNorms re-seeds once it lands).
-        this.seedPlausibilityOnLoad();
+      this.loadError.set(false);
+      // #385: the error callback is not optional here. Without it a failed GET
+      // never cleared `loading`, leaving a permanent spinner over an empty
+      // form: Speichern stayed disabled via `entryForm.invalid || loading()`,
+      // the untouched required validators made `onSubmit()` early-return (so
+      // Ctrl+S was dead too), and nothing told the user what had happened.
+      this.apiService.getDataEntry(id).subscribe({
+        next: entry => {
+          this.loadedEntry.set(entry);
+          this.entryForm.patchValue(this.transformToForm(entry));
+          // #273: seed the "last searched ring" key so leaving the Ringnummer on a
+          // saved Wiederfang does not silently re-fetch and clobber edits. A
+          // changed Ringnummer still differs from this key and triggers a lookup.
+          this.lastSearchedRingKey = this.ringLookupKey();
+          // Issue #19/#57: a loaded Sonderart entry must apply the same
+          // collapse / mandatory-comment behaviour as a freshly selected one.
+          this.selectedSpecies.set(entry.species ?? null);
+          this.loading.set(false);
+          // PRD #261 (#267): surface the quiet suffix icons for any stored value
+          // already out of range, without a modal (the norm may still be loading;
+          // loadNorms re-seeds once it lands).
+          this.seedPlausibilityOnLoad();
+        },
+        error: () => {
+          this.loadError.set(true);
+          this.loading.set(false);
+        },
       });
     });
 
@@ -1245,10 +1276,22 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // lookup, so the blur path stands down and lets the click own it.
   private readonly ringSearchButton = viewChild('ringSearchButton', { read: ElementRef });
 
+  // #404: the ring number a lookup actually searches for — the field's value
+  // stripped of surrounding whitespace. Only the ends: an inner space belongs to
+  // the number itself (a foreign Zentrale's "AB 1234" is stored that way, and
+  // stripping every space would search "AB1234" and never find it).
+  private trimmedRingNumber(): string {
+    const ringNumber = this.entryForm.get('ring_number')?.value;
+    return typeof ringNumber === 'string' ? ringNumber.trim() : String(ringNumber ?? '');
+  }
+
+  // #404: keyed on the TRIMMED number so that padding a ring the auto-search
+  // already ran for ("901234" → "901234 ") stays recognisable as that same ring
+  // and the blur path stands down. Keyed raw, the padded value would miss the
+  // recorded key and refetch a ring whose history is already on screen.
   private ringLookupKey(): string {
     const ringSize = this.entryForm.get('ring_size')?.value ?? '';
-    const ringNumber = this.entryForm.get('ring_number')?.value ?? '';
-    return `${ringSize}::${ringNumber}`;
+    return `${ringSize}::${this.trimmedRingNumber()}`;
   }
 
   // #273: leaving the Ringnummer field auto-runs the ring-history lookup — the
@@ -1272,9 +1315,19 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
 
   fetchRingHistory(): void {
     const ringSize = this.entryForm.get('ring_size')?.value;
-    const ringNumber = this.entryForm.get('ring_number')?.value;
+    // #404: search the TRIMMED ring. DRF trims on write (trim_whitespace=True),
+    // so a pasted " 901234 " is stored as "901234" — searching the raw value
+    // found nothing and told the Beringer the bird was unknown while it sat in
+    // the database. All three triggers (blur, Enter, the magnifier button) route
+    // through here, so this one trim covers every route into the lookup.
+    const ringNumber = this.trimmedRingNumber();
     if (!ringSize || !ringNumber) {
       return;
+    }
+    // #404: show the Beringer the clean value that was actually searched. Written
+    // back before the key is recorded, so both describe the same ring.
+    if (this.entryForm.get('ring_number')?.value !== ringNumber) {
+      this.entryForm.get('ring_number')?.setValue(ringNumber);
     }
     // #273: record the searched ring so a later blur on the same ring is a no-op.
     this.lastSearchedRingKey = this.ringLookupKey();
@@ -1750,6 +1803,19 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     const payload: any = {...formValue};
     for (const field of DataEntryFormComponent.MASKED_NUMERIC_CONTROLS) {
       payload[field] = DataEntryFormComponent.normalizeMaskedNumeric(payload[field]);
+    }
+    // #404: store the ring under the same value the lookup searches for. DRF
+    // already trims a CharField on write, so an online POST lands trimmed either
+    // way — but a capture queued OFFLINE is matched by assembleLocalRingHistory
+    // with a strict ===, and a raw " AB1234 " there is invisible to the next
+    // Wiederfang on the very device that recorded it. Trimming here makes the
+    // outbox agree with the server. Only the ends: an inner space belongs to a
+    // foreign Zentrale's number ("AB 1234"). A domestic ring never reaches this
+    // holding whitespace — the `^[0-9]*$` pattern refuses it at the field (#232) —
+    // but a foreign ring drops that pattern, which is exactly where a pasted
+    // number arrives padded.
+    if (typeof payload.ring_number === 'string') {
+      payload.ring_number = payload.ring_number.trim();
     }
     payload.species_id = formValue.species?.id;
     payload.ringing_station_id = formValue.ringing_station?.handle;

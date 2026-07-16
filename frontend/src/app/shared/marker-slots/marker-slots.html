@@ -1,0 +1,27 @@
+<span class="marker-slot" data-testid="marker-slot-bemerkung">
+  <!-- #374 (#1): Bemerkungs-Indikator. Der Tooltip trägt den echten
+       Bemerkungstext — beide Fangmarker erzwingen eine Bemerkung, ein bloßes
+       "Bemerkung vorhanden" wäre genau dort redundant. -->
+  @if (entry().comment; as comment) {
+    <mat-icon class="marker-icon bemerkung-indicator" inline
+              data-testid="bemerkung-icon"
+              [title]="comment"
+              [attr.aria-label]="'Bemerkung: ' + comment"
+    >info_outline</mat-icon>
+  }
+</span>
+<span class="marker-slot" data-testid="marker-slot-tot-fund">
+  <!-- #371: distinct Fangmarker row icons (ADR 0026). -->
+  @if (entry().is_dead_recovery) {
+    <mat-icon class="marker-icon fangmarker-icon fangmarker-icon--dead" inline
+              data-testid="tot-fund-icon"
+              title="Tot-Fund" aria-label="Tot-Fund">heart_broken</mat-icon>
+  }
+</span>
+<span class="marker-slot" data-testid="marker-slot-non-standard">
+  @if (entry().is_non_standard) {
+    <mat-icon class="marker-icon fangmarker-icon fangmarker-icon--non-standard" inline
+              data-testid="non-standard-icon"
+              title="Nicht-Standard-Fang" aria-label="Nicht-Standard-Fang">flag</mat-icon>
+  }
+</span>

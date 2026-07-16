@@ -397,6 +397,20 @@ function toPage<T>(results: T[]): PaginatedApiResponse<T> {
  * synced). Sorted oldest-first by capture time, matching how the panel reads
  * a bird's catch history.
  */
+/**
+ * The ring number a locally-held capture is matched under (#404): its stored
+ * value stripped of surrounding whitespace. The capture form now trims before
+ * queueing, but the outbox is durable — an entry queued by an earlier build can
+ * still hold a raw `" 0043 "`, and a strict `===` against the (trimmed) searched
+ * ring would leave the bird's own Erstfang invisible at its next Wiederfang, on
+ * the very device that recorded it. Normalising on read makes those entries
+ * findable without rewriting anything already in the queue. Only the ends are
+ * noise — an inner space belongs to the number ("AB 1234" is not "AB1234").
+ */
+function localRingNumber(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function assembleLocalRingHistory(
   ringSize: RingSize,
   ringNumber: string,
@@ -407,7 +421,8 @@ function assembleLocalRingHistory(
   const fromQueue = queued
     .filter(
       (entry) =>
-        entry.payload['ring_size'] === ringSize && entry.payload['ring_number'] === ringNumber,
+        entry.payload['ring_size'] === ringSize &&
+        localRingNumber(entry.payload['ring_number']) === ringNumber,
     )
     .map((entry) => queuedEntryToHistoryEntry(entry, bundle));
   const queuedKeys = new Set(
@@ -448,7 +463,10 @@ function queuedEntryToHistoryEntry(entry: OutboxEntry, bundle: OfflineBundle | n
     ring: {
       id: '',
       size: payload['ring_size'] as RingSize,
-      number: (payload['ring_number'] as string) ?? '',
+      // #404: render the ring the same way the server would — DRF trims on write,
+      // so the synced row shows "0043". A queued row must not read " 0043 " in the
+      // history table purely because it has not been sent yet.
+      number: localRingNumber(payload['ring_number']),
     } as Ring,
     date_time: (payload['date_time'] as string) ?? entry.queuedAt,
   } as DataEntry;
