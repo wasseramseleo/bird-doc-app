@@ -4,6 +4,7 @@ import {Router} from '@angular/router';
 import {firstValueFrom, from, Observable, of, tap} from 'rxjs';
 
 import {ApiService} from './api.service';
+import {AppUpdateService} from './app-update.service';
 import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
 import {PendingBeringerService} from './pending-beringer.service';
@@ -66,16 +67,25 @@ const NOTHING_TO_SYNC: SyncResult = {total: 0, synced: 0, flagged: 0};
  *   stops the replay at that entry, so the still-queued remainder is untouched
  *   and simply retried, under the same key, by the next `syncNow()` call —
  *   never duplicated server-side.
- * - **Skip-and-flag on rejection (issue #164)**: a *definitive* server
- *   rejection (`4xx` — a validation change, a Station archived mid-trip, a
- *   Beringer reassigned to the Gelöschter Nutzer, or a genuine ring-uniqueness
- *   collision from a concurrent device) is not a transient failure: retrying
- *   the same payload will only be refused again. Rather than let one bad entry
- *   hold the whole queue hostage, that entry is left in the queue, flagged with
- *   the server's own error message (`OutboxService.flag()`), and the replay
- *   continues with the rest. A flagged entry is skipped by later replays until
- *   it is fixed in the normal capture form (`OutboxService.update()` clears the
- *   flag) — resolving a sync error is just ordinary editing.
+ * - **Skip-and-flag on a validation rejection (issue #164)**: a **400/422** — a
+ *   refusal of the payload on its own merits (a validation change, a Station
+ *   archived mid-trip, a Beringer reassigned to the Gelöschter Nutzer, or a
+ *   genuine ring-uniqueness collision from a concurrent device) — is not a
+ *   transient failure: retrying the same payload will only be refused again.
+ *   Rather than let one bad entry hold the whole queue hostage, that entry is
+ *   left in the queue, flagged with the server's own error message
+ *   (`OutboxService.flag()`), and the replay continues with the rest. A flagged
+ *   entry is skipped by later replays until it is fixed in the normal capture
+ *   form (`OutboxService.update()` clears the flag) — resolving a sync error is
+ *   just ordinary editing.
+ * - **Flagging is earned, not assumed (issue #409, ADR 0033)**: only those two
+ *   statuses flag. Every *other* refusal the server can answer — an expired
+ *   session, a CSRF refusal, a rate limit, a Version so stale the endpoint has
+ *   moved — is a condition of the **run**, not of the entry: the run aborts,
+ *   leaving the queue completely untouched, and the next sync carries on. A
+ *   Synchronisierungsfehler is the one outcome that costs a Beringer manual work
+ *   per entry, so it must require positive evidence rather than be the fallback
+ *   for a status we failed to recognise.
  * - **Account-switch-safe mid-replay**: `AuthService.currentUser()` is a
  *   live, session-cookie-backed signal — it can change *during* the
  *   `await`-per-entry loop (a shared/offline device where Mitglied B logs in,
@@ -104,12 +114,19 @@ export class SyncService {
   private readonly pendingBeringer = inject(PendingBeringerService);
   private readonly outboxStore = inject(OutboxStoreService);
   private readonly router = inject(Router);
+  private readonly appUpdate = inject(AppUpdateService);
 
   private readonly syncingState = signal(false);
   readonly syncing = this.syncingState.asReadonly();
 
+  /** Epoch ms before which no run may start, set only by a 429's `Retry-After`. */
+  private retryNotBefore = 0;
+
   syncNow(): Observable<SyncResult> {
     if (this.syncingState()) {
+      return of(NOTHING_TO_SYNC);
+    }
+    if (Date.now() < this.retryNotBefore) {
       return of(NOTHING_TO_SYNC);
     }
     const accountKey = this.auth.currentUser()?.username ?? null;
@@ -281,30 +298,97 @@ export class SyncService {
       await this.outbox.dequeue(entry.id);
       return 'synced';
     } catch (error) {
-      if (this.isRejection(error)) {
-        // A definitive server rejection (4xx): skip-and-flag (issue #164) —
-        // leave the entry queued, tagged with the server's own message, and
+      if (this.isValidationRejection(error)) {
+        // The payload was refused on its own merits: skip-and-flag (issue #164)
+        // — leave the entry queued, tagged with the server's own message, and
         // let the caller carry on with the rest of the queue.
         await this.outbox.flag(entry, this.extractServerMessage(error));
         return 'flagged';
       }
-      // Transient (connectivity dropped again — status 0 — or a 5xx): the entry
-      // stays queued, untouched, under its original idempotency key, and the
-      // whole replay stops so the remainder is retried on the next attempt.
-      console.error('Failed to sync a queued capture; it remains queued', error);
+      // Anything else is about the run, not this entry (issue #409, ADR 0033):
+      // the entry stays queued, untouched and unflagged, under its original
+      // idempotency key, and the whole replay stops so the remainder is retried
+      // on the next attempt.
+      this.startRunRemedy(error);
       return 'interrupted';
     }
   }
 
   /**
-   * A *definitive* server rejection is an HTTP client-error response (`4xx`):
-   * the payload itself is refused (validation, a ring-uniqueness collision,
-   * an archived Station…), so retrying it unchanged is pointless. A dropped
-   * connection surfaces as `status === 0` and a server fault as `5xx` — both
-   * transient, retried rather than flagged.
+   * The **only** refusal that earns a Synchronisierungsfehler (ADR 0033): a
+   * `400`/`422`, the server judging this payload on its own merits (validation,
+   * a ring-uniqueness collision, an archived Station…), so retrying it unchanged
+   * is pointless.
+   *
+   * Deliberately a positive list, not `4xx`. Flagging is the one outcome that
+   * costs a Beringer manual work per entry — re-opening and re-saving each
+   * flagged capture by hand — so it has to be *earned* by evidence that this
+   * payload is the problem, rather than be what happens to a status we did not
+   * recognise. The honest price, accepted in ADR 0033: a genuinely bad payload
+   * answering some other 4xx retries forever instead of flagging once. Today
+   * that case is empty (409 is unreachable on this path; 404 means drift), and
+   * a retry cap would just be the catch-all again, wearing a hat.
    */
-  private isRejection(error: unknown): error is HttpErrorResponse {
-    return error instanceof HttpErrorResponse && error.status >= 400 && error.status < 500;
+  private isValidationRejection(error: unknown): error is HttpErrorResponse {
+    return error instanceof HttpErrorResponse && (error.status === 400 || error.status === 422);
+  }
+
+  /**
+   * Aborting already leaves the queue intact and lets the next sync carry on, so
+   * this only starts the remedy a given run-level condition has — where one can
+   * be started from here at all.
+   *
+   * A `403` (typically a CSRF refusal mid-run) needs nothing: every run already
+   * refreshes CSRF before its first POST, so the next sync *is* the remedy.
+   */
+  private startRunRemedy(error: unknown): void {
+    if (error instanceof HttpErrorResponse) {
+      switch (error.status) {
+        case 401:
+          // The session expired *mid-replay*, not on the CSRF refresh — so this
+          // never reaches the run-level `isSessionExpired` handler, because
+          // `syncEntry` catches its own errors (issue #409). Same remedy, and
+          // the queue is just as untouched.
+          this.promptReLogin();
+          return;
+        case 404:
+          // This bundle is POSTing to an endpoint the server no longer has:
+          // DRF's create never calls `get_object` and a bad FK surfaces as 400,
+          // so a 404 cannot be about this entry — it is drift, and *every*
+          // queued entry would answer the same. Flagging would condemn a whole
+          // trip for a deploy; instead tell Offline-Bereitschaft the Version is
+          // stale (ADR 0032/0033) — better evidence than ngsw's own check,
+          // which a tab open since Tuesday may not have run for days.
+          this.appUpdate.markVersionStale();
+          return;
+        case 429:
+          this.holdOffUntilRetryAfter(error.headers.get('Retry-After'));
+          return;
+      }
+    }
+    console.error('Failed to sync a queued capture; it remains queued', error);
+  }
+
+  /**
+   * Honours a `429`'s `Retry-After` by refusing to start another run until it
+   * has elapsed — otherwise the very next `window 'online'` event
+   * (`outbox-indicator.ts`) would replay straight back into the server that just
+   * asked us to back off, which is not honouring it at all.
+   *
+   * Only the delta-seconds form is read. The HTTP-date form is ignored rather
+   * than parsed: it simply means the next trigger retries sooner, which is
+   * harmless. There is deliberately no backoff schedule and no throttling here —
+   * a 429 cannot even occur today (no DRF throttle classes; ADR 0007 removed
+   * Cloudflare, so only nginx could emit one), and the abort itself comes free
+   * with the positive list.
+   */
+  private holdOffUntilRetryAfter(retryAfter: string | null): void {
+    console.warn('Sync paused: the server asked us to retry later', retryAfter);
+    const seconds = Number(retryAfter);
+    if (retryAfter === null || !Number.isFinite(seconds) || seconds < 0) {
+      return;
+    }
+    this.retryNotBefore = Date.now() + seconds * 1000;
   }
 
   /**

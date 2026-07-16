@@ -5,6 +5,7 @@ import {Router, provideRouter} from '@angular/router';
 import {firstValueFrom} from 'rxjs';
 
 import {SyncService} from './sync.service';
+import {AppUpdateService} from './app-update.service';
 import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
 import {OutboxStoreService} from '../core/offline/outbox-store';
@@ -439,6 +440,187 @@ describe('SyncService', () => {
       const remaining = await outboxStore.list();
       expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
       expect(remaining[0].syncError).toBeFalsy();
+    });
+  });
+
+  describe('flagging is earned, not assumed (issue #409, ADR 0033)', () => {
+    // Only a refusal of the payload on its own merits (400/422) earns a
+    // Synchronisierungsfehler — the one outcome that costs a Beringer manual
+    // work per entry. Every other 4xx is a condition of the *run*: it aborts,
+    // touching nothing, and the next sync simply carries on.
+
+    it('aborts the run on a CSRF refusal mid-replay (403) instead of flagging real field data', async () => {
+      auth.currentUser.set(authUser());
+      await outboxStore.add(
+        makeEntry({id: 'uuid-1', queuedAt: '2026-07-02T09:00:00.000Z', payload: {idempotency_key: 'uuid-1'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-2', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-3', queuedAt: '2026-07-02T09:10:00.000Z', payload: {idempotency_key: 'uuid-3'}}),
+      );
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectCreatePost().flush({id: 'server-1'}); // uuid-1 syncs
+      await settle();
+
+      // uuid-2 hits a CSRF refusal — transient, and about the run, not about
+      // this capture. uuid-3 is never POSTed (httpMock.verify() in afterEach
+      // fails on a stray create).
+      expectCreatePost().flush(
+        {detail: 'CSRF Failed: CSRF token missing or incorrect.'},
+        {status: 403, statusText: 'Forbidden'},
+      );
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 3, synced: 1, flagged: 0});
+
+      // Both untried entries stay queued and unflagged: nothing to re-save by
+      // hand, and the next sync (which refreshes CSRF first) replays them.
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-2', 'uuid-3']);
+      expect(remaining.every((e) => !e.syncError)).toBeTrue();
+    });
+
+    it('pauses and prompts a re-login when the session expires mid-replay (a per-entry 401)', async () => {
+      // The session can expire *between* entries, not just on the CSRF refresh
+      // that opens a run — a long replay outlives a short session. Such a 401
+      // never reaches the run-level handler, because syncEntry catches its own
+      // errors, so it used to be treated exactly like a validation refusal.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(
+        makeEntry({id: 'uuid-1', queuedAt: '2026-07-02T09:00:00.000Z', payload: {idempotency_key: 'uuid-1'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-2', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+      );
+      const navigate = spyOn(router, 'navigate').and.stub();
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectCreatePost().flush({id: 'server-1'}); // uuid-1 syncs
+      await settle();
+
+      expectCreatePost().flush(
+        {detail: 'Authentication credentials were not provided.'},
+        {status: 401, statusText: 'Unauthorized'},
+      );
+      await settle();
+
+      // The run reports what really happened — one synced, nothing flagged —
+      // rather than pretending the whole run was a no-op.
+      expect(await resultPromise).toEqual({total: 2, synced: 1, flagged: 0});
+
+      // uuid-2 stays queued, unflagged: it is a perfectly good capture that
+      // merely arrived after the session died.
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-2']);
+      expect(remaining[0].syncError).toBeFalsy();
+
+      // Same remedy as an expired session on the CSRF refresh: a normal
+      // re-login, after which the intact queue resumes.
+      expect(navigate.calls.mostRecent().args[0]).toEqual(['/login']);
+      expect(auth.currentUser()).toBeNull();
+      expect(service.syncing()).toBeFalse();
+    });
+
+    it('reports the Version stale and aborts on a 404 — drift is never one entry\'s fault', async () => {
+      // A 404 on the create path means this bundle is POSTing to an endpoint the
+      // server no longer has: systemic, so every queued entry would answer the
+      // same. Flagging would condemn a whole trip's captures for a deploy.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(
+        makeEntry({id: 'uuid-1', queuedAt: '2026-07-02T09:00:00.000Z', payload: {idempotency_key: 'uuid-1'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-2', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+      );
+      const appUpdate = TestBed.inject(AppUpdateService);
+      expect(appUpdate.versionStale()).toBeFalse();
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectCreatePost().flush({detail: 'Not found.'}, {status: 404, statusText: 'Not Found'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 2, synced: 0, flagged: 0});
+
+      // The whole queue is intact and unflagged — nothing to re-save by hand.
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1', 'uuid-2']);
+      expect(remaining.every((e) => !e.syncError)).toBeTrue();
+
+      // And the device now knows it is not offline bereit: the server just
+      // proved this Version is stale, which is what "Jetzt aktualisieren" is
+      // for (the indicator renders this in offline-readiness.spec.ts).
+      expect(appUpdate.versionStale()).toBeTrue();
+    });
+
+    it('aborts on a rate limit (429) and holds the next run off until Retry-After has elapsed', async () => {
+      // A big queue replaying at once is exactly what would trip a rate limit,
+      // so flagging here would punish the fullest outbox hardest. Aborting is
+      // not enough on its own: the next 'online' event fires a sync immediately,
+      // straight back into the server that just asked us to wait.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(makeEntry({id: 'uuid-1', payload: {idempotency_key: 'uuid-1'}}));
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      expectCreatePost().flush(
+        {detail: 'Request was throttled.'},
+        {status: 429, statusText: 'Too Many Requests', headers: {'Retry-After': '60'}},
+      );
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 0, flagged: 0});
+      const remaining = await outboxStore.list();
+      expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
+      expect(remaining[0].syncError).toBeFalsy();
+
+      // A sync triggered inside the window makes no request at all — httpMock's
+      // verify() in afterEach would fail on any.
+      expect(await firstValueFrom(service.syncNow())).toEqual({total: 0, synced: 0, flagged: 0});
+      await settle();
+    });
+
+    it('does not hold the next run off when a 429 carries no Retry-After', async () => {
+      // "Honour it if present" — with nothing to honour, waiting an invented
+      // amount of time would strand the queue on a guess.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(makeEntry({id: 'uuid-1', payload: {idempotency_key: 'uuid-1'}}));
+
+      const firstRun = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+      expectCreatePost().flush({detail: 'Request was throttled.'}, {status: 429, statusText: 'Too Many Requests'});
+      await settle();
+      expect(await firstRun).toEqual({total: 1, synced: 0, flagged: 0});
+
+      // The next run proceeds normally and drains the still-intact queue.
+      const secondRun = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+      expectCreatePost().flush({id: 'server-1'});
+      await settle();
+
+      expect(await secondRun).toEqual({total: 1, synced: 1, flagged: 0});
+      expect(await outboxStore.list()).toEqual([]);
     });
   });
 
