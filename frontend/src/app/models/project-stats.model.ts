@@ -2,7 +2,10 @@
 // `GET /api/birds/projects/{id}/stats/` composite payload. All counting
 // semantics live server-side (ADR 0017); the client only renders these numbers.
 
-export type StatsRangePreset = 'week' | 'month' | 'year' | 'all';
+// `today` (Heute) and `season` (Diese Saison) are additive presets (ADR 0029):
+// `today` is today..today; `season` resolves the Projekt's own recurring month
+// window server-side. Both are resolved backend-side against a Vienna „today".
+export type StatsRangePreset = 'week' | 'month' | 'year' | 'all' | 'today' | 'season';
 
 export interface ProjectStatsRange {
   // ISO dates (`YYYY-MM-DD`); `from` may be null for an open lower bound (`all`).

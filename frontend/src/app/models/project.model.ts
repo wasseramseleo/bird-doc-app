@@ -44,6 +44,13 @@ export interface Project {
   // project cache, same path show_optional_fields rides.
   show_net_fields: boolean;
   projekttyp: Projekttyp;
+  // The optional per-Projekt Saison window (ADR 0029, issue #373): an inclusive,
+  // wrap-around-allowed month window (1–12) set manually in the Projekt settings.
+  // Both null/undefined ⇒ no season configured, which hides the dashboard's
+  // „Diese Saison" preset. Optional because legacy/partial payloads may omit them;
+  // the dashboard treats „configured" as both months present.
+  saison_start_month?: number | null;
+  saison_end_month?: number | null;
   organization: Organization;
   // The Projekt's Zentrale (ADR 0019), carried on the GET/bundle shape (#233) so
   // a bundled Projekt knows the Zentrale a domestic capture defaults to. Optional
@@ -72,4 +79,7 @@ export interface ProjectUpdatePayload {
   show_net_fields?: boolean;
   projekttyp?: Projekttyp;
   default_station_id?: string | null;
+  // The Saison window (ADR 0029): both null clears the season (preset hidden).
+  saison_start_month?: number | null;
+  saison_end_month?: number | null;
 }

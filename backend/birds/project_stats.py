@@ -27,7 +27,10 @@ from .models import DataEntry, Species
 
 VIENNA = ZoneInfo("Europe/Vienna")
 
-PRESETS = ("week", "month", "year", "all")
+# The named range presets. ``today`` and ``season`` are additive (ADR 0029):
+# ``today`` is a one-day range; ``season`` resolves the Projekt's own recurring
+# month window. The other four keep their prior lower-bound-to-today semantics.
+PRESETS = ("week", "month", "year", "all", "today", "season")
 DEFAULT_PRESET = "week"
 
 
@@ -49,17 +52,77 @@ def _preset_from(today, preset):
     return None  # "all"
 
 
-def resolve_range(*, today, preset=None, date_from=None, date_to=None):
+def _season_range(today, start_month, end_month):
+    """Resolve the „Diese Saison" bounds against Vienna ``today`` for an
+    inclusive, wrap-around-allowed month window ``[start_month, end_month]``
+    (1–12; ADR 0029).
+
+    In-season (``today`` inside the current occurrence) ⇒ ``(occurrence start,
+    today)`` — capped at today, never a future date. Off-season ⇒ the
+    most-recently-ended occurrence ``[start, end]``, so the dashboard shows the
+    last season's result. Always a populated, meaningful range."""
+    month = today.month
+    wrap = start_month > end_month
+    in_season = (
+        (month >= start_month or month <= end_month)
+        if wrap
+        else (start_month <= month <= end_month)
+    )
+    if in_season:
+        # The current occurrence's start is this year's start month — except in
+        # the spring tail of a wrap-around window (month <= end_month), where the
+        # occurrence began last November.
+        start_year = today.year - 1 if wrap and month <= end_month else today.year
+        return datetime.date(start_year, start_month, 1), today
+    # Off-season: the most-recently-ended occurrence.
+    if wrap:
+        # end_month < month < start_month: the occurrence that started last year
+        # ended this year at end_month.
+        occ_start = datetime.date(today.year - 1, start_month, 1)
+        occ_end_year = today.year
+    elif month > end_month:
+        # This year's occurrence already ran and ended.
+        occ_start = datetime.date(today.year, start_month, 1)
+        occ_end_year = today.year
+    else:
+        # month < start_month: this year's occurrence has not started; last
+        # year's is the most-recently-ended one.
+        occ_start = datetime.date(today.year - 1, start_month, 1)
+        occ_end_year = today.year - 1
+    last_day = calendar.monthrange(occ_end_year, end_month)[1]
+    return occ_start, datetime.date(occ_end_year, end_month, last_day)
+
+
+def resolve_range(
+    *,
+    today,
+    preset=None,
+    date_from=None,
+    date_to=None,
+    saison_start_month=None,
+    saison_end_month=None,
+):
     """Resolve the request's range into ``(preset, date_from, date_to)``.
 
     Explicit ``from``/``to`` win over a preset and clear it (``preset=None``);
     otherwise the named preset (default ``week``) computes the bounds against
-    ``today`` (a Vienna date). ``date_from`` may be ``None`` for an open lower
-    bound (``all``)."""
+    ``today`` (a Vienna date). ``today`` is a one-day range; ``season`` resolves
+    the Projekt's recurring month window (``saison_start_month``/
+    ``saison_end_month``) — falling back to the default preset when no window is
+    configured (either month ``None``). ``date_from`` may be ``None`` for an open
+    lower bound (``all``)."""
     if date_from is not None or date_to is not None:
         return None, date_from, date_to or today
+    has_season = saison_start_month is not None and saison_end_month is not None
+    if preset == "season" and not has_season:
+        preset = DEFAULT_PRESET
     if preset not in PRESETS:
         preset = DEFAULT_PRESET
+    if preset == "today":
+        return preset, today, today
+    if preset == "season":
+        date_from, date_to = _season_range(today, saison_start_month, saison_end_month)
+        return preset, date_from, date_to
     return preset, _preset_from(today, preset), today
 
 
@@ -89,7 +152,12 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
         today = timezone.localdate()
 
     preset, date_from, date_to = resolve_range(
-        today=today, preset=preset, date_from=date_from, date_to=date_to
+        today=today,
+        preset=preset,
+        date_from=date_from,
+        date_to=date_to,
+        saison_start_month=project.saison_start_month,
+        saison_end_month=project.saison_end_month,
     )
     start, end = _range_bounds(date_from, date_to)
 

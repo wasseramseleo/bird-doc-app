@@ -44,6 +44,32 @@
       </mat-select>
     </mat-form-field>
 
+    <p class="saison-hint">
+      Saison (optional): legt das Monatsfenster für die „Diese Saison"-Auswertung im
+      Dashboard fest. Über den Jahreswechsel hinweg erlaubt (z. B. November–März).
+    </p>
+    <div class="saison-fields">
+      <mat-form-field appearance="outline" class="saison-field">
+        <mat-label>Saison-Start (Monat)</mat-label>
+        <mat-select formControlName="saisonStartMonth">
+          <mat-option [value]="null">Keine</mat-option>
+          @for (month of saisonMonthOptions; track month.value) {
+            <mat-option [value]="month.value">{{ month.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="saison-field">
+        <mat-label>Saison-Ende (Monat)</mat-label>
+        <mat-select formControlName="saisonEndMonth">
+          <mat-option [value]="null">Keine</mat-option>
+          @for (month of saisonMonthOptions; track month.value) {
+            <mat-option [value]="month.value">{{ month.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+
     <mat-checkbox formControlName="showOptionalFields">
       Optionale Felder im Eingabeformular anzeigen
     </mat-checkbox>

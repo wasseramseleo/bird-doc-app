@@ -3,6 +3,7 @@ import uuid
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import ProtectedError
 from django.db.models.signals import pre_delete
@@ -590,6 +591,25 @@ class Project(models.Model):
         choices=Projekttyp.choices,
         default=Projekttyp.SONSTIGES,
         verbose_name=_("Projekttyp"),
+    )
+    # The optional per-Projekt Saison (ADR 0029): a recurring, inclusive month
+    # window [saison_start_month, saison_end_month] (1–12) that drives the
+    # dashboard's „Diese Saison" preset. Wrap-around allowed — when start > end the
+    # window spans the year boundary (Nov = 11 → März = 3). NOT a separate entity,
+    # NO Projekttyp coupling or seeding: set manually per Projekt. Both null ⇒ no
+    # season configured (the preset button is hidden). Admin-only, like the rest of
+    # Projektverwaltung (writes gated by IsOrgAdminOrReadOnly on the ViewSet).
+    saison_start_month = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        verbose_name=_("Saison-Startmonat"),
+    )
+    saison_end_month = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        verbose_name=_("Saison-Endmonat"),
     )
     circumstance = models.CharField(max_length=8, default="25", verbose_name=_("Umstand"))
     capture_method = models.CharField(
