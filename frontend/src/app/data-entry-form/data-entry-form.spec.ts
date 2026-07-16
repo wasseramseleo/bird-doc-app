@@ -1747,6 +1747,73 @@ describe('DataEntryFormComponent', () => {
       expect(form.get('comment')!.value).toBe('Wiederfang am Hauptnetz');
     });
 
+    // #385: a failed GET used to leave `loading` true forever — the spinner sat
+    // over an empty form, the Speichern button stayed disabled via
+    // `entryForm.invalid || loading()`, and nothing said why. The GET has no
+    // retry: any 5xx / timeout / dropped connection / status 0 (offline) lands
+    // here. The error state follows the Fänge-Liste idiom (`error.set(true)` +
+    // an inline message) rather than navigating away with a snackbar, which
+    // would lose the context of which entry failed.
+    it('ends the spinner and shows the error state instead of the form when the GET fails (#385)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush('boom', { status: 500, statusText: 'Internal Server Error' });
+      f.detectChanges();
+
+      expect(f.componentInstance.loading()).toBe(false);
+      expect(f.componentInstance.loadError()).toBe(true);
+
+      const el = f.nativeElement as HTMLElement;
+      expect(el.querySelector('[data-testid="load-error"]')).toBeTruthy();
+      expect(el.querySelector('mat-spinner')).toBeNull();
+      // "instead of the form" — an empty form behind an error message is exactly
+      // the dead end #385 reports.
+      expect(el.querySelector('form')).toBeNull();
+    });
+
+    // #385: „einen Ausweg anbieten" — the error state's only action must actually
+    // leave. Without this the state is a nicer-looking dead end.
+    it('offers "Zur Liste" as the way out of the failed-load state (#385)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      const router = TestBed.inject(Router);
+      const navigateSpy = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush('boom', { status: 500, statusText: 'Internal Server Error' });
+      f.detectChanges();
+
+      const back = (f.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+        '[data-testid="load-error-back"]',
+      );
+      back!.click();
+
+      expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+    });
+
+    // #385 explicitly: this is not an offline-only bug, but offline IS one of the
+    // two reported reproductions. A dropped connection surfaces as status 0 (the
+    // auth interceptor sends `ngsw-bypass` so the SW cannot turn it into a
+    // synthetic 504) and must land in the same error state as a 5xx — no
+    // offline-only special case.
+    it('shows the same error state when the GET fails offline with status 0 (#385)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+      f.detectChanges();
+
+      expect(f.componentInstance.loading()).toBe(false);
+      expect(f.componentInstance.loadError()).toBe(true);
+      expect((f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')).toBeTruthy();
+    });
+
     it('saves an edit via PUT, then returns to the list without clearing the form', async () => {
       const { f, httpMock } = await setupEditMode('42');
       f.detectChanges();

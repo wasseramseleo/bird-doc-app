@@ -15,6 +15,26 @@
   </div>
 }
 
+<!-- #385: ein fehlgeschlagenes GET rendert die Meldung *anstelle* des
+     Formulars — dem Fehler-Idiom von „Letzte Fänge" folgend
+     (`entry-list__state--error`). Das leere Formular stehen zu lassen wäre die
+     Sackgasse aus #385: nichts zu speichern, Speichern deaktiviert, kein Hinweis
+     warum. „Zur Liste" ist der Ausweg; der Knopf ist hier bewusst Tab-erreichbar
+     (kein tabindex="-1" wie sein Gegenstück in der Aktionszeile), weil er in
+     diesem Zustand die einzige Aktion der Seite ist.
+     Der @else verbirgt mit dem Formular auch die Wiederfang-Historie (#405) —
+     das ist kein Verlust: die Historie wird erst aus dem geladenen Eintrag
+     befüllt, ist hier also ohnehin leer und rendert bei length === 0 nicht. -->
+@if (loadError()) {
+  <div class="load-error" role="alert" data-testid="load-error">
+    <mat-icon aria-hidden="true">error_outline</mat-icon>
+    <p>Der Eintrag konnte nicht geladen werden.</p>
+    <button mat-stroked-button type="button" data-testid="load-error-back"
+            (click)="onBackToList()">
+      Zur Liste
+    </button>
+  </div>
+} @else {
 <div>
   <div class="recapture-reveal" [class.is-open]="recaptureHistory().length > 0">
     <div class="recapture-reveal__inner">
@@ -656,3 +676,4 @@
     </div>
   </form>
 </div>
+}
