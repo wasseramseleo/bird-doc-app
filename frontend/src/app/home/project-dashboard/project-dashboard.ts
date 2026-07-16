@@ -46,8 +46,8 @@ import {
 type DashboardViewState = 'loading' | DashboardFailure | 'empty' | 'populated';
 
 // A range preset plus its German label, owned by the dashboard's range selector
-// (issue #203). "per Saison" is served by *Dieses Jahr* / a custom range — no
-// Saison entity exists (CONTEXT.md), so it is just a range over the Fangtage.
+// (issue #203). „Heute" and „Diese Saison" are additive presets (ADR 0029): the
+// season resolves the Projekt's own recurring month window server-side.
 interface RangePresetOption {
   preset: StatsRangePreset;
   label: string;
@@ -102,12 +102,30 @@ export class ProjectDashboardComponent {
     () => PROJEKTTYP_LABELS[this.project().projekttyp ?? Projekttyp.Sonstiges],
   );
 
-  readonly presets: readonly RangePresetOption[] = [
-    {preset: 'week', label: 'Letzte Woche'},
-    {preset: 'month', label: 'Letzter Monat'},
-    {preset: 'year', label: 'Dieses Jahr'},
-    {preset: 'all', label: 'Alles'},
-  ];
+  // Whether the Projekt has a Saison window configured (both months present).
+  // Drives the conditional „Diese Saison" preset button — hidden when unset
+  // (ADR 0029). Undefined/null months both read as „not configured".
+  readonly hasSeason = computed(() => {
+    const p = this.project();
+    return p.saison_start_month != null && p.saison_end_month != null;
+  });
+
+  // The range presets in display order. The original four, then the additive
+  // „Heute", then „Diese Saison" — the latter only when a Saison window is
+  // configured (ADR 0029). Custom Von/Bis lives in the template alongside these.
+  readonly presets = computed<readonly RangePresetOption[]>(() => {
+    const options: RangePresetOption[] = [
+      {preset: 'week', label: 'Letzte Woche'},
+      {preset: 'month', label: 'Letzter Monat'},
+      {preset: 'year', label: 'Dieses Jahr'},
+      {preset: 'all', label: 'Alles'},
+      {preset: 'today', label: 'Heute'},
+    ];
+    if (this.hasSeason()) {
+      options.push({preset: 'season', label: 'Diese Saison'});
+    }
+    return options;
+  });
 
   // The selected range. „Dieses Jahr" is the default so the dashboard answers
   // „Wie läuft die Saison?" the moment it opens (issue #293); a custom range

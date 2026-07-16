@@ -39,6 +39,8 @@ function editResult(overrides: Partial<ProjectEditDialogResult> = {}): ProjectEd
     showNetFields: true,
     projekttyp: Projekttyp.Sonstiges,
     defaultStationHandle: '',
+    saisonStartMonth: null,
+    saisonEndMonth: null,
     ...overrides,
   };
 }
@@ -180,6 +182,8 @@ describe('ProjectActionsService', () => {
         show_net_fields: true,
         projekttyp: Projekttyp.IWM,
         default_station_id: 'st1',
+        saison_start_month: null,
+        saison_end_month: null,
       });
 
       const updated = makeProject({ id: 'p3', title: 'Neuer Titel' });
@@ -197,6 +201,18 @@ describe('ProjectActionsService', () => {
 
       const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p3/'));
       expect(req.request.body.default_station_id).toBeNull();
+      req.flush(makeProject({ id: 'p3' }));
+    });
+
+    it('maps the edited Saison window into the PATCH payload (ADR 0029)', () => {
+      const { service, httpMock, dialog } = setup();
+      stubDialog(dialog, editResult({ saisonStartMonth: 11, saisonEndMonth: 3 }));
+
+      service.edit(makeProject({ id: 'p3' }));
+
+      const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p3/'));
+      expect(req.request.body.saison_start_month).toBe(11);
+      expect(req.request.body.saison_end_month).toBe(3);
       req.flush(makeProject({ id: 'p3' }));
     });
 

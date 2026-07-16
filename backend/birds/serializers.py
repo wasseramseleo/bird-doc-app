@@ -491,6 +491,12 @@ class ProjectSerializer(serializers.ModelSerializer):
             "show_optional_fields",
             "show_net_fields",
             "projekttyp",
+            # The optional per-Projekt Saison window (ADR 0029): two nullable month
+            # fields (1–12) set in the Projekt settings — read on GET so the
+            # dashboard knows whether to offer „Diese Saison", writable Admin-only
+            # (the ViewSet's IsOrgAdminOrReadOnly gates the whole write).
+            "saison_start_month",
+            "saison_end_month",
             "organization",
             "organization_id",
             "central",

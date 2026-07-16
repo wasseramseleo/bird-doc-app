@@ -941,6 +941,87 @@ describe('ProjectDashboardComponent', () => {
     httpMock.verify();
   });
 
+  // --- Heute + Diese Saison presets (ADR 0029, issue #373) -------------------
+
+  function presetButtonTexts(fixture: ComponentFixture<ProjectDashboardComponent>): string[] {
+    return Array.from(
+      fixture.nativeElement.querySelectorAll('.range-selector__preset'),
+    ).map((b) => (b as HTMLButtonElement).textContent?.trim() ?? '');
+  }
+
+  it('offers the additive Heute preset and drives a today-preset request when selected', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    // „Heute" is offered alongside the existing presets.
+    expect(presetButtonTexts(fixture)).toContain('Heute');
+
+    const heute = Array.from(
+      fixture.nativeElement.querySelectorAll('.range-selector__preset'),
+    ).find((b) => (b as HTMLButtonElement).textContent?.trim() === 'Heute') as HTMLButtonElement;
+    heute.click();
+    fixture.detectChanges();
+
+    const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    expect(req.request.params.get('preset')).toBe('today');
+    req.flush(makeStats());
+    httpMock.verify();
+  });
+
+  it('keeps every existing preset alongside the additive Heute preset', () => {
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    // Nothing removed: the four original presets plus the additive Heute.
+    const texts = presetButtonTexts(fixture);
+    expect(texts).toEqual(
+      jasmine.arrayContaining(['Letzte Woche', 'Letzter Monat', 'Dieses Jahr', 'Alles', 'Heute']),
+    );
+    // The custom Von/Bis range is still present too.
+    expect(fixture.nativeElement.querySelector('.range-selector__custom')).not.toBeNull();
+    httpMock.verify();
+  });
+
+  it('hides the Diese Saison preset when the Projekt has no Saison window configured', () => {
+    // makeProject() has no saison months → no window.
+    const { fixture, httpMock } = setup(makeProject());
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    expect(presetButtonTexts(fixture)).not.toContain('Diese Saison');
+    httpMock.verify();
+  });
+
+  it('shows the Diese Saison preset only when the Projekt has a Saison window, and drives a season-preset request', () => {
+    const { fixture, httpMock } = setup(
+      makeProject({ saison_start_month: 11, saison_end_month: 3 }),
+    );
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
+    fixture.detectChanges();
+
+    // The window is configured → the button appears.
+    expect(presetButtonTexts(fixture)).toContain('Diese Saison');
+
+    const saison = Array.from(
+      fixture.nativeElement.querySelectorAll('.range-selector__preset'),
+    ).find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Diese Saison',
+    ) as HTMLButtonElement;
+    saison.click();
+    fixture.detectChanges();
+
+    const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/'));
+    expect(req.request.params.get('preset')).toBe('season');
+    req.flush(makeStats());
+    httpMock.verify();
+  });
+
   it('shows a generic error state (not the offline state) when the stats fetch fails server-side', () => {
     const { fixture, httpMock } = setup(makeProject());
     fixture.detectChanges();

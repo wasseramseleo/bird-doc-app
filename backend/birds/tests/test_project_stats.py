@@ -14,12 +14,13 @@ established here and reused by later dashboard slices:
   *data-bearing* day, computed in Europe/Vienna (timestamps stored UTC).
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from itertools import count
 
 import pytest
 
 from birds.models import DataEntry, Ring, Scientist, Species
+from birds.project_stats import compute_project_stats, resolve_range
 
 _ring_seq = count(1)
 
@@ -774,3 +775,147 @@ def test_erstnachweise_empty_when_range_has_no_captures(auth_client, scientist, 
     response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-06-30"}))
     assert response.status_code == 200
     assert response.data["erstnachweise"] == []
+
+
+# --- range resolver: Heute + Diese Saison presets (ADR 0029, issue #373) ------
+#
+# ``resolve_range`` is the single home of the preset bounds (against a Vienna
+# "today"). These unit-test it directly — deterministic, no HTTP "today" mocking
+# — for the two additive presets plus the recurring-month-window season logic.
+
+
+def test_resolve_today_preset_is_today_to_today():
+    """``Heute`` resolves to ``today..today`` (Europe/Vienna) — a one-day range."""
+    today = date(2026, 7, 16)
+    preset, date_from, date_to = resolve_range(today=today, preset="today")
+    assert preset == "today"
+    assert date_from == today
+    assert date_to == today
+
+
+def test_existing_presets_and_custom_range_are_unchanged():
+    """The two new presets are purely additive: the existing bounds and the
+    explicit-from/to custom range behave exactly as before."""
+    today = date(2026, 7, 16)
+    assert resolve_range(today=today, preset="week") == ("week", date(2026, 7, 9), today)
+    assert resolve_range(today=today, preset="year") == ("year", date(2025, 7, 16), today)
+    assert resolve_range(today=today, preset="all") == ("all", None, today)
+    # Explicit from/to still wins over any preset and clears it.
+    assert resolve_range(
+        today=today, preset="season", date_from=date(2026, 1, 1), date_to=date(2026, 3, 1)
+    ) == (None, date(2026, 1, 1), date(2026, 3, 1))
+
+
+def test_resolve_season_in_season_non_wrap_is_start_to_today():
+    """A Jul–Okt window with today inside it (August) ⇒ ``from`` = this year's
+    season start (1 Jul), ``to`` = today (capped at today, never future)."""
+    today = date(2026, 8, 15)
+    preset, date_from, date_to = resolve_range(
+        today=today, preset="season", saison_start_month=7, saison_end_month=10
+    )
+    assert preset == "season"
+    assert date_from == date(2026, 7, 1)
+    assert date_to == today
+
+
+def test_resolve_season_off_season_after_non_wrap_is_last_ended_occurrence():
+    """Jul–Okt, today in November (after the window ended this year) ⇒ the
+    most-recently-ended occurrence: 1 Jul .. 31 Okt of this year."""
+    today = date(2026, 11, 15)
+    preset, date_from, date_to = resolve_range(
+        today=today, preset="season", saison_start_month=7, saison_end_month=10
+    )
+    assert preset == "season"
+    assert date_from == date(2026, 7, 1)
+    assert date_to == date(2026, 10, 31)
+
+
+def test_resolve_season_off_season_before_non_wrap_is_previous_year_occurrence():
+    """Jul–Okt, today in May (before this year's window has started) ⇒ the
+    most-recently-ended occurrence is last year's: 1 Jul .. 31 Okt 2025."""
+    today = date(2026, 5, 15)
+    _, date_from, date_to = resolve_range(
+        today=today, preset="season", saison_start_month=7, saison_end_month=10
+    )
+    assert date_from == date(2025, 7, 1)
+    assert date_to == date(2025, 10, 31)
+
+
+def test_resolve_season_wrap_in_season_autumn_tail():
+    """A wrap-around Nov–März window with today in the autumn tail (December) ⇒
+    ``from`` = this year's 1 Nov, ``to`` = today."""
+    today = date(2025, 12, 10)
+    _, date_from, date_to = resolve_range(
+        today=today, preset="season", saison_start_month=11, saison_end_month=3
+    )
+    assert date_from == date(2025, 11, 1)
+    assert date_to == today
+
+
+def test_resolve_season_wrap_in_season_spring_tail_starts_previous_year():
+    """Nov–März with today in the spring tail (January) ⇒ the occurrence began
+    last November: ``from`` = 1 Nov of the previous year, ``to`` = today."""
+    today = date(2026, 1, 15)
+    _, date_from, date_to = resolve_range(
+        today=today, preset="season", saison_start_month=11, saison_end_month=3
+    )
+    assert date_from == date(2025, 11, 1)
+    assert date_to == today
+
+
+def test_resolve_season_wrap_off_season_is_last_ended_occurrence():
+    """Nov–März, today in July (off-season) ⇒ the most-recently-ended occurrence,
+    which spanned the year boundary: 1 Nov 2025 .. 31 März 2026."""
+    today = date(2026, 7, 15)
+    _, date_from, date_to = resolve_range(
+        today=today, preset="season", saison_start_month=11, saison_end_month=3
+    )
+    assert date_from == date(2025, 11, 1)
+    assert date_to == date(2026, 3, 31)
+
+
+def test_resolve_season_end_month_boundary_is_in_season():
+    """The window is inclusive at both ends: today on the last day of the end
+    month (März) is still in-season, capped at today."""
+    today = date(2026, 3, 31)
+    _, date_from, date_to = resolve_range(
+        today=today, preset="season", saison_start_month=11, saison_end_month=3
+    )
+    assert date_from == date(2025, 11, 1)
+    assert date_to == today
+
+
+def test_resolve_season_without_window_falls_back_to_default_preset():
+    """``season`` requested but the Projekt has no window configured (either month
+    ``None``) is unusable, so it falls back to the default preset (``week``). The
+    button is hidden client-side, but the resolver stays defensive."""
+    today = date(2026, 7, 16)
+    assert resolve_range(today=today, preset="season") == ("week", date(2026, 7, 9), today)
+    assert resolve_range(today=today, preset="season", saison_start_month=11) == (
+        "week",
+        date(2026, 7, 9),
+        today,
+    )
+
+
+@pytest.mark.django_db
+def test_compute_project_stats_reads_season_window_off_the_project(
+    project, ringing_station, scientist, species
+):
+    """End-to-end wiring: ``compute_project_stats`` feeds the Projekt's own
+    ``saison_start_month``/``saison_end_month`` into the resolver, so ``season``
+    resolves against that Projekt's window."""
+    project.saison_start_month = 11
+    project.saison_end_month = 3
+    project.save()
+    # A capture inside last winter's occurrence and one the summer before it.
+    _capture(project, species, ringing_station, scientist, datetime(2026, 1, 5, 8, 0, tzinfo=UTC))
+    _capture(project, species, ringing_station, scientist, datetime(2025, 8, 1, 8, 0, tzinfo=UTC))
+
+    payload = compute_project_stats(project, preset="season", today=date(2026, 2, 10))
+    assert payload["range"]["preset"] == "season"
+    # In-season (February) ⇒ from = 1 Nov 2025, to = today; only the January
+    # capture is inside the occurrence.
+    assert payload["range"]["from"] == "2025-11-01"
+    assert payload["range"]["to"] == "2026-02-10"
+    assert payload["totals"]["faenge"] == 1

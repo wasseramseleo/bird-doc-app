@@ -36,7 +36,7 @@
   </header>
 
   <div class="range-selector" role="group" aria-label="Zeitraum">
-    @for (option of presets; track option.preset) {
+    @for (option of presets(); track option.preset) {
       <button
         type="button"
         class="range-selector__preset"
