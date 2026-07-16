@@ -23,6 +23,21 @@
       <!-- #405: die Anzahl als hochgestellter Badge statt in Klammern. Das Panel
            rendert nur bei length > 0, es gibt also keinen Null-Zustand.
 
+           matBadgeSize ist bewusst "medium", NICHT "small" wie im Issue-Text
+           vorgeschlagen: "small" ist in Material 3 die Punkt-Variante, keine
+           kleinere Zahl. Sie setzt
+             font-size: var(--mat-badge-small-size-text-size, 0)
+           und dieses Token definiert nur die alten M2-prebuilt-themes; mat.theme()
+           emittiert ausschliesslich --mat-sys-*. Der Fallback 0 greift also, die
+           Ziffer wäre unsichtbar und die Überschrift läse sich als
+           „Bisherige Fänge •" — schlechter als das „(3)", das dieses Issue
+           verbessern wollte. Auch das Token selbst zu setzen genügt nicht: der
+           Container bleibt 6px hoch bei 6px line-height und overflow: hidden, die
+           Ziffer wird schlicht abgeschnitten (verifiziert: 11px Schrift in 6px Box).
+           "small" für eine Zahl brauchbar zu machen hiesse container-size,
+           line-height, padding und offset zu überschreiben — also "medium"
+           nachzubauen. Deshalb "medium" (font-size 11px, 16px Box).
+
            Das aria-label trägt die Anzahl für Screenreader („Bisherige Fänge,
            3 Einträge" statt „Bisherige Fänge 3"). matBadgeDescription leistet das
            hier NICHT: MatBadge setzt aria-hidden="true" auf den Badge-Inhalt, und
@@ -34,7 +49,7 @@
       <h3 data-testid="history-heading"
           [attr.aria-label]="'Bisherige Fänge, ' + historyCountDescription()"
           [matBadge]="recaptureHistory().length"
-          matBadgeSize="small"
+          matBadgeSize="medium"
           matBadgeOverlap="false">Bisherige Fänge</h3>
       @if (historyPossiblyIncomplete()) {
         <div class="offline-history-hint" role="status" data-testid="offline-history-incomplete">

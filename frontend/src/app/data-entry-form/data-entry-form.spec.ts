@@ -866,6 +866,30 @@ describe('DataEntryFormComponent', () => {
       expect(badge.textContent!.trim()).toBe('3');
     });
 
+    // #405: die Anzahl muss auch WIRKLICH LESBAR sein, nicht nur im textContent
+    // stehen. matBadgeSize="small" ist in Material 3 die Punkt-Variante: die Regel
+    // `.mat-badge-small .mat-badge-content { font-size: var(--mat-badge-small-size-text-size, 0) }`
+    // fällt auf 0 zurück, weil mat.theme() nur --mat-sys-*-Tokens emittiert und
+    // --mat-badge-small-size-text-size nirgends definiert ist (nur die alten
+    // M2-prebuilt-themes setzen es). Die Ziffer wäre dann zwar im DOM, aber mit
+    // font-size: 0 unsichtbar — die Überschrift läse sich als „Bisherige Fänge •".
+    // Eine textContent-Assertion kann das nicht sehen, deshalb hier der
+    // gerenderte Zustand.
+    it('renders the count legibly rather than collapsing it to a dot', () => {
+      component.recaptureHistory.set([historyRow({}), historyRow({}), historyRow({})]);
+      fixture.detectChanges();
+
+      const badge = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"] .mat-badge-content',
+      ) as HTMLElement;
+
+      const fontSize = parseFloat(getComputedStyle(badge).fontSize);
+      expect(fontSize).toBeGreaterThan(0);
+      // Die Ziffer muss zusätzlich in ihre Box passen: .mat-badge-content trägt
+      // overflow: hidden, eine 11px-Ziffer in einer 6px-Zeile wäre abgeschnitten.
+      expect(badge.offsetHeight).toBeGreaterThanOrEqual(fontSize);
+    });
+
     // #405: der Badge-Inhalt ist aria-hidden (MatBadge setzt das selbst), ein
     // Screenreader liest ihn also nie. Ohne eigene Beschreibung bliebe die Anzahl
     // für ihn komplett unsichtbar — die Überschrift muss sie selbst tragen.
