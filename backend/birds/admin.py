@@ -23,6 +23,10 @@ from .models import (
     Zugangscode,
 )
 
+# Parasit (ADR 0027): code → label for the fixed, app-wide vocabulary, used to
+# render the multi-valued selection as text in the CSV export.
+_PARASIT_LABELS = {code.value: str(code.label) for code in DataEntry.Parasit}
+
 
 def export_as_csv(modeladmin, request, queryset):
     """
@@ -61,7 +65,10 @@ def export_as_csv(modeladmin, request, queryset):
 
     for obj in queryset:
         comment = obj.comment if obj.comment else ""
-        comment += " Milben" if obj.has_mites else ""
+        # Parasit (ADR 0027): each selected type's label is appended as text,
+        # exactly as the single "Milben" token was before it generalised.
+        for code in obj.parasites or []:
+            comment += f" {_PARASIT_LABELS.get(code, code)}"
         comment += " Hungerstreifen" if obj.has_hunger_stripes else ""
         comment += " Brutfleck" if obj.has_brood_patch else ""
         comment += " CPL+" if obj.has_cpl_plus else ""
@@ -311,7 +318,7 @@ class DataEntryAdmin(admin.ModelAdmin):
                     "small_feather_int",
                     "small_feather_app",
                     "hand_wing",
-                    "has_mites",
+                    "parasites",
                     "has_hunger_stripes",
                     "has_brood_patch",
                     "has_cpl_plus",

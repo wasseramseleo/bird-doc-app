@@ -685,6 +685,14 @@ class DataEntry(models.Model):
         TWO = 2, _("2")
         THREE = 3, _("3")
 
+    class Parasit(models.TextChoices):
+        # Parasit (ADR 0027): the fixed, app-wide vocabulary of parasite types,
+        # identical for every Organisation (reference data, like the IWM codes —
+        # not tenant-configurable). The multi-valued ``parasites`` field stores a
+        # list of these codes. Ships with Milben; the remaining ~4 concrete types
+        # (feedback #7b) are added later as further enum values, no schema change.
+        MITES = "mites", _("Milben")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     species = models.ForeignKey(Species, on_delete=models.PROTECT, verbose_name=_("Art"))
     ring = models.ForeignKey(Ring, on_delete=models.PROTECT, verbose_name=_("Ringnummer"))
@@ -794,7 +802,13 @@ class DataEntry(models.Model):
         null=True,
         blank=True,
     )
-    has_mites = models.BooleanField(default=False, verbose_name=_("Milben"))
+    # Parasit (ADR 0027): a multi-valued selection of parasite types, replacing
+    # the former single ``has_mites`` boolean. Stored as a JSON list of codes from
+    # the fixed ``Parasit`` vocabulary (e.g. ``["mites"]``) — portable across the
+    # sqlite dev/test DB and Postgres prod, JSON-friendly for the offline outbox,
+    # and growable by adding enum values without a schema change. No IWM export
+    # column exists, so each selected type's label is written into the Bemerkung.
+    parasites = models.JSONField(default=list, blank=True, verbose_name=_("Parasit"))
     has_hunger_stripes = models.BooleanField(default=False, verbose_name=_("Hungerstreifen"))
     has_brood_patch = models.BooleanField(default=False, verbose_name=_("Brutfleck"))
     has_cpl_plus = models.BooleanField(default=False, verbose_name=_("CPL+"))

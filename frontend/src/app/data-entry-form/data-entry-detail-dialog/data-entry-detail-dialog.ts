@@ -11,6 +11,8 @@ import {
   FatClass,
   HandWingMoult,
   MuscleClass,
+  Parasit,
+  PARASIT_LABELS,
   Sex,
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
@@ -54,6 +56,14 @@ export class DataEntryDetailDialogComponent {
   getDirectionLabel(value: Direction | null): string {
     if (!value) return '—';
     return value === Direction.Left ? 'Links' : 'Rechts';
+  }
+
+  // Parasit (ADR 0027): the selected parasite types as a comma-separated list of
+  // labels, or a dash when none were recorded. Falls back to the raw code for a
+  // type not in the vocabulary, so stray data never renders blank.
+  getParasitLabels(value: Parasit[] | null | undefined): string {
+    if (!value || value.length === 0) return '—';
+    return value.map(code => PARASIT_LABELS[code] ?? code).join(', ');
   }
 
   getFatLabel(value: FatClass | null): string {

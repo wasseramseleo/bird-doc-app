@@ -456,6 +456,67 @@ def test_brutfleck_and_kloake_do_not_remove_bemerkung_flag_tokens(
     assert row["Bemerkungen"] == "Brutfleck CPL+"
 
 
+# --- Parasit labels in the Bemerkungen column (ADR 0027, issue #376) ----------
+# The IWM template has no Parasit column, so each selected parasite type's label
+# is written into the Bemerkungen column, exactly as Milben was before Parasit
+# generalised it.
+
+
+@pytest.mark.django_db
+def test_parasit_label_written_into_bemerkungen(species, scientist, ringing_station, project):
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="940", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        parasites=["mites"],
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Bemerkungen"] == "Milben"
+
+
+@pytest.mark.django_db
+def test_no_parasit_leaves_no_label_in_bemerkungen(species, scientist, ringing_station, project):
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="941", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        parasites=[],
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Bemerkungen"] is None
+
+
+@pytest.mark.django_db
+def test_parasit_label_appended_after_existing_comment(
+    species, scientist, ringing_station, project
+):
+    # A parasite label rides alongside a free-text Bemerkung, just as Milben did.
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="942", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        parasites=["mites"],
+        comment="Frischer Fang",
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Bemerkungen"] == "Frischer Fang Milben"
+
+
 @pytest.mark.django_db
 def test_export_emits_category_codes_as_text(species, scientist, ringing_station):
     # The authentic Datenmeldung carries the category fields as text codes, not

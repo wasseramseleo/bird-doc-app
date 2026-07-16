@@ -84,7 +84,7 @@ function syncedEntry(overrides: Partial<DataEntry> = {}): DataEntry {
     created: isoNow(),
     updated: isoNow(),
     comment: null,
-    has_mites: false,
+    parasites: [],
     has_hunger_stripes: false,
     has_brood_patch: false,
     has_cpl_plus: false,

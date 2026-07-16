@@ -41,7 +41,7 @@ function entry(overrides: Partial<DataEntry> = {}): DataEntry {
     created: '2026-07-02T09:00:00.000Z',
     updated: '2026-07-02T09:00:00.000Z',
     comment: null,
-    has_mites: false,
+    parasites: [],
     has_hunger_stripes: false,
     has_brood_patch: false,
     has_cpl_plus: false,

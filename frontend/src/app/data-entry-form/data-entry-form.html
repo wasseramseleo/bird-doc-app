@@ -530,10 +530,17 @@
     </div>
     @if (showOptionalFields() && !isRingDestroyed()) {
       <div class="form-section-checkboxes">
-        <mat-checkbox formControlName="has_mites">Milben</mat-checkbox>
-        <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
         <mat-checkbox formControlName="has_brood_patch">Brutfleck</mat-checkbox>
         <mat-checkbox formControlName="has_cpl_plus">CPL+</mat-checkbox>
+        <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
+        <mat-form-field appearance="outline" floatLabel="always" class="parasit-field">
+          <mat-label>Parasit</mat-label>
+          <mat-select formControlName="parasites" multiple>
+            @for (option of parasitOptions; track option.value) {
+              <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
       </div>
 
       <div class="biometrics-section">
