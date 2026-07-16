@@ -161,7 +161,11 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
     )
     start, end = _range_bounds(date_from, date_to)
 
-    captures = DataEntry.objects.filter(project=project).exclude(
+    # The single root every figure below reads. Deleted (``is_cancelled``)
+    # captures are excluded here once, not per helper (ADR 0030): the rule is
+    # „unsichtbar für jede Abfrage", and filtering at the root is what stops the
+    # next figure added to this module from quietly forgetting it.
+    captures = DataEntry.objects.filter(project=project, is_cancelled=False).exclude(
         species__special_kind=Species.SpecialKind.RING_DESTROYED
     )
     if start is not None:

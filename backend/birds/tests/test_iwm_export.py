@@ -10,6 +10,7 @@ from django.utils.timezone import make_aware
 from birds.iwm_export import SHEET_NAME, build_iwm_workbook
 from birds.iwm_import import commit_import
 from birds.models import Central, DataEntry, Project, Ring, RingingStation
+from birds.views import iwm_export_entries
 
 # The one thing that differs between two builds of identical data: openpyxl
 # stamps the current time into docProps/core.xml on every ``save()``. It is
@@ -305,6 +306,31 @@ def test_plain_capture_row_has_no_fill(species, scientist, ringing_station, proj
     )
 
     assert _row_fills(build_iwm_workbook(DataEntry.objects.all())) == [False]
+
+
+@pytest.mark.django_db
+def test_deleted_capture_is_not_reported_to_the_meldestelle(
+    species, scientist, ringing_station, project
+):
+    """A deleted capture never reaches the Datenmeldung (ADR 0030): the Beringer
+    retracted it, so as far as the Meldestelle is concerned it was never
+    recorded. Exercised through ``iwm_export_entries`` — the queryset behind
+    ``export-iwm`` — since that is where the rule lives; the endpoint's own
+    authz is covered by the Rolle tests."""
+    for number in ("920", "921"):
+        DataEntry.objects.create(
+            species=species,
+            ring=Ring.objects.create(number=number, size=Ring.RingSizes.V),
+            staff=scientist,
+            ringing_station=ringing_station,
+            project=project,
+            date_time=datetime(2026, 4, 1, 8, 0, tzinfo=UTC),
+        )
+    DataEntry.objects.filter(ring__number="921").update(is_cancelled=True)
+
+    rows = _read_all_rows(build_iwm_workbook(iwm_export_entries(project)))
+
+    assert [row["Ringnummer"] for row in rows] == ["V920"]
 
 
 @pytest.mark.django_db
