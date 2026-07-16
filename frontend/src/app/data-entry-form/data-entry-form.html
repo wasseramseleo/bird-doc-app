@@ -103,7 +103,7 @@
                     [matBadge]="element.comment ? '●' : null"
                     matBadgeSize="small"
                     matBadgeOverlap="true"
-                    [matBadgeDescription]="element.comment ? 'Bemerkung vorhanden' : null"
+                    [matBadgeDescription]="element.comment ? 'Bemerkung vorhanden' : ''"
                     (click)="openDetailDialog(element)">
               <mat-icon>info_outline</mat-icon>
             </button>
