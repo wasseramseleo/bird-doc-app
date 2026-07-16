@@ -5,6 +5,7 @@ from django.core.mail import EmailMessage
 from django.db.models import Count, Q
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
@@ -116,10 +117,19 @@ def _ring_consuming_entries(organization):
     Sonderart). Recaptures (Wiederfang) consume nothing and are excluded. Shared
     by ``RingViewSet.next_number`` (the live suggestion) and the offline
     reference bundle's last-consumed-per-Projekt-and-Ringgröße field (issue
-    #157), so both agree on exactly the same consumption rule."""
-    return DataEntry.objects.filter(organization=organization).filter(
-        Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH)
-        | Q(species__special_kind=Species.SpecialKind.RING_DESTROYED)
+    #157), so both agree on exactly the same consumption rule.
+
+    A deleted capture consumes nothing (ADR 0030): its number has returned to the
+    rope, so the suggestion offers it again. Filtering here — the one root both
+    consumers read — is what keeps the live suggestion and the offline bundle from
+    drifting apart on the point."""
+    return (
+        DataEntry.objects.filter(organization=organization)
+        .filter(is_cancelled=False)
+        .filter(
+            Q(bird_status=DataEntry.BirdStatus.FIRST_CATCH)
+            | Q(species__special_kind=Species.SpecialKind.RING_DESTROYED)
+        )
     )
 
 
@@ -188,11 +198,21 @@ class DataEntryViewSet(viewsets.ModelViewSet):
 
         Within that scope the queryset is optionally filtered by ring_size and
         ring_number if they are provided as query parameters.
+
+        Deleted (``is_cancelled``) captures are excluded here once, for every
+        mode this method serves (ADR 0030): „Letzte Fänge" (``project=``), the
+        Wiederfang-Historie of a ring (``ring_size``/``ring_number``) and the
+        unfiltered list alike. It also makes a tombstone 404 on detail — and
+        therefore on a second DELETE. ``restore`` deliberately routes around this
+        via its own queryset, since the row it revives is by definition filtered
+        out here.
         """
         organization = active_organization(self.request.user)
         if organization is None:
             return DataEntry.objects.none()
-        queryset = super().get_queryset().filter(organization=organization)
+        queryset = (
+            super().get_queryset().filter(organization=organization).filter(is_cancelled=False)
+        )
         ring_size = self.request.query_params.get("ring_size")
         ring_number = self.request.query_params.get("ring_number")
         project = self.request.query_params.get("project")
@@ -212,6 +232,52 @@ class DataEntryViewSet(viewsets.ModelViewSet):
         an account with no resolvable membership is refused (ADR 0005).
         """
         serializer.save(organization=_require_active_organization(self.request.user))
+
+    def perform_destroy(self, instance):
+        """„Löschen" retains the row behind ``is_cancelled`` (ADR 0030).
+
+        A Fangdatensatz is the crown jewel of this app, so a delete flags the
+        capture instead of dropping it: it becomes invisible to every query (see
+        ``get_queryset``), while the row survives so the Betreiber can recover it
+        from the Django admin if someone asks. The route is DRF's existing,
+        already tenant-scoped ``DELETE`` — a foreign-tenant capture is absent from
+        ``get_queryset()`` and so 404s before reaching this, and a second DELETE
+        of an already-flagged capture 404s for the same reason.
+        """
+        instance.is_cancelled = True
+        instance.save(update_fields=["is_cancelled"])
+
+    @action(detail=True, methods=["post"], url_path="restore")
+    def restore(self, request, pk=None):
+        """Undo a „Löschen" — what the „Rückgängig" snackbar calls (ADR 0030).
+
+        Deliberately does **not** go through ``get_object()``: ``get_queryset()``
+        filters tombstones, so the normal detail queryset would 404 on exactly the
+        row this action exists to revive. It therefore fetches through its own
+        unfiltered queryset — still scoped to the active Organisation, so this is
+        not a cross-tenant hole (ADR 0005): a foreign capture is a 404, like
+        everywhere else. Restoring an un-deleted capture is a no-op, which keeps a
+        double-fired undo harmless.
+
+        There is no restore surface beyond this undo window: once a freed ring
+        number has been re-issued to a new Erstfang, reviving the old one would
+        put two live Erstfänge on one ring (ADR 0019). The window is short enough
+        that this cannot realistically have happened.
+        """
+        organization = active_organization(request.user)
+        # Unfiltered as to ``is_cancelled``, but org-scoped exactly like
+        # ``get_queryset()`` — including "no active Organisation ⇒ nothing is
+        # reachable", which also stops an org-less legacy row being restorable by
+        # an account whose Organisation cannot be resolved.
+        scoped = (
+            DataEntry.objects.filter(organization=organization)
+            if organization is not None
+            else DataEntry.objects.none()
+        )
+        capture = get_object_or_404(scoped, pk=pk)
+        capture.is_cancelled = False
+        capture.save(update_fields=["is_cancelled"])
+        return Response(self.get_serializer(capture).data)
 
 
 class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):

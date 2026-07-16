@@ -839,6 +839,15 @@ class DataEntry(models.Model):
     # future offline outbox) sends one; admin edits, the IWM importer and
     # legacy rows leave it unset.
     idempotency_key = models.UUIDField(null=True, blank=True, verbose_name=_("Idempotenzschlüssel"))
+    # ADR 0030: „Löschen" retains the row behind this flag instead of dropping
+    # it. A flagged capture is invisible to every query — as if never recorded —
+    # with exactly one deliberate exception: the idempotency replay lookup in
+    # ``create_capture``, which must still resolve a deleted row so a replayed
+    # offline entry is not silently re-created after its deletion. The
+    # invisibility is filtered at each call site rather than in a default
+    # manager, precisely so that exception (and the Django admin, the only
+    # reason the row is kept) can still see it.
+    is_cancelled = models.BooleanField(default=False, verbose_name=_("Gelöscht"))
 
     class Meta:
         # NULL is never compared equal to NULL in a SQL unique index, so any
@@ -859,9 +868,16 @@ class DataEntry(models.Model):
             # race a second Erstfang onto one ring both pass the pre-check SELECT,
             # but the losing INSERT hits this constraint and is deterministically
             # flagged (issue #164, PRD #152) instead of silently double-filing.
+            #
+            # A **deleted** Erstfang is outside the index too (ADR 0030): its
+            # number has returned to the rope, so the physical ring must be
+            # re-issuable. Without the ``is_cancelled`` leg the tombstone would
+            # keep occupying the slot and permanently block re-ringing — and it
+            # would fail in the worst way, surfacing only when a Beringer in the
+            # field cannot issue a legitimate ring.
             models.UniqueConstraint(
                 fields=["ring"],
-                condition=models.Q(bird_status="e"),
+                condition=models.Q(bird_status="e") & models.Q(is_cancelled=False),
                 name="unique_erstfang_per_ring",
             ),
         ]

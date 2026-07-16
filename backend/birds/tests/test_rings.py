@@ -87,6 +87,41 @@ def test_next_number_follows_last_consumed_not_max(
 
 
 @pytest.mark.django_db
+def test_next_number_offers_a_deleted_erstfangs_number_again(
+    auth_client, species, scientist, ringing_station, project
+):
+    """The number returns to the rope (ADR 0030): once the Erstfang that consumed
+    0043 is deleted, the rope's last consumption is 0042 again — so 0043 is
+    suggested a second time, ready to be re-issued on the physical ring."""
+    _catch(
+        number="0042",
+        species=species,
+        scientist=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        created=_at(1),
+    )
+    mis_entry = _catch(
+        number="0043",
+        species=species,
+        scientist=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        created=_at(2),
+    )
+    assert auth_client.get(NEXT_NUMBER_URL, {"size": "V", "project": str(project.id)}).json() == {
+        "next_number": "0044"
+    }
+
+    entry = DataEntry.objects.get(ring=mis_entry)
+    auth_client.delete(f"/api/birds/data-entries/{entry.id}/")
+
+    response = auth_client.get(NEXT_NUMBER_URL, {"size": "V", "project": str(project.id)})
+    assert response.status_code == 200
+    assert response.json() == {"next_number": "0043"}
+
+
+@pytest.mark.django_db
 def test_next_number_preserves_leading_zero_width(
     auth_client, species, scientist, ringing_station, project
 ):

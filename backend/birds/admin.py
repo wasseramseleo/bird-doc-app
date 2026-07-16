@@ -279,8 +279,13 @@ class DataEntryAdmin(admin.ModelAdmin):
         "tarsus",
         "feather_span",
         "wing_span",
+        # ADR 0030: a deleted capture is invisible everywhere in the app, so the
+        # admin is the only place it can still be seen — and recovering one on
+        # request is the sole reason the row is retained. Hence a column and a
+        # filter to find it, and the flag in the fieldsets below to clear it.
+        "is_cancelled",
     )
-    list_filter = ("ringing_station", "project", "staff", "species", "date_time")
+    list_filter = ("ringing_station", "project", "staff", "species", "date_time", "is_cancelled")
     search_fields = ("ring__number", "species__scientific_name", "species__common_name_de")
     date_hierarchy = "date_time"
     ordering = ("-created",)
@@ -288,7 +293,17 @@ class DataEntryAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Core Information",
-            {"fields": ("species", "ring", "staff", "project", "date_time", "bird_status")},
+            {
+                "fields": (
+                    "species",
+                    "ring",
+                    "staff",
+                    "project",
+                    "date_time",
+                    "bird_status",
+                    "is_cancelled",
+                )
+            },
         ),
         (
             "Capture Location",
