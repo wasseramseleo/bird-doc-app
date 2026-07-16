@@ -40,6 +40,8 @@ import {
   Direction,
   HandWingMoult,
   MuscleClass,
+  Parasit,
+  PARASIT_OPTIONS,
   Sex,
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
@@ -261,10 +263,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     notch_f2: [null as number | null],
     inner_foot: [null as number | null],
     comment: [null as string | null],
-    has_mites: [false, Validators.required],
     has_hunger_stripes: [false, Validators.required],
     has_brood_patch: [false, Validators.required],
     has_cpl_plus: [false, Validators.required],
+    // Parasit (ADR 0027): a Mehrfachauswahl of parasite-type codes, replacing the
+    // former single Milben checkbox. Defaults to an empty list; getRawValue()
+    // carries it onto the write payload (and the offline outbox).
+    parasites: [[] as Parasit[]],
     // Fangmarker (ADR 0026): toggled by the action-row buttons, never typed. They
     // are form controls only so getRawValue() carries them onto the write payload
     // (and thus through the offline outbox) and transformToForm patches them back
@@ -498,7 +503,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     'net_location', 'net_height', 'net_direction', 'age_class', 'sex', 'fat_deposit', 'muscle_class',
     'small_feather_int', 'small_feather_app', 'hand_wing',
     'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'comment',
-    'has_mites', 'has_hunger_stripes', 'has_brood_patch', 'has_cpl_plus',
+    // #7a (ADR 0027): the Ja/Nein flags in Beringer-assessment order, then the
+    // Parasit Mehrfachauswahl.
+    'has_brood_patch', 'has_cpl_plus', 'has_hunger_stripes', 'parasites',
     'notch_f2', 'inner_foot'
   ];
 
@@ -521,6 +528,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     {value: BirdStatus.FirstCatch, viewValue: 'Erstfang (e)', key: 'e'},
     {value: BirdStatus.ReCatch, viewValue: 'Wiederfang (w)', key: 'w'}
   ];
+
+  // Parasit (ADR 0027): the fixed, app-wide vocabulary rendered as the
+  // Mehrfachauswahl's options.
+  readonly parasitOptions: readonly SelectOption<Parasit>[] = PARASIT_OPTIONS;
 
   directionOptions: SelectOption<Direction | null>[] = [
     {value: null, viewValue: '---'},
@@ -2020,10 +2031,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       date_time: suggestedDateTime,
       age_class: AgeClass.Unknown,
       sex: Sex.Unknown,
-      has_mites: false,
       has_hunger_stripes: false,
       has_brood_patch: false,
       has_cpl_plus: false,
+      parasites: [],
       // #371: the Fangmarker never carry over to the next capture.
       is_dead_recovery: false,
       is_non_standard: false,

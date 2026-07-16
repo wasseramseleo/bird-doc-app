@@ -42,7 +42,7 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
       created: '2024-05-01T08:30:00Z',
       updated: '2024-05-01T08:30:00Z',
       comment: null,
-      has_mites: false,
+      parasites: [],
       has_hunger_stripes: false,
       has_brood_patch: false,
       has_cpl_plus: false,

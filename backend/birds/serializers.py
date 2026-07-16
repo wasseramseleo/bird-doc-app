@@ -645,7 +645,11 @@ class DataEntrySerializer(serializers.ModelSerializer):
             "has_hunger_stripes",
             "has_brood_patch",
             "has_cpl_plus",
-            "has_mites",
+            # Parasit (ADR 0027): the multi-valued parasite selection, a JSON list
+            # of codes that replaces the former ``has_mites`` boolean. Serialized
+            # on read and write so lists, the IWM export and the offline outbox
+            # round-trip it.
+            "parasites",
             # Fangmarker (ADR 0026): serialized on both read and write so lists and
             # the IWM export read off them and the offline outbox round-trips them.
             "is_dead_recovery",

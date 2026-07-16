@@ -64,10 +64,23 @@ def _breeding_flag(value):
     return "J" if value else None
 
 
+# Parasit (ADR 0027): code → label for the fixed, app-wide vocabulary. The IWM
+# template has no Parasit column, so each selected type's label goes into the
+# Bemerkungen column (exactly where Milben used to land).
+_PARASIT_LABELS = {code.value: str(code.label) for code in DataEntry.Parasit}
+
+
+def _parasite_labels(entry):
+    """The label for every parasite type selected on a capture, in stored order —
+    each written into the Bemerkungen column since the template has no Parasit
+    column of its own. Falls back to the raw code for any type not (yet) in the
+    vocabulary, so a stray code never breaks the export."""
+    return [_PARASIT_LABELS.get(code, code) for code in entry.parasites or []]
+
+
 def _build_comment(entry):
     parts = [entry.comment] if entry.comment else []
-    if entry.has_mites:
-        parts.append("Milben")
+    parts.extend(_parasite_labels(entry))
     if entry.has_hunger_stripes:
         parts.append("Hungerstreifen")
     if entry.has_brood_patch:

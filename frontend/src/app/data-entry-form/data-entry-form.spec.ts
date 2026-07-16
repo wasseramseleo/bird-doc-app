@@ -22,6 +22,7 @@ import {
   BirdStatus,
   DataEntry,
   HandWingMoult,
+  Parasit,
   SelectOption,
   Sex,
   SmallFeatherAppMoult,
@@ -1309,7 +1310,7 @@ describe('DataEntryFormComponent', () => {
         created: '2024-05-01T08:30:00Z',
         updated: '2024-05-01T08:30:00Z',
         comment: 'Wiederfang am Hauptnetz',
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
@@ -1571,7 +1572,7 @@ describe('DataEntryFormComponent', () => {
         notch_f2: null,
         inner_foot: null,
         comment: 'Erste Notiz',
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
@@ -3852,7 +3853,7 @@ describe('DataEntryFormComponent', () => {
         created: '2024-05-01T08:30:00Z',
         updated: '2024-05-01T08:30:00Z',
         comment: null,
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
@@ -4185,7 +4186,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -4365,7 +4366,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -4580,7 +4581,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -4897,7 +4898,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -5174,7 +5175,7 @@ describe('DataEntryFormComponent', () => {
           sex: Sex.Male,
           hand_wing: HandWingMoult.AtLeastOne,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -6178,7 +6179,7 @@ describe('DataEntryFormComponent', () => {
         hand_wing: HandWingMoult.AtLeastOne,
         bird_status: BirdStatus.ReCatch,
         date_time: '2024-05-01T08:30:00Z',
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
@@ -6339,7 +6340,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -6349,6 +6350,49 @@ describe('DataEntryFormComponent', () => {
       const species = f.nativeElement.querySelector('[formControlName="species"]');
       // Edit mode never steals focus onto Art; the ringer is reviewing a record.
       expect(document.activeElement).not.toBe(species);
+    });
+  });
+
+  // ADR 0027 (#376): the optional Ja/Nein flags reorder to Brutfleck, CPL+,
+  // Hungerstreifen and the former single Milben checkbox becomes a multi-valued
+  // Parasit Mehrfachauswahl rendered after them.
+  describe('Parasit Mehrfachauswahl and flag order (ADR 0027, #376)', () => {
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    it('renders the Ja/Nein flags in the order Brutfleck, CPL+, Hungerstreifen', () => {
+      const labels = Array.from(
+        fixture.nativeElement.querySelectorAll('.form-section-checkboxes mat-checkbox'),
+      ).map((cb) => (cb as HTMLElement).textContent?.trim());
+      expect(labels).toEqual(['Brutfleck', 'CPL+', 'Hungerstreifen']);
+    });
+
+    it('has no standalone Milben checkbox any more', () => {
+      const mites = fixture.nativeElement.querySelector(
+        'mat-checkbox[formControlName="has_mites"]',
+      );
+      expect(mites).toBeNull();
+    });
+
+    it('renders a Parasit multi-select after the flags', () => {
+      const parasit = fixture.debugElement
+        .queryAll(By.directive(MatSelect))
+        .find((de) => de.attributes['formControlName'] === 'parasites');
+      expect(parasit).toBeTruthy();
+      expect((parasit!.componentInstance as MatSelect).multiple).toBe(true);
+    });
+
+    it('defaults the Parasit selection to an empty list', () => {
+      expect(component.entryForm.get('parasites')!.value).toEqual([]);
+    });
+
+    it('carries the selected parasite codes onto the form value', () => {
+      component.entryForm.get('parasites')!.setValue([Parasit.Mites]);
+      fixture.detectChanges();
+      expect(component.entryForm.getRawValue().parasites).toEqual([Parasit.Mites]);
     });
   });
 
@@ -6391,7 +6435,7 @@ describe('DataEntryFormComponent', () => {
 
     it('jumps immediately from a checkbox (no caret) on left arrow', fakeAsync(() => {
       const checkbox = fixture.nativeElement.querySelector(
-        'mat-checkbox[formControlName="has_mites"] input',
+        'mat-checkbox[formControlName="has_brood_patch"] input',
       ) as HTMLInputElement;
       checkbox.focus();
 
@@ -6399,7 +6443,8 @@ describe('DataEntryFormComponent', () => {
       checkbox.dispatchEvent(event);
       tick(50);
 
-      // has_mites' predecessor in the focus order is the Bemerkungen textarea.
+      // has_brood_patch is the first flag (ADR 0027 #7a order), so its predecessor
+      // in the focus order is the Bemerkungen textarea.
       expect(event.defaultPrevented).toBe(true);
       expect(document.activeElement).toBe(el('comment'));
     }));
