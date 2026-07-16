@@ -30,6 +30,7 @@ import {
 } from '../models/data-entry.model';
 import { Species } from '../models/species.model';
 import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
+import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
 import { ProjectService } from '../service/project.service';
 import { AUDIO_CONTEXT_FACTORY, SoundService } from '../service/sound.service';
 import { WorkbenchStorageService } from '../service/workbench-storage.service';
@@ -1842,6 +1843,52 @@ describe('DataEntryFormComponent', () => {
       await settle();
 
       expect(navigateSpy).toHaveBeenCalledWith('/heute');
+    });
+
+    // #392 (ADR 0030), Review-Fund: „Eintrag löschen" gehört NICHT in den
+    // Queued-Modus. Die Outbox-ID ist lokal vergeben und dem Server unbekannt
+    // (sie reist nur als `idempotency_key` mit) — ein DELETE darauf wäre immer
+    // ein 404 und damit ein Knopf, der nie funktionieren kann. Besonders
+    // greifbar bei einem syncError-Eintrag (#164): der bleibt in der Outbox
+    // liegen, damit die Nutzerin ihn öffnen und richtigstellen kann, und ist
+    // dabei online — die Offline-Sperre fängt diesen Fall also gerade nicht ab.
+    it('does not offer "Eintrag löschen" for a queued entry — its id is local and the server would 404', async () => {
+      const { f } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload());
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      expect(f.componentInstance.isEditMode()).toBe(true);
+      expect(f.componentInstance.isQueuedEditMode()).toBe(true);
+      // Online — die Offline-Sperre ist hier ausdrücklich nicht die Ursache.
+      expect(f.componentInstance.isOffline()).toBe(false);
+      expect(
+        f.nativeElement.querySelector('.action-buttons button[data-testid="delete-entry-button"]'),
+      ).toBeNull();
+    });
+
+    it('sends no DELETE for a queued entry even if the delete is invoked directly', async () => {
+      const { f, httpMock } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload());
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      // Eine Bestätigung, die sofort „Löschen" sagt: ohne die Sperre liefe der
+      // Aufruf hier ungebremst bis zum DELETE auf die Outbox-ID durch. Die Maske
+      // importiert MatDialog selbst — der Spy muss auf ihre EIGENE Instanz.
+      const dialog = (f.componentInstance as unknown as { dialog: MatDialog }).dialog;
+      const openSpy = spyOn(dialog, 'open').and.returnValue({ afterClosed: () => of(true) } as never);
+
+      f.componentInstance.onDeleteEntry();
+      await settle();
+
+      // Es gibt hier nichts zu bestätigen — die Sperre greift vor der Rückfrage.
+      expect(openSpy).not.toHaveBeenCalled();
+      httpMock.expectNone((r) => r.method === 'DELETE');
+      // Der eingereihte Eintrag bleibt, wo er ist — gelöscht wird er auf der
+      // Heute-Seite, mit dem Outbox-Mechanismus.
+      const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
+      expect(stored.length).toBe(1);
     });
 
     it('keeps the entry\'s original project_id when the active Projekt has changed since queuing (review fix)', async () => {
@@ -7026,6 +7073,58 @@ describe('DataEntryFormComponent', () => {
       httpMock
         .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/42/restore/'))
         .flush(savedEntry());
+    });
+
+    // Review-Fund: das Restore allein genügt nicht. Die Liste, auf die das
+    // Löschen navigiert hat, hat da längst geladen — ohne diesen Anstoß meldet
+    // „Eintrag wurde wiederhergestellt.", während der Fang auf dem Bildschirm
+    // fehlt. Die Liste selbst lädt daraufhin nach (data-entry-list.spec.ts).
+    it('asks the list to reload once the restore succeeded — the success must be visible', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      const action = new Subject<void>();
+      spyOn(snackBarOf(fixture), 'open').and.returnValue({ onAction: () => action } as never);
+      spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+      const refresh = TestBed.inject(DataEntryRefreshService);
+      const before = refresh.token();
+
+      btn('delete-entry-button')!.click();
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(null, { status: 204, statusText: 'No Content' });
+
+      action.next();
+      // Solange das Restore läuft, ist noch nichts wiederhergestellt.
+      expect(refresh.token()).toBe(before);
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/42/restore/'))
+        .flush(savedEntry());
+
+      expect(refresh.token()).toBeGreaterThan(before);
+    });
+
+    it('does not ask the list to reload when the restore failed', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      const action = new Subject<void>();
+      spyOn(snackBarOf(fixture), 'open').and.returnValue({ onAction: () => action } as never);
+      spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+      const refresh = TestBed.inject(DataEntryRefreshService);
+      const before = refresh.token();
+
+      btn('delete-entry-button')!.click();
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(null, { status: 204, statusText: 'No Content' });
+
+      action.next();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/42/restore/'))
+        .flush({ detail: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+
+      // Nichts kam zurück, also gibt es auch nichts nachzuladen.
+      expect(refresh.token()).toBe(before);
     });
 
     it('leaves the entry deleted when the undo window closes unused', async () => {

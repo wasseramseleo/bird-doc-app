@@ -48,6 +48,7 @@ import {
   SelectOption, FatClass
 } from '../models/data-entry.model';
 import {ApiService} from '../service/api.service';
+import {DataEntryRefreshService} from '../service/data-entry-refresh.service';
 import {DataAccessFacadeService} from '../service/data-access-facade.service';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {OutboxService} from '../service/outbox.service';
@@ -153,6 +154,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly entryRefresh = inject(DataEntryRefreshService);
   private readonly connectivity = inject(ConnectivityService);
   private readonly elementRef = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
@@ -1389,6 +1391,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     if (!id) {
       return;
     }
+    // Ein eingereihter Eintrag hat nur eine lokal vergebene Outbox-ID (sie reist
+    // als `idempotency_key` mit) — der Server kennt sie nicht, ein DELETE darauf
+    // wäre immer ein 404. Die Vorlage blendet den Knopf hier bereits aus; diese
+    // Sperre hält die Zusage auch dann, wenn die Methode anders aufgerufen wird.
+    if (this.isQueuedEditMode()) {
+      return;
+    }
     const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
       ConfirmDialogComponent,
       {
@@ -1432,8 +1441,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       .onAction()
       .subscribe(() => {
         this.apiService.restoreDataEntry(id).subscribe({
-          next: () =>
-            this.snackBar.open('Eintrag wurde wiederhergestellt.', undefined, {duration: 3000}),
+          next: () => {
+            // Die Liste, auf die das Löschen navigiert hat, steht längst — sie
+            // lädt nur beim Betreten und beim Projektwechsel. Ohne dieses Signal
+            // meldet das Snackbar einen Erfolg, den der Bildschirm widerlegt.
+            this.entryRefresh.request();
+            this.snackBar.open('Eintrag wurde wiederhergestellt.', undefined, {duration: 3000});
+          },
           error: (err) => {
             console.error('Error restoring data entry', err);
             this.snackBar.open('Eintrag konnte nicht wiederhergestellt werden.', 'Schließen', {
