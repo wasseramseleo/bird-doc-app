@@ -50,9 +50,20 @@ Retiring a vocabulary code is **three coordinated moves, not one**:
 
    Off the enum, it cannot leak into `_PARASIT_LABELS`, the UI options, or the
    export — the code is writable but never offered, never rendered, never a type.
-3. **Later — remove the alias.** In a **separate release, no earlier than ~30 days**
-   after the retiring one. Removing it sooner hits exactly the devices it exists
-   for.
+3. **Later — remove the alias.** In a **separate release**, and never sooner than the
+   invariant below allows. Removing it early hits exactly the devices it exists for.
+
+**The invariant: an alias may never be retired younger than the maximum outbox age.**
+The two "~30 day" numbers in this decision — how long the outbox retains a queued
+capture (`sync.service.ts:200-201`) and how long an alias must live — are not a
+coincidence to be maintained by memory. They are **the same number**, and one causes
+the other: an alias exists precisely to accept payloads the outbox is still holding,
+so it must outlive the oldest payload that can still arrive. Stated as a coupling
+rather than a date, it survives a change to either side — raise the outbox's
+retention and the alias window follows, with the reason attached instead of
+rediscovered. A payload older than the alias that would have translated it is
+therefore **unreachable by construction**; if one ever arrives, that is a bug in this
+invariant, not a case to design around (ADR 0033 says what happens to it anyway).
 
 The vocabulary migration is pinned to **literal code strings, not the enum**: a
 migration must reflect the vocabulary as it was at that point in history, or a
@@ -70,9 +81,18 @@ later enum edit silently changes what an old migration did.
 - The alias makes the serializer's ChoiceField (ADR 0027) safe to add at all —
   without it, closing validation *is* the field bug described above.
 - Reversibility means a bad release can be rolled back with the data intact.
-- Shrinking the window (versioned payloads, or injecting `SwUpdate` so an open tab
-  learns about a new bundle) would make this pattern cheaper. Neither exists today;
-  until they do, ~30 days is the number.
+- **The alias window is governed by the outbox's retention, not by how long a bundle
+  runs.** An earlier revision of this ADR claimed that *either* versioned payloads
+  *or* injecting `SwUpdate` would shrink it. The `SwUpdate` half was wrong, and the
+  error mattered: it invited a reader to ship an update prompt and believe the alias
+  could then go early — straight into the devices it exists for. A queued payload is
+  captured **verbatim at queue time** and lives in IndexedDB, which outlives any
+  bundle swap. Adopting a new Version does not rewrite it: replay the queue from the
+  new bundle and the *same* month-old payload still arrives carrying the retired
+  code. `SwUpdate` (ADR 0032) shrinks a **different** window — the one in which a
+  device goes on *creating new* captures against a stale vocabulary. Only versioned
+  payloads (ADR 0033) reach the replay window, and even they migrate server-side
+  rather than shortening the alias's life.
 
 ## Considered options
 
