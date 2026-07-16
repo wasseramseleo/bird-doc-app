@@ -283,6 +283,64 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #404: the lookup trims, so the write must trim too — otherwise read and write
+  // disagree again, one layer down. A foreign Zentrale is the reachable case: it
+  // drops the `^[0-9]*$` pattern (#232), so a pasted, whitespace-padded ring
+  // actually validates and reaches the payload. A domestic ring is still held to
+  // the digits-only pattern, which refuses whitespace with a visible error long
+  // before submit — that field stays as strict as it was.
+  describe('trims the Ringnummer on the write payload (#404)', () => {
+    let httpMock: HttpTestingController;
+
+    const SLOVAK: Central = {
+      id: 'c-skb',
+      scheme_code: 'SKB',
+      name: 'Slowakei Bratislava',
+      country: 'Slowakei',
+    };
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    function fillForeignWiederfang(ringNumber: string): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+      });
+      fixture.detectChanges();
+      component.entryForm.get('central')!.setValue(SLOVAK as never);
+      fixture.detectChanges();
+      // A foreign Zentrale's Ringgröße is free text (#232), not an Austrian code.
+      component.entryForm.patchValue({ ring_size: 'SKB1' as never, ring_number: ringNumber });
+      fixture.detectChanges();
+    }
+
+    const submitAndReadBody = (): Record<string, unknown> => {
+      component.onSubmit();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      post.flush({});
+      return body;
+    };
+
+    it('posts a pasted foreign ring number without its surrounding whitespace', () => {
+      fillForeignWiederfang(' AB1234 ');
+
+      expect(submitAndReadBody()['ring_number']).toBe('AB1234');
+    });
+
+    it('keeps whitespace inside a foreign ring number on the write payload', () => {
+      fillForeignWiederfang(' AB 1234 ');
+
+      expect(submitAndReadBody()['ring_number']).toBe('AB 1234');
+    });
+  });
+
   describe('creating a Beringer inline from an unknown Kürzel', () => {
     const dialogMock = { open: jasmine.createSpy('open') };
     let httpMock: HttpTestingController;
@@ -2687,6 +2745,117 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #404: DRF trims on write, so a pasted " 901234 " is STORED as "901234".
+  // Searching the raw value found nothing and told the Beringer the bird was
+  // unknown while it sat in the database. Read and write must trim alike.
+  describe('Ringnummer whitespace is trimmed before the lookup (#404)', () => {
+    function spyGetRingHistory() {
+      const facade = TestBed.inject(DataAccessFacadeService);
+      return spyOn(facade, 'getRingHistory').and.returnValue(
+        of<RingHistory>({ entries: [], possiblyIncomplete: false }),
+      );
+    }
+
+    function ringNumberInput(): HTMLInputElement {
+      return fixture.nativeElement.querySelector('input[formControlName="ring_number"]');
+    }
+
+    function enterWiederfangRing(ringNumber: string, ringSize = RingSize.S) {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: ringSize,
+        ring_number: ringNumber,
+      });
+      fixture.detectChanges();
+    }
+
+    it('searches the trimmed ring when the Ringnummer is left with surrounding whitespace', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.S, '901234');
+    });
+
+    it('searches the trimmed ring when Enter is pressed (Enter never blurs, so the blur path alone would miss it)', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+
+      ringNumberInput().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.S, '901234');
+    });
+
+    it('searches the trimmed ring when the magnifier button is clicked', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+      const searchButton = fixture.nativeElement.querySelector(
+        'button[aria-label="Ringhistorie suchen"]',
+      ) as HTMLButtonElement;
+
+      searchButton.click();
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledWith(RingSize.S, '901234');
+    });
+
+    it('writes the trimmed value back into the field so the Beringer sees the clean ring', () => {
+      spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+
+      component.fetchRingHistory();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+      expect(ringNumberInput().value).toBe('901234');
+    });
+
+    it('leaves whitespace INSIDE a foreign ring number untouched ("AB 1234" stays findable)', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' AB 1234 ');
+
+      component.fetchRingHistory();
+
+      // Stripping every space would search "AB1234" and never find the stored
+      // "AB 1234" — one failure traded for another.
+      expect(spy).toHaveBeenCalledWith(RingSize.S, 'AB 1234');
+      expect(component.entryForm.get('ring_number')!.value).toBe('AB 1234');
+    });
+
+    it('fires exactly one lookup for Enter followed by Tab on a whitespace-padded ring', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing(' 901234 ');
+
+      // Enter runs the lookup and writes "901234" back; the Tab-out blur that
+      // follows must recognise that ring as already searched. If ringLookupKey()
+      // did not trim in lockstep, the rewritten value would no longer match the
+      // recorded key and the blur would fetch a second time.
+      ringNumberInput().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      fixture.detectChanges();
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not look up a Ringnummer that is nothing but whitespace', () => {
+      const spy = spyGetRingHistory();
+      enterWiederfangRing('   ');
+
+      ringNumberInput().dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+      fixture.detectChanges();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('local Wiederfang history panel offline (issue #168)', () => {
     const incompleteHint = () =>
       fixture.nativeElement.querySelector(
@@ -3617,6 +3786,39 @@ describe('DataEntryFormComponent', () => {
       expect(entries[0].id).toMatch(UUID_PATTERN);
       expect((entries[0].payload as {idempotency_key?: string}).idempotency_key).toBe(entries[0].id);
       expect((entries[0].payload as {ring_number?: string}).ring_number).toBe('901234');
+    });
+
+    // #404: a capture queued offline is the bug seen from the other side —
+    // assembleLocalRingHistory matches the outbox payload with a strict ===, so a
+    // raw ring number in the queue is invisible to the next Wiederfang on the very
+    // device that recorded it. A foreign Zentrale is the reachable case (it drops
+    // the digits-only pattern, so a pasted ring validates).
+    it('enqueues an offline foreign capture under its trimmed ring number, so the later Wiederfang finds it', async () => {
+      const outboxStore = TestBed.inject(OutboxStoreService);
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+      });
+      fixture.detectChanges();
+      component.entryForm.get('central')!.setValue({
+        id: 'c-skb',
+        scheme_code: 'SKB',
+        name: 'Slowakei Bratislava',
+        country: 'Slowakei',
+      } as never);
+      fixture.detectChanges();
+      component.entryForm.patchValue({ ring_size: 'SKB1' as never, ring_number: ' AB1234 ' });
+      fixture.detectChanges();
+
+      component.onSubmit();
+      respondOffline();
+      await waitUntil(() => component.entryForm.get('species')!.value === null);
+
+      const entries = await outboxStore.list();
+      expect(entries.length).toBe(1);
+      expect((entries[0].payload as {ring_number?: string}).ring_number).toBe('AB1234');
     });
 
     it('increments the visible pending count in the outbox service', async () => {

@@ -214,7 +214,16 @@ class DataEntryViewSet(viewsets.ModelViewSet):
         ``ProjectViewSet`` — empty, not a 403).
 
         Within that scope the queryset is optionally filtered by ring_size and
-        ring_number if they are provided as query parameters.
+        ring_number if they are provided as query parameters. ``ring_number`` is
+        stripped of surrounding whitespace first (#404), mirroring the write path:
+        ``DataEntrySerializer`` inherits DRF's ``trim_whitespace=True``, so a
+        posted `" 901234 "` is *stored* as `"901234"`. Filtering on the raw param
+        made read and write asymmetric — the Wiederfang-Historie of a pasted ring
+        came back empty and the Beringer was told the bird was unknown. Only the
+        surrounding whitespace goes: an inner space is part of the number (a
+        foreign Zentrale's `"AB 1234"` is stored, and must stay findable, as-is).
+        A ring_number that is blank after stripping carries no ring to search for
+        and is treated as absent.
 
         Deleted (``is_cancelled``) captures are excluded here once, for every
         mode this method serves (ADR 0030): „Letzte Fänge" (``project=``), the
@@ -231,7 +240,7 @@ class DataEntryViewSet(viewsets.ModelViewSet):
             super().get_queryset().filter(organization=organization).filter(is_cancelled=False)
         )
         ring_size = self.request.query_params.get("ring_size")
-        ring_number = self.request.query_params.get("ring_number")
+        ring_number = (self.request.query_params.get("ring_number") or "").strip()
         project = self.request.query_params.get("project")
 
         if ring_size and ring_number:
