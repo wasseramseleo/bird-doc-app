@@ -9,7 +9,6 @@ import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
-import {MatBadgeModule} from '@angular/material/badge';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatDialog} from '@angular/material/dialog';
 import {debounceTime, distinctUntilChanged} from 'rxjs/operators';
@@ -33,7 +32,6 @@ import {
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    MatBadgeModule,
     MatProgressSpinnerModule,
   ],
   templateUrl: './data-entry-list.html',
@@ -65,9 +63,11 @@ export class DataEntryListComponent implements OnInit {
   readonly searchControl = new FormControl('', {nonNullable: true});
 
   readonly BirdStatus = BirdStatus;
+  // #388: 'marker' ist die letzte Spalte — die Bemerkungs- und Fangmarker-Icons
+  // gehören zur Zeile, nicht zur Art.
   readonly displayedColumns: string[] = [
     'created', 'date_time', 'ring', 'species', 'bird_status', 'staff',
-    'tarsus', 'feather_span', 'wing_span', 'weight_gram',
+    'tarsus', 'feather_span', 'wing_span', 'weight_gram', 'marker',
   ];
 
   constructor() {
