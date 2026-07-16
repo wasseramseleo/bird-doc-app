@@ -8,9 +8,11 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { of } from 'rxjs';
 
 import { ProjectActionsService } from './project-actions.service';
+import { AuthService } from './auth.service';
 import { ProjectService } from './project.service';
 import { Project, Projekttyp } from '../models/project.model';
 import { Organization } from '../models/organization.model';
+import { Scientist } from '../models/scientist.model';
 import { ProjectEditDialogComponent, ProjectEditDialogResult } from '../home/project-edit-dialog/project-edit-dialog';
 import { ProjectCreateDialogComponent, ProjectCreateDialogResult } from '../home/project-create-dialog/project-create-dialog';
 
@@ -22,10 +24,13 @@ function createResult(overrides: Partial<ProjectCreateDialogResult> = {}): Proje
   return {
     title: 'Neues Projekt',
     description: 'Beschreibung',
-    organizationHandle: 'iwm',
-    projekttyp: Projekttyp.Sonstiges,
+    scientistIds: ['s1'],
+    showOptionalFields: false,
     showNetFields: true,
+    projekttyp: Projekttyp.Sonstiges,
     defaultStationHandle: '',
+    saisonStartMonth: null,
+    saisonEndMonth: null,
     ...overrides,
   };
 }
@@ -87,7 +92,8 @@ function setup() {
   const snackBar = TestBed.inject(MatSnackBar);
   const dialog = TestBed.inject(MatDialog);
   const router = TestBed.inject(Router);
-  return { service, httpMock, projectService, snackBar, dialog, router };
+  const auth = TestBed.inject(AuthService);
+  return { service, httpMock, projectService, snackBar, dialog, router, auth };
 }
 
 /** Captures every <a> the service builds for a download and stubs its click(). */
@@ -266,34 +272,51 @@ describe('ProjectActionsService', () => {
   });
 
   describe('create', () => {
-    // The create dialog needs the Organisationen the new Projekt can belong to;
-    // loadReferenceData() fetches them (and the scientists edit needs).
-    function loadRefs(ctx: ReturnType<typeof setup>, orgs: Organization[] = [makeOrg()]): void {
+    // The create dialog needs the Beringer to choose from; loadReferenceData()
+    // fetches them. The Organisation is not fetched — the new Projekt always
+    // lands in the *active* one, which AuthService already holds (issue #389).
+    function loadRefs(ctx: ReturnType<typeof setup>, scientists: Scientist[] = []): void {
       ctx.service.loadReferenceData();
-      ctx.httpMock.expectOne((r) => r.url.endsWith('/organizations/')).flush(page0(orgs));
-      ctx.httpMock.expectOne((r) => r.url.endsWith('/scientists/')).flush(page0([]));
+      ctx.httpMock.expectOne((r) => r.url.endsWith('/scientists/')).flush(page0(scientists));
+    }
+
+    /** Signs a Beringer in with the given active Organisation, as /auth/me/ would. */
+    function signIn(ctx: ReturnType<typeof setup>, organization: Organization | null): void {
+      ctx.auth.currentUser.set({
+        username: 'alice@example.org',
+        handle: 'ALC',
+        isStaff: false,
+        rolle: 'admin',
+        organization,
+      });
     }
 
     it('opens the create dialog, POSTs, snackbars, upserts, and selects the new Projekt', () => {
       const ctx = setup();
+      signIn(ctx, makeOrg());
       loadRefs(ctx);
       const upsert = spyOn(ctx.projectService, 'upsertProject').and.callThrough();
       const setCurrent = spyOn(ctx.projectService, 'setCurrent').and.callThrough();
       const navigate = spyOn(ctx.router, 'navigateByUrl').and.stub();
       const snack = spyOn(ctx.snackBar, 'open');
-      stubDialog(ctx.dialog, createResult({ title: 'Neues Projekt', description: 'd', organizationHandle: 'iwm', projekttyp: Projekttyp.Nestlingsberingung }));
+      stubDialog(ctx.dialog, createResult({ title: 'Neues Projekt', description: 'd', scientistIds: ['s1', 's2'], showOptionalFields: true, projekttyp: Projekttyp.Nestlingsberingung, saisonStartMonth: 11, saisonEndMonth: 3 }));
 
       ctx.service.create();
 
       expect((ctx.dialog.open as jasmine.Spy).calls.mostRecent().args[0]).toBe(ProjectCreateDialogComponent);
       const req = ctx.httpMock.expectOne((r) => r.url.endsWith('/projects/') && r.method === 'POST');
+      // All four settings the Anlegen-Dialog gained travel on the create, and the
+      // payload no longer carries an organization_id at all.
       expect(req.request.body).toEqual({
         title: 'Neues Projekt',
         description: 'd',
-        organization_id: 'iwm',
+        scientist_ids: ['s1', 's2'],
         projekttyp: Projekttyp.Nestlingsberingung,
+        show_optional_fields: true,
         show_net_fields: true,
         default_station_id: null,
+        saison_start_month: 11,
+        saison_end_month: 3,
       });
 
       const created = makeProject({ id: 'p-new', title: 'Neues Projekt' });
@@ -306,9 +329,26 @@ describe('ProjectActionsService', () => {
       expect(snack.calls.mostRecent().args[0] as string).toContain('erstellt');
     });
 
-    it('warns and opens no dialog when there is no Organisation to create under', () => {
+    it('hands the dialog the active Organisation and the creating Beringer-Kürzel', () => {
       const ctx = setup();
-      loadRefs(ctx, []);
+      signIn(ctx, makeOrg());
+      const alice = { id: 's1', handle: 'ALC', full_name: 'Alice Admin' } as Scientist;
+      loadRefs(ctx, [alice]);
+      stubDialog(ctx.dialog, undefined);
+
+      ctx.service.create();
+
+      expect((ctx.dialog.open as jasmine.Spy).calls.mostRecent().args[1].data).toEqual({
+        organization: makeOrg(),
+        scientists: [alice],
+        currentBeringerHandle: 'ALC',
+      });
+    });
+
+    it('warns and opens no dialog when there is no active Organisation to create under', () => {
+      const ctx = setup();
+      signIn(ctx, null);
+      loadRefs(ctx);
       const open = spyOn(ctx.dialog, 'open');
       const snack = spyOn(ctx.snackBar, 'open');
 
@@ -320,6 +360,7 @@ describe('ProjectActionsService', () => {
 
     it('shows a German error snackbar when the create fails', () => {
       const ctx = setup();
+      signIn(ctx, makeOrg());
       loadRefs(ctx);
       const snack = spyOn(ctx.snackBar, 'open');
       stubDialog(ctx.dialog, createResult());
@@ -334,6 +375,7 @@ describe('ProjectActionsService', () => {
 
     it('does nothing when the create dialog is dismissed', () => {
       const ctx = setup();
+      signIn(ctx, makeOrg());
       loadRefs(ctx);
       stubDialog(ctx.dialog, undefined);
 

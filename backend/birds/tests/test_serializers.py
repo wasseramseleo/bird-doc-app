@@ -304,7 +304,13 @@ def test_project_create_does_not_duplicate_creator(user, scientist, organization
 
 
 @pytest.mark.django_db
-def test_project_create_without_scientist_user_does_not_crash(other_user, organization):
+def test_project_create_without_scientist_user_is_a_clean_validation_error(
+    other_user, organization
+):
+    """A creator with no ``Scientist`` row leaves the auto-add nothing to add, so
+    the effective Beringer set is empty. That is refused cleanly on the
+    ``scientist_ids`` field (issue #389) — not a crash, and no longer a silently
+    created Projekt with zero Beringer."""
     request = MagicMock()
     request.user = other_user
 
@@ -312,8 +318,7 @@ def test_project_create_without_scientist_user_does_not_crash(other_user, organi
         data={"title": "P", "description": "", "organization_id": organization.handle},
         context={"request": request},
     )
-    assert serializer.is_valid(), serializer.errors
-    project = serializer.save()
 
-    assert project.scientists.count() == 0
-    assert Project.objects.filter(id=project.id).exists()
+    assert not serializer.is_valid()
+    assert "scientist_ids" in serializer.errors
+    assert not Project.objects.filter(title="P").exists()

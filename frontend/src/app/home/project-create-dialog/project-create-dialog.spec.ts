@@ -11,10 +11,24 @@ import {
 import {ApiService} from '../../service/api.service';
 import {Organization} from '../../models/organization.model';
 import {Projekttyp} from '../../models/project.model';
+import {Scientist} from '../../models/scientist.model';
 
 const ORG = {handle: 'ORG1', name: 'IWM Linz'} as Organization;
+// Alice is the creating Admin (her Kürzel is what /auth/me/ carries); Bob is a
+// second Beringer of the same Organisation.
+const ALICE = {id: 's-alice', handle: 'ALC', full_name: 'Alice Admin'} as Scientist;
+const BOB = {id: 's-bob', handle: 'BOB', full_name: 'Bob Beringer'} as Scientist;
 
-function setup(data: ProjectCreateDialogData = {organizations: [ORG]}) {
+function makeData(overrides: Partial<ProjectCreateDialogData> = {}): ProjectCreateDialogData {
+  return {
+    organization: ORG,
+    scientists: [ALICE, BOB],
+    currentBeringerHandle: 'ALC',
+    ...overrides,
+  };
+}
+
+function setup(data: ProjectCreateDialogData = makeData()) {
   const dialogRef = jasmine.createSpyObj<
     MatDialogRef<ProjectCreateDialogComponent, ProjectCreateDialogResult>
   >('MatDialogRef', ['close']);
@@ -123,5 +137,93 @@ describe('ProjectCreateDialogComponent', () => {
     expect(component.form.controls.showNetFields.value).toBe(false);
     component.form.controls.projekttyp.setValue(Projekttyp.Zugvogelmonitoring);
     expect(component.form.controls.showNetFields.value).toBe(false);
+  });
+
+  // --- Projekt-Anlage-Parität (issue #389, PRD #384) -------------------------
+  // The Anlegen-Dialog gained the four settings that used to need a follow-up
+  // „Bearbeiten", and the inert Organisation-Picker gave way to a plain-text line.
+
+  it('preselects the creating Admin as first Beringer, editable', () => {
+    const {component} = setup();
+
+    expect(component.form.controls.scientistIds.value).toEqual(['s-alice']);
+    expect(component.form.controls.scientistIds.enabled).toBe(true);
+  });
+
+  it('starts the Beringer field empty and required when the creator has none', () => {
+    // The invitation account path creates a Mitgliedschaft but no Scientist, so
+    // /auth/me/ carries handle: null and there is nothing to preselect.
+    const {component} = setup(makeData({currentBeringerHandle: null}));
+
+    expect(component.form.controls.scientistIds.value).toEqual([]);
+    expect(component.form.controls.scientistIds.invalid).toBe(true);
+  });
+
+  it('blocks submit while the Beringer field is empty', () => {
+    const {component, dialogRef} = setup(makeData({currentBeringerHandle: null}));
+    component.form.controls.title.setValue('Ohne Beringer');
+
+    component.submit();
+
+    expect(dialogRef.close).not.toHaveBeenCalled();
+  });
+
+  it('shows the active Organisation as plain text, with no picker to choose one', () => {
+    const {fixture, component} = setup();
+
+    expect(fixture.nativeElement.textContent).toContain('IWM Linz');
+    expect(fixture.nativeElement.querySelector('[formcontrolname="organizationHandle"]')).toBeNull();
+    expect('organizationHandle' in component.form.controls).toBe(false);
+  });
+
+  it('round-trips the four settings the Anlegen-Dialog gained into the result', () => {
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Schilfgürtel');
+    component.form.controls.scientistIds.setValue(['s-alice', 's-bob']);
+    component.form.controls.showOptionalFields.setValue(true);
+    component.form.controls.saisonStartMonth.setValue(11);
+    component.form.controls.saisonEndMonth.setValue(3);
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        scientistIds: ['s-alice', 's-bob'],
+        showOptionalFields: true,
+        saisonStartMonth: 11,
+        saisonEndMonth: 3,
+      }),
+    );
+  });
+
+  it('leaves the Saison window unset by default, so „Keine" round-trips as null', () => {
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Ohne Saison');
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({saisonStartMonth: null, saisonEndMonth: null}),
+    );
+  });
+
+  it('renders the fields in the Bearbeiten-Dialog’s order', () => {
+    const {fixture} = setup();
+    const text: string = fixture.nativeElement.textContent;
+
+    const positions = [
+      'Titel',
+      'Beschreibung',
+      'Organisation',
+      'Wissenschaftler:innen',
+      'Projekttyp',
+      'Standard-Station',
+      'Saison-Start',
+      'Optionale Felder',
+      'Netzfelder',
+    ].map((label) => text.indexOf(label));
+
+    expect(positions).not.toContain(-1);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 });

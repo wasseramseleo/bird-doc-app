@@ -526,6 +526,35 @@ class ProjectSerializer(serializers.ModelSerializer):
                 return active
         return attrs.get("organization")
 
+    def _with_creator(self, scientists):
+        """The Beringer set a *create* actually lands with: the requested one plus
+        the creating Beringer, who is added automatically when not already named.
+        The creator may have no ``Scientist`` at all (the invitation account path
+        creates a Mitgliedschaft only), in which case there is nothing to add."""
+        request = self.context.get("request")
+        creator_scientist = getattr(getattr(request, "user", None), "scientist", None)
+        if creator_scientist is not None and creator_scientist not in scientists:
+            return list(scientists) + [creator_scientist]
+        return list(scientists)
+
+    def _validate_min_one_scientist(self, attrs):
+        """Ein Projekt braucht mindestens eine:n Beringer:in (issue #389) — a rule
+        the Bearbeiten-Dialog used to know alone. It is checked against the
+        *effective* set, i.e. after the create-time auto-add, so a POST that names
+        no ``scientist_ids`` still passes for a creator who has a Beringer. An
+        Admin without one has nothing to auto-add and is refused here rather than
+        landing a Projekt with zero Beringer."""
+        if self.instance is not None and "scientists" not in attrs:
+            # A partial edit that leaves the Beringer alone keeps whoever is on it.
+            return
+        scientists = attrs.get("scientists", [])
+        if self.instance is None:
+            scientists = self._with_creator(scientists)
+        if not scientists:
+            raise serializers.ValidationError(
+                {"scientist_ids": _("Ein Projekt braucht mindestens eine:n Beringer:in.")}
+            )
+
     def validate(self, attrs):
         station = attrs.get("default_station")
         if station is not None:
@@ -538,14 +567,11 @@ class ProjectSerializer(serializers.ModelSerializer):
                         )
                     }
                 )
+        self._validate_min_one_scientist(attrs)
         return attrs
 
     def create(self, validated_data):
-        scientists = validated_data.pop("scientists", [])
-        request = self.context.get("request")
-        creator_scientist = getattr(getattr(request, "user", None), "scientist", None)
-        if creator_scientist is not None and creator_scientist not in scientists:
-            scientists = list(scientists) + [creator_scientist]
+        scientists = self._with_creator(validated_data.pop("scientists", []))
         project = Project.objects.create(**validated_data)
         if scientists:
             project.scientists.set(scientists)

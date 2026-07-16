@@ -4,12 +4,13 @@ import {MatDialog} from '@angular/material/dialog';
 import {MatSnackBar} from '@angular/material/snack-bar';
 
 import {ApiService} from './api.service';
+import {AuthService} from './auth.service';
 import {ProjectService} from './project.service';
 import {Project} from '../models/project.model';
-import {Organization} from '../models/organization.model';
 import {Scientist} from '../models/scientist.model';
 import {
   ProjectCreateDialogComponent,
+  ProjectCreateDialogData,
   ProjectCreateDialogResult,
 } from '../home/project-create-dialog/project-create-dialog';
 import {
@@ -44,6 +45,7 @@ function parseFilenameFromContentDisposition(header: string | null): string | nu
 @Injectable({providedIn: 'root'})
 export class ProjectActionsService {
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
   private readonly projectService = inject(ProjectService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
@@ -51,27 +53,34 @@ export class ProjectActionsService {
 
   // Reference data the create/edit dialogs need. Loaded on demand by a consumer
   // (the picker) via loadReferenceData(); kept here so the dialogs have a single
-  // owner rather than each consumer re-fetching.
-  private readonly organizations = signal<Organization[]>([]);
+  // owner rather than each consumer re-fetching. The Organisation is NOT part of
+  // it: both dialogs only ever display the one they already belong to, which
+  // AuthService already holds (issue #389).
   private readonly scientists = signal<Scientist[]>([]);
 
   loadReferenceData(): void {
-    this.api.getOrganizations().subscribe({next: (res) => this.organizations.set(res.results)});
     this.api.getScientists().subscribe({next: (res) => this.scientists.set(res.results)});
   }
 
   create(): void {
-    const orgs = this.organizations();
-    if (orgs.length === 0) {
+    // The new Projekt lands in the *active* Organisation, which the server sets
+    // authoritatively — so the dialog shows it as plain text rather than offering
+    // a choice, and the payload carries no organization_id at all (issue #389).
+    const organization = this.auth.currentUser()?.organization ?? null;
+    if (organization === null) {
       this.snackBar.open('Es konnte keine Organisation geladen werden.', 'Schließen', {duration: 3000});
       return;
     }
     const ref = this.dialog.open<
       ProjectCreateDialogComponent,
-      {organizations: Organization[]},
+      ProjectCreateDialogData,
       ProjectCreateDialogResult
     >(ProjectCreateDialogComponent, {
-      data: {organizations: orgs},
+      data: {
+        organization,
+        scientists: this.scientists(),
+        currentBeringerHandle: this.auth.currentUser()?.handle ?? null,
+      },
       width: '480px',
     });
     ref.afterClosed().subscribe((result) => {
@@ -82,10 +91,13 @@ export class ProjectActionsService {
         .createProject({
           title: result.title,
           description: result.description,
-          organization_id: result.organizationHandle,
+          scientist_ids: result.scientistIds,
           projekttyp: result.projekttyp,
+          show_optional_fields: result.showOptionalFields,
           show_net_fields: result.showNetFields,
           default_station_id: result.defaultStationHandle || null,
+          saison_start_month: result.saisonStartMonth,
+          saison_end_month: result.saisonEndMonth,
         })
         .subscribe({
           next: (project) => {
