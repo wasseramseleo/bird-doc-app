@@ -20,6 +20,11 @@ router.register(r"mitgliedschaften", views.MitgliedschaftViewSet, basename="mitg
 router.register(
     r"species-norm-overrides", views.SpeciesNormViewSet, basename="species-norm-override"
 )
+router.register(
+    r"species-ring-size-overrides",
+    views.SpeciesRingSizeOverrideViewSet,
+    basename="species-ring-size-override",
+)
 
 # The API URLs are now determined automatically by the router.
 # We just need to include the router.urls in our urlpatterns. The offline

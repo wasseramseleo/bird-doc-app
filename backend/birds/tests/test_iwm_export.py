@@ -216,6 +216,97 @@ def test_export_fills_capture_context_from_project_defaults(
     assert row["Lockmittel"] == "N"
 
 
+def _row_fills(content):
+    """Return a list of booleans, one per data row (sheet order): True when the
+    row carries any solid background fill, False when it is unfilled."""
+    wb = openpyxl.load_workbook(BytesIO(content))
+    ws = wb[SHEET_NAME]
+    headers = {
+        ws.cell(row=1, column=c).value: c
+        for c in range(1, ws.max_column + 1)
+        if ws.cell(row=1, column=c).value
+    }
+    fills = []
+    for r in range(2, ws.max_row + 1):
+        if all(ws.cell(row=r, column=col).value is None for col in headers.values()):
+            continue
+        filled = any(
+            ws.cell(row=r, column=col).fill is not None
+            and ws.cell(row=r, column=col).fill.fill_type == "solid"
+            for col in headers.values()
+        )
+        fills.append(filled)
+    return fills
+
+
+@pytest.mark.django_db
+def test_non_standard_row_is_filled_and_blanks_method_columns(
+    species, scientist, ringing_station, project
+):
+    """A Nicht-Standard-Fang row is background-filled (visual only — the
+    Meldestelle ignores formatting) and its three project-derived method columns
+    are written empty (ADR 0026)."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="910", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        is_non_standard=True,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    content = build_iwm_workbook(DataEntry.objects.all())
+    row = _read_rows(content)
+
+    assert row["Fangmethode"] is None
+    assert row["Lockmittel"] is None
+    assert row["Umstand"] is None
+    assert _row_fills(content) == [True]
+
+
+@pytest.mark.django_db
+def test_tot_fund_row_has_no_fill_and_keeps_method_columns(
+    species, scientist, ringing_station, project
+):
+    """A Tot-Fund row gets no fill and keeps its method columns — it reaches the
+    export solely as the Bemerkung text (ADR 0026)."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="911", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        is_dead_recovery=True,
+        comment="Totfund; Umstände: unter dem Netz",
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    content = build_iwm_workbook(DataEntry.objects.all())
+    row = _read_rows(content)
+
+    assert row["Umstand"] == "25"
+    assert row["Fangmethode"] == "M"
+    assert row["Lockmittel"] == "N"
+    assert row["Bemerkungen"] == "Totfund; Umstände: unter dem Netz"
+    assert _row_fills(content) == [False]
+
+
+@pytest.mark.django_db
+def test_plain_capture_row_has_no_fill(species, scientist, ringing_station, project):
+    """A capture carrying no Fangmarker is never filled (no regression)."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="912", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    assert _row_fills(build_iwm_workbook(DataEntry.objects.all())) == [False]
+
+
 @pytest.mark.django_db
 def test_multi_station_project_exports_each_entrys_own_station_geography(
     species, scientist, ringing_station, organization, project

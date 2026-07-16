@@ -7,9 +7,17 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {of} from 'rxjs';
 
 import {ArtennormenComponent} from './artennormen';
-import {EffectiveSpeciesNorm, SpeciesNormOverride} from '../models/species-norm.model';
-import {SpeciesNormOverridePayload} from '../models/species-norm.model';
-import {ArtennormFormDialogData} from './artennorm-form-dialog/artennorm-form-dialog';
+import {
+  EffectiveSpeciesNorm,
+  SpeciesNormOverride,
+  SpeciesNormOverridePayload,
+  SpeciesRingSizeOverride,
+} from '../models/species-norm.model';
+import {RingSize} from '../models/ring.model';
+import {
+  ArtennormDialogResult,
+  ArtennormFormDialogData,
+} from './artennorm-form-dialog/artennorm-form-dialog';
 import {ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 
 let httpMock: HttpTestingController;
@@ -47,15 +55,44 @@ function makeOverride(overrides: Partial<SpeciesNormOverride> = {}): SpeciesNorm
   return {...makeNorm(), id: 'ov-1', ...overrides} as SpeciesNormOverride;
 }
 
-// ngOnInit loads BOTH the effective norms (GET /species-norms/) and the org
-// overrides (GET /species-norm-overrides/); a load must satisfy both.
-function flushLoad(norms: EffectiveSpeciesNorm[], overrides: SpeciesNormOverride[] = []) {
+function makeRingOverride(
+  overrides: Partial<SpeciesRingSizeOverride> = {},
+): SpeciesRingSizeOverride {
+  return {
+    id: 'rov-1',
+    species_id: 'sp-1',
+    species_name: 'Zaunkönig',
+    ring_size: RingSize.S,
+    ...overrides,
+  };
+}
+
+// A dialog result: the norm payload plus the chosen Empfohlene Ringgröße
+// (default null = Standard/inherit), resolved independently (ADR 0028).
+function dialogResult(
+  norm: SpeciesNormOverridePayload,
+  ringSize: RingSize | null = null,
+): ArtennormDialogResult {
+  return {norm, ringSize};
+}
+
+// ngOnInit loads the effective norms (GET /species-norms/), the org norm
+// overrides (GET /species-norm-overrides/) and the org ring-size overrides
+// (GET /species-ring-size-overrides/); a load must satisfy all three.
+function flushLoad(
+  norms: EffectiveSpeciesNorm[],
+  overrides: SpeciesNormOverride[] = [],
+  ringOverrides: SpeciesRingSizeOverride[] = [],
+) {
   httpMock
     .expectOne((r) => r.method === 'GET' && r.url.endsWith('/species-norms/'))
     .flush({norms});
   httpMock
     .expectOne((r) => r.method === 'GET' && r.url.endsWith('/species-norm-overrides/'))
     .flush(page0(overrides));
+  httpMock
+    .expectOne((r) => r.method === 'GET' && r.url.endsWith('/species-ring-size-overrides/'))
+    .flush(page0(ringOverrides));
 }
 
 function setup() {
@@ -143,7 +180,7 @@ describe('ArtennormenComponent', () => {
       species_id: 'new-sp',
       weight_mean: '18.0',
     } as SpeciesNormOverridePayload;
-    const dialogSpy = spyOnDialog(fixture, payload);
+    const dialogSpy = spyOnDialog(fixture, dialogResult(payload));
 
     component.openAddDialog();
 
@@ -157,7 +194,7 @@ describe('ArtennormenComponent', () => {
     expect(post.request.body).toEqual(payload);
     post.flush(makeOverride({id: 'ov-new', species_id: 'new-sp', species_name: 'Kohlmeise'}));
 
-    // A successful save reloads both lists.
+    // A successful save reloads all three lists.
     flushLoad([makeNorm({species_id: 'new-sp', species_name: 'Kohlmeise'})]);
   });
 
@@ -169,7 +206,7 @@ describe('ArtennormenComponent', () => {
       species_id: 'sp-1',
       weight_mean: '12.0',
     } as SpeciesNormOverridePayload;
-    const dialogSpy = spyOnDialog(fixture, payload);
+    const dialogSpy = spyOnDialog(fixture, dialogResult(payload));
 
     component.openEditDialog({
       species_id: 'sp-1',
@@ -188,6 +225,101 @@ describe('ArtennormenComponent', () => {
     );
     expect(post.request.body).toEqual(payload);
     post.flush(makeOverride({id: 'ov-1', species_id: 'sp-1', species_name: 'Amsel'}));
+
+    flushLoad([makeNorm({species_id: 'sp-1', species_name: 'Amsel'})]);
+  });
+
+  it('pre-fills the dialog with the current Empfohlene-Ringgröße override', () => {
+    const {fixture, component} = setup();
+
+    // Load a species that carries a ring-size override so the map is populated.
+    fixture.detectChanges();
+    flushLoad(
+      [makeNorm({species_id: 'sp-1', species_name: 'Amsel'})],
+      [],
+      [makeRingOverride({id: 'rov-1', species_id: 'sp-1', ring_size: RingSize.T})],
+    );
+    fixture.detectChanges();
+
+    const dialogSpy = spyOnDialog(fixture, undefined); // cancelled, no writes
+    component.openEditDialog({
+      species_id: 'sp-1',
+      species_name: 'Amsel',
+      is_override: false,
+      override_id: null,
+      norm: makeNorm({species_id: 'sp-1', species_name: 'Amsel'}),
+    });
+
+    const config = dialogSpy.calls.mostRecent().args[1] as {data: ArtennormFormDialogData};
+    expect(config.data.ringSize).toBe(RingSize.T);
+  });
+
+  it('upserts a chosen ring size via POST /species-ring-size-overrides/ alongside the norm', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+    const payload: SpeciesNormOverridePayload = {
+      species_id: 'sp-1',
+      weight_mean: '12.0',
+    } as SpeciesNormOverridePayload;
+    spyOnDialog(fixture, dialogResult(payload, RingSize.S));
+
+    component.openEditDialog({
+      species_id: 'sp-1',
+      species_name: 'Amsel',
+      is_override: false,
+      override_id: null,
+      norm: makeNorm({species_id: 'sp-1', species_name: 'Amsel'}),
+    });
+
+    // The norm override and the ring-size override are written independently.
+    httpMock
+      .expectOne((r) => r.method === 'POST' && r.url.endsWith('/species-norm-overrides/'))
+      .flush(makeOverride({id: 'ov-1', species_id: 'sp-1', species_name: 'Amsel'}));
+    const ringPost = httpMock.expectOne(
+      (r) => r.method === 'POST' && r.url.endsWith('/species-ring-size-overrides/'),
+    );
+    expect(ringPost.request.body).toEqual({species_id: 'sp-1', ring_size: RingSize.S});
+    ringPost.flush(makeRingOverride({species_id: 'sp-1', ring_size: RingSize.S}));
+
+    flushLoad([makeNorm({species_id: 'sp-1', species_name: 'Amsel'})]);
+  });
+
+  it('resets the ring size to Standard via DELETE when blanked on an existing override', () => {
+    const {fixture, component} = setup();
+    spyOnSnackBar(fixture);
+
+    // Seed the map with an existing ring override for sp-1.
+    fixture.detectChanges();
+    flushLoad(
+      [makeNorm({species_id: 'sp-1', species_name: 'Amsel'})],
+      [],
+      [makeRingOverride({id: 'rov-1', species_id: 'sp-1', ring_size: RingSize.T})],
+    );
+    fixture.detectChanges();
+
+    const payload: SpeciesNormOverridePayload = {
+      species_id: 'sp-1',
+      weight_mean: '12.0',
+    } as SpeciesNormOverridePayload;
+    spyOnDialog(fixture, dialogResult(payload, null)); // ring size blanked
+
+    component.openEditDialog({
+      species_id: 'sp-1',
+      species_name: 'Amsel',
+      is_override: false,
+      override_id: null,
+      norm: makeNorm({species_id: 'sp-1', species_name: 'Amsel'}),
+    });
+
+    httpMock
+      .expectOne((r) => r.method === 'POST' && r.url.endsWith('/species-norm-overrides/'))
+      .flush(makeOverride({id: 'ov-1', species_id: 'sp-1', species_name: 'Amsel'}));
+    // Blanking an existing ring override resets it to the global default.
+    httpMock
+      .expectOne(
+        (r) => r.method === 'DELETE' && r.url.endsWith('/species-ring-size-overrides/rov-1/'),
+      )
+      .flush(null, {status: 204, statusText: 'No Content'});
 
     flushLoad([makeNorm({species_id: 'sp-1', species_name: 'Amsel'})]);
   });

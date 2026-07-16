@@ -1,6 +1,6 @@
 import {ChangeDetectionStrategy, Component, OnInit, computed, inject, signal} from '@angular/core';
 import {HttpErrorResponse} from '@angular/common/http';
-import {forkJoin} from 'rxjs';
+import {Observable, forkJoin, of} from 'rxjs';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
@@ -11,9 +11,11 @@ import {ApiService} from '../service/api.service';
 import {
   EffectiveSpeciesNorm,
   SpeciesNormOverride,
-  SpeciesNormOverridePayload,
+  SpeciesRingSizeOverride,
 } from '../models/species-norm.model';
+import {RingSize} from '../models/ring.model';
 import {
+  ArtennormDialogResult,
   ArtennormFormDialogComponent,
   ArtennormFormDialogData,
 } from './artennorm-form-dialog/artennorm-form-dialog';
@@ -50,6 +52,10 @@ export class ArtennormenComponent implements OnInit {
 
   readonly loading = signal<boolean>(true);
   private readonly rows = signal<NormRow[]>([]);
+  // The Organisation's Empfohlene-Ringgröße overrides (issue #372, ADR 0028),
+  // keyed by species_id, so the dialog can pre-fill the current override and the
+  // Save can reconcile it (upsert / reset) independently of the norm override.
+  private ringOverrideBySpecies = new Map<string, SpeciesRingSizeOverride>();
 
   // Alphabetical by Art so the list reads predictably regardless of server order.
   readonly sortedRows = computed(() =>
@@ -68,26 +74,36 @@ export class ArtennormenComponent implements OnInit {
   }
 
   // Tune the effective norm of an Art already in force: the dialog pre-fills from
-  // the effective values (default or the current override). Save creates the
-  // override (Standard → angepasst) or updates it.
+  // the effective values (default or the current override) and from the current
+  // Empfohlene-Ringgröße override. Save creates the override (Standard →
+  // angepasst) or updates it, and reconciles the ring size independently.
   openEditDialog(row: NormRow): void {
-    this.openDialog({norm: row.norm});
+    this.openDialog({
+      norm: row.norm,
+      ringSize: this.ringOverrideBySpecies.get(row.species_id)?.ring_size ?? null,
+    });
   }
 
   private openDialog(data: ArtennormFormDialogData): void {
     const ref = this.dialog.open<
       ArtennormFormDialogComponent,
       ArtennormFormDialogData,
-      SpeciesNormOverridePayload
+      ArtennormDialogResult
     >(ArtennormFormDialogComponent, {data, width: '560px'});
-    ref.afterClosed().subscribe((payload) => {
-      if (!payload) {
+    ref.afterClosed().subscribe((result) => {
+      if (!result) {
         return;
       }
-      this.api.saveSpeciesNormOverride(payload).subscribe({
-        next: (saved: SpeciesNormOverride) => {
+      // The norm override and the Empfohlene-Ringgröße override are written
+      // **independently** (ADR 0028): the norm save is upserted as before, while
+      // the ring size is upserted, reset, or left untouched on its own resource.
+      forkJoin({
+        norm: this.api.saveSpeciesNormOverride(result.norm),
+        ring: this.reconcileRingSize(result.norm.species_id, result.ringSize),
+      }).subscribe({
+        next: ({norm}: {norm: SpeciesNormOverride}) => {
           this.snackBar.open(
-            `Artennorm für „${saved.species_name}“ wurde gespeichert.`,
+            `Artennorm für „${norm.species_name}“ wurde gespeichert.`,
             'Schließen',
             {duration: 3000},
           );
@@ -97,6 +113,24 @@ export class ArtennormenComponent implements OnInit {
           this.snackBar.open(this.errorMessage(err, 'gespeichert'), 'Schließen', {duration: 5000}),
       });
     });
+  }
+
+  // Reconcile the Empfohlene-Ringgröße override for a species against the chosen
+  // value: upsert when set (and changed), delete ("Auf Standard zurücksetzen")
+  // when blanked, and do nothing when unchanged — so an unrelated Save never
+  // touches the ring size. Null = inherit the global Species.ring_size.
+  private reconcileRingSize(speciesId: string, chosen: RingSize | null): Observable<unknown> {
+    const existing = this.ringOverrideBySpecies.get(speciesId) ?? null;
+    if (chosen) {
+      if (existing && existing.ring_size === chosen) {
+        return of(null);
+      }
+      return this.api.saveSpeciesRingSizeOverride({species_id: speciesId, ring_size: chosen});
+    }
+    if (existing) {
+      return this.api.deleteSpeciesRingSizeOverride(existing.id);
+    }
+    return of(null);
   }
 
   // "Auf Standard zurücksetzen": delete the override so the Art falls back to the
@@ -151,8 +185,10 @@ export class ArtennormenComponent implements OnInit {
     forkJoin({
       effective: this.api.getEffectiveSpeciesNorms(),
       overrides: this.api.getAllSpeciesNormOverrides(),
+      ringOverrides: this.api.getAllSpeciesRingSizeOverrides(),
     }).subscribe({
-      next: ({effective, overrides}) => {
+      next: ({effective, overrides, ringOverrides}) => {
+        this.ringOverrideBySpecies = new Map(ringOverrides.map((o) => [o.species_id, o]));
         const overrideBySpecies = new Map(overrides.map((o) => [o.species_id, o]));
         this.rows.set(
           effective.norms.map((norm) => {

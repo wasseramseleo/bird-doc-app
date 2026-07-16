@@ -68,6 +68,7 @@ import {
   BeringerCreateDialogResult,
 } from './beringer-create-dialog/beringer-create-dialog';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
+import {TotFundDialogComponent, TotFundDialogData} from './tot-fund-dialog/tot-fund-dialog';
 import {selectedOptionValidator} from '../shared/validators/selected-option.validator';
 import {getAgeClassLabel, getSexLabel} from './data-entry-labels';
 import {
@@ -262,6 +263,12 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     has_hunger_stripes: [false, Validators.required],
     has_brood_patch: [false, Validators.required],
     has_cpl_plus: [false, Validators.required],
+    // Fangmarker (ADR 0026): toggled by the action-row buttons, never typed. They
+    // are form controls only so getRawValue() carries them onto the write payload
+    // (and thus through the offline outbox) and transformToForm patches them back
+    // on edit — they are not rendered as inputs.
+    is_dead_recovery: [false],
+    is_non_standard: [false],
   });
 
   // Signals for reactive form values
@@ -313,6 +320,25 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // (the backend always includes Sonderart rows in the species list). Keyed off
   // special_kind === 'ring_destroyed', not the German name.
   private readonly ringDestroyedSpecies = signal<Species | null>(null);
+
+  // Fangmarker (ADR 0026): the two capture-level markers, tracked as signals off
+  // their form controls so the coloured frame/badge, the mandatory-Bemerkung and
+  // the button toggle-state all react. They flag a situation WITHOUT replacing the
+  // Art, so they coexist with any Art (including Aves ignota) and with each other.
+  private readonly deadRecoveryValue = toSignal(
+    this.entryForm.get('is_dead_recovery')!.valueChanges,
+    {initialValue: this.entryForm.get('is_dead_recovery')!.value},
+  );
+  readonly isDeadRecovery = computed(() => !!this.deadRecoveryValue());
+  private readonly nonStandardValue = toSignal(
+    this.entryForm.get('is_non_standard')!.valueChanges,
+    {initialValue: this.entryForm.get('is_non_standard')!.value},
+  );
+  readonly isNonStandard = computed(() => !!this.nonStandardValue());
+  // The exact composed Bemerkung prefix for a Tot-Fund (ADR 0026): the
+  // Todesumstände lives only inside `Totfund; Umstände: <Eingabe>`, never as a
+  // separate field, so it is composed on confirm and parsed back on edit.
+  private static readonly TOTFUND_PREFIX = 'Totfund; Umstände: ';
 
   // PRD #245: the per-org effective Artennormen keyed by species_id, loaded from
   // the offline reference bundle (the same list the /species-norms/ API serves),
@@ -626,15 +652,32 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       }
     });
 
-    // Issue #57: an 'unknown_species' capture ("Aves ignota") is a real bird
-    // whose unusual catch must always be described, so the Bemerkung becomes
-    // mandatory while it is selected. Mirrors the sentinel validator-toggling
-    // above; the serializer enforces the same rule server-side.
+    // Issue #57 / #371: the Bemerkung becomes mandatory whenever the unusual
+    // catch must always be described — an 'unknown_species' capture ("Aves
+    // ignota", ADR 0004) or either Fangmarker (Tot-Fund / Nicht-Standard-Fang,
+    // ADR 0026). Mirrors the sentinel validator-toggling above; the serializer
+    // enforces the same rule server-side.
     effect(() => {
-      const unknown = this.isUnknownSpecies();
+      const required =
+        this.isUnknownSpecies() || this.isDeadRecovery() || this.isNonStandard();
       const control = this.entryForm.get('comment')!;
-      control.setValidators(unknown ? [Validators.required] : []);
+      control.setValidators(required ? [Validators.required] : []);
       control.updateValueAndValidity({ emitEvent: false });
+    });
+
+    // #371: a Ring-vernichtet capture has no bird to mark, so both Fangmarker are
+    // forced off while it is active (their buttons are also hidden in the
+    // template). Mirrors the server-side force-off in the capture service.
+    effect(() => {
+      if (!this.isRingDestroyed()) {
+        return;
+      }
+      for (const name of ['is_dead_recovery', 'is_non_standard']) {
+        const control = this.entryForm.get(name)!;
+        if (control.value) {
+          control.setValue(false);
+        }
+      }
     });
 
     // #26: only the Kleingefieder Fortschritt (small_feather_app, J/U/M/N) is
@@ -1029,6 +1072,64 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         this.selectedSpecies.set(ringDestroyed);
       }
     });
+  }
+
+  // #371 (ADR 0026): the Tot-Fund toggle. Clicking it while unset opens the
+  // Todesumstände popup — pre-filled by parsing the Bemerkung when a stored
+  // Tot-Fund is edited — and, on confirm, marks the capture and composes the
+  // Bemerkung `Totfund; Umstände: <Eingabe>` (mandatory). Cancelling leaves the
+  // capture un-marked. Clicking it again toggles the marker off to undo a
+  // mis-click, clearing the auto-composed Bemerkung. The real Art and Ring stay.
+  onToggleDeadRecovery(): void {
+    if (this.isDeadRecovery()) {
+      this.entryForm.get('is_dead_recovery')!.setValue(false);
+      const comment = this.entryForm.get('comment')!;
+      if (this.isTotfundComment(comment.value)) {
+        comment.setValue(null);
+      }
+      return;
+    }
+    const ref = this.dialog.open<TotFundDialogComponent, TotFundDialogData, string>(
+      TotFundDialogComponent,
+      {
+        data: { umstaende: this.parseTotfundUmstaende(this.entryForm.get('comment')!.value) },
+        width: '460px',
+      },
+    );
+    ref.afterClosed().subscribe(umstaende => {
+      // Cancel (undefined) leaves the capture un-marked; a blank string cannot
+      // occur (the dialog requires the Todesumstände).
+      if (umstaende === undefined || umstaende === null) {
+        return;
+      }
+      this.entryForm.get('comment')!.setValue(this.composeTotfundComment(umstaende));
+      this.entryForm.get('is_dead_recovery')!.setValue(true);
+    });
+  }
+
+  // #371 (ADR 0026): the Nicht-Standard-Fang toggle. No popup and no auto-text —
+  // it simply flips the marker, which makes the Bemerkung mandatory (with a hint)
+  // and outlines the form with a coloured frame + badge. Toggles off to undo.
+  onToggleNonStandard(): void {
+    const control = this.entryForm.get('is_non_standard')!;
+    control.setValue(!control.value);
+  }
+
+  private composeTotfundComment(umstaende: string): string {
+    return `${DataEntryFormComponent.TOTFUND_PREFIX}${umstaende}`;
+  }
+
+  private isTotfundComment(comment: string | null | undefined): boolean {
+    return !!comment && comment.startsWith(DataEntryFormComponent.TOTFUND_PREFIX);
+  }
+
+  // Parse the Todesumstände back out of a composed Bemerkung so editing a stored
+  // Tot-Fund reopens the popup pre-filled. A comment that is not a composed
+  // Totfund string yields an empty prefill.
+  private parseTotfundUmstaende(comment: string | null | undefined): string {
+    return this.isTotfundComment(comment)
+      ? comment!.slice(DataEntryFormComponent.TOTFUND_PREFIX.length)
+      : '';
   }
 
   // #25: an off-recommendation ring size must be a deliberate choice. When the
@@ -1921,6 +2022,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       has_hunger_stripes: false,
       has_brood_patch: false,
       has_cpl_plus: false,
+      // #371: the Fangmarker never carry over to the next capture.
+      is_dead_recovery: false,
+      is_non_standard: false,
     });
 
     this.selectedSpecies.set(null);

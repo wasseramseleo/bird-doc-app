@@ -225,6 +225,169 @@ def test_create_ring_destroyed_nulls_bird_data_server_side(
     assert entry.ring.number == "662"
 
 
+# --- Fangmarker: Tot-Fund & Nicht-Standard-Fang (ADR 0026, issue #371) --------
+
+
+@pytest.mark.django_db
+def test_create_persists_and_serializes_both_fangmarker(
+    auth_client, species, scientist, ringing_station
+):
+    """Both Fangmarker are written on create and read back on the payload, so a
+    capture round-trips them (ADR 0026)."""
+    payload = _payload(species, scientist, ringing_station, ring_number="900")
+    payload["is_dead_recovery"] = True
+    payload["is_non_standard"] = True
+    payload["comment"] = "Totfund; Umstände: unter dem Netz"
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["is_dead_recovery"] is True
+    assert body["is_non_standard"] is True
+    entry = DataEntry.objects.get(id=body["id"])
+    assert entry.is_dead_recovery is True
+    assert entry.is_non_standard is True
+    # The real Art and Ring are always kept — a marker never substitutes them.
+    assert entry.species_id == species.id
+    assert entry.ring.number == "900"
+
+
+@pytest.mark.django_db
+def test_markers_default_false_when_omitted(auth_client, species, scientist, ringing_station):
+    """A capture that sends no markers persists both as False (nullable-free
+    booleans), so a pre-feature payload behaves exactly as before."""
+    response = auth_client.post(
+        LIST_URL,
+        _payload(species, scientist, ringing_station, ring_number="901"),
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["is_dead_recovery"] is False
+    assert body["is_non_standard"] is False
+
+
+@pytest.mark.django_db
+def test_update_toggles_markers(auth_client, data_entry, species, scientist, ringing_station):
+    """The markers can be flipped on and off by an edit and survive the write."""
+    payload = _payload(species, scientist, ringing_station, ring_number="902")
+    payload["is_non_standard"] = True
+    payload["comment"] = "Handfang bei einer Vorführung"
+
+    response = auth_client.put(_detail_url(data_entry.id), payload, format="json")
+
+    assert response.status_code == 200, response.json()
+    data_entry.refresh_from_db()
+    assert data_entry.is_non_standard is True
+    assert data_entry.is_dead_recovery is False
+
+
+@pytest.mark.django_db
+def test_create_dead_recovery_without_comment_returns_400(
+    auth_client, species, scientist, ringing_station
+):
+    """A Tot-Fund with a blank Bemerkung is rejected server-side, mirroring the
+    Aves-ignota mandatory-comment rule (ADR 0026)."""
+    payload = _payload(species, scientist, ringing_station, ring_number="903")
+    payload["is_dead_recovery"] = True
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert "comment" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_non_standard_without_comment_returns_400(
+    auth_client, species, scientist, ringing_station
+):
+    """A Nicht-Standard-Fang with a blank Bemerkung is rejected server-side."""
+    payload = _payload(species, scientist, ringing_station, ring_number="904")
+    payload["is_non_standard"] = True
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert "comment" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_marker_with_comment_succeeds(auth_client, species, scientist, ringing_station):
+    """A marker with a non-blank Bemerkung passes the mandatory-comment rule."""
+    payload = _payload(species, scientist, ringing_station, ring_number="905")
+    payload["is_non_standard"] = True
+    payload["comment"] = "Zufallsfang"
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+
+
+@pytest.mark.django_db
+def test_both_markers_on_aves_ignota_capture(
+    auth_client, aves_ignota_species, scientist, ringing_station
+):
+    """The markers are orthogonal and either may sit on an Aves-ignota bird — both
+    may be true at once on the same unlisted capture (ADR 0026)."""
+    payload = _payload(aves_ignota_species, scientist, ringing_station, ring_number="906")
+    payload["is_dead_recovery"] = True
+    payload["is_non_standard"] = True
+    payload["comment"] = "Totfund; Umstände: toter Irrgast, außerhalb des Protokolls"
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get(id=response.json()["id"])
+    assert entry.is_dead_recovery is True
+    assert entry.is_non_standard is True
+    assert entry.species.special_kind == "unknown_species"
+
+
+@pytest.mark.django_db
+def test_markers_forced_off_on_ring_destroyed(
+    auth_client, sentinel_species, scientist, ringing_station
+):
+    """A Ring-vernichtet capture has no bird to mark, so the markers are forced off
+    server-side regardless of what the client sent, and a blank comment is not
+    demanded of it (ADR 0026)."""
+    payload = _payload(sentinel_species, scientist, ringing_station, ring_number="907")
+    payload["is_dead_recovery"] = True
+    payload["is_non_standard"] = True
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get(id=response.json()["id"])
+    assert entry.is_dead_recovery is False
+    assert entry.is_non_standard is False
+
+
+@pytest.mark.django_db
+def test_update_to_ring_destroyed_forces_markers_off(
+    auth_client, data_entry, sentinel_species, scientist, ringing_station
+):
+    """Editing a marked capture into a Ring-vernichtet record forces both markers
+    off on the update path too (ADR 0026), mirroring the create path."""
+    data_entry.is_dead_recovery = True
+    data_entry.is_non_standard = True
+    data_entry.save()
+
+    payload = _payload(sentinel_species, scientist, ringing_station, ring_number="908")
+    payload["is_dead_recovery"] = True
+    payload["is_non_standard"] = True
+
+    response = auth_client.put(_detail_url(data_entry.id), payload, format="json")
+
+    assert response.status_code == 200, response.json()
+    data_entry.refresh_from_db()
+    assert data_entry.is_dead_recovery is False
+    assert data_entry.is_non_standard is False
+
+
 @pytest.mark.django_db
 def test_new_capture_attaches_to_active_organisation(
     auth_client, species, scientist, ringing_station, organization

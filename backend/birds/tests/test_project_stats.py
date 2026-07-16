@@ -14,7 +14,7 @@ established here and reused by later dashboard slices:
   *data-bearing* day, computed in Europe/Vienna (timestamps stored UTC).
 """
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from itertools import count
 
 import pytest
@@ -295,6 +295,35 @@ def test_counting_semantics_and_last_fangtag(
     # Strongest hour: 06:00 Vienna carried 3 Alpha captures.
     assert last["strongest_hour"]["hour"] == 6
     assert last["strongest_hour"]["count"] == 3
+
+
+@pytest.mark.django_db
+def test_fangmarker_do_not_change_dashboard_counts(
+    auth_client, scientist, project, ringing_station, species, species_other
+):
+    """Statistics are deliberately unchanged by the Fangmarker (ADR 0026): a
+    Tot-Fund still counts as one Individuum and a Nicht-Standard-Fang counts
+    toward standard effort. The dashboard figures — Fänge, Individuenzahl,
+    Artenzahl, Fangtag, Erstnachweis — must be identical with the markers set."""
+    when = datetime(2026, 7, 2, 4, 0, tzinfo=UTC)
+    _capture(project, species, ringing_station, scientist, when)
+    _capture(project, species, ringing_station, scientist, when + timedelta(minutes=10), status="w")
+    _capture(project, species_other, ringing_station, scientist, when + timedelta(minutes=20))
+
+    params = {"from": "2026-07-01", "to": "2026-07-03"}
+    before = auth_client.get(stats_url(project.id, **params)).data
+
+    DataEntry.objects.filter(project=project).update(is_dead_recovery=True, is_non_standard=True)
+
+    after = auth_client.get(stats_url(project.id, **params)).data
+
+    assert after["totals"] == before["totals"]
+    assert after["last_fangtag"] == before["last_fangtag"]
+    assert after["erstnachweise"] == before["erstnachweise"]
+    # And the concrete figures, so this is not vacuously comparing two empties.
+    assert before["totals"]["faenge"] == 3
+    assert before["totals"]["artenzahl"] == 2
+    assert before["last_fangtag"]["faenge"] == 3
 
 
 @pytest.mark.django_db
