@@ -88,6 +88,17 @@
               title="Bemerkung vorhanden"
             >info_outline</mat-icon>
           }
+          <!-- #371: distinct Fangmarker row icons (ADR 0026). -->
+          @if (element.is_dead_recovery) {
+            <mat-icon class="fangmarker-icon fangmarker-icon--dead" inline
+                      data-testid="tot-fund-icon"
+                      title="Tot-Fund" aria-label="Tot-Fund">heart_broken</mat-icon>
+          }
+          @if (element.is_non_standard) {
+            <mat-icon class="fangmarker-icon fangmarker-icon--non-standard" inline
+                      data-testid="non-standard-icon"
+                      title="Nicht-Standard-Fang" aria-label="Nicht-Standard-Fang">flag</mat-icon>
+          }
         </td>
       </ng-container>
 

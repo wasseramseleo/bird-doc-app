@@ -5,6 +5,8 @@ from rest_framework.validators import UniqueValidator
 
 from .capture_service import (
     BIRD_DATA_FIELDS,
+    FANGMARKER_FIELDS,
+    MARKER_COMMENT_REQUIRED,
     CaptureValidationError,
     create_capture,
     get_or_create_ring,
@@ -23,6 +25,7 @@ from .models import (
     Species,
     SpeciesList,
     SpeciesNorm,
+    SpeciesRingSizeOverride,
     get_auw_central,
 )
 from .permissions import is_org_admin
@@ -31,6 +34,14 @@ from .tenancy import active_organization
 
 
 class SpeciesSerializer(serializers.ModelSerializer):
+    # The Empfohlene Ringgröße resolves to the Organisation's **effective** value
+    # (per-org override ?? global ``Species.ring_size``, ADR 0028) when a caller
+    # supplies its override map in the serializer context (the ``/species/``
+    # endpoint and the offline bundle do, so the data-entry pre-fill uses the
+    # org's effective value). With no map — every nested/public use — it stays the
+    # global default, so the public Wissen-Artenseite is untouched.
+    ring_size = serializers.SerializerMethodField()
+
     class Meta:
         model = Species
         fields = [
@@ -41,6 +52,14 @@ class SpeciesSerializer(serializers.ModelSerializer):
             "ring_size",
             "special_kind",
         ]
+
+    def get_ring_size(self, obj):
+        overrides = self.context.get("ring_size_overrides")
+        if overrides:
+            override = overrides.get(str(obj.id))
+            if override:
+                return override
+        return obj.ring_size
 
 
 class OfflineSpeciesSerializer(SpeciesSerializer):
@@ -137,6 +156,30 @@ class SpeciesNormOverrideSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpeciesNorm
         fields = ["id", "species_id", "species_name", *SPECIES_NORM_RULE_FIELDS]
+
+
+class SpeciesRingSizeOverrideSerializer(serializers.ModelSerializer):
+    """Read/write projection of an Organisation's Empfohlene-Ringgröße **override**
+    (issue #372, ADR 0028).
+
+    Backs the Artennormen editor's ring-size field. Deliberately a **separate**
+    resource from ``SpeciesNormOverrideSerializer``, over its **own** table, so
+    setting or clearing a ring size neither creates nor disturbs a norm-override
+    row and never toggles a plausibility check. ``organization`` is not a field —
+    the ViewSet server-sets it to the actor's active Organisation, so a client can
+    neither write another tenant's override nor a global default. Clearing the
+    override (inherit the global) is a delete ("Auf Standard zurücksetzen"), not a
+    null ring size — null-to-inherit is simply the absence of a row.
+    """
+
+    species_id = serializers.PrimaryKeyRelatedField(
+        queryset=Species.objects.all(), source="species"
+    )
+    species_name = serializers.CharField(source="species.common_name_de", read_only=True)
+
+    class Meta:
+        model = SpeciesRingSizeOverride
+        fields = ["id", "species_id", "species_name", "ring_size"]
 
 
 class CentralSerializer(serializers.ModelSerializer):
@@ -597,6 +640,10 @@ class DataEntrySerializer(serializers.ModelSerializer):
             "has_brood_patch",
             "has_cpl_plus",
             "has_mites",
+            # Fangmarker (ADR 0026): serialized on both read and write so lists and
+            # the IWM export read off them and the offline outbox round-trips them.
+            "is_dead_recovery",
+            "is_non_standard",
         ]
         read_only_fields = ["created", "updated"]
 
@@ -625,37 +672,56 @@ class DataEntrySerializer(serializers.ModelSerializer):
 
     def _null_bird_data_for_destroyed_ring(self, validated_data):
         """A 'ring_destroyed' Sonderart (the 'Ring Vernichtet' marker) has no
-        bird, so the backend authoritatively blanks every bird-data field,
+        bird, so the backend authoritatively blanks every bird-data field and
+        forces both Fangmarker off (there is nothing to mark — ADR 0026),
         whatever the client sent. Ring, Beringer, Station and Datum stay
-        required."""
+        required. Applied on the update path; the create path does the same in
+        the shared capture service."""
         species = validated_data.get("species")
         if species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED:
             for field in BIRD_DATA_FIELDS:
                 validated_data[field] = None
+            for field in FANGMARKER_FIELDS:
+                validated_data[field] = False
 
     def validate(self, attrs):
-        """Enforce the mandatory Bemerkung for an 'unknown_species' (Aves
-        ignota) capture. The unusual catch must always be described, so a blank
-        comment is rejected here at the serializer layer (the model/admin stay
-        unconstrained for data repair). See ADR 0004."""
+        """Enforce the mandatory Bemerkung for the situations that demand it: an
+        'unknown_species' (Aves ignota) capture (ADR 0004) and either Fangmarker —
+        Tot-Fund or Nicht-Standard-Fang (ADR 0026). The unusual catch must always
+        be described, so a blank comment is rejected here at the serializer layer
+        (the model/admin stay unconstrained for data repair)."""
         species = attrs.get("species")
         if species is None and self.instance is not None:
             species = self.instance.species
-        if species is not None and species.special_kind == Species.SpecialKind.UNKNOWN_SPECIES:
-            if "comment" in attrs:
-                comment = attrs["comment"]
-            elif self.instance is not None:
-                comment = self.instance.comment
-            else:
-                comment = None
+
+        def resolved(field):
+            if field in attrs:
+                return attrs[field]
+            if self.instance is not None:
+                return getattr(self.instance, field)
+            return None
+
+        is_ring_destroyed = (
+            species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED
+        )
+        is_aves_ignota = (
+            species is not None and species.special_kind == Species.SpecialKind.UNKNOWN_SPECIES
+        )
+        # A Ring-vernichtet capture has no bird to mark, so the markers never
+        # demand a comment there (they are forced off in the capture service).
+        marker_set = not is_ring_destroyed and (
+            bool(resolved("is_dead_recovery")) or bool(resolved("is_non_standard"))
+        )
+
+        if is_aves_ignota or marker_set:
+            comment = resolved("comment")
             if not (comment and comment.strip()):
-                raise serializers.ValidationError(
-                    {
-                        "comment": _(
-                            "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
-                        )
-                    }
+                message = (
+                    _("Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich.")
+                    if is_aves_ignota
+                    else MARKER_COMMENT_REQUIRED
                 )
+                raise serializers.ValidationError({"comment": message})
         return attrs
 
     def create(self, validated_data):

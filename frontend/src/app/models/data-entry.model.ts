@@ -105,6 +105,11 @@ export interface DataEntry {
   has_hunger_stripes: boolean;
   has_brood_patch: boolean;
   has_cpl_plus: boolean;
+  // Fangmarker (ADR 0026): two independent booleans that flag a special capture
+  // situation (Tot-Fund, Nicht-Standard-Fang) without replacing the real Art or
+  // Ring. Serialized on both read and write, so they ride the offline outbox.
+  is_dead_recovery: boolean;
+  is_non_standard: boolean;
 }
 
 export interface SelectOption<T> {

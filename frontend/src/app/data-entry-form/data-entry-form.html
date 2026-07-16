@@ -42,7 +42,20 @@
 
         <ng-container matColumnDef="species">
           <th mat-header-cell *matHeaderCellDef>Art</th>
-          <td mat-cell *matCellDef="let element">{{ element.species?.common_name_de ?? '—' }}</td>
+          <td mat-cell *matCellDef="let element">
+            {{ element.species?.common_name_de ?? '—' }}
+            <!-- #371: distinct Fangmarker row icons (ADR 0026). -->
+            @if (element.is_dead_recovery) {
+              <mat-icon class="fangmarker-icon fangmarker-icon--dead" inline
+                        data-testid="history-tot-fund-icon"
+                        title="Tot-Fund" aria-label="Tot-Fund">heart_broken</mat-icon>
+            }
+            @if (element.is_non_standard) {
+              <mat-icon class="fangmarker-icon fangmarker-icon--non-standard" inline
+                        data-testid="history-non-standard-icon"
+                        title="Nicht-Standard-Fang" aria-label="Nicht-Standard-Fang">flag</mat-icon>
+            }
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="bird_status">
@@ -119,7 +132,8 @@
   </div>
 
   <form [formGroup]="entryForm" (ngSubmit)="onSubmit()" class="data-entry-form" novalidate
-        [class.edit-mode]="isEditMode()">
+        [class.edit-mode]="isEditMode()"
+        [class.non-standard-mode]="isNonStandard()">
     @if (capsLockOn()) {
       <div class="capslock-hint" data-testid="capslock-hint" role="status">
         ⚠️ Feststelltaste (Caps Lock) ist aktiv
@@ -157,6 +171,11 @@
     }
     @if (isEditMode()) {
       <div class="edit-mode-badge">Bearbeitungsmodus</div>
+    }
+    @if (isNonStandard()) {
+      <div class="non-standard-badge" data-testid="non-standard-badge" role="status">
+        Nicht-Standard-Fang
+      </div>
     }
     @if (isQueuedEditMode()) {
       <div class="queued-edit-badge" role="status">
@@ -495,9 +514,17 @@
         <textarea matInput formControlName="comment" rows="3"></textarea>
         @if (isUnknownSpecies()) {
           <mat-hint>Pflichtfeld für „Aves ignota“ — bitte den Fang beschreiben.</mat-hint>
+        } @else if (isNonStandard()) {
+          <mat-hint data-testid="non-standard-hint">Pflichtfeld für Nicht-Standard-Fang — bitte den Fang beschreiben.</mat-hint>
+        } @else if (isDeadRecovery()) {
+          <mat-hint>Pflichtfeld für Tot-Fund — die Todesumstände sind in der Bemerkung festgehalten.</mat-hint>
         }
         @if (entryForm.controls.comment.hasError('required')) {
-          <mat-error>Für „Aves ignota“ ist eine Bemerkung erforderlich.</mat-error>
+          @if (isUnknownSpecies()) {
+            <mat-error>Für „Aves ignota“ ist eine Bemerkung erforderlich.</mat-error>
+          } @else {
+            <mat-error>Bei einem Tot-Fund oder Nicht-Standard-Fang ist eine Bemerkung erforderlich.</mat-error>
+          }
         }
       </mat-form-field>
     </div>
@@ -539,6 +566,25 @@
                 data-testid="destroyed-ring-button"
                 (click)="onDestroyedRing()">
           Ring vernichtet
+        </button>
+        <!-- #371: Fangmarker toggles (ADR 0026). Plain buttons, skipped by Tab
+             (tabindex="-1"), hidden while Ring vernichtet is active. Each toggles
+             off again to undo a mis-click. -->
+        <button mat-button type="button" tabindex="-1"
+                class="fangmarker-link"
+                [class.is-active]="isDeadRecovery()"
+                [attr.aria-pressed]="isDeadRecovery()"
+                data-testid="tot-fund-button"
+                (click)="onToggleDeadRecovery()">
+          Tot-Fund
+        </button>
+        <button mat-button type="button" tabindex="-1"
+                class="fangmarker-link"
+                [class.is-active]="isNonStandard()"
+                [attr.aria-pressed]="isNonStandard()"
+                data-testid="non-standard-button"
+                (click)="onToggleNonStandard()">
+          Nicht-Standard-Fang
         </button>
       }
       @if (isEditMode()) {
