@@ -9,7 +9,7 @@ Shared by the per-org norms read API and the offline bundle so the client's
 
 from django.db.models import Q
 
-from .models import SpeciesNorm
+from .models import SpeciesNorm, SpeciesRingSizeOverride
 
 
 def effective_norms_for_organization(organization):
@@ -33,3 +33,23 @@ def effective_norms_for_organization(organization):
         if existing is None or norm.organization_id is not None:
             by_species[norm.species_id] = norm
     return list(by_species.values())
+
+
+def ring_size_overrides_for_organization(organization):
+    """Return the Organisation's Empfohlene-Ringgröße overrides as a
+    ``{str(species_id): ring_size}`` map (ADR 0028).
+
+    This is the *override* layer only — a species absent from the map inherits the
+    global ``Species.ring_size``. Resolved **independently** of the whole-row
+    Artennorm: the ring-size override is its own table, so it neither reads nor
+    writes ``SpeciesNorm``. With no Organisation the map is empty (mirrors the
+    other org-scoped resources), so every species inherits its global default.
+    """
+    if organization is None:
+        return {}
+    return {
+        str(species_id): ring_size
+        for species_id, ring_size in SpeciesRingSizeOverride.objects.filter(
+            organization=organization
+        ).values_list("species_id", "ring_size")
+    }

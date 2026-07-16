@@ -1,3 +1,5 @@
+import {RingSize} from './ring.model';
+
 // Artennorm models (PRD #245, issue #251, ADR 0021).
 //
 // The tunable rule columns of an Artennorm. Numeric bands ride the wire as
@@ -46,4 +48,22 @@ export interface SpeciesNormOverride extends SpeciesNormRules {
 // full set of tunable columns (null = that check off).
 export interface SpeciesNormOverridePayload extends SpeciesNormRules {
   species_id: string;
+}
+
+// An Organisation's Empfohlene-Ringgröße override (issue #372, ADR 0028) from the
+// Admin CRUD resource /species-ring-size-overrides/. A *standalone* value on its
+// own table, resolved independently of the whole-row Artennorm: setting or
+// clearing it never touches a plausibility check. Its own `id` addresses the row
+// for "Auf Standard zurücksetzen" (delete → inherit the global Species.ring_size).
+export interface SpeciesRingSizeOverride {
+  id: string;
+  species_id: string;
+  species_name: string;
+  ring_size: RingSize;
+}
+
+// The write payload for saving (POST upsert) a ring-size override.
+export interface SpeciesRingSizeOverridePayload {
+  species_id: string;
+  ring_size: RingSize;
 }

@@ -17,10 +17,11 @@ from decimal import Decimal
 
 import pytest
 
-from birds.models import SpeciesNorm
+from birds.models import Ring, SpeciesNorm, SpeciesRingSizeOverride
 
 OVERRIDES_URL = "/api/birds/species-norm-overrides/"
 NORMS_URL = "/api/birds/species-norms/"
+RING_SIZE_OVERRIDES_URL = "/api/birds/species-ring-size-overrides/"
 
 
 def _results(response):
@@ -33,6 +34,13 @@ def _effective(client, species_id):
     """The resolved effective Artennorm row for ``species_id`` (or ``None``)."""
     rows = client.get(NORMS_URL).json()["norms"]
     return next((row for row in rows if row["species_id"] == str(species_id)), None)
+
+
+def _effective_ring_size(client, species_id):
+    """The Organisation's effective Empfohlene Ringgröße for ``species_id`` as the
+    data-entry pre-fill sees it — i.e. the ``ring_size`` served on the species
+    detail (override ?? global, ADR 0028)."""
+    return client.get(f"/api/birds/species/{species_id}/").json()["ring_size"]
 
 
 # --- Authentication ----------------------------------------------------------
@@ -392,3 +400,304 @@ def test_saved_override_resolves_for_the_actor_org_default_for_others(
 
     assert Decimal(str(_effective(auth_client, species.id)["weight_mean"])) == Decimal("12.00")
     assert Decimal(str(_effective(auth_client_b, species.id)["weight_mean"])) == Decimal("9.10")
+
+
+# =====================================================================
+# Empfohlene Ringgröße — per-Organisation override (issue #372, ADR 0028)
+# =====================================================================
+# A standalone per-(species, org) ring-size override resolved **independently** of
+# the whole-row Artennorm: it is its own table/resource, so setting or clearing a
+# ring size neither creates nor disturbs a norm-override row and never toggles a
+# plausibility check. Effective Empfohlene Ringgröße = org override ?? the global
+# ``Species.ring_size`` (a null override = inherit). The ``species`` fixture ships
+# a global ``ring_size`` of ``V``.
+
+
+# --- Admin create / round-trip -----------------------------------------------
+
+
+@pytest.mark.django_db
+def test_admin_creates_a_ring_size_override(auth_client, membership, organization, species):
+    """An Admin sets the Organisation's Empfohlene Ringgröße for a species (201);
+    the row is org-scoped and lives in its own table, not on ``SpeciesNorm``."""
+    response = auth_client.post(
+        RING_SIZE_OVERRIDES_URL,
+        {"species_id": str(species.id), "ring_size": Ring.RingSizes.S},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    override = SpeciesRingSizeOverride.objects.get(species=species, organization=organization)
+    assert override.ring_size == Ring.RingSizes.S
+    assert response.json()["species_id"] == str(species.id)
+    assert response.json()["ring_size"] == Ring.RingSizes.S
+
+
+@pytest.mark.django_db
+def test_ring_size_override_round_trips_via_the_list(
+    auth_client, membership, organization, species
+):
+    """The saved override round-trips: it comes back on the org-scoped list with
+    its species, ring size and own id (for "Auf Standard zurücksetzen")."""
+    auth_client.post(
+        RING_SIZE_OVERRIDES_URL,
+        {"species_id": str(species.id), "ring_size": Ring.RingSizes.T},
+        format="json",
+    )
+
+    rows = _results(auth_client.get(RING_SIZE_OVERRIDES_URL))
+    assert len(rows) == 1
+    assert rows[0]["species_id"] == str(species.id)
+    assert rows[0]["ring_size"] == Ring.RingSizes.T
+    assert rows[0]["id"]
+
+
+@pytest.mark.django_db
+def test_ring_size_override_upserts_by_species(auth_client, membership, organization, species):
+    """Save is idempotent by species within the Organisation: a second POST
+    updates the ring size in place (200) rather than colliding on the unique
+    (species, organization) constraint."""
+    SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization, ring_size=Ring.RingSizes.S
+    )
+
+    response = auth_client.post(
+        RING_SIZE_OVERRIDES_URL,
+        {"species_id": str(species.id), "ring_size": Ring.RingSizes.T},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    assert (
+        SpeciesRingSizeOverride.objects.filter(species=species, organization=organization).count()
+        == 1
+    )
+    override = SpeciesRingSizeOverride.objects.get(species=species, organization=organization)
+    assert override.ring_size == Ring.RingSizes.T
+
+
+@pytest.mark.django_db
+def test_ring_size_override_created_is_always_org_scoped(
+    auth_client, membership, organization, species
+):
+    """``organization`` is server-set to the actor's active Organisation — a client
+    can neither plant another tenant's override nor a global default row."""
+    auth_client.post(
+        RING_SIZE_OVERRIDES_URL,
+        {"species_id": str(species.id), "ring_size": Ring.RingSizes.S},
+        format="json",
+    )
+
+    assert SpeciesRingSizeOverride.objects.get(species=species).organization == organization
+
+
+@pytest.mark.django_db
+def test_ring_size_override_rejects_an_unknown_size(auth_client, membership, organization, species):
+    """A ring size outside the known scheme is a clean 400, not a stored row."""
+    response = auth_client.post(
+        RING_SIZE_OVERRIDES_URL,
+        {"species_id": str(species.id), "ring_size": "ZZ"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert not SpeciesRingSizeOverride.objects.filter(species=species).exists()
+
+
+# --- Effective resolution = override ?? global -------------------------------
+
+
+@pytest.mark.django_db
+def test_effective_ring_size_resolves_override_over_global(
+    auth_client, auth_client_b, membership, scientist_b, organization, species
+):
+    """After Organisation A saves a ring-size override, A's effective Empfohlene
+    Ringgröße resolves to it while Organisation B still inherits the global
+    ``Species.ring_size`` (tenant-isolated coalesce)."""
+    assert species.ring_size == Ring.RingSizes.V
+
+    save = auth_client.post(
+        RING_SIZE_OVERRIDES_URL,
+        {"species_id": str(species.id), "ring_size": Ring.RingSizes.S},
+        format="json",
+    )
+    assert save.status_code == 201, save.json()
+
+    assert _effective_ring_size(auth_client, species.id) == Ring.RingSizes.S
+    assert _effective_ring_size(auth_client_b, species.id) == Ring.RingSizes.V
+
+
+@pytest.mark.django_db
+def test_no_ring_size_override_inherits_the_global(auth_client, membership, organization, species):
+    """A species with no override simply inherits the global default."""
+    assert not SpeciesRingSizeOverride.objects.filter(species=species).exists()
+    assert _effective_ring_size(auth_client, species.id) == species.ring_size
+
+
+@pytest.mark.django_db
+def test_deleting_ring_size_override_falls_back_to_the_global(
+    auth_client, membership, organization, species
+):
+    """ "Auf Standard zurücksetzen": deleting the override makes the species inherit
+    the global ``Species.ring_size`` again (null override = inherit)."""
+    override = SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization, ring_size=Ring.RingSizes.S
+    )
+    assert _effective_ring_size(auth_client, species.id) == Ring.RingSizes.S
+
+    response = auth_client.delete(f"{RING_SIZE_OVERRIDES_URL}{override.id}/")
+
+    assert response.status_code == 204
+    assert not SpeciesRingSizeOverride.objects.filter(id=override.id).exists()
+    assert _effective_ring_size(auth_client, species.id) == Ring.RingSizes.V
+
+
+# --- Independence: ring size and the plausibility norms never touch each other -
+
+
+@pytest.mark.django_db
+def test_setting_ring_size_override_leaves_the_norm_columns_untouched(
+    auth_client, membership, organization, species
+):
+    """Setting a ring-size override creates NO ``SpeciesNorm`` row and never toggles
+    a plausibility check: a species with a global default norm still resolves to
+    that default afterwards (ADR 0028 — ring size never rides the whole-row norm)."""
+    SpeciesNorm.objects.create(
+        species=species, organization=None, weight_mean=Decimal("9.10"), weight_sd=Decimal("0.82")
+    )
+
+    response = auth_client.post(
+        RING_SIZE_OVERRIDES_URL,
+        {"species_id": str(species.id), "ring_size": Ring.RingSizes.S},
+        format="json",
+    )
+    assert response.status_code == 201, response.json()
+
+    # No norm override row was minted — an all-null one would have disabled every
+    # check for the Organisation.
+    assert not SpeciesNorm.objects.filter(species=species, organization=organization).exists()
+    # The effective norm is still the untouched global default.
+    row = _effective(auth_client, species.id)
+    assert Decimal(str(row["weight_mean"])) == Decimal("9.10")
+
+
+@pytest.mark.django_db
+def test_clearing_ring_size_override_leaves_the_norm_override_untouched(
+    auth_client, membership, organization, species
+):
+    """Clearing the ring size (deleting its override) leaves an existing norm
+    override completely intact (and vice-versa is structural — separate tables)."""
+    norm = SpeciesNorm.objects.create(
+        species=species,
+        organization=organization,
+        weight_mean=Decimal("12.00"),
+        weight_sd=Decimal("1.00"),
+    )
+    ring_override = SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization, ring_size=Ring.RingSizes.S
+    )
+
+    response = auth_client.delete(f"{RING_SIZE_OVERRIDES_URL}{ring_override.id}/")
+
+    assert response.status_code == 204
+    norm.refresh_from_db()
+    assert norm.weight_mean == Decimal("12.000")
+    assert Decimal(str(_effective(auth_client, species.id)["weight_mean"])) == Decimal("12.00")
+
+
+@pytest.mark.django_db
+def test_setting_norm_override_leaves_the_ring_size_untouched(
+    auth_client, membership, organization, species
+):
+    """Vice-versa: saving a plausibility norm override neither creates a ring-size
+    override nor changes the effective Empfohlene Ringgröße (still the global)."""
+    response = auth_client.post(
+        OVERRIDES_URL,
+        {"species_id": str(species.id), "weight_mean": "12.00", "weight_sd": "1.00"},
+        format="json",
+    )
+    assert response.status_code == 201, response.json()
+
+    assert not SpeciesRingSizeOverride.objects.filter(species=species).exists()
+    assert _effective_ring_size(auth_client, species.id) == species.ring_size
+
+
+# --- Authorization: Admin-only writes, Mitglied read-only --------------------
+
+
+@pytest.mark.django_db
+def test_plain_mitglied_can_read_ring_size_overrides(
+    mitglied_client, mitglied_scientist, organization, species
+):
+    SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization, ring_size=Ring.RingSizes.S
+    )
+
+    response = mitglied_client.get(RING_SIZE_OVERRIDES_URL)
+
+    assert response.status_code == 200
+    assert [row["species_id"] for row in _results(response)] == [str(species.id)]
+
+
+@pytest.mark.django_db
+def test_plain_mitglied_cannot_create_a_ring_size_override(
+    mitglied_client, mitglied_scientist, organization, species
+):
+    response = mitglied_client.post(
+        RING_SIZE_OVERRIDES_URL,
+        {"species_id": str(species.id), "ring_size": Ring.RingSizes.S},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    assert not SpeciesRingSizeOverride.objects.filter(species=species).exists()
+
+
+@pytest.mark.django_db
+def test_plain_mitglied_cannot_delete_a_ring_size_override(
+    mitglied_client, mitglied_scientist, organization, species
+):
+    override = SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization, ring_size=Ring.RingSizes.S
+    )
+
+    response = mitglied_client.delete(f"{RING_SIZE_OVERRIDES_URL}{override.id}/")
+
+    assert response.status_code == 403
+    assert SpeciesRingSizeOverride.objects.filter(id=override.id).exists()
+
+
+@pytest.mark.django_db
+def test_ring_size_overrides_require_authentication(api_client):
+    response = api_client.get(RING_SIZE_OVERRIDES_URL)
+    assert response.status_code in (401, 403)
+
+
+# --- Tenant isolation --------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_org_cannot_see_another_orgs_ring_size_override(
+    auth_client, membership, organization, organization_b, species
+):
+    SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization_b, ring_size=Ring.RingSizes.X
+    )
+
+    response = auth_client.get(RING_SIZE_OVERRIDES_URL)
+
+    assert _results(response) == []
+
+
+@pytest.mark.django_db
+def test_cross_tenant_ring_size_override_delete_returns_404(
+    auth_client, membership, organization_b, species
+):
+    foreign = SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization_b, ring_size=Ring.RingSizes.X
+    )
+
+    response = auth_client.delete(f"{RING_SIZE_OVERRIDES_URL}{foreign.id}/")
+
+    assert response.status_code == 404
+    assert SpeciesRingSizeOverride.objects.filter(id=foreign.id).exists()

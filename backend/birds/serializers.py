@@ -23,6 +23,7 @@ from .models import (
     Species,
     SpeciesList,
     SpeciesNorm,
+    SpeciesRingSizeOverride,
     get_auw_central,
 )
 from .permissions import is_org_admin
@@ -31,6 +32,14 @@ from .tenancy import active_organization
 
 
 class SpeciesSerializer(serializers.ModelSerializer):
+    # The Empfohlene Ringgröße resolves to the Organisation's **effective** value
+    # (per-org override ?? global ``Species.ring_size``, ADR 0028) when a caller
+    # supplies its override map in the serializer context (the ``/species/``
+    # endpoint and the offline bundle do, so the data-entry pre-fill uses the
+    # org's effective value). With no map — every nested/public use — it stays the
+    # global default, so the public Wissen-Artenseite is untouched.
+    ring_size = serializers.SerializerMethodField()
+
     class Meta:
         model = Species
         fields = [
@@ -41,6 +50,14 @@ class SpeciesSerializer(serializers.ModelSerializer):
             "ring_size",
             "special_kind",
         ]
+
+    def get_ring_size(self, obj):
+        overrides = self.context.get("ring_size_overrides")
+        if overrides:
+            override = overrides.get(str(obj.id))
+            if override:
+                return override
+        return obj.ring_size
 
 
 class OfflineSpeciesSerializer(SpeciesSerializer):
@@ -137,6 +154,30 @@ class SpeciesNormOverrideSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpeciesNorm
         fields = ["id", "species_id", "species_name", *SPECIES_NORM_RULE_FIELDS]
+
+
+class SpeciesRingSizeOverrideSerializer(serializers.ModelSerializer):
+    """Read/write projection of an Organisation's Empfohlene-Ringgröße **override**
+    (issue #372, ADR 0028).
+
+    Backs the Artennormen editor's ring-size field. Deliberately a **separate**
+    resource from ``SpeciesNormOverrideSerializer``, over its **own** table, so
+    setting or clearing a ring size neither creates nor disturbs a norm-override
+    row and never toggles a plausibility check. ``organization`` is not a field —
+    the ViewSet server-sets it to the actor's active Organisation, so a client can
+    neither write another tenant's override nor a global default. Clearing the
+    override (inherit the global) is a delete ("Auf Standard zurücksetzen"), not a
+    null ring size — null-to-inherit is simply the absence of a row.
+    """
+
+    species_id = serializers.PrimaryKeyRelatedField(
+        queryset=Species.objects.all(), source="species"
+    )
+    species_name = serializers.CharField(source="species.common_name_de", read_only=True)
+
+    class Meta:
+        model = SpeciesRingSizeOverride
+        fields = ["id", "species_id", "species_name", "ring_size"]
 
 
 class CentralSerializer(serializers.ModelSerializer):

@@ -18,7 +18,13 @@ from decimal import Decimal
 from django.urls import reverse
 from django.utils.text import slugify
 
-from birds.models import Species, SpeciesNorm
+from birds.models import (
+    Organization,
+    Ring,
+    Species,
+    SpeciesNorm,
+    SpeciesRingSizeOverride,
+)
 
 WISSEN_RINGGROESSEN_URL = "/wissen/ringgroessen/"
 SUCHBEGRIFF = "Ringgrößen-Tabelle Österreich"
@@ -142,6 +148,28 @@ def test_artseite_renders_german_h1_taxonomy_and_ringgroesse(client, db):
     assert kohlmeise.order_name in content
     assert "Empfohlene Ringgröße" in content
     assert kohlmeise.ring_size in content
+
+
+def test_artseite_shows_the_global_ring_size_never_an_org_override(client, db):
+    # Empfohlene Ringgröße per-org overrides (ADR 0028) never leak to the public
+    # Artenseite: it keeps reading the global ``Species.ring_size`` even when an
+    # Organisation has set a different override for the same species.
+    kohlmeise = Species.objects.get(scientific_name="Parus major")
+    assert kohlmeise.ring_size, "seed data lost Parus major's Empfohlene Ringgröße"
+    org = Organization.objects.create(handle="ORGX", name="Override Org", country="AT")
+    # A distinctive two-letter override code that cannot substring-match the page's
+    # German prose or taxonomy, and differs from the global value.
+    override_size = "GA"
+    assert override_size != kohlmeise.ring_size and override_size in dict(Ring.RingSizes.choices)
+    SpeciesRingSizeOverride.objects.create(
+        species=kohlmeise, organization=org, ring_size=override_size
+    )
+
+    content = client.get("/wissen/art/parus-major/").content.decode()
+
+    assert kohlmeise.ring_size in content
+    # The org override must not leak onto the public page.
+    assert override_size not in content
 
 
 def test_artseite_without_ring_size_shows_keine_standard_empfehlung(client, db):

@@ -21,6 +21,8 @@ import {
   EffectiveSpeciesNorm,
   SpeciesNormOverride,
   SpeciesNormOverridePayload,
+  SpeciesRingSizeOverride,
+  SpeciesRingSizeOverridePayload,
 } from '../models/species-norm.model';
 import {environment} from '../../environments/environment';
 
@@ -296,6 +298,46 @@ export class ApiService {
   // the global default (Admin-only).
   deleteSpeciesNormOverride(id: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/species-norm-overrides/${id}/`);
+  }
+
+  // --- Empfohlene Ringgröße overrides (issue #372, ADR 0028) -----------------
+  // A standalone per-(species, org) override resolved independently of the
+  // whole-row Artennorm: its own resource, so setting or clearing a ring size
+  // never touches a plausibility check.
+
+  // The COMPLETE set of the Organisation's ring-size overrides, following DRF's
+  // `next` link through every page (mirrors getAllSpeciesNormOverrides).
+  getAllSpeciesRingSizeOverrides(): Observable<SpeciesRingSizeOverride[]> {
+    return this.http
+      .get<PaginatedApiResponse<SpeciesRingSizeOverride>>(
+        `${this.apiUrl}/species-ring-size-overrides/`,
+      )
+      .pipe(
+        expand((res) =>
+          res.next
+            ? this.http.get<PaginatedApiResponse<SpeciesRingSizeOverride>>(res.next)
+            : EMPTY,
+        ),
+        reduce((acc, res) => acc.concat(res.results), [] as SpeciesRingSizeOverride[]),
+      );
+  }
+
+  // Upsert the Organisation's Empfohlene-Ringgröße override for a species
+  // (Admin-only). One POST; the backend upserts by species within the active
+  // Organisation.
+  saveSpeciesRingSizeOverride(
+    payload: SpeciesRingSizeOverridePayload,
+  ): Observable<SpeciesRingSizeOverride> {
+    return this.http.post<SpeciesRingSizeOverride>(
+      `${this.apiUrl}/species-ring-size-overrides/`,
+      payload,
+    );
+  }
+
+  // "Auf Standard zurücksetzen" for the ring size: delete the override so the
+  // species inherits the global Species.ring_size again (Admin-only).
+  deleteSpeciesRingSizeOverride(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/species-ring-size-overrides/${id}/`);
   }
 
   // Feedback ("Feedback / Fehler melden", issue #81) is not a /birds resource —
