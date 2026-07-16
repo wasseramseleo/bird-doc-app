@@ -199,6 +199,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // without re-reading the reference cache.
   private readonly loadedQueuedFormValue = signal<Record<string, unknown> | null>(null);
   readonly loading = signal<boolean>(false);
+  // #385: the GET behind /data-entry/:id failed. Distinct from `syncError`
+  // (the server rejected a *queued* entry during sync): this one means the
+  // record never arrived, so there is nothing to edit and the form must not
+  // render. Any failure lands here — 5xx, timeout, dropped connection, or
+  // status 0 while offline. Only the server path can set it; the queued path
+  // reads local state and cannot fail this way.
+  readonly loadError = signal<boolean>(false);
   // MO-3 submit feedback: drives the brief green "Gespeichert ✓" button state.
   readonly saved = signal<boolean>(false);
   // #23: a prominent CapsLock warning. Beringer type ring numbers and codes
@@ -822,21 +829,33 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       }
 
       this.loading.set(true);
-      this.apiService.getDataEntry(id).subscribe(entry => {
-        this.loadedEntry.set(entry);
-        this.entryForm.patchValue(this.transformToForm(entry));
-        // #273: seed the "last searched ring" key so leaving the Ringnummer on a
-        // saved Wiederfang does not silently re-fetch and clobber edits. A
-        // changed Ringnummer still differs from this key and triggers a lookup.
-        this.lastSearchedRingKey = this.ringLookupKey();
-        // Issue #19/#57: a loaded Sonderart entry must apply the same
-        // collapse / mandatory-comment behaviour as a freshly selected one.
-        this.selectedSpecies.set(entry.species ?? null);
-        this.loading.set(false);
-        // PRD #261 (#267): surface the quiet suffix icons for any stored value
-        // already out of range, without a modal (the norm may still be loading;
-        // loadNorms re-seeds once it lands).
-        this.seedPlausibilityOnLoad();
+      this.loadError.set(false);
+      // #385: the error callback is not optional here. Without it a failed GET
+      // never cleared `loading`, leaving a permanent spinner over an empty
+      // form: Speichern stayed disabled via `entryForm.invalid || loading()`,
+      // the untouched required validators made `onSubmit()` early-return (so
+      // Ctrl+S was dead too), and nothing told the user what had happened.
+      this.apiService.getDataEntry(id).subscribe({
+        next: entry => {
+          this.loadedEntry.set(entry);
+          this.entryForm.patchValue(this.transformToForm(entry));
+          // #273: seed the "last searched ring" key so leaving the Ringnummer on a
+          // saved Wiederfang does not silently re-fetch and clobber edits. A
+          // changed Ringnummer still differs from this key and triggers a lookup.
+          this.lastSearchedRingKey = this.ringLookupKey();
+          // Issue #19/#57: a loaded Sonderart entry must apply the same
+          // collapse / mandatory-comment behaviour as a freshly selected one.
+          this.selectedSpecies.set(entry.species ?? null);
+          this.loading.set(false);
+          // PRD #261 (#267): surface the quiet suffix icons for any stored value
+          // already out of range, without a modal (the norm may still be loading;
+          // loadNorms re-seeds once it lands).
+          this.seedPlausibilityOnLoad();
+        },
+        error: () => {
+          this.loadError.set(true);
+          this.loading.set(false);
+        },
       });
     });
 
