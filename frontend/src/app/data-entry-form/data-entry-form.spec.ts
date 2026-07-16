@@ -14,7 +14,7 @@ import {
   MatAutocompleteSelectedEvent,
   MatAutocompleteTrigger,
 } from '@angular/material/autocomplete';
-import { of, Subject } from 'rxjs';
+import { EMPTY, of, Subject } from 'rxjs';
 
 import { DataEntryFormComponent } from './data-entry-form';
 import {
@@ -46,6 +46,8 @@ import { Scientist } from '../models/scientist.model';
 import { SpeciesNorm } from '../core/plausibility/plausibility';
 import { OfflineBundle } from '../models/offline-bundle.model';
 import { InfoDialogComponent } from '../shared/info-dialog/info-dialog';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../shared/confirm-dialog/confirm-dialog';
+import { ConnectivityService } from '../core/offline/connectivity';
 
 registerLocaleData(localeDeAt);
 
@@ -6820,5 +6822,242 @@ describe('DataEntryFormComponent', () => {
       expect(event.defaultPrevented).toBe(true);
       expect(document.activeElement).toBe(at('age_class'));
     }));
+  });
+
+  // #392 (ADR 0030): „Eintrag löschen" in der Erfassungsmaske — Bestätigung,
+  // DELETE, zurück zur Liste und ein „Rückgängig"-Snackbar als einzige
+  // Wiederherstellung. Der Knopf ist die gefährlichste Aktion der Zeile und
+  // deshalb nur absichtlich erreichbar (tabindex="-1", #387).
+  describe('Eintrag löschen aus der Erfassungsmaske (#392)', () => {
+    const dialogMock = { open: jasmine.createSpy('open') };
+    let fixture: ComponentFixture<DataEntryFormComponent>;
+    let httpMock: HttpTestingController;
+
+    function savedEntry(): DataEntry {
+      return {
+        id: '42',
+        species: { id: 's1', common_name_de: 'Kohlmeise', scientific_name: 'Parus major', ring_size: RingSize.S },
+        ring: { id: 'r1', number: '901234', size: RingSize.S },
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+        ringing_station: { handle: 'STAMT', name: 'Linz', organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' } },
+        project: null,
+        bird_status: BirdStatus.ReCatch,
+        date_time: '2024-05-01T08:30:00Z',
+        comment: 'Wiederfang am Hauptnetz',
+        parasites: [],
+      } as unknown as DataEntry;
+    }
+
+    // `entryId: null` baut die Maske im Erstellen-Modus auf (dann braucht sie ein
+    // aktives Projekt, sonst leitet sie nach Hause um).
+    async function setupForm(entryId: string | null = '42'): Promise<void> {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ActivatedRoute,
+            useValue: { snapshot: { paramMap: { get: (key: string) => (key === 'id' ? entryId : null) } } },
+          },
+          {
+            provide: ProjectService,
+            useValue: { currentProject: signal<Project | null>(createProject()), setCurrent: () => {}, clear: () => {} },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      if (entryId === null) {
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+          .flush({ count: 0, next: null, previous: null, results: [] });
+      } else {
+        httpMock
+          .expectOne((r) => r.method === 'GET' && r.url.endsWith(`/birds/data-entries/${entryId}/`))
+          .flush(savedEntry());
+      }
+      fixture.detectChanges();
+    }
+
+    const btn = (testid: string): HTMLButtonElement | null =>
+      fixture.nativeElement.querySelector(`.action-buttons button[data-testid="${testid}"]`);
+
+    // Die Maske importiert MatSnackBarModule selbst und hält deshalb eine EIGENE
+    // MatSnackBar-Instanz — TestBed.inject() liefert die falsche. Immer die aus
+    // dem Component-Injector greifen.
+    const snackBarOf = (f: ComponentFixture<DataEntryFormComponent>): MatSnackBar =>
+      (f.componentInstance as unknown as { snackBar: MatSnackBar }).snackBar;
+
+    it('renders a danger "Eintrag löschen" left of "Zurücksetzen", skipped by Tab', async () => {
+      await setupForm();
+
+      const del = btn('delete-entry-button');
+      expect(del).not.toBeNull();
+      expect(del!.textContent!.trim()).toBe('Eintrag löschen');
+      // Die gefährlichste Aktion der Zeile: nur absichtlich erreichbar (#387).
+      expect(del!.getAttribute('tabindex')).toBe('-1');
+      // Danger: in der Fehlerfarbe der Marke gezeichnet, nicht wie „Zur Liste"
+      // daneben. Material 3 kennt kein color="warn" mehr — die Farbe kommt aus
+      // dem Token, deshalb wird hier die GERENDERTE Farbe geprüft, nicht ein
+      // Attribut, das nichts bewirkt.
+      expect(getComputedStyle(del!).color).toBe('rgb(168, 65, 45)');
+
+      // Links von „Zurücksetzen" — die Reihenfolge in der Zeile ist die Aussage.
+      const labels = (Array.from(fixture.nativeElement.querySelectorAll('.action-buttons button')) as
+        HTMLButtonElement[]).map((b) => b.textContent!.trim());
+      expect(labels.indexOf('Eintrag löschen')).toBeLessThan(labels.indexOf('Zurücksetzen'));
+    });
+
+    it('does not render the delete button in create mode — there is nothing to delete yet', async () => {
+      await setupForm(null);
+
+      expect(
+        fixture.nativeElement.querySelector('.action-buttons button[data-testid="delete-entry-button"]'),
+      ).toBeNull();
+    });
+
+    it('opens the shared Bestätigung on click, worded „löschen" (kein „Storno")', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+
+      btn('delete-entry-button')!.click();
+
+      expect(dialogMock.open).toHaveBeenCalled();
+      const [componentArg, config] = dialogMock.open.calls.mostRecent().args as [
+        unknown,
+        { data: ConfirmDialogData },
+      ];
+      expect(componentArg).toBe(ConfirmDialogComponent);
+      // ADR 0030: „Löschen" ist das einzige Wort an der Oberfläche.
+      expect(config.data.title).toBe('Eintrag löschen?');
+      expect(config.data.confirmLabel).toBe('Löschen');
+      expect(JSON.stringify(config.data)).not.toMatch(/Storno|storniert/i);
+    });
+
+    it('deletes and returns to the list once the modal is confirmed', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      const snackBar = snackBarOf(fixture);
+      const openSpy = spyOn(snackBar, 'open').and.returnValue({ onAction: () => EMPTY } as never);
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+
+      btn('delete-entry-button')!.click();
+
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(navigateSpy).toHaveBeenCalledWith('/data-entries');
+      expect(openSpy).toHaveBeenCalled();
+    });
+
+    it('deletes nothing when the modal is cancelled', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+
+      btn('delete-entry-button')!.click();
+
+      httpMock.expectNone((r) => r.method === 'DELETE');
+      expect(navigateSpy).not.toHaveBeenCalled();
+    });
+
+    it('offers „Rückgängig" for ~10s and restores the entry when it is used', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      const action = new Subject<void>();
+      const openSpy = spyOn(snackBarOf(fixture), 'open').and.returnValue({
+        onAction: () => action,
+      } as never);
+      spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+
+      btn('delete-entry-button')!.click();
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(null, { status: 204, statusText: 'No Content' });
+
+      const [, actionLabel, config] = openSpy.calls.mostRecent().args as [
+        string,
+        string,
+        { duration: number },
+      ];
+      expect(actionLabel).toBe('Rückgängig');
+      expect(config.duration).toBe(10000);
+
+      // Die Nutzerin tippt „Rückgängig", solange das Fenster offen ist.
+      action.next();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/42/restore/'))
+        .flush(savedEntry());
+    });
+
+    // Der Klick auf „Löschen" navigiert weg und zerstört damit genau die
+    // Komponente, die das Undo hält. Das Snackbar überlebt (es hängt an der
+    // Wurzel-Instanz), also darf die onAction-Subscription NICHT an den DestroyRef
+    // gehängt sein — sonst räumt die Navigation das Undo ab, für das sie da ist.
+    it('still restores after the navigation away has destroyed the form', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      const action = new Subject<void>();
+      spyOn(snackBarOf(fixture), 'open').and.returnValue({ onAction: () => action } as never);
+      spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+
+      btn('delete-entry-button')!.click();
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(null, { status: 204, statusText: 'No Content' });
+
+      // Was die echte Navigation tut: die Maske ist weg, das Snackbar steht noch.
+      fixture.destroy();
+      action.next();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/42/restore/'))
+        .flush(savedEntry());
+    });
+
+    it('leaves the entry deleted when the undo window closes unused', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      // Ein Snackbar, das abläuft oder weggewischt wird, feuert onAction nie.
+      spyOn(snackBarOf(fixture), 'open').and.returnValue({ onAction: () => EMPTY } as never);
+      spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+
+      btn('delete-entry-button')!.click();
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(null, { status: 204, statusText: 'No Content' });
+
+      httpMock.expectNone((r) => r.url.endsWith('/restore/'));
+    });
+
+    // ADR 0030: offline wird nicht gelöscht. Der Knopf sperrt sich selbst, statt
+    // sich auf die „synchronisiert ⇒ offline read-only"-Regel zu verlassen — die
+    // ist heute nur an einer Stelle durchgesetzt und umgehbar (#386).
+    it('disables the button while offline and re-enables it on reconnect', async () => {
+      await setupForm();
+      const connectivity = TestBed.inject(ConnectivityService);
+      expect(btn('delete-entry-button')!.disabled).toBe(false);
+
+      connectivity.markOffline();
+      fixture.detectChanges();
+      expect(btn('delete-entry-button')!.disabled).toBe(true);
+
+      connectivity.markOnline();
+      fixture.detectChanges();
+      expect(btn('delete-entry-button')!.disabled).toBe(false);
+    });
   });
 });

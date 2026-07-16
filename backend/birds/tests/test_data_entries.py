@@ -657,6 +657,31 @@ def test_restore_clears_the_flag_and_makes_the_capture_visible_again(auth_client
 
 
 @pytest.mark.django_db
+def test_plain_mitglied_can_delete_and_undo_a_capture(
+    mitglied_client, mitglied_scientist, data_entry
+):
+    """Löschen is ungated: any Mitglied may delete, not just an Admin (ADR 0030).
+
+    Unlike the Beringer- and Norm-Overrides, which a plain Mitglied may not delete,
+    a capture carries no admin gate — it matches ``Rolle`` ("erfasst und bearbeitet
+    Fänge der gesamten Organisation") and the ungated Heute-Seite delete. Someone
+    who may already edit a capture into garbage gains no new power by deleting it.
+    The undo behind the „Rückgängig" snackbar is ungated for the same reason.
+    """
+    response = mitglied_client.delete(_detail_url(data_entry.id))
+
+    assert response.status_code == 204
+    data_entry.refresh_from_db()
+    assert data_entry.is_cancelled is True
+
+    undo = mitglied_client.post(f"{_detail_url(data_entry.id)}restore/")
+
+    assert undo.status_code == 200
+    data_entry.refresh_from_db()
+    assert data_entry.is_cancelled is False
+
+
+@pytest.mark.django_db
 def test_restore_of_another_tenants_capture_returns_404(auth_client, data_entry_b):
     """Restore is org-scoped like every other capture route: an unfiltered
     queryset must not become a cross-tenant hole (ADR 0005)."""

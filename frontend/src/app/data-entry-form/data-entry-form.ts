@@ -49,6 +49,7 @@ import {
 } from '../models/data-entry.model';
 import {ApiService} from '../service/api.service';
 import {DataAccessFacadeService} from '../service/data-access-facade.service';
+import {ConnectivityService} from '../core/offline/connectivity';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
 import {WorkbenchStorageService} from '../service/workbench-storage.service';
@@ -152,10 +153,16 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly connectivity = inject(ConnectivityService);
   private readonly elementRef = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly currentProject = this.projectService.currentProject;
+  // #392 (ADR 0030): offline wird nicht gelöscht — „Eintrag löschen" sperrt sich
+  // selbst. Bewusst NICHT auf die „synchronisiert ⇒ offline read-only"-Regel aus
+  // CONTEXT.md gestützt: die ist heute nur an einer Stelle durchgesetzt (Heute-Seite)
+  // und über die Fangliste umgehbar. Diese Lücke ist #386 und hier nicht Thema.
+  readonly isOffline = this.connectivity.isOffline;
   readonly showOptionalFields = computed(() => this.currentProject()?.show_optional_fields ?? true);
   // #336: whether the capture form shows the net block (Netznr./Netzfach/
   // Flugrichtung). Mirrors showOptionalFields — read from the active Projekt, so
@@ -1371,6 +1378,70 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // the synced-only "Letzte Fänge" list.
   onBackToList(): void {
     this.router.navigateByUrl(this.isQueuedEditMode() ? '/heute' : '/data-entries');
+  }
+
+  // #392 (ADR 0030): „Eintrag löschen" aus der Erfassungsmaske. „Löschen" ist das
+  // einzige Wort an der Oberfläche — dass die Zeile hinter einem Flag erhalten
+  // bleibt, ist eine Implementierungsentscheidung und für die Nutzerin unsichtbar.
+  // Die Bestätigung ist bewusst dieselbe wie auf der Heute-Seite.
+  onDeleteEntry(): void {
+    const id = this.entryId();
+    if (!id) {
+      return;
+    }
+    const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
+      ConfirmDialogComponent,
+      {
+        data: {
+          title: 'Eintrag löschen?',
+          message: 'Der Eintrag wird gelöscht. Du kannst das direkt danach rückgängig machen.',
+          confirmLabel: 'Löschen',
+          cancelLabel: 'Abbrechen',
+        },
+        width: '420px',
+      },
+    );
+    ref.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) {
+        return;
+      }
+      this.apiService.deleteDataEntry(id).subscribe({
+        next: () => {
+          this.router.navigateByUrl('/data-entries');
+          this.offerUndo(id);
+        },
+        error: (err) => {
+          console.error('Error deleting data entry', err);
+          this.snackBar.open('Eintrag konnte nicht gelöscht werden.', 'Schließen', {
+            duration: 3000,
+          });
+        },
+      });
+    });
+  }
+
+  // #392 (ADR 0030): das „Rückgängig"-Fenster — die einzige Wiederherstellung, die
+  // es gibt (kein Papierkorb). Bewusst NICHT an den DestroyRef der Komponente
+  // gehängt: der Klick auf „Löschen" navigiert weg und zerstört sie, ein
+  // takeUntilDestroyed() würde also genau das Undo abräumen, für das das Snackbar
+  // da ist. Läuft das Fenster ab oder wird das Snackbar weggewischt, bleibt der
+  // Eintrag gelöscht — Nichtstun ist hier die richtige Antwort.
+  private offerUndo(id: string): void {
+    this.snackBar
+      .open('Eintrag wurde gelöscht.', 'Rückgängig', {duration: 10000})
+      .onAction()
+      .subscribe(() => {
+        this.apiService.restoreDataEntry(id).subscribe({
+          next: () =>
+            this.snackBar.open('Eintrag wurde wiederhergestellt.', undefined, {duration: 3000}),
+          error: (err) => {
+            console.error('Error restoring data entry', err);
+            this.snackBar.open('Eintrag konnte nicht wiederhergestellt werden.', 'Schließen', {
+              duration: 3000,
+            });
+          },
+        });
+      });
   }
 
   // PRD #245: recompute the inline Plausibilitätswarnungen from the current form
