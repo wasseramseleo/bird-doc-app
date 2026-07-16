@@ -19,6 +19,7 @@ from .models import (
     Species,
     SpeciesList,
     SpeciesNorm,
+    SpeciesRingSizeOverride,
     Zugangscode,
 )
 
@@ -157,6 +158,20 @@ class SpeciesNormAdmin(admin.ModelAdmin):
 
     list_display = ("species", "organization", "weight_mean", "weight_sd", "sd_factor")
     list_filter = ("organization",)
+    search_fields = ("species__common_name_de", "species__scientific_name")
+    autocomplete_fields = ("species",)
+
+
+@admin.register(SpeciesRingSizeOverride)
+class SpeciesRingSizeOverrideAdmin(admin.ModelAdmin):
+    """Per-Organisation Empfohlene-Ringgröße overrides (ADR 0028).
+
+    A standalone value, its own table — independent of the whole-row Artennorm.
+    The global default lives on ``Species.ring_size``; the in-app editor writes
+    these per-org overrides."""
+
+    list_display = ("species", "organization", "ring_size")
+    list_filter = ("organization", "ring_size")
     search_fields = ("species__common_name_de", "species__scientific_name")
     autocomplete_fields = ("species",)
 

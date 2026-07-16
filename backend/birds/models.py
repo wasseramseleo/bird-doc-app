@@ -995,3 +995,50 @@ class SpeciesNorm(models.Model):
     def __str__(self):
         scope = self.organization_id or "Standard"
         return f"Artennorm {self.species_id} ({scope})"
+
+
+class SpeciesRingSizeOverride(models.Model):
+    """A per-``(species, organization)`` override of the **Empfohlene Ringgröße**
+    (ADR 0028).
+
+    The global default stays on ``Species.ring_size`` (reference data, also read
+    by the public Wissen-Artenseite). This is a **standalone** override value,
+    deliberately its **own table** and **not** a column on the whole-row
+    ``SpeciesNorm``: setting or clearing a ring size neither creates nor disturbs a
+    norm-override row and never toggles a plausibility check. The effective
+    Empfohlene Ringgröße for a species in an Organisation is the override row's
+    ``ring_size`` if one exists, else ``Species.ring_size`` — a per-value coalesce
+    (a missing row means *inherit* the global). Overriding explicitly to "no
+    recommendation" is not modelled: a null ring size is simply no row.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    species = models.ForeignKey(
+        Species,
+        on_delete=models.CASCADE,
+        related_name="ring_size_overrides",
+        verbose_name=_("Art"),
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="species_ring_size_overrides",
+        verbose_name=_("Organisation"),
+    )
+    ring_size = models.CharField(
+        max_length=3,
+        choices=Ring.RingSizes.choices,
+        verbose_name=_("Empfohlene Ringgröße"),
+    )
+
+    class Meta:
+        constraints = [
+            # At most one ring-size override per (species, Organisation).
+            models.UniqueConstraint(
+                fields=["species", "organization"],
+                name="unique_ring_size_override_per_org",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Ringgröße {self.ring_size} für {self.species_id} ({self.organization_id})"

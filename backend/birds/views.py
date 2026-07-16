@@ -38,6 +38,7 @@ from .models import (
     Species,
     SpeciesList,
     SpeciesNorm,
+    SpeciesRingSizeOverride,
 )
 from .permissions import (
     OTHER_ORG_MESSAGE,
@@ -59,9 +60,13 @@ from .serializers import (
     SpeciesListSerializer,
     SpeciesNormOverrideSerializer,
     SpeciesNormSerializer,
+    SpeciesRingSizeOverrideSerializer,
     SpeciesSerializer,
 )
-from .species_norms import effective_norms_for_organization
+from .species_norms import (
+    effective_norms_for_organization,
+    ring_size_overrides_for_organization,
+)
 from .tenancy import active_organization, active_organization_rolle
 
 # Shown when an invite would push the Organisation past its Seat-Limit. The
@@ -213,6 +218,17 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SpeciesSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["common_name_de", "scientific_name"]
+
+    def get_serializer_context(self):
+        # Serve the Organisation's **effective** Empfohlene Ringgröße (per-org
+        # override ?? global, ADR 0028) so the data-entry ring-size pre-fill uses
+        # the org's value. Absent an active Organisation the map is empty, so every
+        # species keeps its global default.
+        context = super().get_serializer_context()
+        context["ring_size_overrides"] = ring_size_overrides_for_organization(
+            active_organization(self.request.user)
+        )
+        return context
 
     def get_queryset(self):
         """
@@ -904,7 +920,11 @@ class OfflineBundleView(APIView):
             )
             .order_by("-usage_count", "common_name_de")
         )
-        return OfflineSpeciesSerializer(candidates, many=True).data
+        # Each species carries the org's **effective** Empfohlene Ringgröße
+        # (per-org override ?? global, ADR 0028) so the offline ring-size pre-fill
+        # ships pre-resolved alongside the norms.
+        context = {"ring_size_overrides": ring_size_overrides_for_organization(organization)}
+        return OfflineSpeciesSerializer(candidates, many=True, context=context).data
 
     @staticmethod
     def _ringing_stations(organization):
@@ -1054,4 +1074,57 @@ class SpeciesNormViewSet(viewsets.ModelViewSet):
         # An override never crosses the tenant boundary: the row is already scoped
         # to the active Organisation by get_queryset, and the Organisation is
         # server-owned (never a serializer field), so it stays put on update.
+        serializer.save(organization=active_organization(self.request.user))
+
+
+class SpeciesRingSizeOverrideViewSet(viewsets.ModelViewSet):
+    """Org-Admin CRUD for an Organisation's Empfohlene-Ringgröße **overrides**
+    (issue #372, ADR 0028).
+
+    The Artennormen editor's ring-size field, resolved **independently** of the
+    whole-row Artennorm: this is its own table/resource, so writing a ring size
+    neither creates nor disturbs a ``SpeciesNorm`` override and never toggles a
+    plausibility check. Admin-only writes, read open to any Mitglied
+    (``IsOrgAdminOrReadOnly``); everything is scoped to the active Organisation, so
+    a cross-tenant row is simply absent (a 404 on detail/write, never a leak).
+    ``perform_create`` server-sets the Organisation, so a create can never mint
+    another tenant's override. Deleting a row is "Auf Standard zurücksetzen" — the
+    species then inherits the global ``Species.ring_size`` again.
+    """
+
+    serializer_class = SpeciesRingSizeOverrideSerializer
+    permission_classes = [IsAuthenticated, IsOrgAdminOrReadOnly]
+
+    def get_queryset(self):
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return SpeciesRingSizeOverride.objects.none()
+        return (
+            SpeciesRingSizeOverride.objects.filter(organization=organization)
+            .select_related("species")
+            .order_by("species__common_name_de")
+        )
+
+    def create(self, request, *args, **kwargs):
+        """Upsert the Organisation's ring-size override for a species.
+
+        Idempotent by species within the active Organisation: setting a ring size
+        for a species that already has one updates it in place (200) rather than
+        colliding on the unique ``(species, organization)`` constraint, so the
+        editor's Save is a single POST. ``organization`` is server-set.
+        """
+        organization = _require_active_organization(request.user)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        existing = SpeciesRingSizeOverride.objects.filter(
+            organization=organization, species=serializer.validated_data["species"]
+        ).first()
+        if existing is not None:
+            serializer = self.get_serializer(existing, data=request.data)
+            serializer.is_valid(raise_exception=True)
+        serializer.save(organization=organization)
+        code = status.HTTP_200_OK if existing is not None else status.HTTP_201_CREATED
+        return Response(serializer.data, status=code)
+
+    def perform_update(self, serializer):
         serializer.save(organization=active_organization(self.request.user))

@@ -5,10 +5,12 @@ import {provideNoopAnimations} from '@angular/platform-browser/animations';
 import {MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
 
 import {
+  ArtennormDialogResult,
   ArtennormFormDialogComponent,
   ArtennormFormDialogData,
 } from './artennorm-form-dialog';
-import {EffectiveSpeciesNorm, SpeciesNormOverridePayload} from '../../models/species-norm.model';
+import {EffectiveSpeciesNorm} from '../../models/species-norm.model';
+import {RingSize} from '../../models/ring.model';
 import {Species} from '../../models/species.model';
 
 function makeNorm(overrides: Partial<EffectiveSpeciesNorm> = {}): EffectiveSpeciesNorm {
@@ -91,10 +93,10 @@ describe('ArtennormFormDialogComponent', () => {
     component.form.controls.weight_sd.setValue('1.00');
     component.submit();
 
-    const payload = dialogRef.close.calls.mostRecent().args[0] as SpeciesNormOverridePayload;
-    expect(payload.species_id).toBe('sp-1');
-    expect(payload.weight_mean).toBe('12.00');
-    expect(payload.weight_sd).toBe('1.00');
+    const {norm} = dialogRef.close.calls.mostRecent().args[0] as ArtennormDialogResult;
+    expect(norm.species_id).toBe('sp-1');
+    expect(norm.weight_mean).toBe('12.00');
+    expect(norm.weight_sd).toBe('1.00');
   });
 
   it('sends null for a cleared field, disabling just that check', () => {
@@ -107,10 +109,10 @@ describe('ArtennormFormDialogComponent', () => {
     component.form.controls.feather_sd.setValue('');
     component.submit();
 
-    const payload = dialogRef.close.calls.mostRecent().args[0] as SpeciesNormOverridePayload;
-    expect(payload.feather_mean).toBeNull();
-    expect(payload.feather_sd).toBeNull();
-    expect(payload.weight_mean).toBe('9.100');
+    const {norm} = dialogRef.close.calls.mostRecent().args[0] as ArtennormDialogResult;
+    expect(norm.feather_mean).toBeNull();
+    expect(norm.feather_sd).toBeNull();
+    expect(norm.weight_mean).toBe('9.100');
   });
 
   it('maps the tri-state flags to null / true / false', () => {
@@ -123,9 +125,9 @@ describe('ArtennormFormDialogComponent', () => {
     component.form.controls.dj_grossgefiedermauser_moeglich.setValue('true');
     component.submit();
 
-    const payload = dialogRef.close.calls.mostRecent().args[0] as SpeciesNormOverridePayload;
-    expect(payload.geschlechtsbestimmung_moeglich).toBeFalse();
-    expect(payload.dj_grossgefiedermauser_moeglich).toBeTrue();
+    const {norm} = dialogRef.close.calls.mostRecent().args[0] as ArtennormDialogResult;
+    expect(norm.geschlechtsbestimmung_moeglich).toBeFalse();
+    expect(norm.dj_grossgefiedermauser_moeglich).toBeTrue();
   });
 
   it('is an "add" dialog with a species picker when no norm is given', () => {
@@ -153,11 +155,39 @@ describe('ArtennormFormDialogComponent', () => {
     component.form.controls.weight_mean.setValue('18.0');
     component.submit();
 
-    const payload = dialogRef.close.calls.mostRecent().args[0] as SpeciesNormOverridePayload;
-    expect(payload.species_id).toBe('new-sp');
-    expect(payload.weight_mean).toBe('18.0');
+    const {norm} = dialogRef.close.calls.mostRecent().args[0] as ArtennormDialogResult;
+    expect(norm.species_id).toBe('new-sp');
+    expect(norm.weight_mean).toBe('18.0');
     httpMock.verify();
   }));
+
+  it('pre-fills the ring size from the current override (edit mode)', () => {
+    const {component} = setup({norm: makeNorm(), ringSize: RingSize.T});
+
+    expect(component.form.controls.ring_size.value).toBe(RingSize.T);
+  });
+
+  it('includes the chosen Empfohlene Ringgröße in the result, independent of the norm', () => {
+    const {component, dialogRef} = setup({norm: makeNorm()});
+
+    component.form.controls.ring_size.setValue(RingSize.S);
+    component.submit();
+
+    const result = dialogRef.close.calls.mostRecent().args[0] as ArtennormDialogResult;
+    expect(result.ringSize).toBe(RingSize.S);
+    // The ring size never leaks into the whole-row norm payload (ADR 0028).
+    expect('ring_size' in result.norm).toBeFalse();
+  });
+
+  it('returns a null ring size when left blank (Standard / inherit)', () => {
+    const {component, dialogRef} = setup({norm: makeNorm(), ringSize: RingSize.T});
+
+    component.form.controls.ring_size.setValue('');
+    component.submit();
+
+    const result = dialogRef.close.calls.mostRecent().args[0] as ArtennormDialogResult;
+    expect(result.ringSize).toBeNull();
+  });
 
   it('closes with no result on cancel', () => {
     const {component, dialogRef} = setup({norm: makeNorm()});
