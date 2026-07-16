@@ -65,10 +65,16 @@ export interface Project {
 export interface ProjectCreatePayload {
   title: string;
   description?: string;
-  organization_id: string;
+  // No organization_id: the server attaches the new Projekt to the requester's
+  // active Organisation and ignores any client-supplied one (issue #389).
+  scientist_ids: string[];
   projekttyp?: Projekttyp;
+  show_optional_fields?: boolean;
   show_net_fields?: boolean;
   default_station_id?: string | null;
+  // The Saison window (ADR 0029): both null ⇒ the Projekt gets no season.
+  saison_start_month?: number | null;
+  saison_end_month?: number | null;
 }
 
 export interface ProjectUpdatePayload {

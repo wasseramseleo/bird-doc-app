@@ -53,7 +53,6 @@ function setup() {
 function render(ctx: ReturnType<typeof setup>, projects: Project[]): void {
   ctx.fixture.detectChanges();
   ctx.httpMock.expectOne((r) => r.url.endsWith('/projects/')).flush(page0(projects));
-  ctx.httpMock.expectOne((r) => r.url.endsWith('/organizations/')).flush(page0([]));
   ctx.httpMock.expectOne((r) => r.url.endsWith('/scientists/')).flush(page0([]));
   ctx.fixture.detectChanges();
 }
