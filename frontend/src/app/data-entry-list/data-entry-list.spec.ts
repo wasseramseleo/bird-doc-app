@@ -147,6 +147,114 @@ describe('DataEntryListComponent', () => {
     expect(rows[0].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
   });
 
+  // #388 (ADR 0026): a Fangmarker marks the Fang, not the Art — the icons live in
+  // their own last column, never in der Art-Zelle.
+  it('renders the marker icons in the marker cell and not in the Art cell', () => {
+    flushEntries([
+      row({
+        id: 'both',
+        comment: 'linker Flügel verletzt',
+        is_dead_recovery: true,
+        is_non_standard: true,
+      } as Partial<DataEntry>),
+    ]);
+
+    const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+    const markerCell = row0.querySelector('[data-testid="marker-cell"]') as HTMLElement;
+    const speciesCell = row0.querySelector('[data-testid="species-cell"]') as HTMLElement;
+
+    for (const testid of ['bemerkung-icon', 'tot-fund-icon', 'non-standard-icon']) {
+      expect(markerCell.querySelector(`[data-testid="${testid}"]`))
+        .withContext(`${testid} sitzt in der Marker-Spalte`)
+        .not.toBeNull();
+      expect(speciesCell.querySelector(`[data-testid="${testid}"]`))
+        .withContext(`${testid} sitzt nicht in der Art-Zelle`)
+        .toBeNull();
+    }
+  });
+
+  // #388: beide Fangmarker erzwingen eine Bemerkung — Slot 1 ist also immer belegt,
+  // wenn Slot 2 oder 3 es ist. Ein ⓘ, das nur "Bemerkung vorhanden" sagt, wäre genau
+  // dort redundant; der Tooltip trägt deshalb den echten Text.
+  it('shows the actual Bemerkung text on the ⓘ instead of a generic hint', () => {
+    flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
+
+    const icon = fixture.nativeElement.querySelector(
+      '[data-testid="bemerkung-icon"]',
+    ) as HTMLElement;
+    expect(icon.getAttribute('title')).toBe('linker Flügel verletzt');
+    expect(icon.getAttribute('aria-label')).toContain('linker Flügel verletzt');
+  });
+
+  // #388: drei reservierte Slots in fixer Reihenfolge (ⓘ, ♥, ⚑) — ein Marker sitzt
+  // dadurch in jeder Zeile im selben Slot. Geprüft wird die Struktur, nicht die
+  // Geometrie: dass die Slots vertikal fluchten, ist eine CSS-Eigenschaft.
+  it('reserves three marker slots in fixed order in every row, occupied or not', () => {
+    flushEntries([
+      row({ id: 'plain' }),
+      row({ id: 'ns', is_non_standard: true } as Partial<DataEntry>),
+      row({
+        id: 'both',
+        comment: 'tot unter dem Netz',
+        is_dead_recovery: true,
+        is_non_standard: true,
+      } as Partial<DataEntry>),
+    ]);
+
+    const rows = Array.from(fixture.nativeElement.querySelectorAll('tr.entry-row')) as HTMLElement[];
+    for (const r of rows) {
+      const slots = Array.from(
+        r.querySelectorAll('[data-testid="marker-cell"] .marker-slot'),
+      ) as HTMLElement[];
+      expect(slots.map((s) => s.dataset['testid'])).toEqual([
+        'marker-slot-bemerkung',
+        'marker-slot-tot-fund',
+        'marker-slot-non-standard',
+      ]);
+    }
+
+    // Ein einzelner Nicht-Standard-Marker bleibt in seinem eigenen Slot; die
+    // vorderen Slots bleiben leer und rücken nicht nach.
+    const nsSlots = rows[1].querySelectorAll('[data-testid="marker-cell"] .marker-slot');
+    expect(nsSlots[0].children.length).toBe(0);
+    expect(nsSlots[1].children.length).toBe(0);
+    expect(nsSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+
+    // Beide Fangmarker plus ⓘ sind gleichzeitig belegbar (ADR 0026).
+    const bothSlots = rows[2].querySelectorAll('[data-testid="marker-cell"] .marker-slot');
+    expect(bothSlots[0].querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+    expect(bothSlots[1].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+    expect(bothSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+  });
+
+  // #388: das ⓘ wird nur gerendert, *wenn* eine Bemerkung existiert — der Badge-Punkt
+  // würde also bloß die Existenz des Icons wiederholen.
+  it('renders the ⓘ without a badge dot', () => {
+    flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
+
+    const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+    expect(row0.querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+    // Nirgends in der Zeile — weder im alten Platz in der Art-Zelle noch im Slot.
+    expect(row0.querySelector('.mat-badge-content')).toBeNull();
+    expect(row0.querySelector('[matBadge], .mat-badge')).toBeNull();
+  });
+
+  // #388: eine Sonderart *ist* die Art — ihr Badge bleibt in der Art-Spalte.
+  it('keeps the "vernichtet" badge in the Art cell', () => {
+    flushEntries([
+      row({
+        id: 'sentinel',
+        species: { id: 'sent', common_name_de: 'Ring Vernichtet', special_kind: 'ring_destroyed' } as never,
+        comment: 'Ring vernichtet',
+      }),
+    ]);
+
+    const speciesCell = fixture.nativeElement.querySelector('[data-testid="species-cell"]') as HTMLElement;
+    expect(speciesCell.querySelector('.sentinel-badge')?.textContent).toContain('vernichtet');
+    // Die Art-Zelle trägt sonst nichts, was umbrechen könnte — keine Icons.
+    expect(speciesCell.querySelector('mat-icon')).toBeNull();
+  });
+
   it('renders biometric values with one decimal place in de-AT format', () => {
     flushEntries([row({ tarsus: 12.54, feather_span: 54, wing_span: 73.25, weight_gram: 18.96 })]);
 

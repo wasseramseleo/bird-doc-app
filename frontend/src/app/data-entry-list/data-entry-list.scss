@@ -95,14 +95,42 @@
   letter-spacing: 0.02em;
 }
 
-// #371 (ADR 0026): distinct Fangmarker row icons in "Letzte Fänge".
-.fangmarker-icon {
+// #388: die Marker-Spalte. Feste Breite und drei gleich breite Slots — dadurch
+// sitzt ⓘ, ♥ und ⚑ in jeder Zeile an derselben x-Position und die Spalte lässt
+// sich vertikal nach Auffälligem abscannen. Ein leerer Slot behält seine Breite.
+.marker-header,
+[data-testid='marker-cell'] {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.marker-slots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.marker-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+// Eine einheitliche Ausrichtung für alle drei Icons: keine gemischten
+// vertical-align-Werte mehr wie im früheren Textfluss der Art-Zelle.
+.marker-icon {
   font-size: 1.05rem;
   height: 1.05rem;
   width: 1.05rem;
-  vertical-align: text-bottom;
-  margin-left: 4px;
+  line-height: 1.05rem;
+  vertical-align: middle;
+}
 
+// #371 (ADR 0026): distinct Fangmarker row icons in "Letzte Fänge".
+.fangmarker-icon {
   &.fangmarker-icon--dead {
     color: var(--bd-error);
   }
@@ -110,6 +138,12 @@
   &.fangmarker-icon--non-standard {
     color: var(--bd-accent);
   }
+}
+
+// #374 (#1): der Bemerkungs-Indikator bleibt gedämpft — er meldet die Bemerkung,
+// nicht einen Alarm.
+.bemerkung-indicator {
+  color: var(--bd-ink-faint);
 }
 
 .status-chip {
