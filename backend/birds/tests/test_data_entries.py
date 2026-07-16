@@ -1773,3 +1773,42 @@ def test_unmigratable_payload_survives_a_failing_alert(
     # ...and the evidence — the durable half of the alarm — is still parked.
     assert UnmigratablePayload.objects.get().payload["schema_version"] == 99
     assert not DataEntry.objects.filter(ring__number="945").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "body",
+    [
+        # A list body — what DRF has always answered "Expected a dictionary, but
+        # got list" to.
+        [],
+        [{"ring_number": "946"}],
+        # A bare string body.
+        "banana",
+        # Bodies whose *contents* happen to mention the stamp's wire name: a
+        # membership test alone ("is the field there?") reads True on both, so
+        # they are what turns a careless mapping assumption into a 500.
+        ["schema_version"],
+        "schema_version",
+    ],
+)
+def test_a_body_that_is_not_a_payload_is_still_a_bad_request(auth_client, mailoutbox, body):
+    """Reading the stamp must not make a malformed body worse (ADR 0033).
+
+    The stamp check sits in front of DRF's own parser validation, so it meets
+    bodies the serializer used to reject on its own. It must stay at least as
+    tolerant as what it now precedes: a body that is not a mapping carries no
+    stamp and cannot carry one, so it passes through untouched and earns the same
+    400 it always did.
+
+    Deliberately **not** the holding area. That exit exists for a real capture the
+    server cannot interpret — it accepts (200) so the device dequeues, and pays
+    for it with an operator alert and a held row. A malformed request is not a
+    capture at all: routing it there would mint alarms out of garbage, write junk
+    rows, and tell whoever sent it that it was accepted.
+    """
+    response = auth_client.post(LIST_URL, body, format="json")
+
+    assert response.status_code == 400, response.content
+    assert not UnmigratablePayload.objects.exists()
+    assert mailoutbox == []

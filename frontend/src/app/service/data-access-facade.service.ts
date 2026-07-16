@@ -5,7 +5,7 @@ import {catchError, from, map, Observable, of, switchMap, tap, throwError} from 
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {Central} from '../models/central.model';
 import {OfflineBundle} from '../models/offline-bundle.model';
-import {OutboxEntry} from '../models/outbox-entry.model';
+import {OutboxEntry, PAYLOAD_SCHEMA_VERSION} from '../models/outbox-entry.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {Project} from '../models/project.model';
 import {Ring, RingSize} from '../models/ring.model';
@@ -251,9 +251,28 @@ export class DataAccessFacadeService {
    * minted once by `DataEntryFormComponent` and carried through unchanged —
    * enqueueing never mints a second one. Resolves to the created `DataEntry`
    * when saved online, or `null` when durably queued instead.
+   *
+   * The POST carries this bundle's payload schema stamp (issue #408, ADR 0033).
+   * The stamp is not an outbox concern: it tells the server which contract a
+   * payload speaks, and an ordinary online capture speaks one exactly like a
+   * replayed one does — here freezing and sending are simply the same instant, so
+   * the claim is true by construction. Leaving it off would make an absent stamp
+   * mean two things at once — "the pre-versioning contract" *and* "an ordinary
+   * capture from today" — which would strand every online capture the day the
+   * migratable floor legitimately rises above the pre-versioning contract, and
+   * would apply an old contract's migration step to a current payload before then.
+   *
+   * It is stamped *here* rather than in `ApiService.createDataEntry`, which the
+   * replay shares: there the payload already carries the stamp of the bundle that
+   * froze it, and re-stamping would overwrite that frozen claim with today's —
+   * destroying the drift the stamp exists to make legible. The enqueued copy is
+   * deliberately left unstamped for the same reason `OutboxEntry` keeps its stamp
+   * beside the payload: `payload` stays verbatim what the form would have POSTed,
+   * and `SyncService` merges the entry's own stamp in on the way out.
    */
   createDataEntry(payload: Partial<DataEntry>): Observable<DataEntry | null> {
-    return this.withOfflineFallback(this.api.createDataEntry(payload), () =>
+    const stamped = {...payload, schema_version: PAYLOAD_SCHEMA_VERSION} as Partial<DataEntry>;
+    return this.withOfflineFallback(this.api.createDataEntry(stamped), () =>
       this.outbox
         .enqueue(payload as Record<string, unknown> & {idempotency_key?: string | null})
         .pipe(map(() => null)),

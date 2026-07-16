@@ -26,6 +26,7 @@ Fangdaten, on its way to the Zentrale and indistinguishable from a good row.
 """
 
 import logging
+from collections.abc import Mapping
 
 from django.conf import settings
 from django.core.mail import EmailMessage
@@ -77,8 +78,13 @@ def read_stamp(payload):
     returned untouched — including a value that is not a version at all — because
     judging it is ``migrate_payload``'s job, and a malformed stamp must reach the
     holding area rather than crash the replay.
+
+    A body that is not a mapping at all reads as unstamped: it cannot carry a
+    stamp, so there is nothing to claim. Membership alone would not be enough to
+    establish that — ``"schema_version" in ["schema_version"]`` is ``True``, and
+    subscripting it then raises — so the shape is checked, not just the key.
     """
-    if SCHEMA_VERSION_FIELD not in payload:
+    if not isinstance(payload, Mapping) or SCHEMA_VERSION_FIELD not in payload:
         return PRE_VERSIONING_PAYLOAD_SCHEMA_VERSION
     return payload[SCHEMA_VERSION_FIELD]
 
@@ -117,7 +123,16 @@ def migrate_payload(payload):
       bundle its devices are still running.
     - **not a version at all**: a malformed stamp. Held rather than 400'd, for
       the same reason as the others, and rather than crashing on ``int()``.
+
+    A body that is not a mapping is none of those: it is not a capture at all, so
+    it passes through untouched for the serializer to refuse with the 400 it
+    always did. It must *not* take the lenient exit — that one accepts (200) and
+    pays with an operator alert and a held row, which would mint alarms out of
+    garbage and tell a malformed request it was recorded.
     """
+    if not isinstance(payload, Mapping):
+        return payload
+
     stamp = read_stamp(payload)
     version = readable_version(stamp)
     if version is None or not (

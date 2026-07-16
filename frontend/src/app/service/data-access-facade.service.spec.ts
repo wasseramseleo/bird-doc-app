@@ -14,6 +14,7 @@ import {IndexedDbStore} from '../core/offline/indexed-db-store';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
 import {OfflineBundle, OfflineSpecies} from '../models/offline-bundle.model';
+import {PAYLOAD_SCHEMA_VERSION} from '../models/outbox-entry.model';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {Species} from '../models/species.model';
 import {RingingStation} from '../models/ringing-station.model';
@@ -835,6 +836,47 @@ describe('DataAccessFacadeService', () => {
       const result = await resultPromise;
       expect(result).toEqual(created as DataEntry);
       expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
+    });
+
+    it('stamps the payload contract this bundle speaks onto an online create (issue #408, ADR 0033)', async () => {
+      // The stamp is not an outbox feature — it is how the server is told which
+      // contract a payload speaks, and an online create speaks one just as much
+      // as a replayed one. Left unstamped, the ordinary capture — the majority of
+      // real traffic — would read as the *pre-versioning* contract, so "no stamp"
+      // would mean two different things at once and the server could neither
+      // migrate it correctly nor tell it apart from a payload frozen before
+      // stamping existed.
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(req.request.body).toEqual({
+        ...(payload() as unknown as Record<string, unknown>),
+        schema_version: PAYLOAD_SCHEMA_VERSION,
+      });
+      req.flush({id: 'server-1'});
+
+      await resultPromise;
+    });
+
+    it('freezes the payload into the outbox verbatim, with the stamp beside it and not inside it', async () => {
+      // The stamp rides *beside* the frozen payload (`OutboxEntry.schemaVersion`),
+      // never inside it: `payload` stays literally what the form would have
+      // POSTed, and `SyncService` merges the stamp in on the way out. Stamping the
+      // payload object itself here would put it in IndexedDB — and, worse, a
+      // stamp applied by mutation would leak into the enqueued copy.
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .error(new ProgressEvent('error'));
+      await resultPromise;
+
+      const queued = await TestBed.inject(OutboxStoreService).list();
+      expect(queued[0].payload).toEqual(payload() as unknown as Record<string, unknown>);
+      expect(queued[0].payload['schema_version']).toBeUndefined();
+      expect(queued[0].schemaVersion).toBe(PAYLOAD_SCHEMA_VERSION);
     });
 
     it('durably enqueues the payload into the outbox instead of erroring when the server is unreachable', async () => {
