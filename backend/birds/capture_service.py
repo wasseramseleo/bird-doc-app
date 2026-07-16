@@ -248,10 +248,15 @@ def create_capture(
     # replay of this very capture (a retry that slipped past the short-circuit
     # in the #155 TOCTOU race), which the DB's key-uniqueness constraint below
     # already resolves to the existing row — never a rival Erstfang.
+    #
+    # A **deleted** Erstfang is no rival either (ADR 0030): its number has
+    # returned to the rope, so re-issuing the physical ring is exactly the case
+    # Löschen exists to allow. This mirrors the widened ``unique_erstfang_per_ring``
+    # index, which is the backstop behind this check-then-insert.
     stored_bird_status = fields.get("bird_status", DataEntry.BirdStatus.FIRST_CATCH)
     if stored_bird_status == DataEntry.BirdStatus.FIRST_CATCH:
         rival_erstfaenge = DataEntry.objects.filter(
-            ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH
+            ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH, is_cancelled=False
         )
         if idempotency_key is not None:
             rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)
@@ -299,8 +304,11 @@ def create_capture(
             if existing is not None:
                 return existing
         if stored_bird_status == DataEntry.BirdStatus.FIRST_CATCH:
+            # ``is_cancelled=False`` mirrors the pre-check and the widened index
+            # (ADR 0030): a deleted Erstfang has handed its number back, so it can
+            # never be the rival that lost us this race.
             rival_erstfaenge = DataEntry.objects.filter(
-                ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH
+                ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH, is_cancelled=False
             )
             if idempotency_key is not None:
                 rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)

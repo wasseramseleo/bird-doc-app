@@ -654,6 +654,12 @@ class DataEntrySerializer(serializers.ModelSerializer):
             # the IWM export read off them and the offline outbox round-trips them.
             "is_dead_recovery",
             "is_non_standard",
+            # ``is_cancelled`` is deliberately absent (ADR 0030): the flag is moved
+            # only by the ViewSet's ``destroy``/``restore``, never by a client edit
+            # — a PATCH-able flag would be a delete that skips the confirm modal.
+            # Listing it here, even read-only, would also leak the tombstone into
+            # the API, and „storniert" is not domain language: a deleted capture is
+            # simply invisible, so no response ever carries a true value anyway.
         ]
         read_only_fields = ["created", "updated"]
 
