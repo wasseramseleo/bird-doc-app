@@ -53,6 +53,14 @@ PRE_VERSIONING_PAYLOAD_SCHEMA_VERSION = 0
 # being migratable — which is precisely the alarm ``UnmigratablePayload`` raises.
 MIN_MIGRATABLE_PAYLOAD_SCHEMA_VERSION = PRE_VERSIONING_PAYLOAD_SCHEMA_VERSION
 
+# The bounds of ``UnmigratablePayload.schema_version``, the column the holding
+# area files a stamp into: a signed 32-bit ``IntegerField``. Spelled out here
+# rather than read from the field, because Django derives that range from the
+# *database* — Postgres reports the real 32-bit limits while SQLite reports
+# 64-bit ones, and a boundary that shifts under the test suite is no boundary.
+MIN_FILEABLE_PAYLOAD_SCHEMA_VERSION = -(2**31)
+MAX_FILEABLE_PAYLOAD_SCHEMA_VERSION = 2**31 - 1
+
 # The wire name of the stamp. Flat and snake_case like the rest of the write
 # payload (``ring_number``, ``staff_id``, ``idempotency_key``).
 SCHEMA_VERSION_FIELD = "schema_version"
@@ -98,10 +106,22 @@ def readable_version(stamp):
     ``bool`` is an ``int`` subclass, so it is excluded explicitly: without that,
     a ``True`` stamp would read as version 1 and let a nonsense claim pass for
     the current contract — the one value that must mean "all clear".
+
+    An integer outside the fileable bounds is likewise **not** a version: no
+    server ever issued one, so it is the same face as ``"banana"`` and takes the
+    same exit. This is the boundary — reading it as a number here is what would
+    otherwise carry it into a column that cannot hold it, and the resulting 500
+    is the one answer this path may never give: ``SyncService.isRejection``
+    matches 4xx only, so a 5xx reads as transient and the device replays the
+    same payload forever (ADR 0033 (3): "nothing strands, nothing loops"). The
+    bounds are the column's, not the contract's — widening the column would only
+    move the same cliff to 2**63.
     """
-    if isinstance(stamp, int) and not isinstance(stamp, bool):
-        return stamp
-    return None
+    if not isinstance(stamp, int) or isinstance(stamp, bool):
+        return None
+    if not (MIN_FILEABLE_PAYLOAD_SCHEMA_VERSION <= stamp <= MAX_FILEABLE_PAYLOAD_SCHEMA_VERSION):
+        return None
+    return stamp
 
 
 def migrate_payload(payload):
@@ -121,8 +141,10 @@ def migrate_payload(payload):
     - **too new**: above ``PAYLOAD_SCHEMA_VERSION``, i.e. a contract this server
       has never heard of. Reachable only by rolling the server back behind the
       bundle its devices are still running.
-    - **not a version at all**: a malformed stamp. Held rather than 400'd, for
-      the same reason as the others, and rather than crashing on ``int()``.
+    - **not a version at all**: a malformed stamp — a string, a nested object,
+      or an integer so large no server could have issued it (see
+      ``readable_version``). Held rather than 400'd, for the same reason as the
+      others, and rather than crashing on ``int()``.
 
     A body that is not a mapping is none of those: it is not a capture at all, so
     it passes through untouched for the serializer to refuse with the 400 it

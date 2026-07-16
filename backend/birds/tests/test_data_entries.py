@@ -8,7 +8,11 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
 from birds.models import DataEntry, Project, Ring, UnmigratablePayload
-from birds.payload_schema import PAYLOAD_SCHEMA_VERSION
+from birds.payload_schema import (
+    MAX_FILEABLE_PAYLOAD_SCHEMA_VERSION,
+    MIN_FILEABLE_PAYLOAD_SCHEMA_VERSION,
+    PAYLOAD_SCHEMA_VERSION,
+)
 
 LIST_URL = "/api/birds/data-entries/"
 VIENNA = ZoneInfo("Europe/Vienna")
@@ -1618,6 +1622,9 @@ def test_stored_mites_migrates_to_red_mites_and_back():
         ("940e", {"nested": 1}),
         # ``bool`` is an ``int`` subclass: ``True`` must not pass for version 1.
         ("940f", True),
+        # Too big for the column the stamp is filed into. Reads as a version
+        # number, but no server ever issued one, so it is held like "banana".
+        ("940g", 2**31),
     ],
 )
 def test_unmigratable_payload_is_accepted_but_never_reaches_the_fangdaten(
@@ -1646,6 +1653,18 @@ def test_unmigratable_payload_is_accepted_but_never_reaches_the_fangdaten(
     assert not Ring.objects.filter(number=ring_number).exists()
     # It is parked instead, so nothing is silently dropped.
     assert UnmigratablePayload.objects.count() == 1
+    # And the lifted-out stamp is something the column can actually hold — a
+    # version, or NULL when the claim was not one. Asserted rather than left to
+    # the INSERT because only Postgres (CI) enforces the range: SQLite (local)
+    # stores any 64-bit value happily, so an out-of-range stamp would sail
+    # through here and fail only in CI, with a 500 that ``isRejection`` reads as
+    # transient — the retry loop this whole path exists to prevent.
+    held = UnmigratablePayload.objects.get()
+    assert held.schema_version is None or (
+        MIN_FILEABLE_PAYLOAD_SCHEMA_VERSION
+        <= held.schema_version
+        <= MAX_FILEABLE_PAYLOAD_SCHEMA_VERSION
+    )
 
 
 @pytest.mark.django_db
