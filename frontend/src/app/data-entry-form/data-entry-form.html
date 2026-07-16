@@ -569,35 +569,66 @@
 
     <div class="action-buttons">
       @if (!isRingDestroyed()) {
-        <button mat-button type="button" class="destroyed-ring-link"
-                data-testid="destroyed-ring-button"
-                (click)="onDestroyedRing()">
-          Ring vernichtet
-        </button>
-        <!-- #371: Fangmarker toggles (ADR 0026). Plain buttons, skipped by Tab
-             (tabindex="-1"), hidden while Ring vernichtet is active. Each toggles
-             off again to undo a mis-click. -->
-        <button mat-button type="button" tabindex="-1"
-                class="fangmarker-link"
-                [class.is-active]="isDeadRecovery()"
-                [attr.aria-pressed]="isDeadRecovery()"
-                data-testid="tot-fund-button"
-                (click)="onToggleDeadRecovery()">
-          Tot-Fund
-        </button>
-        <button mat-button type="button" tabindex="-1"
-                class="fangmarker-link"
-                [class.is-active]="isNonStandard()"
-                [attr.aria-pressed]="isNonStandard()"
-                data-testid="non-standard-button"
-                (click)="onToggleNonStandard()">
-          Nicht-Standard-Fang
-        </button>
+        <!-- #387: die drei Sonderfall-Knöpfe teilen sich einen gemeinsamen,
+             links ausgerichteten Container. Die Linksausrichtung hängt am
+             Container, nicht an einem einzelnen Knopf — genau daran ist die
+             Zeile zerfallen (#47 vs. #371). Alle drei verschwinden gemeinsam,
+             solange "Ring vernichtet" aktiv ist. -->
+        <div class="special-actions" data-testid="special-actions">
+          <button mat-button type="button" tabindex="-1" class="destroyed-ring-link"
+                  data-testid="destroyed-ring-button"
+                  (click)="onDestroyedRing()">
+            Ring vernichtet
+          </button>
+          <!-- Sichtbarer Trenner: "Ring vernichtet" ersetzt die Art, die beiden
+               Fangmarker markieren nur die Situation — ADR 0026 nennt sie das
+               exakte Gegenteil einer Sonderart. -->
+          <span class="special-actions-separator" data-testid="special-actions-separator"
+                aria-hidden="true"></span>
+          <!-- #371: Fangmarker toggles (ADR 0026). Plain buttons, skipped by Tab
+               (tabindex="-1"), hidden while Ring vernichtet is active. Each toggles
+               off again to undo a mis-click. -->
+          <button mat-button type="button" tabindex="-1"
+                  class="fangmarker-link"
+                  [class.is-active]="isDeadRecovery()"
+                  [attr.aria-pressed]="isDeadRecovery()"
+                  data-testid="tot-fund-button"
+                  (click)="onToggleDeadRecovery()">
+            Tot-Fund
+          </button>
+          <button mat-button type="button" tabindex="-1"
+                  class="fangmarker-link"
+                  [class.is-active]="isNonStandard()"
+                  [attr.aria-pressed]="isNonStandard()"
+                  data-testid="non-standard-button"
+                  (click)="onToggleNonStandard()">
+            Nicht-Standard-Fang
+          </button>
+        </div>
       }
+      <!-- #387: Tab aus dem Innenfuß landet auf "Speichern" — dem einzigen per
+           Tab erreichbaren Knopf der Zeile. Alles Destruktive trägt tabindex="-1". -->
       @if (isEditMode()) {
-        <button mat-button type="button" (click)="onBackToList()">Zur Liste</button>
+        <button mat-button type="button" tabindex="-1" (click)="onBackToList()">Zur Liste</button>
+        <!-- #392 (ADR 0030): „Eintrag löschen" — die gefährlichste Aktion der
+             Zeile, deshalb wie alles Destruktive per tabindex="-1" aus der
+             Tab-Reihenfolge genommen. Offline gesperrt: gelöscht wird nur online.
+             NICHT im Queued-Modus: ein eingereihter Eintrag trägt eine lokal
+             vergebene Outbox-ID, die der Server nie gesehen hat — ein DELETE
+             darauf liefe unweigerlich in einen 404. Gelöscht wird er dort, wo er
+             herkommt (Heute-Seite, „Zur Liste" führt zurück), mit dem eigenen
+             Mechanismus (Outbox statt Server) und ohne „Rückgängig". -->
+        @if (!isQueuedEditMode()) {
+          <button mat-button type="button" tabindex="-1" class="delete-entry-link"
+                  data-testid="delete-entry-button"
+                  [disabled]="isOffline()"
+                  [title]="isOffline() ? 'Offline kann nicht gelöscht werden.' : null"
+                  (click)="onDeleteEntry()">
+            Eintrag löschen
+          </button>
+        }
       }
-      <button mat-stroked-button type="button" (click)="onReset()">Zurücksetzen</button>
+      <button mat-stroked-button type="button" tabindex="-1" (click)="onReset()">Zurücksetzen</button>
       <button mat-flat-button color="primary" type="submit"
               [class.is-saved]="saved()" [disabled]="entryForm.invalid || loading()">
         {{ saved() ? 'Gespeichert ✓' : (isEditMode() ? 'Änderungen speichern' : 'Erstellen') }}

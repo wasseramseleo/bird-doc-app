@@ -6,6 +6,7 @@ import pytest
 from django.contrib.admin.sites import AdminSite
 
 from birds.admin import (
+    DataEntryAdmin,
     MitgliedschaftAdmin,
     OrganizationAdmin,
     ProjectAdmin,
@@ -60,6 +61,28 @@ def test_organization_tenancy_fields_editable_in_admin():
 
     for field in ("plan", "seat_limit", "beta_cohort"):
         assert field in form_fields
+
+
+@pytest.mark.django_db
+def test_deleted_captures_are_listed_and_filterable_in_admin():
+    # Retention exists for exactly one purpose (ADR 0030): the Betreiber recovers
+    # a capture on request. That starts with *finding* it — so the flag is both a
+    # column and a filter on the capture list.
+    admin = DataEntryAdmin(DataEntry, AdminSite())
+
+    assert "is_cancelled" in admin.list_display
+    assert "is_cancelled" in admin.list_filter
+
+
+@pytest.mark.django_db
+def test_deleted_capture_can_be_un_flagged_in_admin():
+    # ...and finding it is worthless if it cannot be revived: the change form
+    # carries explicit fieldsets, so the flag must be listed there or the
+    # Betreiber can see the tombstone but never clear it (ADR 0030).
+    admin = DataEntryAdmin(DataEntry, AdminSite())
+    form_fields = admin.get_form(request=None).base_fields
+
+    assert "is_cancelled" in form_fields
 
 
 @pytest.mark.django_db

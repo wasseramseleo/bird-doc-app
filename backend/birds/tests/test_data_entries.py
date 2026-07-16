@@ -628,10 +628,108 @@ def test_page_size_absent_defaults_to_10(auth_client, species, ring, scientist, 
 
 
 @pytest.mark.django_db
-def test_delete_removes_entry(auth_client, data_entry):
+def test_delete_tombstones_entry_instead_of_dropping_the_row(auth_client, data_entry):
+    """DELETE flags the capture; the row is retained so the Betreiber can still
+    recover it from the Django admin on request (ADR 0030)."""
     response = auth_client.delete(_detail_url(data_entry.id))
+
     assert response.status_code == 204
-    assert not DataEntry.objects.filter(id=data_entry.id).exists()
+    data_entry.refresh_from_db()
+    assert data_entry.is_cancelled is True
+
+
+@pytest.mark.django_db
+def test_restore_clears_the_flag_and_makes_the_capture_visible_again(auth_client, data_entry):
+    """The „Rückgängig" snackbar's undo: restore revives the deleted capture.
+
+    It must reach a row that ``get_queryset()`` filters out, so it fetches through
+    its own unfiltered — but still org-scoped — queryset (ADR 0030).
+    """
+    auth_client.delete(_detail_url(data_entry.id))
+
+    response = auth_client.post(f"{_detail_url(data_entry.id)}restore/")
+
+    assert response.status_code == 200
+    data_entry.refresh_from_db()
+    assert data_entry.is_cancelled is False
+    listed = auth_client.get(LIST_URL).json()["results"]
+    assert [row["id"] for row in listed] == [str(data_entry.id)]
+
+
+@pytest.mark.django_db
+def test_plain_mitglied_can_delete_and_undo_a_capture(
+    mitglied_client, mitglied_scientist, data_entry
+):
+    """Löschen is ungated: any Mitglied may delete, not just an Admin (ADR 0030).
+
+    Unlike the Beringer- and Norm-Overrides, which a plain Mitglied may not delete,
+    a capture carries no admin gate — it matches ``Rolle`` ("erfasst und bearbeitet
+    Fänge der gesamten Organisation") and the ungated Heute-Seite delete. Someone
+    who may already edit a capture into garbage gains no new power by deleting it.
+    The undo behind the „Rückgängig" snackbar is ungated for the same reason.
+    """
+    response = mitglied_client.delete(_detail_url(data_entry.id))
+
+    assert response.status_code == 204
+    data_entry.refresh_from_db()
+    assert data_entry.is_cancelled is True
+
+    undo = mitglied_client.post(f"{_detail_url(data_entry.id)}restore/")
+
+    assert undo.status_code == 200
+    data_entry.refresh_from_db()
+    assert data_entry.is_cancelled is False
+
+
+@pytest.mark.django_db
+def test_restore_of_another_tenants_capture_returns_404(auth_client, data_entry_b):
+    """Restore is org-scoped like every other capture route: an unfiltered
+    queryset must not become a cross-tenant hole (ADR 0005)."""
+    DataEntry.objects.filter(pk=data_entry_b.pk).update(is_cancelled=True)
+
+    response = auth_client.post(f"{_detail_url(data_entry_b.id)}restore/")
+
+    assert response.status_code == 404
+    data_entry_b.refresh_from_db()
+    assert data_entry_b.is_cancelled is True
+
+
+@pytest.mark.django_db
+def test_is_cancelled_is_not_client_writable(
+    auth_client, data_entry, species, scientist, ringing_station
+):
+    """The flag is moved only by ``destroy`` and ``restore`` — never by a client
+    edit, which would be a delete that bypasses the confirm modal (ADR 0030)."""
+    payload = _payload(species, scientist, ringing_station, ring_number="903")
+    payload["is_cancelled"] = True
+
+    response = auth_client.put(_detail_url(data_entry.id), payload, format="json")
+
+    assert response.status_code == 200, response.json()
+    data_entry.refresh_from_db()
+    assert data_entry.is_cancelled is False
+
+
+@pytest.mark.django_db
+def test_deleted_capture_disappears_from_letzte_faenge(
+    auth_client, species, ring, scientist, ringing_station, project
+):
+    """„Letzte Fänge" (the ``project=`` mode) never shows a deleted capture —
+    it reads as if the entry had never been recorded (ADR 0030)."""
+    entry = DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    auth_client.delete(_detail_url(entry.id))
+    response = auth_client.get(LIST_URL, {"project": str(project.id)})
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 0
 
 
 @pytest.mark.django_db
@@ -698,6 +796,32 @@ def test_replaying_create_with_known_idempotency_key_returns_existing_no_duplica
 
     assert replay.json()["id"] == first.json()["id"]
     assert DataEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_replaying_a_deleted_entrys_idempotency_key_finds_the_tombstone_and_creates_nothing(
+    auth_client, species, scientist, ringing_station
+):
+    """The **one** deliberate exception to the invisibility rule (ADR 0030): the
+    idempotency replay lookup must still resolve a *deleted* row.
+
+    Otherwise an offline device replaying its outbox after the capture was
+    deleted would silently re-create it — the entry would rise from the dead.
+    The replay hands back the tombstone itself and mints nothing.
+    """
+    payload = _payload(species, scientist, ringing_station, ring_number="752")
+    payload["idempotency_key"] = "55555555-5555-5555-5555-555555555555"
+    first = auth_client.post(LIST_URL, payload, format="json")
+    assert first.status_code == 201, first.json()
+    auth_client.delete(_detail_url(first.json()["id"]))
+
+    replay = auth_client.post(LIST_URL, payload, format="json")
+
+    assert replay.status_code == 201, replay.json()
+    assert replay.json()["id"] == first.json()["id"]
+    assert DataEntry.objects.count() == 1
+    # The replay resolves the row but does not resurrect it: it stays deleted.
+    assert DataEntry.objects.get(id=first.json()["id"]).is_cancelled is True
 
 
 @pytest.mark.django_db
@@ -833,6 +957,65 @@ def test_filter_by_ring_size_and_number(auth_client, species, scientist, ringing
     body = response.json()
     assert body["count"] == 1
     assert body["results"][0]["id"] == str(target.id)
+
+
+@pytest.mark.django_db
+def test_deleted_erstfang_frees_its_ring_number_for_a_new_erstfang(
+    auth_client, species, scientist, ringing_station
+):
+    """The number returns to the rope: deleting an Erstfang lets the same
+    physical ring be issued again (ADR 0030).
+
+    Driven over HTTP on purpose — only the full stack proves the *widened*
+    ``unique_erstfang_per_ring`` index actually took effect. A pre-check-only fix
+    would still be refused by the database here.
+    """
+    payload = _payload(species, scientist, ringing_station, ring_number="4711")
+    first = auth_client.post(LIST_URL, payload, format="json")
+    assert first.status_code == 201, first.json()
+
+    auth_client.delete(_detail_url(first.json()["id"]))
+    second = auth_client.post(LIST_URL, payload, format="json")
+
+    assert second.status_code == 201, second.json()
+    assert second.json()["id"] != first.json()["id"]
+    # The tombstone is retained alongside the fresh Erstfang; only the live one
+    # is an Erstfang as far as every query is concerned.
+    assert DataEntry.objects.filter(ring__number="4711").count() == 2
+    assert DataEntry.objects.filter(ring__number="4711", is_cancelled=False).count() == 1
+
+
+@pytest.mark.django_db
+def test_deleted_capture_disappears_from_wiederfang_historie(
+    auth_client, species, scientist, ringing_station
+):
+    """The Wiederfang-Historie of a ring (the ``ring_size``/``ring_number`` mode)
+    never shows a deleted capture — the same invisibility rule as „Letzte Fänge",
+    since both modes are the same queryset (ADR 0030)."""
+    ring = Ring.objects.create(number="123", size=Ring.RingSizes.V)
+    erstfang = DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        bird_status=DataEntry.BirdStatus.FIRST_CATCH,
+        date_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    wiederfang = DataEntry.objects.create(
+        species=species,
+        ring=ring,
+        staff=scientist,
+        ringing_station=ringing_station,
+        bird_status=DataEntry.BirdStatus.RE_CATCH,
+        date_time=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    auth_client.delete(_detail_url(wiederfang.id))
+    response = auth_client.get(LIST_URL, {"ring_size": "V", "ring_number": "123"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [row["id"] for row in body["results"]] == [str(erstfang.id)]
 
 
 @pytest.mark.django_db

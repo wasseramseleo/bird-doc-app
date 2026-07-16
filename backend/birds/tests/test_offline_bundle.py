@@ -308,6 +308,38 @@ def test_bundle_last_consumed_ignores_recaptures(
 
 
 @pytest.mark.django_db
+def test_bundle_last_consumed_ignores_a_deleted_erstfang(
+    auth_client, species, scientist, ringing_station, project, organization
+):
+    """A deleted Erstfang consumed nothing (ADR 0030), so the number it drew is
+    gone from the bundle's last-consumed fact too — the device would otherwise go
+    offline and keep suggesting past a number that has returned to the rope."""
+    _capture(
+        species=species,
+        scientist=scientist,
+        ringing_station=ringing_station,
+        ring_number="0042",
+        project=project,
+        created=_at(1),
+    )
+    mis_entry = _capture(
+        species=species,
+        scientist=scientist,
+        ringing_station=ringing_station,
+        ring_number="0043",
+        project=project,
+        created=_at(2),
+    )
+
+    auth_client.delete(f"/api/birds/data-entries/{mis_entry.id}/")
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    entries = payload["last_consumed_ring_numbers"]
+    assert len(entries) == 1
+    assert entries[0]["number"] == "0042"
+
+
+@pytest.mark.django_db
 def test_bundle_last_consumed_counts_destroyed_ring(
     auth_client, sentinel_species, scientist, ringing_station, project, organization
 ):

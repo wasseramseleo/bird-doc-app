@@ -161,7 +161,12 @@ def test_mitglied_can_edit_and_delete_any_capture_in_the_organisation(
 
     delete = mitglied_client.delete(detail)
     assert delete.status_code == 204
-    assert not DataEntry.objects.filter(id=data_entry.id).exists()
+    # Deleting is Löschen, not dropping: the row is retained behind the flag and
+    # is invisible from here on (ADR 0030). No new permission gates it — a
+    # Mitglied who may edit any capture may delete any capture.
+    assert mitglied_client.get(detail).status_code == 404
+    data_entry.refresh_from_db()
+    assert data_entry.is_cancelled is True
 
 
 @pytest.mark.django_db

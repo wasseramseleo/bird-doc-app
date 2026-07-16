@@ -393,3 +393,60 @@ def test_mitglied_cannot_set_saison_window(mitglied_client, mitglied_scientist, 
     project.refresh_from_db()
     assert project.saison_start_month is None
     assert project.saison_end_month is None
+
+
+# --- Mindestens ein Beringer: the min-1 rule lives in the serializer ---------
+# Issue #389, PRD #384. „Jedes Projekt braucht mindestens eine:n Beringer:in" was
+# a frontend-only rule of the Bearbeiten-Dialog. It now holds server-side too, and
+# it is checked against the *effective* Beringer set — the one after ``create()``
+# auto-adds the creating Beringer — so a POST that names no ``scientist_ids`` still
+# succeeds for a creator who has a Beringer of their own.
+
+
+@pytest.mark.django_db
+def test_create_without_beringer_rejected_when_creator_has_none(auth_client, membership):
+    """An Admin *without* a Beringer row of their own (the invited-Admin account
+    path) creates nothing the auto-add can fill in, so the effective Beringer set
+    stays empty and the create is refused — no silent zero-Beringer Projekt."""
+    response = auth_client.post(LIST_URL, {"title": "P", "description": ""}, format="json")
+
+    assert response.status_code == 400, response.json()
+    assert "scientist_ids" in response.json()
+    assert not Project.objects.filter(title="P").exists()
+
+
+@pytest.mark.django_db
+def test_create_with_explicit_empty_beringer_still_attaches_creator(
+    auth_client, scientist, organization
+):
+    """An explicitly empty ``scientist_ids`` is not a zero-Beringer request: the
+    creating Beringer is auto-added, so the effective set is non-empty and the
+    create succeeds with the creator on it."""
+    response = auth_client.post(LIST_URL, {"title": "P", "scientist_ids": []}, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert list(Project.objects.get(title="P").scientists.all()) == [scientist]
+
+
+@pytest.mark.django_db
+def test_update_cannot_clear_the_last_beringer(auth_client, project, scientist):
+    """The min-1 rule holds on the Bearbeiten path too: emptying the Beringer of an
+    existing Projekt is a 400 (there is no create-time auto-add to fall back on)."""
+    response = auth_client.patch(f"{LIST_URL}{project.id}/", {"scientist_ids": []}, format="json")
+
+    assert response.status_code == 400, response.json()
+    assert "scientist_ids" in response.json()
+    project.refresh_from_db()
+    assert list(project.scientists.all()) == [scientist]
+
+
+@pytest.mark.django_db
+def test_update_that_leaves_beringer_untouched_still_passes(auth_client, project):
+    """The min-1 rule only fires when the edit names the Beringer: a partial edit
+    of an unrelated field keeps whoever is on the Projekt."""
+    response = auth_client.patch(f"{LIST_URL}{project.id}/", {"title": "Renamed"}, format="json")
+
+    assert response.status_code == 200, response.json()
+    project.refresh_from_db()
+    assert project.title == "Renamed"
+    assert project.scientists.count() == 1

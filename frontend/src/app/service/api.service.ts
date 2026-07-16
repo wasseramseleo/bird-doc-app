@@ -70,6 +70,19 @@ export class ApiService {
     return this.http.put<DataEntry>(`${this.apiUrl}/data-entries/${id}/`, dataEntry);
   }
 
+  // #392 (ADR 0030): „Eintrag löschen". Der Server behält die Zeile hinter einem
+  // Flag und blendet sie aus jeder Abfrage aus — für die Nutzerin ist der Fang weg.
+  // Ein zweites DELETE trifft deshalb einen 404.
+  deleteDataEntry(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/data-entries/${id}/`);
+  }
+
+  // #392 (ADR 0030): das „Rückgängig" des Lösch-Snackbars — die einzige
+  // Wiederherstellung, die es gibt (kein Papierkorb).
+  restoreDataEntry(id: string): Observable<DataEntry> {
+    return this.http.post<DataEntry>(`${this.apiUrl}/data-entries/${id}/restore/`, {});
+  }
+
   getSpecies(searchTerm?: string, projectId?: string): Observable<PaginatedApiResponse<Species>> {
     let params = new HttpParams();
     if (searchTerm) {

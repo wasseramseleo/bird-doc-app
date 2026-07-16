@@ -327,6 +327,64 @@ def test_fangmarker_do_not_change_dashboard_counts(
 
 
 @pytest.mark.django_db
+def test_deleted_captures_count_in_no_dashboard_figure(
+    auth_client, scientist, project, ringing_station, species, species_other
+):
+    """A deleted capture is invisible to every query — "as if never recorded"
+    (ADR 0030). The filter sits at the module's single root queryset, so the
+    whole payload must be identical whether the deleted captures exist or not:
+    Fänge, Artenzahl, Fangtage, Erstfänge, Wiederfänge, häufigste Arten,
+    Erstnachweise, Tagesserie, Stundenhistogramm and letzter Fangtag alike.
+
+    The deleted captures are chosen to move *every* one of those figures if they
+    leaked through: a third Art (Artenzahl, top species, Erstnachweise, series
+    lines) on a later Fangtag (Fangtage, series days, last_fangtag) at another
+    Vienna hour (hour histogram), plus a Wiederfang (Fänge, Wiederfänge).
+    """
+    when = datetime(2026, 7, 2, 4, 0, tzinfo=UTC)
+    _capture(project, species, ringing_station, scientist, when)
+    _capture(project, species, ringing_station, scientist, when + timedelta(minutes=10), status="w")
+    _capture(project, species_other, ringing_station, scientist, when + timedelta(minutes=20))
+
+    params = {"from": "2026-07-01", "to": "2026-07-05"}
+    before = auth_client.get(stats_url(project.id, **params)).data
+
+    later = datetime(2026, 7, 4, 9, 0, tzinfo=UTC)
+    deleted = [
+        _capture(project, _make_species("Gelöschte Art"), ringing_station, scientist, later),
+        _capture(
+            project,
+            species,
+            ringing_station,
+            scientist,
+            later + timedelta(minutes=5),
+            status="w",
+        ),
+    ]
+    DataEntry.objects.filter(pk__in=[entry.pk for entry in deleted]).update(is_cancelled=True)
+
+    after = auth_client.get(stats_url(project.id, **params)).data
+
+    assert after == before
+    # And the concrete figures, so this is not vacuously comparing two empties.
+    assert before["totals"] == {
+        "faenge": 3,
+        "artenzahl": 2,
+        "fangtage": 1,
+        "erstfaenge": 2,
+        "wiederfaenge": 1,
+    }
+    assert [row["name"] for row in before["top_species"]] == [
+        species.common_name_de,
+        species_other.common_name_de,
+    ]
+    assert len(before["erstnachweise"]) == 2
+    assert before["series"]["days"] == ["2026-07-02"]
+    assert sum(before["hour_histogram"]) == 3
+    assert before["last_fangtag"]["date"] == "2026-07-02"
+
+
+@pytest.mark.django_db
 def test_aves_ignota_labelled_as_haeufigste_art(
     auth_client, scientist, project, ringing_station, aves_ignota_species, species
 ):

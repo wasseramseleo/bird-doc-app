@@ -11,16 +11,19 @@
       <textarea matInput rows="3" formControlName="description"></textarea>
     </mat-form-field>
 
-    @if (showOrganizationPicker) {
-      <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Organisation</mat-label>
-        <mat-select formControlName="organizationHandle">
-          @for (org of data.organizations; track org.handle) {
-            <mat-option [value]="org.handle">{{ org.name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-    }
+    <p class="organization-line">
+      <span class="organization-label">Organisation:</span>
+      {{ data.organization.name }}
+    </p>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Wissenschaftler:innen</mat-label>
+      <mat-select multiple formControlName="scientistIds">
+        @for (s of data.scientists; track s.id) {
+          <mat-option [value]="s.id">{{ s.full_name || s.handle }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
 
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>Projekttyp</mat-label>
@@ -40,6 +43,36 @@
         }
       </mat-select>
     </mat-form-field>
+
+    <p class="saison-hint">
+      Saison (optional): legt das Monatsfenster für die „Diese Saison"-Auswertung im
+      Dashboard fest. Über den Jahreswechsel hinweg erlaubt (z. B. November–März).
+    </p>
+    <div class="saison-fields">
+      <mat-form-field appearance="outline" class="saison-field">
+        <mat-label>Saison-Start (Monat)</mat-label>
+        <mat-select formControlName="saisonStartMonth">
+          <mat-option [value]="null">Keine</mat-option>
+          @for (month of saisonMonthOptions; track month.value) {
+            <mat-option [value]="month.value">{{ month.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="saison-field">
+        <mat-label>Saison-Ende (Monat)</mat-label>
+        <mat-select formControlName="saisonEndMonth">
+          <mat-option [value]="null">Keine</mat-option>
+          @for (month of saisonMonthOptions; track month.value) {
+            <mat-option [value]="month.value">{{ month.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+
+    <mat-checkbox formControlName="showOptionalFields">
+      Optionale Felder im Eingabeformular anzeigen
+    </mat-checkbox>
 
     <mat-checkbox formControlName="showNetFields">
       Netzfelder im Eingabeformular anzeigen
