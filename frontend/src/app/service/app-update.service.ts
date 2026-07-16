@@ -111,6 +111,18 @@ export class AppUpdateService {
    * dirty capture form has been confirmed away.
    */
   async adopt(): Promise<void> {
+    if (!this.versionReady() && !this.brokenCache()) {
+      // Nothing to activate and nothing to recover — the server reported drift
+      // (`markVersionStale()`) but ngsw has not found the new Version yet.
+      // Reloading here would be worse than useless: the tab comes back on the
+      // *same* bundle, and `serverReportedStale` does not survive it, so the
+      // indicator would re-render a green "Offline bereit" on a bundle the
+      // server still 404s — the exact false all-clear ADR 0032 exists to
+      // prevent, produced by the control meant to fix it. Staying stale and
+      // saying so is the honest outcome; the Version is adopted once a check
+      // actually finds it.
+      return;
+    }
     try {
       if (this.versionReady()) {
         await this.swUpdate?.activateUpdate();

@@ -1134,7 +1134,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     );
     ref.afterClosed().subscribe(confirmed => {
       if (confirmed) {
-        this.entryForm.get('species')!.setValue(ringDestroyed);
+        this.setByUser('species', ringDestroyed);
         this.selectedSpecies.set(ringDestroyed);
       }
     });
@@ -1148,10 +1148,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // mis-click, clearing the auto-composed Bemerkung. The real Art and Ring stay.
   onToggleDeadRecovery(): void {
     if (this.isDeadRecovery()) {
-      this.entryForm.get('is_dead_recovery')!.setValue(false);
-      const comment = this.entryForm.get('comment')!;
-      if (this.isTotfundComment(comment.value)) {
-        comment.setValue(null);
+      this.setByUser('is_dead_recovery', false);
+      if (this.isTotfundComment(this.entryForm.get('comment')!.value)) {
+        this.setByUser('comment', null);
       }
       return;
     }
@@ -1168,8 +1167,8 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       if (umstaende === undefined || umstaende === null) {
         return;
       }
-      this.entryForm.get('comment')!.setValue(this.composeTotfundComment(umstaende));
-      this.entryForm.get('is_dead_recovery')!.setValue(true);
+      this.setByUser('comment', this.composeTotfundComment(umstaende));
+      this.setByUser('is_dead_recovery', true);
     });
   }
 
@@ -1177,8 +1176,31 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // it simply flips the marker, which makes the Bemerkung mandatory (with a hint)
   // and outlines the form with a coloured frame + badge. Toggles off to undo.
   onToggleNonStandard(): void {
-    const control = this.entryForm.get('is_non_standard')!;
-    control.setValue(!control.value);
+    this.setByUser('is_non_standard', !this.entryForm.get('is_non_standard')!.value);
+  }
+
+  /**
+   * Writes a value the Beringer chose himself (#407, ADR 0032).
+   *
+   * Reactive forms only set `dirty` when a **ControlValueAccessor** writes a
+   * control — i.e. when the value came through the rendered input. A plain
+   * `setValue()` leaves the form pristine, however deliberate the action behind
+   * it. That is fine for the programmatic writes (a suggested Ringnummer, the
+   * Kleingefieder fields cleared by the Alter, the Station pre-filled from the
+   * Projekt): the Beringer did not type those, and marking them would make an
+   * untouched form claim it had unsaved input.
+   *
+   * But several genuinely human actions go through `setValue()` too — above all
+   * the single-key categorical picks, which are how this form is actually
+   * filled in. Those must dirty the form, because `entryForm.dirty` is now what
+   * the CanDeactivate guard and "Jetzt aktualisieren" ask before throwing the
+   * input away. A false "pristine" here is a bird's measurements lost with no
+   * question asked.
+   */
+  private setByUser(controlName: string, value: unknown): void {
+    const control = this.entryForm.get(controlName)!;
+    control.setValue(value);
+    control.markAsDirty();
   }
 
   private composeTotfundComment(umstaende: string): string {
@@ -2092,7 +2114,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     const matchingOption = options.find(opt => opt.key === key);
     if (matchingOption) {
       event.preventDefault();
-      this.entryForm.get(controlName)?.setValue(matchingOption.value);
+      this.setByUser(controlName, matchingOption.value);
       selectComponent.close();
       this.focusNext(controlName);
       // #362: setValue() does NOT emit MatSelect.selectionChange, so the central

@@ -41,7 +41,9 @@ interface Harness {
   dialog: {open: jasmine.Spy};
 }
 
-async function setup(options: {persist?: boolean | 'pending'} = {}): Promise<Harness> {
+async function setup(
+  options: {persist?: boolean | 'pending'; swUpdate?: FakeSwUpdate} = {},
+): Promise<Harness> {
   const {persist = true} = options;
   if (persist === 'pending') {
     spyOn(navigator.storage, 'persist').and.returnValue(new Promise(() => {}));
@@ -49,7 +51,7 @@ async function setup(options: {persist?: boolean | 'pending'} = {}): Promise<Har
     spyOn(navigator.storage, 'persist').and.resolveTo(persist);
   }
 
-  const swUpdate = new FakeSwUpdate();
+  const swUpdate = options.swUpdate ?? new FakeSwUpdate();
   const reload = jasmine.createSpy('reload');
   const dialog = {open: jasmine.createSpy('open')};
   dialog.open.and.returnValue({afterClosed: () => of(true)});
@@ -70,6 +72,18 @@ async function setup(options: {persist?: boolean | 'pending'} = {}): Promise<Har
   return {fixture, httpMock, swUpdate, reload, dialog};
 }
 
+/** A fake ngsw that *finds* something when asked to look — the real worker
+ * announces VERSION_READY as part of the check it runs, so a check that
+ * discovers a new bundle leaves a Version waiting. */
+function swUpdateThatFindsAVersion(): FakeSwUpdate {
+  const swUpdate = new FakeSwUpdate();
+  swUpdate.checkForUpdate.and.callFake(async () => {
+    emitVersionReady(swUpdate);
+    return true;
+  });
+  return swUpdate;
+}
+
 /** ngsw has downloaded a newer Version and is holding it for activation. */
 function emitVersionReady(swUpdate: FakeSwUpdate): void {
   swUpdate.versionUpdates.next({
@@ -86,10 +100,31 @@ function settle(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 20));
 }
 
+/** Waits for a condition instead of guessing at a delay. How long that real
+ * IndexedDB round trip takes depends on what else the suite is doing, so a
+ * fixed pause is a bet that is lost only under load — i.e. only on someone
+ * else's machine, in someone else's spec. */
+async function waitUntil(predicate: () => boolean, what: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`Timed out waiting for ${what}`);
+}
+
+/** Waits out any refresh in flight, so the "Jetzt aktualisieren" button's
+ * `[disabled]="refreshing()"` state has settled. */
+async function whenIdle(fixture: ComponentFixture<OfflineReadiness>): Promise<void> {
+  await waitUntil(() => !fixture.componentInstance.refreshing(), 'the refresh in flight to settle');
+  fixture.detectChanges();
+}
+
 /** Uses the single "Jetzt aktualisieren" control. Renders first, so the button's
  * `[disabled]="refreshing()"` state is current before the click. */
-function clickRefresh(fixture: ComponentFixture<OfflineReadiness>): void {
-  fixture.detectChanges();
+async function clickRefresh(fixture: ComponentFixture<OfflineReadiness>): Promise<void> {
+  await whenIdle(fixture);
   const button = fixture.nativeElement.querySelector(
     '.offline-readiness__refresh',
   ) as HTMLButtonElement;
@@ -107,8 +142,7 @@ async function flushBundleRequest(
 ): Promise<void> {
   const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/offline-bundle/'));
   req.flush(bundle);
-  await settle();
-  fixture.detectChanges();
+  await whenIdle(fixture);
 }
 
 describe('OfflineReadiness', () => {
@@ -254,7 +288,7 @@ describe('OfflineReadiness', () => {
       emitVersionReady(swUpdate);
       fixture.detectChanges();
 
-      clickRefresh(fixture);
+      await clickRefresh(fixture);
       httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/')).flush(BUNDLE);
       await settle();
 
@@ -294,7 +328,7 @@ describe('OfflineReadiness', () => {
       fixture.detectChanges();
 
       TestBed.inject(ConnectivityService).markOffline();
-      clickRefresh(fixture);
+      await clickRefresh(fixture);
       httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/')).flush(BUNDLE);
       await settle();
       expect(reload)
@@ -302,7 +336,7 @@ describe('OfflineReadiness', () => {
         .not.toHaveBeenCalled();
 
       TestBed.inject(ConnectivityService).markOnline();
-      clickRefresh(fixture);
+      await clickRefresh(fixture);
       httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/')).flush(BUNDLE);
       await settle();
       expect(reload).toHaveBeenCalled();
@@ -316,7 +350,7 @@ describe('OfflineReadiness', () => {
       emitVersionReady(swUpdate);
       fixture.detectChanges();
 
-      clickRefresh(fixture);
+      await clickRefresh(fixture);
       httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/')).flush(BUNDLE);
       await settle();
 
@@ -332,7 +366,7 @@ describe('OfflineReadiness', () => {
       emitVersionReady(swUpdate);
       fixture.detectChanges();
 
-      clickRefresh(fixture);
+      await clickRefresh(fixture);
       httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/')).flush(BUNDLE);
       await settle();
       fixture.detectChanges();
@@ -356,7 +390,7 @@ describe('OfflineReadiness', () => {
       emitVersionReady(swUpdate);
       fixture.detectChanges();
 
-      clickRefresh(fixture);
+      await clickRefresh(fixture);
 
       const req = httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/'));
       expect(req.request.method)
@@ -366,6 +400,111 @@ describe('OfflineReadiness', () => {
       await settle();
 
       expect(swUpdate.activateUpdate).not.toHaveBeenCalled();
+    });
+
+    // User Stories 1/2/3: the device the ADR was written for is the tab that has
+    // been open since Tuesday. ngsw only checks for updates on registration and
+    // on `navigate` requests — this SPA issues none after boot — so unless the
+    // indicator asks, a Wednesday deploy is never discovered and the green
+    // "Offline bereit" stands indefinitely. Asking is neither a nag, nor an
+    // auto-activateUpdate, nor a reload, so ADR 0032 decision 2 permits it.
+    // These need no warm cache: a stale Version outranks a cache still warming
+    // up, so the headline is the Version's either way. Left un-flushed on
+    // purpose — the reference-cache round trip writes through to real IndexedDB,
+    // and this file's timing budget is the suite's tightest.
+    describe('discovering a new Version on a long-lived tab', () => {
+      it('flips to "Version veraltet" on its own, with no user action, when a deploy lands', async () => {
+        const {fixture} = await setup({swUpdate: swUpdateThatFindsAVersion()});
+        await settle();
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.textContent)
+          .withContext('a deploy the tab has never navigated to must still surface')
+          .toContain('Version veraltet');
+        expect(fixture.componentInstance.isReady()).toBeFalse();
+      });
+
+      it('looks for a new Version again when connectivity returns', async () => {
+        const swUpdate = new FakeSwUpdate();
+        await setup({swUpdate});
+        swUpdate.checkForUpdate.calls.reset();
+
+        window.dispatchEvent(new Event('online'));
+
+        expect(swUpdate.checkForUpdate)
+          .withContext('back on the net is exactly when a deploy can be found')
+          .toHaveBeenCalled();
+      });
+
+      // The check is a *look*, never an adoption: ADR 0032 decision 2 forbids
+      // any reload the Beringer did not ask for.
+      it('never adopts what it discovers on its own', async () => {
+        const {swUpdate, reload} = await setup({swUpdate: swUpdateThatFindsAVersion()});
+        await settle();
+
+        expect(swUpdate.activateUpdate).not.toHaveBeenCalled();
+        expect(reload).not.toHaveBeenCalled();
+      });
+    });
+
+    // ADR 0032 decision 5: the server may flip the indicator (#409's 404 path).
+    // That is a fact about *this* bundle, not a Version ngsw is holding — there
+    // is nothing to activate, so there is nothing a reload could achieve.
+    describe('a drift only the server has seen', () => {
+      it('does not reload when there is no Version to activate', async () => {
+        const {fixture, httpMock, swUpdate, reload} = await setup();
+        await flushBundleRequest(fixture, httpMock);
+        TestBed.inject(AppUpdateService).markVersionStale();
+        fixture.detectChanges();
+
+        await clickRefresh(fixture);
+        httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/')).flush(BUNDLE);
+        await settle();
+        fixture.detectChanges();
+
+        expect(swUpdate.activateUpdate).not.toHaveBeenCalled();
+        expect(reload)
+          .withContext('the tab would come back on the very same bundle')
+          .not.toHaveBeenCalled();
+        expect(fixture.nativeElement.textContent)
+          .withContext('a reload would destroy the drift and re-render a false green')
+          .toContain('Version veraltet');
+        expect(fixture.nativeElement.textContent).not.toContain('Offline bereit');
+      });
+
+      it('never asks the Beringer to discard his capture when there is nothing to adopt', async () => {
+        const {fixture, httpMock, dialog} = await setup();
+        await flushBundleRequest(fixture, httpMock);
+        TestBed.inject(UnsavedChangesService).watch(() => true);
+        TestBed.inject(AppUpdateService).markVersionStale();
+        fixture.detectChanges();
+
+        await clickRefresh(fixture);
+        httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/')).flush(BUNDLE);
+        await settle();
+
+        expect(dialog.open)
+          .withContext('no question whose "yes" would do nothing at all')
+          .not.toHaveBeenCalled();
+      });
+
+      // The happy path the hint promises: the click asks ngsw to look, ngsw
+      // finds the Version the server was talking about, and *that* adopts.
+      it('adopts the Version the click discovers', async () => {
+        const {fixture, httpMock, swUpdate, reload} = await setup({
+          swUpdate: swUpdateThatFindsAVersion(),
+        });
+        await flushBundleRequest(fixture, httpMock);
+        TestBed.inject(AppUpdateService).markVersionStale();
+        fixture.detectChanges();
+
+        await clickRefresh(fixture);
+        httpMock.expectOne((r) => r.url.endsWith('/offline-bundle/')).flush(BUNDLE);
+        await settle();
+
+        expect(swUpdate.activateUpdate).toHaveBeenCalled();
+        expect(reload).toHaveBeenCalled();
+      });
     });
   });
 

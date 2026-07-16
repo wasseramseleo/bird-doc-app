@@ -40,9 +40,14 @@ describe('unsavedChangesGuard', () => {
     expect(dialogMock.open).withContext('pristine form is never asked about').not.toHaveBeenCalled();
   });
 
-  // Issue #339 + ADR 0032: the bare `n` shortcut navigates to a fresh capture
-  // form from anywhere. This is its regression test — leaving a touched form now
-  // has to ask first, whatever triggered the navigation.
+  // The guard's own contract, against a stand-in probe: whatever triggered the
+  // navigation, a touched capture form is asked about first.
+  //
+  // This is deliberately *not* the `n` regression test, and a probe installed by
+  // hand here could not be: it exercises neither `app.ts`, nor the router, nor
+  // the form. Those live where they can fail for real — `app.spec.ts` drives the
+  // whole `n` → router → guard path, and `data-entry-form.spec.ts` covers the
+  // form actually publishing its dirty state (issue #339 + ADR 0032).
   it('blocks the navigation away from a touched capture form when the Beringer declines', async () => {
     midCapture(true);
     dialogMock.open.and.returnValue({afterClosed: () => of(false)});

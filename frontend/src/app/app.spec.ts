@@ -1,10 +1,16 @@
+import { Component, DestroyRef, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { MatDialog } from '@angular/material/dialog';
+import { of } from 'rxjs';
 
 import { App } from './app';
+import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
+import { UnsavedChangesService } from './service/unsaved-changes.service';
+import { ConfirmDialogComponent } from './shared/confirm-dialog/confirm-dialog';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -156,6 +162,107 @@ describe('App', () => {
       );
 
       expect(navSpy).not.toHaveBeenCalled();
+    });
+  });
+  // #407 (ADR 0032): `n` used to throw an in-progress capture away with no
+  // question at all — a latent bug, not a precedent. The CanDeactivate guard
+  // closes it. The tests above spy on `navigateByUrl`, so they stop short of the
+  // guard; these drive the whole real path instead — the shell's keydown
+  // handler, the router, and the guard — because that is where the data loss
+  // lived.
+  //
+  // Note the reachable path is `/data-entry/:id` → `/data-entry`: the router
+  // defaults to `onSameUrlNavigation: 'ignore'`, so pressing `n` while already
+  // on `/data-entry` is inert and never reaches a guard.
+  describe('the guard closes the `n` shortcut (#407, ADR 0032)', () => {
+    let midCapture = false;
+    const dialogMock = { open: jasmine.createSpy('dialog.open') };
+
+    // Stands in for the capture form. That the *real* form publishes its dirty
+    // state truthfully is data-entry-form.spec.ts's job; what is under test here
+    // is the shell → router → guard chain around it.
+    @Component({ template: 'Erfassung' })
+    class CaptureStub {
+      constructor() {
+        const unsavedChanges = inject(UnsavedChangesService);
+        const probe = () => midCapture;
+        unsavedChanges.watch(probe);
+        inject(DestroyRef).onDestroy(() => unsavedChanges.stopWatching(probe));
+      }
+    }
+
+    async function setup(startUrl: string): Promise<Router> {
+      TestBed.resetTestingModule();
+      midCapture = false;
+      dialogMock.open.calls.reset();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+      await TestBed.configureTestingModule({
+        imports: [App],
+        providers: [
+          provideRouter([
+            { path: 'data-entry', component: CaptureStub, canDeactivate: [unsavedChangesGuard] },
+            {
+              path: 'data-entry/:id',
+              component: CaptureStub,
+              canDeactivate: [unsavedChangesGuard],
+            },
+          ]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: MatDialog, useValue: dialogMock },
+        ],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(App);
+      const router = TestBed.inject(Router);
+      await router.navigateByUrl(startUrl);
+      fixture.detectChanges();
+      return router;
+    }
+
+    /** A bare `n` with nothing editable focused — the Beringer's reflex. */
+    async function pressN(router: Router): Promise<void> {
+      (document.activeElement as HTMLElement | null)?.blur();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+      // The guard answers through a dialog Observable, so let the navigation
+      // settle before reading the URL.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(router).toBeDefined();
+    }
+
+    const askedToDiscard = (): boolean =>
+      dialogMock.open.calls.all().some((call) => call.args[0] === ConfirmDialogComponent);
+
+    it('asks first, and stays on the capture when the Beringer declines', async () => {
+      const router = await setup('/data-entry/5');
+      midCapture = true;
+      dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
+
+      await pressN(router);
+
+      expect(askedToDiscard()).withContext('a reflex must not cost measurements').toBeTrue();
+      expect(router.url).withContext('declining keeps the bird in hand').toBe('/data-entry/5');
+    });
+
+    it('opens the fresh capture form once the Beringer confirms discarding', async () => {
+      const router = await setup('/data-entry/5');
+      midCapture = true;
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      await pressN(router);
+
+      expect(askedToDiscard()).toBeTrue();
+      expect(router.url).toBe('/data-entry');
+    });
+
+    it('opens the fresh capture form with no question when nothing is in progress', async () => {
+      const router = await setup('/data-entry/5');
+      midCapture = false;
+
+      await pressN(router);
+
+      expect(askedToDiscard()).withContext('an untouched form is never asked about').toBeFalse();
+      expect(router.url).toBe('/data-entry');
     });
   });
 });

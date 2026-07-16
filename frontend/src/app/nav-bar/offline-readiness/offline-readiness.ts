@@ -89,7 +89,7 @@ export class OfflineReadiness {
       case 'version-stale':
         return this.appUpdate.versionWaiting()
           ? 'Eine neue Version steht bereit. „Jetzt aktualisieren" übernimmt sie.'
-          : 'Der Server meldet, dass diese Version veraltet ist. „Jetzt aktualisieren" holt die neue Version.';
+          : 'Der Server meldet, dass diese Version veraltet ist. „Jetzt aktualisieren" sucht nach der neuen Version und übernimmt sie, sobald sie bereitsteht.';
       case 'cache':
         return 'Die Referenzdaten für den Offline-Betrieb werden geladen.';
       default:
@@ -99,10 +99,29 @@ export class OfflineReadiness {
 
   constructor() {
     this.triggerRefresh();
+    this.triggerVersionCheck();
 
     fromEvent(window, 'online')
       .pipe(takeUntilDestroyed())
-      .subscribe(() => this.triggerRefresh());
+      .subscribe(() => {
+        this.triggerRefresh();
+        this.triggerVersionCheck();
+      });
+  }
+
+  /** The cache top-up and the Version check are the same errand — "is this
+   * device still current?" — so they run on the same unconditional triggers:
+   * being shown, and connectivity returning.
+   *
+   * Asking ngsw to look is what makes the fourth clause work at all on the
+   * device it was written for. ngsw checks on registration and then only on
+   * `navigate` requests; this SPA issues none after boot, so the tab that has
+   * been open since Tuesday would never discover Wednesday's deploy and would
+   * show a green "Offline bereit" indefinitely. A look is not an adoption:
+   * there is still no timer, no nag, no automatic `activateUpdate()` and no
+   * reload — those stay on the Beringer's own click (ADR 0032 decision 2). */
+  private triggerVersionCheck(): void {
+    void this.appUpdate.checkForUpdate();
   }
 
   /**
@@ -130,6 +149,11 @@ export class OfflineReadiness {
     }
   }
 
+  // Only what this click can actually *do*. A Version ngsw is holding can be
+  // activated; a drift only the server has seen cannot — there is no bundle to
+  // switch to, so there is nothing to confirm away a capture for. The
+  // `checkForUpdate()` above is what turns the latter into the former, when the
+  // Version really is there to be found.
   private adoptionOffered(): boolean {
     if (this.appUpdate.unrecoverable()) {
       // ADR 0032 decision 4: the recovery reload is offered **only when online**.
@@ -140,7 +164,7 @@ export class OfflineReadiness {
       // exact moment it cannot be fixed.
       return this.isOnline();
     }
-    return this.appUpdate.versionStale();
+    return this.appUpdate.versionWaiting();
   }
 
   // Conservative on purpose: either source claiming no network is enough to
