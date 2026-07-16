@@ -14,6 +14,7 @@ import {MatDialog} from '@angular/material/dialog';
 import {debounceTime, distinctUntilChanged} from 'rxjs/operators';
 
 import {ApiService} from '../service/api.service';
+import {DataEntryRefreshService} from '../service/data-entry-refresh.service';
 import {ProjectService} from '../service/project.service';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {
@@ -41,6 +42,7 @@ import {
 export class DataEntryListComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly projectService = inject(ProjectService);
+  private readonly entryRefresh = inject(DataEntryRefreshService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
@@ -87,6 +89,24 @@ export class DataEntryListComponent implements OnInit {
         this.searchControl.setValue('', {emitEvent: false});
         this.loadEntries();
       });
+    });
+
+    // #392 (ADR 0030): das „Rückgängig" des Lösch-Snackbars stellt serverseitig
+    // wieder her, während diese Liste längst gerendert ist — sie lädt sonst nur
+    // beim Betreten und beim Projektwechsel. Ohne dieses Nachladen behauptet die
+    // Bestätigung einen Erfolg, den der Bildschirm widerlegt. Paging und Suche
+    // bleiben bewusst stehen: der Eintrag kehrt dorthin zurück, wo er war, und
+    // die Nutzerin hat den Blick nicht bewegt.
+    let seenRefresh = this.entryRefresh.token();
+    effect(() => {
+      const token = this.entryRefresh.token();
+      // Der erste Lauf ist nur die Anmeldung am Signal — der Effect des Projekts
+      // hat da bereits geladen, ein zweiter Ladevorgang wäre reine Dopplung.
+      if (token === seenRefresh) {
+        return;
+      }
+      seenRefresh = token;
+      untracked(() => this.loadEntries());
     });
   }
 

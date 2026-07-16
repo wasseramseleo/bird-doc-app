@@ -610,6 +610,23 @@
            Tab erreichbaren Knopf der Zeile. Alles Destruktive trägt tabindex="-1". -->
       @if (isEditMode()) {
         <button mat-button type="button" tabindex="-1" (click)="onBackToList()">Zur Liste</button>
+        <!-- #392 (ADR 0030): „Eintrag löschen" — die gefährlichste Aktion der
+             Zeile, deshalb wie alles Destruktive per tabindex="-1" aus der
+             Tab-Reihenfolge genommen. Offline gesperrt: gelöscht wird nur online.
+             NICHT im Queued-Modus: ein eingereihter Eintrag trägt eine lokal
+             vergebene Outbox-ID, die der Server nie gesehen hat — ein DELETE
+             darauf liefe unweigerlich in einen 404. Gelöscht wird er dort, wo er
+             herkommt (Heute-Seite, „Zur Liste" führt zurück), mit dem eigenen
+             Mechanismus (Outbox statt Server) und ohne „Rückgängig". -->
+        @if (!isQueuedEditMode()) {
+          <button mat-button type="button" tabindex="-1" class="delete-entry-link"
+                  data-testid="delete-entry-button"
+                  [disabled]="isOffline()"
+                  [title]="isOffline() ? 'Offline kann nicht gelöscht werden.' : null"
+                  (click)="onDeleteEntry()">
+            Eintrag löschen
+          </button>
+        }
       }
       <button mat-stroked-button type="button" tabindex="-1" (click)="onReset()">Zurücksetzen</button>
       <button mat-flat-button color="primary" type="submit"

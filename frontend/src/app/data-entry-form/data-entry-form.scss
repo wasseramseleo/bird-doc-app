@@ -385,6 +385,16 @@
   letter-spacing: 0.01em;
 }
 
+// #392 (ADR 0030): „Eintrag löschen" trägt als einzige Aktion der Zeile die
+// Fehlerfarbe der Marke — es ist die gefährlichste. Gesetzt wird der
+// Material-3-Token, nicht `color`: `color="warn"` ist eine M2-API und bleibt
+// unter `mat.theme()` wirkungslos, und eine eigene `color`-Regel verlöre gegen
+// Materials `.mat-mdc-button:not(:disabled)`. Offline greift Materials
+// disabled-Token, der Knopf wird also von selbst stumm.
+.delete-entry-link {
+  --mat-button-text-label-text-color: var(--bd-error, #a8412d);
+}
+
 // #45: the Ringgröße select only ever holds a short ring-size value, so the
 // field is constrained to roughly its label width instead of stretching to fill
 // a full grid cell. It stays left-aligned in its cell; the floating label and

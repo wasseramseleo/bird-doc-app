@@ -13,6 +13,7 @@ import { of } from 'rxjs';
 import { DataEntryListComponent } from './data-entry-list';
 
 registerLocaleData(localeDeAt);
+import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
 import { ProjectService } from '../service/project.service';
 import { Project, Projekttyp } from '../models/project.model';
 import { BirdStatus, DataEntry } from '../models/data-entry.model';
@@ -91,6 +92,48 @@ describe('DataEntryListComponent', () => {
     fixture.detectChanges();
     return req;
   }
+
+  // #392 (ADR 0030), Review-Fund: das „Rückgängig" des Lösch-Snackbars stellt
+  // serverseitig wieder her, während diese Liste schon steht — sie lädt sonst nur
+  // beim Betreten und beim Projektwechsel. Ohne Nachladen meldet das Snackbar
+  // einen Erfolg, den der Bildschirm widerlegt; wer das sieht, erfasst den Fang
+  // plausibel erneut und erzeugt genau die zweite lebende Erstfang-Zeile auf
+  // einer Ringnummer, die ADR 0019 verbietet.
+  describe('refresh after a restore (#392)', () => {
+    it('reloads and shows the restored row again', () => {
+      flushEntries([row({ id: 'bleibt' })]);
+      expect(fixture.nativeElement.querySelectorAll('tr.entry-row').length).toBe(1);
+
+      TestBed.inject(DataEntryRefreshService).request();
+      fixture.detectChanges();
+
+      // Der wiederhergestellte Fang ist zurück — sichtbar, nicht nur im Backend.
+      flushEntries([row({ id: 'bleibt' }), row({ id: 'wiederhergestellt' })]);
+      expect(fixture.nativeElement.querySelectorAll('tr.entry-row').length).toBe(2);
+    });
+
+    it('keeps the current page and search when it reloads — the entry returns where it was', () => {
+      flushEntries([row({ id: 'e1' })]);
+      component.searchControl.setValue('Kohlmeise', { emitEvent: false });
+      component.onPageChange({ pageIndex: 2, pageSize: 10, length: 100 } as PageEvent);
+      flushEntries([row({ id: 'e1' })]);
+
+      TestBed.inject(DataEntryRefreshService).request();
+      fixture.detectChanges();
+
+      const req = flushEntries([row({ id: 'e1' })]);
+      expect(req.request.params.get('page')).toBe('3');
+      expect(req.request.params.get('page_size')).toBe('10');
+      expect(req.request.params.get('search')).toBe('Kohlmeise');
+    });
+
+    it('does not fire a second load on first render — the Projekt effect already loaded', () => {
+      // Die Liste meldet sich beim Signal an, ohne dessen Stand als Ereignis zu
+      // lesen: genau EIN Ladevorgang beim Betreten.
+      flushEntries([row({ id: 'e1' })]);
+      httpMock.expectNone((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'));
+    });
+  });
 
   it('marks a sentinel "Ring Vernichtet" row discreetly and leaves normal rows unmarked', () => {
     flushEntries([
