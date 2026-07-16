@@ -133,6 +133,23 @@ def _ring_consuming_entries(organization):
     )
 
 
+def iwm_export_entries(project):
+    """The captures one Projekt reports to the Meldestelle — the queryset behind
+    ``ProjectViewSet.export_iwm``.
+
+    A deleted capture is never sent (ADR 0030): the Beringer retracted it, so as
+    far as the Datenmeldung is concerned it was never recorded. A name rather
+    than an inline queryset, like ``_ring_consuming_entries`` above, so the rule
+    can be exercised against the row set the export actually reads instead of a
+    re-typed copy of it — the endpoint's own authz is covered separately.
+    """
+    return (
+        DataEntry.objects.filter(project=project, is_cancelled=False)
+        .select_related("species", "ring", "staff", "ringing_station")
+        .order_by("date_time")
+    )
+
+
 def _parse_iso_date(value, field):
     """Parse an optional ``YYYY-MM-DD`` query param into a ``date`` or ``None``;
     a malformed value is a 400 (clear German ``detail``)."""
@@ -717,12 +734,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="export-iwm")
     def export_iwm(self, request, pk=None):
         project = self.get_object()
-        entries = (
-            DataEntry.objects.filter(project=project)
-            .select_related("species", "ring", "staff", "ringing_station")
-            .order_by("date_time")
-        )
-        content = build_iwm_workbook(entries)
+        content = build_iwm_workbook(iwm_export_entries(project))
         filename = f"IWM_{project.title}_{datetime.date.today():%Y-%m-%d}.xlsx"
         response = HttpResponse(
             content,
