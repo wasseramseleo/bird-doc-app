@@ -3,6 +3,7 @@ from pathlib import Path
 
 import openpyxl
 from django.utils.timezone import localtime
+from openpyxl.styles import PatternFill
 
 from .models import DataEntry
 
@@ -10,6 +11,18 @@ TEMPLATE_PATH = (
     Path(__file__).resolve().parent / "templates" / "iwm" / "Datenmeldung_Vorlage_IWM.xlsx"
 )
 SHEET_NAME = "Fangdaten"
+
+# Nicht-Standard-Fang (ADR 0026): its row is background-filled so the Beringer can
+# spot it at a glance on their own review — purely visual, since the Meldestelle
+# ignores cell formatting. A soft amber, applied across the whole data row.
+NON_STANDARD_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+# A no-fill reset, applied to every data cell before writing so a template example
+# row's leftover styling never leaks onto a real export row.
+_NO_FILL = PatternFill(fill_type=None)
+# The three project-derived method columns a Nicht-Standard-Fang blanks — the
+# capture happened outside the Projekt's standard protocol, so its defaults do not
+# describe it (ADR 0026).
+NON_STANDARD_BLANK_COLUMNS = frozenset({"Fangmethode", "Lockmittel", "Umstand"})
 
 # "No additional marking" — every authentic Datenmeldung row carries it (the
 # importer reads and discards it, having no model field to land it in).
@@ -114,14 +127,26 @@ def build_iwm_workbook(entries) -> bytes:
         raise RuntimeError(f"IWM template missing columns: {sorted(missing)}")
 
     # Clear all template data rows in the 32 real columns (deferred ones too),
-    # so example rows don't leak into the user's export.
+    # so example rows — both their values and their leftover fills — don't leak
+    # into the user's export.
     for r in range(2, ws.max_row + 1):
         for col in header_to_col.values():
-            ws.cell(row=r, column=col).value = None
+            cell = ws.cell(row=r, column=col)
+            cell.value = None
+            cell.fill = _NO_FILL
 
     for row_idx, entry in enumerate(entries, start=2):
+        # Nicht-Standard-Fang (ADR 0026): fill the whole row and blank the three
+        # project-derived method columns. A Tot-Fund gets neither — it reaches the
+        # export only as its Bemerkung text.
+        non_standard = entry.is_non_standard
         for header, getter in COLUMN_MAP.items():
-            ws.cell(row=row_idx, column=header_to_col[header]).value = getter(entry)
+            blank = non_standard and header in NON_STANDARD_BLANK_COLUMNS
+            value = None if blank else getter(entry)
+            ws.cell(row=row_idx, column=header_to_col[header]).value = value
+        if non_standard:
+            for col in header_to_col.values():
+                ws.cell(row=row_idx, column=col).fill = NON_STANDARD_FILL
 
     buf = BytesIO()
     wb.save(buf)

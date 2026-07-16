@@ -56,6 +56,18 @@ AVES_IGNOTA_COMMENT_REQUIRED = _(
     "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
 )
 
+# Fangmarker (ADR 0026): a Tot-Fund or Nicht-Standard-Fang must always be
+# described, so a blank Bemerkung is refused when either marker is set — the same
+# spirit as the Aves-ignota rule above.
+MARKER_COMMENT_REQUIRED = _(
+    "Bei einem Tot-Fund oder Nicht-Standard-Fang ist eine Bemerkung erforderlich."
+)
+
+# The Fangmarker (ADR 0026): capture-level booleans that flag a situation without
+# replacing the Art. A Ring-vernichtet capture carries no bird to mark, so they
+# are forced off for it, alongside the bird-data null-out.
+FANGMARKER_FIELDS = ("is_dead_recovery", "is_non_standard")
+
 RING_ALREADY_FIRST_CAUGHT = _(
     "Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang."
 )
@@ -171,7 +183,22 @@ def create_capture(
         if existing is not None:
             return existing
 
-    validate_capture(species, comment)
+    # Fangmarker (ADR 0026): a Ring-vernichtet capture has no bird to mark, so
+    # both markers are forced off regardless of caller input — resolved before
+    # the mandatory-comment check so a marker can never demand a comment there.
+    is_ring_destroyed = (
+        species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED
+    )
+    if is_ring_destroyed:
+        for field in FANGMARKER_FIELDS:
+            bird_data[field] = False
+
+    validate_capture(
+        species,
+        comment,
+        is_dead_recovery=bool(bird_data.get("is_dead_recovery")),
+        is_non_standard=bool(bird_data.get("is_non_standard")),
+    )
 
     # Resolve the Ring's Zentrale (ADR 0019). An omitted ``central`` defaults to
     # the Projekt-Zentrale — today always AUW — so a pre-feature payload (no
@@ -185,9 +212,6 @@ def create_capture(
     # fresh number from the Projekt's own rope, so it must be issued under the
     # Projekt-Zentrale; only a Wiederfang (recapture) may reference a foreign
     # Zentrale. A mismatch on those statuses is refused before anything is written.
-    is_ring_destroyed = (
-        species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED
-    )
     requested_bird_status = bird_data.get("bird_status", DataEntry.BirdStatus.FIRST_CATCH)
     is_erstfang = requested_bird_status == DataEntry.BirdStatus.FIRST_CATCH
     if (is_erstfang or is_ring_destroyed) and central != projekt_zentrale:
@@ -285,7 +309,7 @@ def create_capture(
         raise
 
 
-def validate_capture(species, comment):
+def validate_capture(species, comment, *, is_dead_recovery=False, is_non_standard=False):
     """Check a resolved capture's creation invariants without writing anything.
 
     Shared by ``create_capture`` (run before the write) and the IWM importer's
@@ -293,6 +317,7 @@ def validate_capture(species, comment):
     would raise. Raises ``CaptureValidationError`` on the first violation.
     """
     _validate_aves_ignota(species, comment)
+    _validate_fangmarker(comment, is_dead_recovery, is_non_standard)
 
 
 def _validate_aves_ignota(species, comment):
@@ -303,3 +328,14 @@ def _validate_aves_ignota(species, comment):
     if species is not None and species.special_kind == Species.SpecialKind.UNKNOWN_SPECIES:
         if not (comment and comment.strip()):
             raise CaptureValidationError("comment", AVES_IGNOTA_COMMENT_REQUIRED)
+
+
+def _validate_fangmarker(comment, is_dead_recovery, is_non_standard):
+    """Reject a Tot-Fund or Nicht-Standard-Fang without a Bemerkung (ADR 0026).
+
+    Either Fangmarker makes the Bemerkung mandatory — the special situation must
+    always be described — so a blank comment is refused before anything is
+    written. The caller forces the markers off for a Ring-vernichtet capture, so
+    this never fires there."""
+    if (is_dead_recovery or is_non_standard) and not (comment and comment.strip()):
+        raise CaptureValidationError("comment", MARKER_COMMENT_REQUIRED)
