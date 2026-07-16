@@ -10,7 +10,7 @@ import {OutboxService} from './outbox.service';
 import {OutboxStoreService} from '../core/offline/outbox-store';
 import {PendingBeringerStoreService} from '../core/offline/pending-beringer-store';
 import {IndexedDbStore} from '../core/offline/indexed-db-store';
-import {OutboxEntry} from '../models/outbox-entry.model';
+import {OutboxEntry, PAYLOAD_SCHEMA_VERSION} from '../models/outbox-entry.model';
 import {PendingBeringer} from '../models/pending-beringer.model';
 import {AuthUser} from '../models/auth-user.model';
 
@@ -439,6 +439,59 @@ describe('SyncService', () => {
       const remaining = await outboxStore.list();
       expect(remaining.map((e) => e.id)).toEqual(['uuid-1']);
       expect(remaining[0].syncError).toBeFalsy();
+    });
+  });
+
+  describe('payload schema stamp (issue #408, ADR 0033)', () => {
+    // A payload is frozen at queue time and IndexedDB outlives any bundle swap,
+    // so a device offline ~30 days replays a month-old contract. The stamp is
+    // what lets the server see that drift and migrate — it must reach the wire,
+    // since a stamp that never leaves the device answers nobody's question.
+
+    it('puts the payload schema version of the bundle that queued the capture on the wire', async () => {
+      auth.currentUser.set(authUser());
+      const outbox = TestBed.inject(OutboxService);
+      await outbox.ready;
+      await firstValueFrom(outbox.enqueue({idempotency_key: 'uuid-1', ring_number: '0043'}));
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      const postReq = expectCreatePost();
+      expect(postReq.request.body).toEqual({
+        idempotency_key: 'uuid-1',
+        ring_number: '0043',
+        schema_version: PAYLOAD_SCHEMA_VERSION,
+      });
+      postReq.flush({id: 'server-1'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 1, flagged: 0});
+    });
+
+    it('sends no stamp for an entry queued before stamping existed (the pre-versioning contract)', async () => {
+      // Stamping is itself a contract change, so it has to tolerate its own
+      // absence from day one: on the morning this ships, every entry already
+      // sitting in a real device's outbox carries no stamp. Inventing one here
+      // would be a lie — the bundle that froze this payload never made a claim
+      // about its contract, and the server reads an absent stamp as exactly that.
+      auth.currentUser.set(authUser());
+      await outboxStore.add(makeEntry({payload: {idempotency_key: 'uuid-1', ring_number: '0043'}}));
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      const postReq = expectCreatePost();
+      expect(postReq.request.body).toEqual({idempotency_key: 'uuid-1', ring_number: '0043'});
+      expect(postReq.request.body.schema_version).toBeUndefined();
+      postReq.flush({id: 'server-1'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 1, flagged: 0});
     });
   });
 

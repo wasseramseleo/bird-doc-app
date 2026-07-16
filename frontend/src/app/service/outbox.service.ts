@@ -1,7 +1,7 @@
 import {computed, inject, Injectable, signal} from '@angular/core';
 import {from, Observable, tap} from 'rxjs';
 
-import {OutboxEntry} from '../models/outbox-entry.model';
+import {OutboxEntry, PAYLOAD_SCHEMA_VERSION} from '../models/outbox-entry.model';
 import {OutboxStoreService} from '../core/offline/outbox-store';
 import {AuthService} from './auth.service';
 
@@ -85,6 +85,12 @@ export class OutboxService {
    * land *after* this method's own `entries.update()`, silently dropping the
    * just-queued entry from the pending-count signal (the durable IndexedDB
    * row itself would still be safe — only the in-memory count would lie).
+   *
+   * Stamps the payload contract this bundle speaks (issue #408, ADR 0033). The
+   * stamp belongs *here*, at the moment the payload is frozen, because that is
+   * the only moment the claim is true: the entry then sits in IndexedDB across
+   * any number of bundle swaps, and a stamp applied later — at replay, by
+   * whatever bundle happens to be running — would describe the wrong contract.
    */
   enqueue(payload: Record<string, unknown> & {idempotency_key?: string | null}): Observable<void> {
     const id = payload.idempotency_key;
@@ -95,7 +101,13 @@ export class OutboxService {
     if (!accountKey) {
       throw new Error('Cannot enqueue a capture without an authenticated account.');
     }
-    const entry: OutboxEntry = {id, accountKey, payload, queuedAt: new Date().toISOString()};
+    const entry: OutboxEntry = {
+      id,
+      accountKey,
+      payload,
+      queuedAt: new Date().toISOString(),
+      schemaVersion: PAYLOAD_SCHEMA_VERSION,
+    };
     return from(this.ready.then(() => this.store.add(entry))).pipe(
       tap(() => this.entries.update((current) => [...current, entry])),
     );
@@ -180,6 +192,13 @@ export class OutboxService {
    * (issue #164) is dropped, since fixing a server-rejected entry in the form
    * is exactly how it is resolved — the corrected capture becomes eligible for
    * the next sync again rather than staying skipped as flagged.
+   *
+   * It is also re-stamped with *this* bundle's payload schema version (issue
+   * #408, ADR 0033), for the same reason `enqueue()` stamps: the payload is
+   * being frozen again, here and now, by the bundle currently running. Carrying
+   * the old entry's stamp forward would describe the contract of a payload that
+   * no longer exists — even a month-old entry, once re-saved in today's form,
+   * speaks today's contract.
    */
   update(id: string, payload: Record<string, unknown>): Observable<void> {
     const existing = this.findQueued(id);
@@ -191,6 +210,7 @@ export class OutboxService {
       accountKey: existing.accountKey,
       queuedAt: existing.queuedAt,
       payload,
+      schemaVersion: PAYLOAD_SCHEMA_VERSION,
     };
     return from(this.ready.then(() => this.store.add(updated))).pipe(
       tap(() =>

@@ -1106,3 +1106,58 @@ class SpeciesRingSizeOverride(models.Model):
 
     def __str__(self):
         return f"Ringgröße {self.ring_size} für {self.species_id} ({self.organization_id})"
+
+
+class UnmigratablePayload(models.Model):
+    """A replayed capture payload the server could not interpret (ADR 0033).
+
+    An **alarm with a data attachment, not a workflow.** A payload the server
+    cannot bring onto the current contract is always accepted — the device gets a
+    200 and dequeues, so nothing strands and nothing loops — but it must not
+    reach the Fangdaten: the server by definition cannot say what it means, and a
+    misread measurement would travel on to the Zentrale looking exactly like a
+    good row. So the raw payload is parked here, verbatim, and the operator is
+    alerted to have a human judge it.
+
+    **This is unreachable by construction**, because ADR 0031's invariant keeps
+    every alias — and every migration step — alive at least as long as the outbox
+    can retain a payload. A row here therefore means something is broken: an
+    alias was dropped early, the migratable floor was raised too far, or the
+    outbox's retention grew past it. Keep it this small deliberately — it has no
+    UI, no inbox, no queue and no domain term (it is not in CONTEXT.md, following
+    the same house instinct that leaves the outbox itself unnamed). Building it
+    out into a workflow would be designing for a bug.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # The payload exactly as it arrived, stamp included — never normalised or
+    # repaired. It is evidence, and the whole point is that we cannot read it.
+    payload = models.JSONField(verbose_name=_("Payload"))
+    # The stamp, lifted out for a human scanning rows ("which contract blew up?").
+    # Null when what arrived was not a version at all (a malformed stamp is held
+    # exactly like a too-old one); ``payload`` keeps the raw value either way.
+    schema_version = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name=_("Payload-Schema-Version"),
+    )
+    # Whose device replayed it — the human to ask about the capture. SET_NULL:
+    # the evidence must outlive the account, since the row is examined long after
+    # the fact.
+    submitted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="unmigratable_payloads",
+        verbose_name=_("Eingereicht von"),
+    )
+    created = models.DateTimeField(auto_now_add=True, verbose_name=_("Erstellt"))
+
+    class Meta:
+        ordering = ["-created"]
+        verbose_name = _("Nicht migrierbarer Payload")
+        verbose_name_plural = _("Nicht migrierbare Payloads")
+
+    def __str__(self):
+        return f"Nicht migrierbarer Payload (Schema {self.schema_version}) vom {self.created}"
