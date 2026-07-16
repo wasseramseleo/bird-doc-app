@@ -187,7 +187,11 @@ test.describe('Offline local Wiederfang history panel (issue #168)', () => {
     // The history panel appears, assembled from the local queue...
     const historyPanel = page.locator('.recapture-section');
     await expect(historyPanel).toBeVisible();
-    await expect(historyPanel.locator('h3')).toContainText('Bisherige Fänge (1)');
+    // #405: die Anzahl steht als matBadge an der Überschrift statt in Klammern.
+    // MatBadge rendert seinen Inhalt *innerhalb* des Hosts, `h3` textContent ist
+    // also "Bisherige Fänge1" — Text und Zahl werden deshalb getrennt geprüft.
+    await expect(historyPanel.locator('h3')).toContainText('Bisherige Fänge');
+    await expect(historyPanel.locator('h3 .mat-badge-content')).toHaveText('1');
     await expect(historyPanel.locator('td.mat-column-species')).toContainText('Kohlmeise');
     await expect(historyPanel.locator('td.mat-column-staff')).toContainText('FRE');
 

@@ -142,22 +142,3 @@ h3 { font-size: 20px; line-height: 28px; }
     scroll-behavior: auto !important;
   }
 }
-
-// #374 (#1): the Bemerkung indicator — a yellow mat-badge dot marking a capture
-// that carries a note. It appears over the Wiederfang-Historie info button, whose
-// icon is always visible, so the dot is what distinguishes with/without Bemerkung.
-// MatBadge appends its `.mat-badge-content` span at runtime, outside a component's
-// emulated encapsulation, so it must be styled globally. The content glyph is
-// hidden (font-size: 0) so only the small yellow dot shows.
-// #388: "Letzte Fänge" no longer uses this — there the icon renders only when a
-// Bemerkung exists, so a dot would merely repeat the icon's own existence.
-.bemerkung-badge .mat-badge-content {
-  min-width: 8px;
-  width: 8px;
-  height: 8px;
-  line-height: 8px;
-  padding: 0;
-  font-size: 0;
-  background: var(--bd-warning);
-  color: var(--bd-warning);
-}

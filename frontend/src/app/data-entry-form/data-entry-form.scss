@@ -190,8 +190,19 @@
     box-shadow: none;
   }
 
+  // #388/#405: die Marker-Spalte. Feste Breite, damit sie nicht mit dem Inhalt
+  // atmet; die drei Slots selbst wohnen in app-marker-slots.
+  .marker-header,
+  [data-testid='marker-cell'] {
+    width: 1%;
+    white-space: nowrap;
+  }
+
+  // #405: die Zeile trägt jetzt den Klick zum Detail-Dialog — der frühere
+  // Info-Button ist weg.
   .history-entry {
     height: 44px;
+    cursor: pointer;
     transition: background-color 150ms ease;
 
     &:hover {
@@ -322,22 +333,9 @@
   font-weight: 600;
 }
 
-// #371: the distinct row icons for the two markers in the Fänge/Historie tables.
-.fangmarker-icon {
-  font-size: 1.05rem;
-  height: 1.05rem;
-  width: 1.05rem;
-  vertical-align: text-bottom;
-  margin-left: 4px;
-}
-
-.fangmarker-icon--dead {
-  color: var(--bd-error);
-}
-
-.fangmarker-icon--non-standard {
-  color: var(--bd-accent);
-}
+// #405: die Marker-Icons wohnen jetzt ausschließlich in app-marker-slots. Die
+// Kopie hier war bereits divergiert (vertical-align: text-bottom, margin-left)
+// — ein Rest aus dem Textfluss der Art-Zelle, den es nicht mehr gibt.
 
 // #23: a prominent CapsLock warning at the top of the form. Typed ring numbers
 // and single-char codes are entered blind, so this must be impossible to miss.

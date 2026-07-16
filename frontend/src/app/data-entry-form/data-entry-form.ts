@@ -89,6 +89,7 @@ import {
   resetAcknowledgedSignatures,
 } from '../core/plausibility/plausibility-acknowledgment';
 import {InfoDialogComponent, InfoDialogData} from '../shared/info-dialog/info-dialog';
+import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
 
 // #232: the strict Austrian (AUW) ring-size codes. When the Zentrale switches
 // back from a foreign scheme to the Projekt-Zentrale, a free-text Größe that is
@@ -118,6 +119,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     MatDialogModule,
     MatIconModule,
     MatBadgeModule,
+    MarkerSlotsComponent,
   ],
   providers: [provideNativeDateAdapter(), DatePipe, DecimalPipe],
   templateUrl: './data-entry-form.html',
@@ -211,11 +213,21 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // unvollständig" label so the Beringer knows captures made on another device
   // or before this device's cache snapshot may be missing.
   readonly historyPossiblyIncomplete = signal<boolean>(false);
+  // #405: 'marker' ersetzt die frühere 'actions'-Spalte — sie trägt keine Aktion
+  // mehr, sondern die drei Marker-Slots aus #388. Den Detail-Dialog öffnet jetzt
+  // der Zeilenklick.
   readonly displayedHistoryColumns: string[] = [
     'date_time', 'species', 'bird_status', 'staff', 'tarsus', 'feather_span', 'wing_span', 'weight_gram',
-    'age_class', 'sex', 'actions'
+    'age_class', 'sex', 'marker'
   ];
   readonly BirdStatus = BirdStatus;
+
+  // #405: die Beschreibung des Anzahl-Badges für Screenreader — ohne sie liest
+  // ein Screenreader die nackte Zahl („Bisherige Fänge 3").
+  readonly historyCountDescription = computed(() => {
+    const count = this.recaptureHistory().length;
+    return count === 1 ? '1 Eintrag' : `${count} Einträge`;
+  });
 
   // #115: a determined-sex contradiction across the recapture history. Only
   // determined sexes (Männchen/Weibchen) count towards the set; Unbekannt is
