@@ -17,6 +17,7 @@ import {ApiService} from '../service/api.service';
 import {DataEntryRefreshService} from '../service/data-entry-refresh.service';
 import {ProjectService} from '../service/project.service';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
+import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
 import {
   ImportIwmDialogComponent,
   ImportIwmDialogData,
@@ -34,6 +35,7 @@ import {
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    MarkerSlotsComponent,
   ],
   templateUrl: './data-entry-list.html',
   styleUrl: './data-entry-list.scss',

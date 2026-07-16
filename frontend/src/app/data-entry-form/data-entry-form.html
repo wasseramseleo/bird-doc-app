@@ -20,7 +20,37 @@
     <div class="recapture-reveal__inner">
       @if (recaptureHistory().length > 0) {
     <div class="recapture-section">
-      <h3>Bisherige Fänge ({{ recaptureHistory().length }})</h3>
+      <!-- #405: die Anzahl als hochgestellter Badge statt in Klammern. Das Panel
+           rendert nur bei length > 0, es gibt also keinen Null-Zustand.
+
+           matBadgeSize ist bewusst "medium", NICHT "small" wie im Issue-Text
+           vorgeschlagen: "small" ist in Material 3 die Punkt-Variante, keine
+           kleinere Zahl. Sie setzt
+             font-size: var(--mat-badge-small-size-text-size, 0)
+           und dieses Token definiert nur die alten M2-prebuilt-themes; mat.theme()
+           emittiert ausschliesslich --mat-sys-*. Der Fallback 0 greift also, die
+           Ziffer wäre unsichtbar und die Überschrift läse sich als
+           „Bisherige Fänge •" — schlechter als das „(3)", das dieses Issue
+           verbessern wollte. Auch das Token selbst zu setzen genügt nicht: der
+           Container bleibt 6px hoch bei 6px line-height und overflow: hidden, die
+           Ziffer wird schlicht abgeschnitten (verifiziert: 11px Schrift in 6px Box).
+           "small" für eine Zahl brauchbar zu machen hiesse container-size,
+           line-height, padding und offset zu überschreiben — also "medium"
+           nachzubauen. Deshalb "medium" (font-size 11px, 16px Box).
+
+           Das aria-label trägt die Anzahl für Screenreader („Bisherige Fänge,
+           3 Einträge" statt „Bisherige Fänge 3"). matBadgeDescription leistet das
+           hier NICHT: MatBadge setzt aria-hidden="true" auf den Badge-Inhalt, und
+           auf einem nicht-fokussierbaren Host (<h3>) hängt es die Beschreibung per
+           _updateInlineDescription() in genau dieses aria-hidden-Element — das
+           zudem beim ersten Rendern noch gar nicht existiert (der description-
+           Setter läuft vor ngOnInit, `this._badgeElement?.appendChild` verpufft).
+           Die Beschreibung landet dadurch nirgends im DOM. Siehe PR zu #405. -->
+      <h3 data-testid="history-heading"
+          [attr.aria-label]="'Bisherige Fänge, ' + historyCountDescription()"
+          [matBadge]="recaptureHistory().length"
+          matBadgeSize="medium"
+          matBadgeOverlap="false">Bisherige Fänge</h3>
       @if (historyPossiblyIncomplete()) {
         <div class="offline-history-hint" role="status" data-testid="offline-history-incomplete">
           <mat-icon aria-hidden="true">cloud_off</mat-icon>
@@ -42,19 +72,11 @@
 
         <ng-container matColumnDef="species">
           <th mat-header-cell *matHeaderCellDef>Art</th>
+          <!-- #405: die Art-Zelle trägt nur noch den Artnamen — ein Fangmarker
+               markiert den Fang, nicht die Art, und steht in der Marker-Spalte
+               (ADR 0026). -->
           <td mat-cell *matCellDef="let element">
             {{ element.species?.common_name_de ?? '—' }}
-            <!-- #371: distinct Fangmarker row icons (ADR 0026). -->
-            @if (element.is_dead_recovery) {
-              <mat-icon class="fangmarker-icon fangmarker-icon--dead" inline
-                        data-testid="history-tot-fund-icon"
-                        title="Tot-Fund" aria-label="Tot-Fund">heart_broken</mat-icon>
-            }
-            @if (element.is_non_standard) {
-              <mat-icon class="fangmarker-icon fangmarker-icon--non-standard" inline
-                        data-testid="history-non-standard-icon"
-                        title="Nicht-Standard-Fang" aria-label="Nicht-Standard-Fang">flag</mat-icon>
-            }
           </td>
         </ng-container>
 
@@ -104,27 +126,25 @@
           <td mat-cell *matCellDef="let element">{{ getSexLabel(element.sex) }}</td>
         </ng-container>
 
-        <ng-container matColumnDef="actions" stickyEnd>
-          <th mat-header-cell *matHeaderCellDef></th>
-          <td mat-cell *matCellDef="let element">
-            <!-- #374 (#1): a yellow mat-badge dot marks a past Fang whose comment
-                 is non-empty, so the Beringer notices which recaptures carry a
-                 note before opening the detail dialog. -->
-            <button mat-icon-button type="button"
-                    class="bemerkung-badge"
-                    aria-label="Details anzeigen"
-                    [matBadge]="element.comment ? '●' : null"
-                    matBadgeSize="small"
-                    matBadgeOverlap="true"
-                    [matBadgeDescription]="element.comment ? 'Bemerkung vorhanden' : ''"
-                    (click)="openDetailDialog(element)">
-              <mat-icon>info_outline</mat-icon>
-            </button>
+        <!-- #405: die Marker-Spalte, identisch zu „Letzte Fänge" (#388). Drei feste
+             Slots in fixer Reihenfolge (ⓘ Bemerkung │ ♥ Tot-Fund │ ⚑ Nicht-Standard);
+             das ⓘ erscheint nur bei vorhandener Bemerkung, ein Badge-Punkt würde
+             bloß die Existenz des Icons wiederholen. Der frühere Info-Button ist
+             weg — die Zeile trägt jetzt den Klick zum Detail-Dialog, dasselbe
+             Interaktionsmodell wie in „Letzte Fänge". -->
+        <ng-container matColumnDef="marker" stickyEnd>
+          <th mat-header-cell *matHeaderCellDef class="marker-header"></th>
+          <td mat-cell *matCellDef="let element" data-testid="marker-cell">
+            <app-marker-slots [entry]="element"></app-marker-slots>
           </td>
         </ng-container>
 
         <tr mat-header-row *matHeaderRowDef="displayedHistoryColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" class="history-entry"></tr>
+        <!-- #405: der Zeilenklick öffnet den Detail-Dialog. Er darf *nicht*
+             navigieren wie „Letzte Fänge" — der Beringer ist mitten in einer
+             Erfassung und würde den laufenden Fang verlieren. -->
+        <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" class="history-entry"
+            (click)="openDetailDialog(row)"></tr>
       </table>
     </div>
       }

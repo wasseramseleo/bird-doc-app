@@ -507,7 +507,9 @@ describe('DataEntryFormComponent', () => {
         'weight_gram',
         'age_class',
         'sex',
-        'actions',
+        // #405: die frühere 'actions'-Spalte trägt keine Aktion mehr, sondern
+        // die drei Marker-Slots — den Detail-Dialog öffnet der Zeilenklick.
+        'marker',
       ]);
       expect(component.displayedHistoryColumns).not.toContain('ringing_station');
       expect(component.displayedHistoryColumns).not.toContain('fat_deposit');
@@ -671,27 +673,245 @@ describe('DataEntryFormComponent', () => {
       expect(cellText('weight_gram')).toBe('19,0');
     });
 
-    // Issue #374 (#1): a past Fang that carries a Bemerkung gets a yellow
-    // mat-badge dot on its info button, so the Beringer sees which recaptures
-    // carry a note before opening the detail dialog.
-    const infoButton = (): HTMLElement =>
-      fixture.nativeElement.querySelector('td.mat-column-actions button') as HTMLElement;
+    // #405 (#374 (#1) abgelöst): der Bemerkungs-Indikator ist jetzt das ⓘ selbst,
+    // das nur bei vorhandener Bemerkung rendert — der frühere Badge-Punkt auf dem
+    // immer sichtbaren Info-Button ist damit weg. Dasselbe Glyph bedeutet in
+    // beiden Tabellen wieder dasselbe: „hat Bemerkung", nicht „hier klicken".
+    it('shows the ⓘ only on a past Fang that carries a comment', () => {
+      component.recaptureHistory.set([
+        historyRow({ comment: 'linker Flügel verletzt' }),
+        historyRow({ comment: null }),
+      ]);
+      fixture.detectChanges();
 
-    it('marks a past Fang that carries a comment with the Bemerkung indicator on its info button', () => {
+      const rows = Array.from(
+        fixture.nativeElement.querySelectorAll('tr.history-entry'),
+      ) as HTMLElement[];
+      expect(rows[0].querySelector('[data-testid="bemerkung-icon"]'))
+        .withContext('Fang mit Bemerkung trägt das ⓘ')
+        .not.toBeNull();
+      expect(rows[1].querySelector('[data-testid="bemerkung-icon"]'))
+        .withContext('Fang ohne Bemerkung trägt kein ⓘ')
+        .toBeNull();
+    });
+
+    // #405: beide Fangmarker erzwingen eine Bemerkung — ein ⓘ, das nur
+    // "Bemerkung vorhanden" sagt, wäre genau dort redundant; der Tooltip trägt
+    // deshalb den echten Text.
+    it('shows the actual Bemerkung text on the ⓘ instead of a generic hint', () => {
       component.recaptureHistory.set([historyRow({ comment: 'linker Flügel verletzt' })]);
       fixture.detectChanges();
 
-      expect(infoButton()).not.toBeNull();
-      // MatBadge only renders the badge span when its content is non-empty.
-      expect(infoButton().querySelector('.mat-badge-content')).not.toBeNull();
+      const icon = fixture.nativeElement.querySelector(
+        '[data-testid="bemerkung-icon"]',
+      ) as HTMLElement;
+      expect(icon.getAttribute('title')).toBe('linker Flügel verletzt');
+      expect(icon.getAttribute('aria-label')).toContain('linker Flügel verletzt');
     });
 
-    it('shows no Bemerkung indicator for a past Fang without a comment', () => {
-      component.recaptureHistory.set([historyRow({ comment: null })]);
+    // #405: das ⓘ rendert nur, *wenn* eine Bemerkung existiert — ein Badge-Punkt
+    // würde bloß die Existenz des Icons wiederholen. Der Badge wechselt den Job
+    // und sitzt jetzt an der Überschrift, nicht mehr in der Zeile.
+    it('renders the history rows without a badge dot', () => {
+      component.recaptureHistory.set([historyRow({ comment: 'linker Flügel verletzt' })]);
       fixture.detectChanges();
 
-      expect(infoButton()).not.toBeNull();
-      expect(infoButton().querySelector('.mat-badge-content')).toBeNull();
+      const row = fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
+      expect(row.querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+      expect(row.querySelector('.mat-badge-content')).toBeNull();
+      expect(row.querySelector('[matBadge], .mat-badge')).toBeNull();
+    });
+
+    // #405 (ADR 0026): ein Fangmarker markiert den Fang, nicht die Art — die
+    // Icons leben in der Marker-Spalte, nie in der Art-Zelle. Diese beiden
+    // Marker-Icons hatten zuvor null Testabdeckung.
+    it('renders the Fangmarker icons in the marker cell and not in the Art cell', () => {
+      component.recaptureHistory.set([
+        historyRow({
+          comment: 'tot unter dem Netz',
+          is_dead_recovery: true,
+          is_non_standard: true,
+        } as Partial<DataEntry>),
+      ]);
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
+      const markerCell = row.querySelector('[data-testid="marker-cell"]') as HTMLElement;
+      const speciesCell = row.querySelector('td.mat-column-species') as HTMLElement;
+
+      for (const testid of ['bemerkung-icon', 'tot-fund-icon', 'non-standard-icon']) {
+        expect(markerCell.querySelector(`[data-testid="${testid}"]`))
+          .withContext(`${testid} sitzt in der Marker-Spalte`)
+          .not.toBeNull();
+      }
+      // Die Art-Zelle trägt nur noch den Artnamen.
+      expect(speciesCell.textContent).toContain('Kohlmeise');
+      expect(speciesCell.querySelector('mat-icon')).toBeNull();
+    });
+
+    it('renders a distinct Tot-Fund icon and none on a plain past Fang', () => {
+      component.recaptureHistory.set([
+        historyRow({}),
+        historyRow({ comment: 'tot unter dem Netz', is_dead_recovery: true } as Partial<DataEntry>),
+      ]);
+      fixture.detectChanges();
+
+      const rows = Array.from(
+        fixture.nativeElement.querySelectorAll('tr.history-entry'),
+      ) as HTMLElement[];
+      expect(rows[0].querySelector('[data-testid="tot-fund-icon"]')).toBeNull();
+      expect(rows[1].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+      // Die beiden Fangmarker tragen verschiedene Icons.
+      expect(rows[1].querySelector('[data-testid="non-standard-icon"]')).toBeNull();
+    });
+
+    it('renders a distinct Nicht-Standard icon', () => {
+      component.recaptureHistory.set([
+        historyRow({ comment: 'Handfang', is_non_standard: true } as Partial<DataEntry>),
+      ]);
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
+      expect(row.querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+      expect(row.querySelector('[data-testid="tot-fund-icon"]')).toBeNull();
+    });
+
+    // #405: die Historie übernimmt die Marker-Konvention aus #388 — drei
+    // reservierte Slots in fixer Reihenfolge (ⓘ, ♥, ⚑), damit ein Marker in
+    // jeder Zeile im selben Slot sitzt. Geprüft wird die Struktur, nicht die
+    // Geometrie: dass die Slots vertikal fluchten, ist eine CSS-Eigenschaft.
+    it('reserves three marker slots in fixed order in every history row, occupied or not', () => {
+      component.recaptureHistory.set([
+        historyRow({}),
+        historyRow({ is_non_standard: true } as Partial<DataEntry>),
+        historyRow({
+          comment: 'tot unter dem Netz',
+          is_dead_recovery: true,
+          is_non_standard: true,
+        } as Partial<DataEntry>),
+      ]);
+      fixture.detectChanges();
+
+      const rows = Array.from(
+        fixture.nativeElement.querySelectorAll('tr.history-entry'),
+      ) as HTMLElement[];
+      expect(rows.length).toBe(3);
+      for (const r of rows) {
+        const slots = Array.from(
+          r.querySelectorAll('[data-testid="marker-cell"] .marker-slot'),
+        ) as HTMLElement[];
+        expect(slots.map((s) => s.dataset['testid'])).toEqual([
+          'marker-slot-bemerkung',
+          'marker-slot-tot-fund',
+          'marker-slot-non-standard',
+        ]);
+      }
+
+      // Ein einzelner Nicht-Standard-Marker bleibt in seinem eigenen Slot; die
+      // vorderen Slots bleiben leer und rücken nicht nach.
+      const nsSlots = rows[1].querySelectorAll('[data-testid="marker-cell"] .marker-slot');
+      expect(nsSlots[0].children.length).toBe(0);
+      expect(nsSlots[1].children.length).toBe(0);
+      expect(nsSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+
+      // Beide Fangmarker plus ⓘ sind gleichzeitig belegbar (ADR 0026).
+      const bothSlots = rows[2].querySelectorAll('[data-testid="marker-cell"] .marker-slot');
+      expect(bothSlots[0].querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+      expect(bothSlots[1].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+      expect(bothSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+    });
+
+    // #405: das ⓘ ist kein Button mehr — die Zeile trägt die Interaktion, wie in
+    // „Letzte Fänge". Sie darf aber *nicht* navigieren: der Beringer ist mitten
+    // in einer Erfassung und würde den laufenden Fang verlieren.
+    it('opens the detail dialog on a row click without navigating away', () => {
+      // MatDialogModule bringt MatDialog als eigenen Provider mit, den die
+      // standalone-Komponente in ihrem Node-Injector auflöst — TestBed.inject()
+      // liefert eine *andere* Instanz. Der Spy muss auf der Instanz sitzen, die
+      // die Komponente tatsächlich benutzt.
+      const open = spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate');
+      const navigateByUrl = spyOn(router, 'navigateByUrl');
+
+      const entry = historyRow({ comment: 'linker Flügel verletzt' });
+      component.recaptureHistory.set([entry]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(open).toHaveBeenCalledTimes(1);
+      const config = open.calls.mostRecent().args[1] as { data: DataEntry };
+      expect(config.data).toBe(entry);
+
+      // Die laufende Erfassung bleibt stehen — kein Routenwechsel.
+      expect(navigate).not.toHaveBeenCalled();
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    // #405: die Anzahl erscheint als hochgestellter Badge, nicht in Klammern.
+    it('shows the history count as a superscript badge instead of in brackets', () => {
+      component.recaptureHistory.set([historyRow({}), historyRow({}), historyRow({})]);
+      fixture.detectChanges();
+
+      const heading = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"]',
+      ) as HTMLElement;
+
+      // Die Klammern sind weg; die Zahl sitzt im Badge.
+      expect(heading.textContent).not.toContain('(3)');
+      const badge = heading.querySelector('.mat-badge-content') as HTMLElement;
+      expect(badge).not.toBeNull();
+      expect(badge.textContent!.trim()).toBe('3');
+    });
+
+    // #405: die Anzahl muss auch WIRKLICH LESBAR sein, nicht nur im textContent
+    // stehen. matBadgeSize="small" ist in Material 3 die Punkt-Variante: die Regel
+    // `.mat-badge-small .mat-badge-content { font-size: var(--mat-badge-small-size-text-size, 0) }`
+    // fällt auf 0 zurück, weil mat.theme() nur --mat-sys-*-Tokens emittiert und
+    // --mat-badge-small-size-text-size nirgends definiert ist (nur die alten
+    // M2-prebuilt-themes setzen es). Die Ziffer wäre dann zwar im DOM, aber mit
+    // font-size: 0 unsichtbar — die Überschrift läse sich als „Bisherige Fänge •".
+    // Eine textContent-Assertion kann das nicht sehen, deshalb hier der
+    // gerenderte Zustand.
+    it('renders the count legibly rather than collapsing it to a dot', () => {
+      component.recaptureHistory.set([historyRow({}), historyRow({}), historyRow({})]);
+      fixture.detectChanges();
+
+      const badge = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"] .mat-badge-content',
+      ) as HTMLElement;
+
+      const fontSize = parseFloat(getComputedStyle(badge).fontSize);
+      expect(fontSize).toBeGreaterThan(0);
+      // Die Ziffer muss zusätzlich in ihre Box passen: .mat-badge-content trägt
+      // overflow: hidden, eine 11px-Ziffer in einer 6px-Zeile wäre abgeschnitten.
+      expect(badge.offsetHeight).toBeGreaterThanOrEqual(fontSize);
+    });
+
+    // #405: der Badge-Inhalt ist aria-hidden (MatBadge setzt das selbst), ein
+    // Screenreader liest ihn also nie. Ohne eigene Beschreibung bliebe die Anzahl
+    // für ihn komplett unsichtbar — die Überschrift muss sie selbst tragen.
+    it('describes the count for screen readers instead of reading a bare number', () => {
+      component.recaptureHistory.set([historyRow({}), historyRow({}), historyRow({})]);
+      fixture.detectChanges();
+
+      const heading = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"]',
+      ) as HTMLElement;
+      expect(heading.querySelector('.mat-badge-content')!.getAttribute('aria-hidden')).toBe('true');
+      expect(heading.getAttribute('aria-label')).toBe('Bisherige Fänge, 3 Einträge');
+    });
+
+    it('describes a single past Fang in the singular', () => {
+      component.recaptureHistory.set([historyRow({})]);
+      fixture.detectChanges();
+
+      const heading = fixture.nativeElement.querySelector(
+        '[data-testid="history-heading"]',
+      ) as HTMLElement;
+      expect(heading.getAttribute('aria-label')).toBe('Bisherige Fänge, 1 Eintrag');
     });
   });
 

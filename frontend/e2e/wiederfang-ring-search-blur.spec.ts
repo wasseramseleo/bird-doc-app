@@ -148,7 +148,11 @@ test.describe('Wiederfang auto-search on Ringnummer blur (#273)', () => {
 
     const panel = page.locator('.recapture-section');
     await expect(panel).toBeVisible();
-    await expect(panel.locator('h3')).toContainText('Bisherige Fänge (1)');
+    // #405: die Anzahl steht als matBadge an der Überschrift statt in Klammern.
+    // MatBadge rendert seinen Inhalt *innerhalb* des Hosts, `h3` textContent ist
+    // also "Bisherige Fänge1" — Text und Zahl werden deshalb getrennt geprüft.
+    await expect(panel.locator('h3')).toContainText('Bisherige Fänge');
+    await expect(panel.locator('h3 .mat-badge-content')).toHaveText('1');
     await expect(panel.locator('td.mat-column-species')).toContainText('Kohlmeise');
     expect(counter.count).toBe(1);
   });

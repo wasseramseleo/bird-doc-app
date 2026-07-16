@@ -1,0 +1,50 @@
+// #388/#405: das einzige Zuhause der Marker-Icons. Drei gleich breite Slots —
+// dadurch sitzt ⓘ, ♥ und ⚑ in jeder Zeile an derselben x-Position und die Spalte
+// lässt sich vertikal abscannen. Ein leerer Slot behält seine Breite.
+//
+// #405: `.fangmarker-icon` war zuvor zweimal definiert (data-entry-form.scss und
+// data-entry-list.scss) und bereits divergiert — die Form-Variante trug
+// `vertical-align: text-bottom; margin-left: 4px` aus dem alten Textfluss der
+// Art-Zelle. Im Slot-Raster ist beides falsch: der Slot setzt den Abstand, die
+// Zentrierung übernimmt das Flexbox-Alignment.
+:host {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.marker-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+// Eine einheitliche Ausrichtung für alle drei Icons: keine gemischten
+// vertical-align-Werte mehr wie im früheren Textfluss der Art-Zelle.
+.marker-icon {
+  font-size: 1.05rem;
+  height: 1.05rem;
+  width: 1.05rem;
+  line-height: 1.05rem;
+  vertical-align: middle;
+}
+
+// #371 (ADR 0026): distinct Fangmarker row icons.
+.fangmarker-icon {
+  &.fangmarker-icon--dead {
+    color: var(--bd-error);
+  }
+
+  &.fangmarker-icon--non-standard {
+    color: var(--bd-accent);
+  }
+}
+
+// #374 (#1): der Bemerkungs-Indikator bleibt gedämpft — er meldet die Bemerkung,
+// nicht einen Alarm.
+.bemerkung-indicator {
+  color: var(--bd-ink-faint);
+}
