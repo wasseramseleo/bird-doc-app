@@ -232,6 +232,27 @@
   margin-top: 16px;
 }
 
+// #387: der gemeinsame Container der drei Sonderfall-Knöpfe. `margin-right: auto`
+// sitzt hier — an der Gruppe, nicht an einem einzelnen Knopf (#47 hatte es an
+// "Ring vernichtet" gehängt, weshalb die später ergänzten Fangmarker aus #371
+// nach rechts neben die Primäraktion rutschten). Am Container gehalten, kann ein
+// weiterer Knopf nicht mehr aus der Gruppe fallen.
+.special-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+
+// Sichtbarer Trenner zwischen "Ring vernichtet" (ersetzt die Art) und den beiden
+// Fangmarkern (markieren nur die Situation) — ADR 0026.
+.special-actions-separator {
+  align-self: stretch;
+  width: 1px;
+  margin: 6px 0;
+  background-color: var(--bd-line);
+}
+
 .data-entry-form.edit-mode {
   position: relative;
   border: 4px solid var(--bd-warning);
@@ -352,12 +373,12 @@
 
 // Issue #19: the "Ring vernichtet" quick-button. Deliberately understated so it
 // never competes with the common case (a real bird) — a small, muted text link.
-// Issue #47: it now lives in the form action row, pushed hard left (margin-right:
-// auto) so it sits opposite — and well clear of — "Zurücksetzen"/"Erstellen" and
-// is not hit by accident when reaching for the primary action.
+// Issue #47: it lives in the form action row, opposite — and well clear of —
+// "Zurücksetzen"/"Speichern", so it is not hit by accident when reaching for the
+// primary action. #387: that left alignment moved off this button and onto
+// `.special-actions` below.
 .destroyed-ring-link {
   align-self: center;
-  margin-right: auto;
   font-size: 0.8rem;
   font-weight: 400;
   color: var(--bd-ink-soft);

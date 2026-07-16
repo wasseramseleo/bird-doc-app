@@ -1269,6 +1269,117 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  describe('Aktionszeile: Sonderfall-Knöpfe & Tab-Reihenfolge (#387)', () => {
+    const sentinel: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      special_kind: 'ring_destroyed',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      show_net_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const dialogMock = { open: jasmine.createSpy('open') };
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: { currentProject: signal<Project | null>(project), setCurrent: () => {}, clear: () => {} },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 1, next: null, previous: null, results: [sentinel] });
+    });
+
+    const byTestid = (testid: string): HTMLElement | null =>
+      fixture.nativeElement.querySelector(`.action-buttons [data-testid="${testid}"]`);
+
+    const rowButton = (label: string): HTMLButtonElement =>
+      (Array.from(fixture.nativeElement.querySelectorAll('.action-buttons button')) as
+        HTMLButtonElement[]).find((b) => b.textContent!.trim() === label)!;
+
+    it('groups all three Sonderfall-Knöpfe in one container: Ring vernichtet, Trenner, Tot-Fund, Nicht-Standard-Fang', () => {
+      const container = byTestid('special-actions');
+      expect(container).not.toBeNull();
+
+      const order = Array.from(container!.children).map((el) => el.getAttribute('data-testid'));
+      expect(order).toEqual([
+        'destroyed-ring-button',
+        'special-actions-separator',
+        'tot-fund-button',
+        'non-standard-button',
+      ]);
+    });
+
+    it('keeps the Fangmarker restrained and highlights the active one', () => {
+      const tot = byTestid('tot-fund-button')!;
+      expect(tot.classList).toContain('fangmarker-link');
+      expect(tot.classList).not.toContain('is-active');
+
+      component.entryForm.get('is_dead_recovery')!.setValue(true);
+      fixture.detectChanges();
+
+      expect(byTestid('tot-fund-button')!.classList).toContain('is-active');
+    });
+
+    it('excludes "Ring vernichtet" and "Zurücksetzen" from the Tab order; only the primary action stays reachable', () => {
+      expect(byTestid('destroyed-ring-button')!.getAttribute('tabindex')).toBe('-1');
+      expect(byTestid('tot-fund-button')!.getAttribute('tabindex')).toBe('-1');
+      expect(byTestid('non-standard-button')!.getAttribute('tabindex')).toBe('-1');
+      expect(rowButton('Zurücksetzen').getAttribute('tabindex')).toBe('-1');
+
+      // The primary action ("Erstellen" here, "Änderungen speichern" in edit
+      // mode) is the row's only Tab stop — it carries no tabindex at all, so the
+      // browser's native order lands on it straight from the Innenfuß.
+      const submit = fixture.nativeElement.querySelector(
+        '.action-buttons button[type="submit"]',
+      ) as HTMLButtonElement;
+      expect(submit.textContent!.trim()).toBe('Erstellen');
+      expect(submit.getAttribute('tabindex')).toBeNull();
+    });
+
+    it('assigns no positive tabindex anywhere in the form', () => {
+      const positive = (Array.from(fixture.nativeElement.querySelectorAll('[tabindex]')) as
+        HTMLElement[]).filter((el) => Number(el.getAttribute('tabindex')) > 0);
+
+      expect(positive.map((el) => el.getAttribute('data-testid') ?? el.tagName)).toEqual([]);
+    });
+  });
+
   describe('edit mode (opening an existing entry via /data-entry/:id)', () => {
     const station: RingingStation = {
       handle: 'STAMT',
@@ -1410,6 +1521,23 @@ describe('DataEntryFormComponent', () => {
       backToList.dispatchEvent(event);
 
       expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('keeps "Zur Liste" out of the Tab order, leaving "Änderungen speichern" the only Tab stop (#387)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      const rowButton = (label: string): HTMLButtonElement =>
+        (Array.from(f.nativeElement.querySelectorAll('.action-buttons button')) as
+          HTMLButtonElement[]).find((b) => b.textContent!.trim() === label)!;
+
+      expect(rowButton('Zur Liste').getAttribute('tabindex')).toBe('-1');
+      expect(rowButton('Zurücksetzen').getAttribute('tabindex')).toBe('-1');
+      expect(rowButton('Änderungen speichern').getAttribute('tabindex')).toBeNull();
     });
 
     it('collapses the form when the loaded entry is a sentinel "Ring Vernichtet"', async () => {
