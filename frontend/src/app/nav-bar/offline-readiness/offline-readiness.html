@@ -2,8 +2,8 @@
   <mat-icon class="offline-readiness__icon" aria-hidden="true">
     {{ isReady() ? 'cloud_done' : 'cloud_off' }}
   </mat-icon>
-  <span class="offline-readiness__label">
-    {{ isReady() ? 'Offline bereit' : 'Cache wird vorbereitet …' }}
+  <span class="offline-readiness__label" [title]="statusHint()">
+    {{ statusLabel() }}
   </span>
   @if (lastRefreshedAt(); as refreshedAt) {
     <span class="offline-readiness__timestamp">

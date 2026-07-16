@@ -50,6 +50,7 @@ import {
 import {ApiService} from '../service/api.service';
 import {DataEntryRefreshService} from '../service/data-entry-refresh.service';
 import {DataAccessFacadeService} from '../service/data-access-facade.service';
+import {UnsavedChangesService} from '../service/unsaved-changes.service';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
@@ -160,6 +161,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   private readonly connectivity = inject(ConnectivityService);
   private readonly elementRef = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
+  // #407 (ADR 0032): publishes this form's dirty state so leaving it — or
+  // adopting a new Version from the nav bar — can ask before discarding input.
+  private readonly unsavedChanges = inject(UnsavedChangesService);
 
   readonly currentProject = this.projectService.currentProject;
   // #392 (ADR 0030): offline wird nicht gelöscht — „Eintrag löschen" sperrt sich
@@ -664,6 +668,15 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   }));
 
   constructor() {
+    // #407 (ADR 0032): the dirty state is private to this form, but the
+    // CanDeactivate guard and the nav bar's "Jetzt aktualisieren" both have to
+    // know whether anyone is mid-capture before they throw the input away.
+    // Publish it for this form's lifetime; the same `dirty` test Zurücksetzen
+    // uses (#24).
+    const unsavedChangesProbe = () => this.entryForm.dirty;
+    this.unsavedChanges.watch(unsavedChangesProbe);
+    this.destroyRef.onDestroy(() => this.unsavedChanges.stopWatching(unsavedChangesProbe));
+
     // Corrected effect to auto-set ring number.
     // It now reads the ringSize() and birdStatus() signals.
     effect(() => {
@@ -1469,6 +1482,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       }
       this.apiService.deleteDataEntry(id).subscribe({
         next: () => {
+          // #407: the record is gone — there is nothing left to save, so the
+          // CanDeactivate guard must not ask about the open form on the way out.
+          this.entryForm.markAsPristine();
           this.router.navigateByUrl('/data-entries');
           this.offerUndo(id);
         },
@@ -1677,6 +1693,12 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       next: () => {
         this.rememberBeringer();
         this.lastFailedSubmission = null;
+        // #407: what was in the form is now saved (or queued), so there is
+        // nothing unsaved left. The edit paths below navigate away, and without
+        // this the new CanDeactivate guard would ask the Beringer to confirm
+        // discarding the very input he just saved. The create path resets to a
+        // pristine form anyway (cleanReset).
+        this.entryForm.markAsPristine();
         this.snackBar.open('Beringungseintrag gespeichert.', undefined, {
           duration: 2000,
           horizontalPosition: 'center',
