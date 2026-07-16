@@ -900,6 +900,199 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #371 (ADR 0026): the two Fangmarker — Tot-Fund and Nicht-Standard-Fang —
+  // flag a capture situation WITHOUT replacing the Art or Ring.
+  describe('Fangmarker: Tot-Fund & Nicht-Standard-Fang (#371)', () => {
+    const sentinel: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      special_kind: 'ring_destroyed',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      show_net_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const dialogMock = { open: jasmine.createSpy('open') };
+    let httpMock: HttpTestingController;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: { currentProject: signal<Project | null>(project), setCurrent: () => {}, clear: () => {} },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 1, next: null, previous: null, results: [sentinel] });
+    });
+
+    function fillValidCapture(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    const btn = (testid: string): HTMLButtonElement | null =>
+      fixture.nativeElement.querySelector(`.action-buttons button[data-testid="${testid}"]`);
+
+    it('renders both marker buttons next to "Ring vernichtet", skipped by Tab', () => {
+      const tot = btn('tot-fund-button');
+      const ns = btn('non-standard-button');
+      expect(tot).not.toBeNull();
+      expect(ns).not.toBeNull();
+      // Skipped by Tab — never in the focus order.
+      expect(tot!.getAttribute('tabindex')).toBe('-1');
+      expect(ns!.getAttribute('tabindex')).toBe('-1');
+    });
+
+    it('hides both marker buttons while Ring vernichtet is active', () => {
+      component.onSpeciesSelected({ option: { value: sentinel } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+
+      expect(component.isRingDestroyed()).toBe(true);
+      expect(btn('tot-fund-button')).toBeNull();
+      expect(btn('non-standard-button')).toBeNull();
+    });
+
+    it('forces the markers off when Ring vernichtet becomes active', () => {
+      component.entryForm.get('is_dead_recovery')!.setValue(true);
+      component.entryForm.get('is_non_standard')!.setValue(true);
+
+      component.onSpeciesSelected({ option: { value: sentinel } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('is_dead_recovery')!.value).toBe(false);
+      expect(component.entryForm.get('is_non_standard')!.value).toBe(false);
+    });
+
+    it('opens the Tot-Fund popup and composes "Totfund; Umstände: <input>" on confirm', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of('unter dem Netz gefunden') });
+
+      component.onToggleDeadRecovery();
+
+      expect(dialogMock.open).toHaveBeenCalled();
+      expect(component.isDeadRecovery()).toBe(true);
+      expect(component.entryForm.get('comment')!.value).toBe('Totfund; Umstände: unter dem Netz gefunden');
+    });
+
+    it('leaves the capture un-marked when the Tot-Fund popup is cancelled', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of(undefined) });
+
+      component.onToggleDeadRecovery();
+
+      expect(component.isDeadRecovery()).toBe(false);
+      expect(component.entryForm.get('comment')!.value).toBeNull();
+    });
+
+    it('opens the Tot-Fund popup pre-filled by parsing an existing composed Bemerkung', () => {
+      component.entryForm.get('comment')!.setValue('Totfund; Umstände: Beifang im Netz');
+      dialogMock.open.and.returnValue({ afterClosed: () => of(undefined) });
+
+      component.onToggleDeadRecovery();
+
+      const data = dialogMock.open.calls.mostRecent().args[1]?.data as { umstaende: string };
+      expect(data.umstaende).toBe('Beifang im Netz');
+    });
+
+    it('toggles the Tot-Fund marker off to undo, clearing the composed Bemerkung', () => {
+      component.entryForm.get('is_dead_recovery')!.setValue(true);
+      component.entryForm.get('comment')!.setValue('Totfund; Umstände: unter dem Netz');
+
+      component.onToggleDeadRecovery();
+
+      expect(component.isDeadRecovery()).toBe(false);
+      expect(component.entryForm.get('comment')!.value).toBeNull();
+      // No popup is opened when toggling off.
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+
+    it('toggles Nicht-Standard on and off without any popup', () => {
+      component.onToggleNonStandard();
+      expect(component.isNonStandard()).toBe(true);
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      component.onToggleNonStandard();
+      expect(component.isNonStandard()).toBe(false);
+    });
+
+    it('shows the coloured frame, badge and a Bemerkung hint for a Nicht-Standard-Fang', () => {
+      component.onToggleNonStandard();
+      fixture.detectChanges();
+
+      const form = fixture.nativeElement.querySelector('form.data-entry-form') as HTMLElement;
+      expect(form.classList).toContain('non-standard-mode');
+      expect(fixture.nativeElement.querySelector('[data-testid="non-standard-badge"]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="non-standard-hint"]')).not.toBeNull();
+    });
+
+    it('makes the Bemerkung mandatory while either marker is set', () => {
+      const comment = component.entryForm.get('comment')!;
+      expect(comment.hasError('required')).toBe(false);
+
+      component.onToggleNonStandard();
+      fixture.detectChanges(); // flush the validator-toggling effect
+      expect(comment.hasError('required')).toBe(true);
+
+      comment.setValue('Handfang bei einer Vorführung');
+      expect(comment.hasError('required')).toBe(false);
+    });
+
+    it('carries both markers, set at once, onto the write payload', () => {
+      fillValidCapture();
+      component.entryForm.get('is_dead_recovery')!.setValue(true);
+      component.entryForm.get('is_non_standard')!.setValue(true);
+      component.entryForm.get('comment')!.setValue('Totfund; Umstände: außerhalb des Protokolls');
+
+      component.onSubmit();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      post.flush({});
+
+      expect(body['is_dead_recovery']).toBe(true);
+      expect(body['is_non_standard']).toBe(true);
+    });
+  });
+
   describe('edit mode (opening an existing entry via /data-entry/:id)', () => {
     const station: RingingStation = {
       handle: 'STAMT',

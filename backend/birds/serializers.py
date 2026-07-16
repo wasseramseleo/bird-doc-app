@@ -5,6 +5,8 @@ from rest_framework.validators import UniqueValidator
 
 from .capture_service import (
     BIRD_DATA_FIELDS,
+    FANGMARKER_FIELDS,
+    MARKER_COMMENT_REQUIRED,
     CaptureValidationError,
     create_capture,
     get_or_create_ring,
@@ -597,6 +599,10 @@ class DataEntrySerializer(serializers.ModelSerializer):
             "has_brood_patch",
             "has_cpl_plus",
             "has_mites",
+            # Fangmarker (ADR 0026): serialized on both read and write so lists and
+            # the IWM export read off them and the offline outbox round-trips them.
+            "is_dead_recovery",
+            "is_non_standard",
         ]
         read_only_fields = ["created", "updated"]
 
@@ -625,37 +631,56 @@ class DataEntrySerializer(serializers.ModelSerializer):
 
     def _null_bird_data_for_destroyed_ring(self, validated_data):
         """A 'ring_destroyed' Sonderart (the 'Ring Vernichtet' marker) has no
-        bird, so the backend authoritatively blanks every bird-data field,
+        bird, so the backend authoritatively blanks every bird-data field and
+        forces both Fangmarker off (there is nothing to mark — ADR 0026),
         whatever the client sent. Ring, Beringer, Station and Datum stay
-        required."""
+        required. Applied on the update path; the create path does the same in
+        the shared capture service."""
         species = validated_data.get("species")
         if species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED:
             for field in BIRD_DATA_FIELDS:
                 validated_data[field] = None
+            for field in FANGMARKER_FIELDS:
+                validated_data[field] = False
 
     def validate(self, attrs):
-        """Enforce the mandatory Bemerkung for an 'unknown_species' (Aves
-        ignota) capture. The unusual catch must always be described, so a blank
-        comment is rejected here at the serializer layer (the model/admin stay
-        unconstrained for data repair). See ADR 0004."""
+        """Enforce the mandatory Bemerkung for the situations that demand it: an
+        'unknown_species' (Aves ignota) capture (ADR 0004) and either Fangmarker —
+        Tot-Fund or Nicht-Standard-Fang (ADR 0026). The unusual catch must always
+        be described, so a blank comment is rejected here at the serializer layer
+        (the model/admin stay unconstrained for data repair)."""
         species = attrs.get("species")
         if species is None and self.instance is not None:
             species = self.instance.species
-        if species is not None and species.special_kind == Species.SpecialKind.UNKNOWN_SPECIES:
-            if "comment" in attrs:
-                comment = attrs["comment"]
-            elif self.instance is not None:
-                comment = self.instance.comment
-            else:
-                comment = None
+
+        def resolved(field):
+            if field in attrs:
+                return attrs[field]
+            if self.instance is not None:
+                return getattr(self.instance, field)
+            return None
+
+        is_ring_destroyed = (
+            species is not None and species.special_kind == Species.SpecialKind.RING_DESTROYED
+        )
+        is_aves_ignota = (
+            species is not None and species.special_kind == Species.SpecialKind.UNKNOWN_SPECIES
+        )
+        # A Ring-vernichtet capture has no bird to mark, so the markers never
+        # demand a comment there (they are forced off in the capture service).
+        marker_set = not is_ring_destroyed and (
+            bool(resolved("is_dead_recovery")) or bool(resolved("is_non_standard"))
+        )
+
+        if is_aves_ignota or marker_set:
+            comment = resolved("comment")
             if not (comment and comment.strip()):
-                raise serializers.ValidationError(
-                    {
-                        "comment": _(
-                            "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich."
-                        )
-                    }
+                message = (
+                    _("Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich.")
+                    if is_aves_ignota
+                    else MARKER_COMMENT_REQUIRED
                 )
+                raise serializers.ValidationError({"comment": message})
         return attrs
 
     def create(self, validated_data):

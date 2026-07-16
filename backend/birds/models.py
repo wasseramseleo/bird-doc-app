@@ -778,6 +778,14 @@ class DataEntry(models.Model):
     has_hunger_stripes = models.BooleanField(default=False, verbose_name=_("Hungerstreifen"))
     has_brood_patch = models.BooleanField(default=False, verbose_name=_("Brutfleck"))
     has_cpl_plus = models.BooleanField(default=False, verbose_name=_("CPL+"))
+    # Fangmarker (ADR 0026): two independent booleans that flag a special capture
+    # situation WITHOUT replacing the real Art or Ring — the opposite of a
+    # Sonderart. Orthogonal: both may be true at once, and either may sit on an
+    # Aves-ignota capture. Forced off for a Ring-vernichtet capture (there is no
+    # bird to mark). Both make the Bemerkung mandatory (serializer/capture-service);
+    # neither alters the dashboard counts today (deferred, see ADR 0026).
+    is_dead_recovery = models.BooleanField(default=False, verbose_name=_("Tot-Fund"))
+    is_non_standard = models.BooleanField(default=False, verbose_name=_("Nicht-Standard-Fang"))
     date_time = models.DateTimeField(verbose_name=_("Datum"))
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)

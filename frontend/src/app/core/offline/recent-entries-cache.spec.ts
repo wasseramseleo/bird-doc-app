@@ -45,6 +45,8 @@ function entry(overrides: Partial<DataEntry> = {}): DataEntry {
     has_hunger_stripes: false,
     has_brood_patch: false,
     has_cpl_plus: false,
+    is_dead_recovery: false,
+    is_non_standard: false,
     ...overrides,
   };
 }

@@ -95,6 +95,23 @@
   letter-spacing: 0.02em;
 }
 
+// #371 (ADR 0026): distinct Fangmarker row icons in "Letzte Fänge".
+.fangmarker-icon {
+  font-size: 1.05rem;
+  height: 1.05rem;
+  width: 1.05rem;
+  vertical-align: text-bottom;
+  margin-left: 4px;
+
+  &.fangmarker-icon--dead {
+    color: var(--bd-error);
+  }
+
+  &.fangmarker-icon--non-standard {
+    color: var(--bd-accent);
+  }
+}
+
 .status-chip {
   display: inline-block;
   padding: 2px 8px;

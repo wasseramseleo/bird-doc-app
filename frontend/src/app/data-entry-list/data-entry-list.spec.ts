@@ -113,6 +113,40 @@ describe('DataEntryListComponent', () => {
     expect(sentinelRows[0].textContent).toContain('vernichtet');
   });
 
+  // #371 (ADR 0026): the two Fangmarker render a distinct row icon in "Letzte
+  // Fänge", so a Tot-Fund or Nicht-Standard-Fang is recognisable at a glance.
+  it('renders a distinct Tot-Fund row icon and none on a plain capture', () => {
+    flushEntries([
+      row({ id: 'plain' }),
+      row({ id: 'dead', is_dead_recovery: true } as Partial<DataEntry>),
+    ]);
+
+    const rows = Array.from(fixture.nativeElement.querySelectorAll('tr.entry-row')) as HTMLElement[];
+    expect(rows[0].querySelector('[data-testid="tot-fund-icon"]')).toBeNull();
+    expect(rows[1].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+  });
+
+  it('renders a distinct Nicht-Standard row icon', () => {
+    flushEntries([row({ id: 'ns', is_non_standard: true } as Partial<DataEntry>)]);
+
+    const rows = Array.from(fixture.nativeElement.querySelectorAll('tr.entry-row')) as HTMLElement[];
+    const dead = rows[0].querySelector('[data-testid="tot-fund-icon"]');
+    const ns = rows[0].querySelector('[data-testid="non-standard-icon"]');
+    expect(ns).not.toBeNull();
+    // The two markers carry different icons.
+    expect(dead).toBeNull();
+  });
+
+  it('renders both marker icons when a capture carries both markers', () => {
+    flushEntries([
+      row({ id: 'both', is_dead_recovery: true, is_non_standard: true } as Partial<DataEntry>),
+    ]);
+
+    const rows = Array.from(fixture.nativeElement.querySelectorAll('tr.entry-row')) as HTMLElement[];
+    expect(rows[0].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+    expect(rows[0].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+  });
+
   it('renders biometric values with one decimal place in de-AT format', () => {
     flushEntries([row({ tarsus: 12.54, feather_span: 54, wing_span: 73.25, weight_gram: 18.96 })]);
 
