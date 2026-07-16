@@ -6,7 +6,7 @@ import { MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { DataEntryDetailDialogComponent } from './data-entry-detail-dialog';
-import { AgeClass, BirdStatus, DataEntry, Sex } from '../../models/data-entry.model';
+import { AgeClass, BirdStatus, DataEntry, Parasit, Sex } from '../../models/data-entry.model';
 import { RingSize } from '../../models/ring.model';
 import { Central } from '../../models/central.model';
 
@@ -105,5 +105,34 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
     const fixture = await render(baseEntry());
 
     expect(zentraleText(fixture)).toBe('—');
+  });
+
+  // Parasit vocabulary (issue #406): a capture migrated off the retired „Milben"
+  // code must read as Rote Milben here, not as a raw `red_mites`.
+  describe('Parasit labels', () => {
+    const parasitText = (fixture: ComponentFixture<DataEntryDetailDialogComponent>) =>
+      (
+        Array.from(fixture.nativeElement.querySelectorAll('dt')) as HTMLElement[]
+      )
+        .find(dt => dt.textContent!.trim() === 'Parasit')!
+        .nextElementSibling!.textContent!.trim();
+
+    it('renders a migrated Milben capture as Rote Milben', async () => {
+      const entry = baseEntry();
+      (entry as DataEntry).parasites = [Parasit.RedMites];
+
+      const fixture = await render(entry);
+
+      expect(parasitText(fixture)).toBe('Rote Milben');
+    });
+
+    it('renders several parasite types comma-separated', async () => {
+      const entry = baseEntry();
+      (entry as DataEntry).parasites = [Parasit.RedMites, Parasit.Tick];
+
+      const fixture = await render(entry);
+
+      expect(parasitText(fixture)).toBe('Rote Milben, Zecke');
+    });
   });
 });

@@ -689,9 +689,23 @@ class DataEntry(models.Model):
         # Parasit (ADR 0027): the fixed, app-wide vocabulary of parasite types,
         # identical for every Organisation (reference data, like the IWM codes —
         # not tenant-configurable). The multi-valued ``parasites`` field stores a
-        # list of these codes. Ships with Milben; the remaining ~4 concrete types
-        # (feedback #7b) are added later as further enum values, no schema change.
-        MITES = "mites", _("Milben")
+        # list of these codes. Mirrored by hand in the frontend's ``Parasit`` enum
+        # (data-entry.model.ts) — same codes, same order; the serializer's
+        # ChoiceField is what stops the two drifting silently apart (issue #406).
+        RED_MITES = "red_mites", _("Rote Milben")
+        WHITE_MITES = "white_mites", _("Weiße Milben")
+        TICK = "tick", _("Zecke")
+        FEATHER_LICE = "feather_lice", _("Federlinge")
+        LOUSE_FLY = "louse_fly", _("Lausfliege")
+
+    # The retired ``mites`` code → its successor (ADR 0031). Deliberately NOT an
+    # enum member: it must never reach ``_PARASIT_LABELS`` or the UI options. It
+    # stays a valid *input* only, rewritten on write, because a device can be
+    # offline ~30 days and an open PWA tab runs an old bundle indefinitely —
+    # rejecting its replay would trap the capture in a skip-and-flag loop the
+    # ringer cannot escape. Remove no earlier than ~30 days after release, or it
+    # hits exactly the devices it exists for.
+    PARASIT_ALIASES = {"mites": Parasit.RED_MITES.value}
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     species = models.ForeignKey(Species, on_delete=models.PROTECT, verbose_name=_("Art"))
@@ -804,7 +818,7 @@ class DataEntry(models.Model):
     )
     # Parasit (ADR 0027): a multi-valued selection of parasite types, replacing
     # the former single ``has_mites`` boolean. Stored as a JSON list of codes from
-    # the fixed ``Parasit`` vocabulary (e.g. ``["mites"]``) — portable across the
+    # the fixed ``Parasit`` vocabulary (e.g. ``["red_mites"]``) — portable across the
     # sqlite dev/test DB and Postgres prod, JSON-friendly for the offline outbox,
     # and growable by adding enum values without a schema change. No IWM export
     # column exists, so each selected type's label is written into the Bemerkung.

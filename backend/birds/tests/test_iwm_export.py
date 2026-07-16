@@ -479,7 +479,31 @@ def test_brutfleck_and_kloake_do_not_remove_bemerkung_flag_tokens(
 
     row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
 
-    assert row["Bemerkungen"] == "Brutfleck CPL+"
+    assert row["Bemerkungen"] == "Brutfleck, CPL+"
+
+
+@pytest.mark.django_db
+def test_bemerkung_tokens_are_comma_separated(species, scientist, ringing_station, project):
+    # The Bemerkungen column is free text read by a human at the Meldestelle, and
+    # this is the official Meldung — so the tokens must be unambiguously
+    # separable. A space alone stopped carrying that load once parasite labels
+    # became multi-word ("Rote Milben"): "Frischer Fang Rote Milben Brutfleck"
+    # gives the reader no way to tell where one token ends (issue #406).
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="945", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        comment="Frischer Fang",
+        parasites=["red_mites"],
+        has_brood_patch=True,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Bemerkungen"] == "Frischer Fang, Rote Milben, Brutfleck"
 
 
 # --- Parasit labels in the Bemerkungen column (ADR 0027, issue #376) ----------
@@ -496,13 +520,35 @@ def test_parasit_label_written_into_bemerkungen(species, scientist, ringing_stat
         staff=scientist,
         ringing_station=ringing_station,
         project=project,
-        parasites=["mites"],
+        parasites=["red_mites"],
         date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
     )
 
     row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
 
-    assert row["Bemerkungen"] == "Milben"
+    assert row["Bemerkungen"] == "Rote Milben"
+
+
+@pytest.mark.django_db
+def test_several_parasit_labels_are_comma_separated(species, scientist, ringing_station, project):
+    # Several types at once is an ordinary finding — Zecken *and* Rote Milben —
+    # and both labels here are multi-word or adjacent, so only the comma keeps the
+    # Meldestelle's reader able to tell them apart (issue #406).
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="946", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        comment="Frischer Fang",
+        parasites=["red_mites", "tick"],
+        has_brood_patch=True,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Bemerkungen"] == "Frischer Fang, Rote Milben, Zecke, Brutfleck"
 
 
 @pytest.mark.django_db
@@ -533,14 +579,14 @@ def test_parasit_label_appended_after_existing_comment(
         staff=scientist,
         ringing_station=ringing_station,
         project=project,
-        parasites=["mites"],
+        parasites=["red_mites"],
         comment="Frischer Fang",
         date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
     )
 
     row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
 
-    assert row["Bemerkungen"] == "Frischer Fang Milben"
+    assert row["Bemerkungen"] == "Frischer Fang, Rote Milben"
 
 
 @pytest.mark.django_db
