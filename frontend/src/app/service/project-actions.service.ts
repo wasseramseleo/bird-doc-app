@@ -125,6 +125,9 @@ export class ProjectActionsService {
           show_net_fields: result.showNetFields,
           projekttyp: result.projekttyp,
           default_station_id: result.defaultStationHandle || null,
+          // The Saison window (ADR 0029): both null clears the season.
+          saison_start_month: result.saisonStartMonth,
+          saison_end_month: result.saisonEndMonth,
         })
         .subscribe({
           next: (updated) => {

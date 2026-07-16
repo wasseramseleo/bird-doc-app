@@ -99,14 +99,8 @@
   <section>
     <h4>Merkmale</h4>
     <dl>
-      <dt>Milben</dt>
-      <dd>
-        @if (entry.has_mites) {
-          <mat-icon class="flag-yes">check</mat-icon>
-        } @else {
-          <mat-icon class="flag-no">remove</mat-icon>
-        }
-      </dd>
+      <dt>Parasit</dt>
+      <dd>{{ getParasitLabels(entry.parasites) }}</dd>
       <dt>Hungerstreifen</dt>
       <dd>
         @if (entry.has_hunger_stripes) {

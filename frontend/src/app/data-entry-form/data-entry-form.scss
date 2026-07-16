@@ -256,6 +256,68 @@
   white-space: nowrap;
 }
 
+// #371 (ADR 0026): the Nicht-Standard-Fang frame + badge. Reuses the edit-mode
+// outline pattern in a DISTINCT colour (the brand accent brown, not the amber
+// warning), so a non-standard capture is unmistakable at a glance. Placed after
+// .edit-mode so its frame wins when a capture is both edited and non-standard.
+.data-entry-form.non-standard-mode {
+  position: relative;
+  border: 4px solid var(--bd-accent);
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 24px;
+}
+
+.non-standard-badge {
+  position: absolute;
+  top: 0;
+  right: 24px;
+  transform: translateY(-50%);
+  padding: 4px 16px;
+  background-color: var(--bd-accent);
+  color: var(--bd-paper);
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+// #371: the two Fangmarker toggle buttons in the action row. Understated like the
+// "Ring vernichtet" link so they never compete with the primary action; the
+// active (toggled-on) state is emphasised so a set marker is obvious.
+.fangmarker-link {
+  align-self: center;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--bd-ink-soft);
+  letter-spacing: 0.01em;
+}
+
+.fangmarker-link.is-active {
+  color: var(--bd-paper);
+  background-color: var(--bd-accent);
+  font-weight: 600;
+}
+
+// #371: the distinct row icons for the two markers in the Fänge/Historie tables.
+.fangmarker-icon {
+  font-size: 1.05rem;
+  height: 1.05rem;
+  width: 1.05rem;
+  vertical-align: text-bottom;
+  margin-left: 4px;
+}
+
+.fangmarker-icon--dead {
+  color: var(--bd-error);
+}
+
+.fangmarker-icon--non-standard {
+  color: var(--bd-accent);
+}
+
 // #23: a prominent CapsLock warning at the top of the form. Typed ring numbers
 // and single-char codes are entered blind, so this must be impossible to miss.
 .capslock-hint {

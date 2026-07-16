@@ -103,7 +103,7 @@ The number of distinct species among a set of captures (species richness). Aves 
 _Avoid_: Species count (English), Artenvielfalt / diversity (a plain richness count is not a diversity index)
 
 **Saison**:
-A ringing campaign period a Beringer treats as one stretch of effort (e.g. an autumn migration run). It is **not a modelled entity** — no Saison row, no start/end on a Projekt. In the dashboard it is expressed only as a selectable date range over the Fangtage; "per Saison" is a preset range (e.g. the current year), never a stored season. A future configurable Saison would be a deliberate schema addition, not something the model implies today.
+A ringing campaign period a Beringer treats as one stretch of effort (e.g. an autumn migration run). Modelled as an **optional per-Projekt recurring month window** (`saison_start_month`…`saison_end_month`, inclusive, wrap-around allowed so Nov–März spans the year boundary) — **not** a separate entity/row, and set manually per Projekt with **no Projekttyp coupling** (ADR 0029). It drives the dashboard's **„Diese Saison"** preset: in-season it shows the current occurrence up to today, off-season the most-recently-ended one. A Projekt with no window configured simply hides the preset. To the user a Saison is still only a date range over the Fangtage, never anything more than the chosen window.
 _Avoid_: Season (English); year (as a synonym — a calendar year is only a rough stand-in for a Saison)
 
 **Diesjährig**:
@@ -115,7 +115,7 @@ The size class of a ring, a short letter code, validated against the **known siz
 _Avoid_: Ring size (English), Größenklasse, size code
 
 **Empfohlene Ringgröße**:
-The ring size suggested by default for a species. May be absent — e.g. for species whose sexes take different sizes — and may be overridden for an individual bird when its leg dictates otherwise.
+The ring size suggested by default for a species. May be absent — e.g. for species whose sexes take different sizes — and may be overridden for an individual bird when its leg dictates otherwise. **Two-layered** like the Artennorm (ADR 0028): a global default on `Species` (reference data, also read by the public Wissen-Artenseite) plus an optional **per-Organisation override** set in the Artennormen editor. The effective value = org override ?? global default — a per-value coalesce (null override = inherit), resolved **independently** of the Artennorm's whole-row override, so setting a ring size never touches an Organisation's plausibility checks. The public Artenseite always shows the global value.
 _Avoid_: Required size, fixed size, locked size
 
 **Ringserie**:
@@ -124,6 +124,9 @@ _Avoid_: Ring batch, ring series (English), rope
 
 **Sonderart**:
 The umbrella term for the non-taxon `Species` rows that stand in for something other than an identified bird. Each is marked by a non-empty `special_kind` discriminator and is **always selectable**, bypassing the active Artenliste, so a rarity or a ruined ring never blocks data entry. Two kinds exist — **Ring vernichtet** (`special_kind = "ring_destroyed"`) and **Unbekannte Art / Aves ignota** (`special_kind = "unknown_species"`). The discriminator drives three behaviours independently: visibility (any Sonderart), form-collapse + server-side bird-data null-out (Ring vernichtet only), and a mandatory Bemerkung (Aves ignota only). `special_kind` supersedes the former conflated `is_sentinel` boolean — see ADR 0004.
+Distinct from a **Fangmarker** (Tot-Fund, Nicht-Standard-Fang), which flags a
+situation on an otherwise fully-identified capture *without* replacing the Art
+(ADR 0026).
 _Avoid_: Special species, sentinel (English), pseudo-species
 
 **Ring vernichtet**:
@@ -133,6 +136,47 @@ _Avoid_: Destroyed ring (English), placeholder species, dummy entry
 **Unbekannte Art (Aves ignota)**:
 A Sonderart for a **real captured bird** whose species is not on the active Artenliste (typically a rarity), so the catch can be recorded even when the list cannot name it. Unlike _Ring vernichtet_ it carries full bird data — the whole measurement form stays — and to guarantee the unusual catch is always described, the **Bemerkung is mandatory** (enforced in the form and again in `DataEntrySerializer.validate()`). The Sonderart with `special_kind = "unknown_species"`; `common_name_de = "Art nicht in der Liste (Aves ignota)"`, `scientific_name = "Aves ignota"`.
 _Avoid_: Unknown bird, miscellaneous species, fremde Art
+
+**Fangmarker**:
+A capture-level marker that flags a special situation about an otherwise
+fully-recorded capture **without replacing the Art or the Ring** — the exact
+opposite of a Sonderart, which substitutes the Art. Two exist — **Tot-Fund** and
+**Nicht-Standard-Fang** — each an independent boolean on the capture, so a
+capture may carry both, and either may also sit on an Aves-ignota bird. Both make
+the Bemerkung mandatory and are applied by a toggle button next to „Ring
+vernichtet" (never Tab-focused, hidden while Ring vernichtet is active). They do
+**not** change the dashboard counts today — that exclusion is deferred (ADR 0026).
+_Avoid_: Sonderart (that substitutes the Art), Fang-Flag, Sondermarkierung
+
+**Tot-Fund**:
+The Fangmarker for a dead ringed bird (found dead, or handed in) — the real Art
+and Ring stay. Clicking it opens a popup for the **Todesumstände** (required); the
+Bemerkung is then composed as **„Totfund; Umstände: <Eingabe>"** and stays
+mandatory. The Todesumstände is not stored separately — it lives inside the
+composed Bemerkung. In the IWM export it surfaces only as that Bemerkung text in
+the Bemerkungsspalte — no row colour, method columns unchanged. Carries a row icon in „Letzte Fänge" and the Wiederfang-Historie. Not
+an Erst/Wiederfang distinction and not a Sonderart.
+_Avoid_: Totmeldung, Wiederfund (a recovery need not be dead), Sonderart
+
+**Nicht-Standard-Fang**:
+The Fangmarker for a bird caught **outside the Standard-Fangprotokoll** (Handfang,
+Zufallsfang, Schaufang). It makes the Bemerkung mandatory (with a hint) and
+outlines the form with a coloured frame + badge. In the IWM export its row is
+background-coloured — purely for the user's own review, since the Meldestelle
+ignores formatting — and the three project-derived method columns (**Fangmethode,
+Lockmittel, Umstand**) are left empty. Carries a row icon in „Letzte Fänge" and
+the Wiederfang-Historie. Does not change the standard statistics today (deferred).
+_Avoid_: Beifang, Zufallsfang (one cause of it, not the marker itself), Sonderart
+
+**Parasit**:
+A capture's recorded ectoparasite findings, held as a **multi-valued** selection
+from a fixed, app-wide vocabulary of parasite types (shared reference data, not
+tenant-configurable — ADR 0027). Generalises the former single **Milben** flag:
+Milben is now one option among several, and a capture may record more than one.
+Rendered as a Mehrfachauswahl beside the Ja/Nein flags (Brutfleck, CPL+,
+Hungerstreifen). No IWM export column exists, so selected types are written into
+the Bemerkung. The concrete option set is still being finalised (feedback #7b).
+_Avoid_: Milben (now one option, not the field), Ektoparasit, Befall
 
 **Fangmethode**:
 How a bird was caught, recorded as an IWM code (e.g. M = Japannetz). A property of the Projekt, constant across its captures.
@@ -171,7 +215,7 @@ Whether a device is currently prepared to keep working with no network — its o
 _Avoid_: Readiness (English), offline mode, Vorbereitung
 
 **Artennorm**:
-The expected-value profile a species' measurements are checked against — a Mittelwert and a spread per measured quantity, used to flag an out-of-range value with a Plausibilitätswarnung. It covers six directly-measured quantities (Gewicht, Federlänge, Flügellänge, Tarsus, Kerbe F2, Innenfuß), each an Ausreißertest on `Mittelwert ± k·Std.-Abw.`, plus one **derived** quantity, the Quotient Federlänge/Flügellänge, tested against a relative band (± %), plus two **categorical** plausibility flags: *Geschlechtsbestimmung möglich* (a determined Männchen/Weibchen on a species flagged not-sexable warns) and *bei dj. Großgefiedermauser möglich* (a Handschwingenmauser value on a diesjährigem bird of a species flagged otherwise warns). **Every rule is independently optional**: a check fires only where its norm is set, so a species may carry a Gewicht norm but no Kerbe-F2 norm and no flags — most species carry no Artennorm at all. **Two-layered**: a **globale Standard-Artennorm** ships with the app (seeded from the current Beringungsprojekt's tuned values) and is shared like Species reference data; an Organisation's Admin may **override** it per species auf Organisationsebene. The Artennorm in force for a capture is the org override if one exists, otherwise the global default — a norm is never shared-and-mutated across tenants. It is **not** part of Species identity (names, codes, Empfohlene Ringgröße): a separate, optional profile most species simply lack. Numeric Artennorm values are **never published in the public Wissen reference** — an Artenseite carries only a prose teaser.
+The expected-value profile a species' measurements are checked against — a Mittelwert and a spread per measured quantity, used to flag an out-of-range value with a Plausibilitätswarnung. It covers six directly-measured quantities (Gewicht, Federlänge, Flügellänge, Tarsus, Kerbe F2, Innenfuß), each an Ausreißertest on `Mittelwert ± k·Std.-Abw.`, plus one **derived** quantity, the Quotient Federlänge/Flügellänge, tested against a relative band (± %), plus two **categorical** plausibility flags: *Geschlechtsbestimmung möglich* (a determined Männchen/Weibchen on a species flagged not-sexable warns) and *bei dj. Großgefiedermauser möglich* (a Handschwingenmauser value on a diesjährigem bird of a species flagged otherwise warns). **Every rule is independently optional**: a check fires only where its norm is set, so a species may carry a Gewicht norm but no Kerbe-F2 norm and no flags — most species carry no Artennorm at all. **Two-layered**: a **globale Standard-Artennorm** ships with the app (seeded from the current Beringungsprojekt's tuned values) and is shared like Species reference data; an Organisation's Admin may **override** it per species auf Organisationsebene. The Artennorm in force for a capture is the org override if one exists, otherwise the global default — a norm is never shared-and-mutated across tenants. It is **not** part of Species identity (names, codes, Empfohlene Ringgröße): a separate, optional profile most species simply lack. Numeric Artennorm values are **never published in the public Wissen reference** — an Artenseite carries only a prose teaser. The Artennormen **editor** also hosts the per-Organisation **Empfohlene Ringgröße** override (ADR 0028), but that override is a standalone value resolved **independently** — it does not ride the whole-row norm override and cannot switch a plausibility check on or off.
 _Avoid_: Artenattribut (the feature title — fuzzier, also covers names/codes), Korrekturebene (spreadsheet jargon), range, bounds, Grenzwerte
 
 **Wissen**:

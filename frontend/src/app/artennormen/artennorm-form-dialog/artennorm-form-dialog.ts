@@ -11,6 +11,7 @@ import {debounceTime, distinctUntilChanged, map, of, switchMap} from 'rxjs';
 
 import {ApiService} from '../../service/api.service';
 import {Species} from '../../models/species.model';
+import {RingSize} from '../../models/ring.model';
 import {
   EffectiveSpeciesNorm,
   SpeciesNormOverridePayload,
@@ -22,6 +23,18 @@ export interface ArtennormFormDialogData {
   // a species is chosen via the autocomplete and the form starts blank —
   // add-for-any-species, including a species with no global default (PRD #245).
   norm?: EffectiveSpeciesNorm;
+  // The species' current per-org Empfohlene-Ringgröße *override* (issue #372,
+  // ADR 0028), or null when it inherits the global default. Pre-fills the
+  // ring-size field; blank = Standard (inherit).
+  ringSize?: RingSize | null;
+}
+
+// The dialog result: the whole-row Artennorm override payload plus the chosen
+// Empfohlene Ringgröße, resolved **independently** (ADR 0028). `ringSize` is null
+// when the field is left blank — i.e. "use the Standard" (inherit the global).
+export interface ArtennormDialogResult {
+  norm: SpeciesNormOverridePayload;
+  ringSize: RingSize | null;
 }
 
 // One Ø/SD measurement band, rendered as a pair of inputs. Clearing either input
@@ -75,11 +88,13 @@ export class ArtennormFormDialogComponent {
   private readonly fb = inject(FormBuilder);
   private readonly api = inject(ApiService);
   private readonly dialogRef =
-    inject<MatDialogRef<ArtennormFormDialogComponent, SpeciesNormOverridePayload>>(MatDialogRef);
+    inject<MatDialogRef<ArtennormFormDialogComponent, ArtennormDialogResult>>(MatDialogRef);
   readonly data = inject<ArtennormFormDialogData>(MAT_DIALOG_DATA);
 
   readonly isEdit = !!this.data.norm;
   readonly bands = BANDS;
+  // The Austrian ring-size scheme, offered in the Empfohlene-Ringgröße dropdown.
+  readonly ringSizes = Object.values(RingSize);
 
   // Add mode only: the species search (autocomplete) and the chosen Art.
   readonly speciesSearch = new FormControl<string | Species>('', {nonNullable: true});
@@ -104,11 +119,17 @@ export class ArtennormFormDialogComponent {
     sd_factor: [''],
     geschlechtsbestimmung_moeglich: [''],
     dj_grossgefiedermauser_moeglich: [''],
+    // The Empfohlene Ringgröße override (ADR 0028) — blank = Standard (inherit
+    // the global Species.ring_size). Independent of the norm columns above.
+    ring_size: [''],
   });
 
   constructor() {
     if (this.data.norm) {
       this.prefill(this.data.norm);
+    }
+    if (this.data.ringSize) {
+      this.form.controls.ring_size.setValue(this.data.ringSize);
     }
 
     // Add mode: debounced species search, mirroring the capture form's pickers.
@@ -152,7 +173,13 @@ export class ArtennormFormDialogComponent {
     if (!species_id) {
       return;
     }
-    this.dialogRef.close(this.buildPayload(species_id));
+    const rawRingSize = this.form.controls.ring_size.value;
+    this.dialogRef.close({
+      norm: this.buildPayload(species_id),
+      // Blank = Standard (inherit the global) — resolved independently of the
+      // norm columns, so it never rides the whole-row override (ADR 0028).
+      ringSize: rawRingSize ? (rawRingSize as RingSize) : null,
+    });
   }
 
   cancel(): void {

@@ -326,3 +326,70 @@ def test_mitglied_cannot_set_show_net_fields(mitglied_client, mitglied_scientist
     assert response.status_code == 403
     project.refresh_from_db()
     assert project.show_net_fields is True
+
+
+# --- Saison window: optional per-Projekt recurring month window --------------
+# ADR 0029, issue #373. Two nullable month fields (1–12) on the Projekt, set
+# manually per Projekt (no Projekttyp coupling/seeding). Both null ⇒ no season
+# configured. Admin-only to write, like the rest of Projektverwaltung.
+
+
+@pytest.mark.django_db
+def test_project_defaults_saison_window_to_null(auth_client, scientist, project):
+    """A freshly created Projekt has no season configured — both month fields
+    are null and echoed as null on GET."""
+    response = auth_client.get(f"{LIST_URL}{project.id}/")
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["saison_start_month"] is None
+    assert body["saison_end_month"] is None
+
+
+@pytest.mark.django_db
+def test_admin_can_set_saison_window_and_it_round_trips(auth_client, project):
+    """An Admin sets the recurring month window (Nov–März) in the Projekt
+    settings; it persists and round-trips on the read shape."""
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"saison_start_month": 11, "saison_end_month": 3},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["saison_start_month"] == 11
+    assert body["saison_end_month"] == 3
+    project.refresh_from_db()
+    assert project.saison_start_month == 11
+    assert project.saison_end_month == 3
+
+
+@pytest.mark.django_db
+def test_saison_window_rejects_out_of_range_month(auth_client, project):
+    """Months are constrained to 1–12; a 13 is a 400, not a silently-stored value."""
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"saison_start_month": 13, "saison_end_month": 3},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    project.refresh_from_db()
+    assert project.saison_start_month is None
+
+
+@pytest.mark.django_db
+def test_mitglied_cannot_set_saison_window(mitglied_client, mitglied_scientist, project):
+    """The Saison window rides the Admin-only write rule: a plain Mitglied cannot
+    set it (the whole Projekt write is refused with a 403)."""
+    response = mitglied_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"saison_start_month": 7, "saison_end_month": 10},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    project.refresh_from_db()
+    assert project.saison_start_month is None
+    assert project.saison_end_month is None

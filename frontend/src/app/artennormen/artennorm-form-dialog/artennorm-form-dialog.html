@@ -82,6 +82,21 @@
         <mat-option value="false">Nein</mat-option>
       </mat-select>
     </mat-form-field>
+
+    <p class="artennorm-dialog__hint">
+      Die Empfohlene Ringgröße ist unabhängig von den Prüfwerten – „Standard“ übernimmt den
+      globalen Vorschlag der Art.
+    </p>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Empfohlene Ringgröße</mat-label>
+      <mat-select formControlName="ring_size">
+        <mat-option value="">– Standard (globaler Vorschlag) –</mat-option>
+        @for (size of ringSizes; track size) {
+          <mat-option [value]="size">{{ size }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
   </mat-dialog-content>
 
   <mat-dialog-actions align="end">

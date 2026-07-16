@@ -3,11 +3,18 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 
 from birds.models import DataEntry, Project, Ring
 
 LIST_URL = "/api/birds/data-entries/"
 VIENNA = ZoneInfo("Europe/Vienna")
+
+# The Parasit data migration (ADR 0027) and the state right before it — used by
+# the migration test that proves a historical Milben capture survives the cutover.
+_MIGRATION_BEFORE_PARASIT = "0066_merge_0065_merge_20260716_0065_merge_20260716_0926"
+_MIGRATION_PARASIT = "0067_remove_dataentry_has_mites_dataentry_parasites"
 
 
 def _detail_url(pk):
@@ -223,6 +230,169 @@ def test_create_ring_destroyed_nulls_bird_data_server_side(
     assert entry.wing_span is None
     assert entry.weight_gram is None
     assert entry.ring.number == "662"
+
+
+# --- Fangmarker: Tot-Fund & Nicht-Standard-Fang (ADR 0026, issue #371) --------
+
+
+@pytest.mark.django_db
+def test_create_persists_and_serializes_both_fangmarker(
+    auth_client, species, scientist, ringing_station
+):
+    """Both Fangmarker are written on create and read back on the payload, so a
+    capture round-trips them (ADR 0026)."""
+    payload = _payload(species, scientist, ringing_station, ring_number="900")
+    payload["is_dead_recovery"] = True
+    payload["is_non_standard"] = True
+    payload["comment"] = "Totfund; Umstände: unter dem Netz"
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["is_dead_recovery"] is True
+    assert body["is_non_standard"] is True
+    entry = DataEntry.objects.get(id=body["id"])
+    assert entry.is_dead_recovery is True
+    assert entry.is_non_standard is True
+    # The real Art and Ring are always kept — a marker never substitutes them.
+    assert entry.species_id == species.id
+    assert entry.ring.number == "900"
+
+
+@pytest.mark.django_db
+def test_markers_default_false_when_omitted(auth_client, species, scientist, ringing_station):
+    """A capture that sends no markers persists both as False (nullable-free
+    booleans), so a pre-feature payload behaves exactly as before."""
+    response = auth_client.post(
+        LIST_URL,
+        _payload(species, scientist, ringing_station, ring_number="901"),
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["is_dead_recovery"] is False
+    assert body["is_non_standard"] is False
+
+
+@pytest.mark.django_db
+def test_update_toggles_markers(auth_client, data_entry, species, scientist, ringing_station):
+    """The markers can be flipped on and off by an edit and survive the write."""
+    payload = _payload(species, scientist, ringing_station, ring_number="902")
+    payload["is_non_standard"] = True
+    payload["comment"] = "Handfang bei einer Vorführung"
+
+    response = auth_client.put(_detail_url(data_entry.id), payload, format="json")
+
+    assert response.status_code == 200, response.json()
+    data_entry.refresh_from_db()
+    assert data_entry.is_non_standard is True
+    assert data_entry.is_dead_recovery is False
+
+
+@pytest.mark.django_db
+def test_create_dead_recovery_without_comment_returns_400(
+    auth_client, species, scientist, ringing_station
+):
+    """A Tot-Fund with a blank Bemerkung is rejected server-side, mirroring the
+    Aves-ignota mandatory-comment rule (ADR 0026)."""
+    payload = _payload(species, scientist, ringing_station, ring_number="903")
+    payload["is_dead_recovery"] = True
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert "comment" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_non_standard_without_comment_returns_400(
+    auth_client, species, scientist, ringing_station
+):
+    """A Nicht-Standard-Fang with a blank Bemerkung is rejected server-side."""
+    payload = _payload(species, scientist, ringing_station, ring_number="904")
+    payload["is_non_standard"] = True
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert "comment" in response.json()
+    assert DataEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_marker_with_comment_succeeds(auth_client, species, scientist, ringing_station):
+    """A marker with a non-blank Bemerkung passes the mandatory-comment rule."""
+    payload = _payload(species, scientist, ringing_station, ring_number="905")
+    payload["is_non_standard"] = True
+    payload["comment"] = "Zufallsfang"
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+
+
+@pytest.mark.django_db
+def test_both_markers_on_aves_ignota_capture(
+    auth_client, aves_ignota_species, scientist, ringing_station
+):
+    """The markers are orthogonal and either may sit on an Aves-ignota bird — both
+    may be true at once on the same unlisted capture (ADR 0026)."""
+    payload = _payload(aves_ignota_species, scientist, ringing_station, ring_number="906")
+    payload["is_dead_recovery"] = True
+    payload["is_non_standard"] = True
+    payload["comment"] = "Totfund; Umstände: toter Irrgast, außerhalb des Protokolls"
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get(id=response.json()["id"])
+    assert entry.is_dead_recovery is True
+    assert entry.is_non_standard is True
+    assert entry.species.special_kind == "unknown_species"
+
+
+@pytest.mark.django_db
+def test_markers_forced_off_on_ring_destroyed(
+    auth_client, sentinel_species, scientist, ringing_station
+):
+    """A Ring-vernichtet capture has no bird to mark, so the markers are forced off
+    server-side regardless of what the client sent, and a blank comment is not
+    demanded of it (ADR 0026)."""
+    payload = _payload(sentinel_species, scientist, ringing_station, ring_number="907")
+    payload["is_dead_recovery"] = True
+    payload["is_non_standard"] = True
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    entry = DataEntry.objects.get(id=response.json()["id"])
+    assert entry.is_dead_recovery is False
+    assert entry.is_non_standard is False
+
+
+@pytest.mark.django_db
+def test_update_to_ring_destroyed_forces_markers_off(
+    auth_client, data_entry, sentinel_species, scientist, ringing_station
+):
+    """Editing a marked capture into a Ring-vernichtet record forces both markers
+    off on the update path too (ADR 0026), mirroring the create path."""
+    data_entry.is_dead_recovery = True
+    data_entry.is_non_standard = True
+    data_entry.save()
+
+    payload = _payload(sentinel_species, scientist, ringing_station, ring_number="908")
+    payload["is_dead_recovery"] = True
+    payload["is_non_standard"] = True
+
+    response = auth_client.put(_detail_url(data_entry.id), payload, format="json")
+
+    assert response.status_code == 200, response.json()
+    data_entry.refresh_from_db()
+    assert data_entry.is_dead_recovery is False
+    assert data_entry.is_non_standard is False
 
 
 @pytest.mark.django_db
@@ -851,3 +1021,133 @@ def test_replaying_the_same_erstfang_create_is_idempotent_not_a_collision(
     assert replay.status_code == 201, replay.json()
     assert replay.json()["id"] == first.json()["id"]
     assert DataEntry.objects.filter(ring__number="822").count() == 1
+
+
+# --- Parasit multi-select (ADR 0027, issue #376) ------------------------------
+# Milben is generalised into a multi-valued Parasit field: a JSONField list of
+# fixed, app-wide choice codes (e.g. ["mites"]). The list persists and
+# round-trips on create/update; an omitted field defaults to the empty list;
+# and the former ``has_mites`` boolean no longer exists on the API.
+
+
+@pytest.mark.django_db
+def test_create_persists_and_serializes_parasites(auth_client, species, scientist, ringing_station):
+    """A capture's Parasit selection is stored as a JSON list of codes and read
+    back verbatim on the create response — a full round-trip (ADR 0027)."""
+    payload = _payload(species, scientist, ringing_station, ring_number="910")
+    payload["parasites"] = ["mites"]
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["parasites"] == ["mites"]
+    entry = DataEntry.objects.get(id=body["id"])
+    assert entry.parasites == ["mites"]
+
+
+@pytest.mark.django_db
+def test_parasites_default_to_empty_list_when_omitted(
+    auth_client, species, scientist, ringing_station
+):
+    """A capture that sends no Parasit selection persists an empty list — the
+    field's default — so a pre-feature payload behaves as 'no parasites'."""
+    response = auth_client.post(
+        LIST_URL,
+        _payload(species, scientist, ringing_station, ring_number="911"),
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    assert response.json()["parasites"] == []
+
+
+@pytest.mark.django_db
+def test_update_replaces_parasites_list(
+    auth_client, data_entry, species, scientist, ringing_station
+):
+    """An edit replaces the whole Parasit list and the new selection survives the
+    write."""
+    payload = _payload(species, scientist, ringing_station, ring_number="912")
+    payload["parasites"] = ["mites"]
+
+    response = auth_client.put(_detail_url(data_entry.id), payload, format="json")
+
+    assert response.status_code == 200, response.json()
+    data_entry.refresh_from_db()
+    assert data_entry.parasites == ["mites"]
+
+
+@pytest.mark.django_db
+def test_has_mites_replaced_by_parasites_on_the_api(auth_client, data_entry):
+    """The former single ``has_mites`` boolean is gone from the serialized
+    capture; ``parasites`` takes its place (ADR 0027)."""
+    response = auth_client.get(_detail_url(data_entry.id))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "has_mites" not in body
+    assert "parasites" in body
+
+
+@pytest.mark.django_db(transaction=True)
+def test_has_mites_true_migrates_to_parasites_mites():
+    """The data migration carries a historical Milben capture forward: a row with
+    ``has_mites=True`` before the migration reads ``parasites == ["mites"]`` after
+    it (and a ``has_mites=False`` row becomes an empty list), so historical Milben
+    entries keep their meaning as Parasit = Milben (ADR 0027)."""
+    executor = MigrationExecutor(connection)
+    try:
+        # Rewind to the state that still carries the has_mites boolean.
+        executor.migrate([("birds", _MIGRATION_BEFORE_PARASIT)])
+        old_apps = executor.loader.project_state([("birds", _MIGRATION_BEFORE_PARASIT)]).apps
+
+        Organization = old_apps.get_model("birds", "Organization")
+        Species = old_apps.get_model("birds", "Species")
+        RingModel = old_apps.get_model("birds", "Ring")
+        Scientist = old_apps.get_model("birds", "Scientist")
+        RingingStation = old_apps.get_model("birds", "RingingStation")
+        Historic = old_apps.get_model("birds", "DataEntry")
+
+        org = Organization.objects.create(handle="MIGORG", name="Mig Org", country="AT")
+        sp = Species.objects.create(
+            common_name_de="Milbenvogel",
+            common_name_en="Mite Bird",
+            scientific_name="Acarus avis",
+            family_name="Testidae",
+            order_name="Testiformes",
+        )
+        sc = Scientist.objects.create(handle="MIG", organization=org)
+        st = RingingStation.objects.create(handle="MIGSTN", name="Mig Station", organization=org)
+        mites_entry = Historic.objects.create(
+            species=sp,
+            ring=RingModel.objects.create(number="700", size="V", organization=org),
+            staff=sc,
+            ringing_station=st,
+            organization=org,
+            has_mites=True,
+            date_time=datetime(2020, 5, 1, 8, 0, tzinfo=UTC),
+        )
+        clean_entry = Historic.objects.create(
+            species=sp,
+            ring=RingModel.objects.create(number="701", size="V", organization=org),
+            staff=sc,
+            ringing_station=st,
+            organization=org,
+            has_mites=False,
+            date_time=datetime(2020, 5, 1, 9, 0, tzinfo=UTC),
+        )
+
+        # Apply the Parasit migration.
+        executor.loader.build_graph()
+        executor.migrate([("birds", _MIGRATION_PARASIT)])
+        new_apps = executor.loader.project_state([("birds", _MIGRATION_PARASIT)]).apps
+        Migrated = new_apps.get_model("birds", "DataEntry")
+
+        assert Migrated.objects.get(pk=mites_entry.pk).parasites == ["mites"]
+        assert Migrated.objects.get(pk=clean_entry.pk).parasites == []
+    finally:
+        # Always leave the DB migrated forward to the latest state so the rest of
+        # the session's tests run against the current schema.
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())

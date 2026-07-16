@@ -25,7 +25,27 @@ export interface ProjectEditDialogResult {
   showNetFields: boolean;
   projekttyp: Projekttyp;
   defaultStationHandle: string;
+  // The optional per-Projekt Saison window (ADR 0029): both null ⇒ no season.
+  saisonStartMonth: number | null;
+  saisonEndMonth: number | null;
 }
+
+// The Saison-window month options for the settings selects. de-AT month names
+// (Jänner, not Januar). Value is the 1–12 month number the backend expects.
+export const SAISON_MONTH_OPTIONS: {value: number; label: string}[] = [
+  'Jänner',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+].map((label, index) => ({value: index + 1, label}));
 
 @Component({
   selector: 'app-project-edit-dialog',
@@ -51,6 +71,7 @@ export class ProjectEditDialogComponent {
 
   readonly stations = signal<RingingStation[]>([]);
   readonly projekttypOptions = PROJEKTTYP_OPTIONS;
+  readonly saisonMonthOptions = SAISON_MONTH_OPTIONS;
 
   readonly form = this.fb.nonNullable.group({
     title: [this.data.project.title, Validators.required],
@@ -65,6 +86,14 @@ export class ProjectEditDialogComponent {
     showNetFields: [this.data.project.show_net_fields ?? true],
     projekttyp: [this.data.project.projekttyp ?? Projekttyp.Sonstiges],
     defaultStationHandle: [this.data.project.default_station?.handle ?? ''],
+    // The optional per-Projekt Saison window (ADR 0029): two nullable month
+    // selects (1–12). Both null ⇒ no season configured (the „Diese Saison"
+    // dashboard preset stays hidden). Nullable controls, so a „Keine" selection
+    // clears the field.
+    saisonStartMonth: this.fb.control<number | null>(
+      this.data.project.saison_start_month ?? null,
+    ),
+    saisonEndMonth: this.fb.control<number | null>(this.data.project.saison_end_month ?? null),
   });
 
   constructor() {

@@ -91,4 +91,45 @@ describe('ProjectEditDialogComponent', () => {
       jasmine.objectContaining({showNetFields: false}),
     );
   });
+
+  // --- Saison window (ADR 0029, issue #373) ----------------------------------
+
+  it('pre-fills the Saison month selects from the Projekt window', () => {
+    const {fixture, component} = setup(
+      makeProject({saison_start_month: 11, saison_end_month: 3}),
+    );
+
+    expect(component.form.controls.saisonStartMonth.value).toBe(11);
+    expect(component.form.controls.saisonEndMonth.value).toBe(3);
+    expect(fixture.nativeElement.textContent).toContain('Saison');
+  });
+
+  it('defaults the Saison selects to null (no season) when the Projekt has no window', () => {
+    const {component} = setup(makeProject());
+
+    expect(component.form.controls.saisonStartMonth.value).toBeNull();
+    expect(component.form.controls.saisonEndMonth.value).toBeNull();
+  });
+
+  it('round-trips an edited Saison window into the dialog result', () => {
+    const {component, dialogRef} = setup(makeProject());
+
+    component.form.controls.saisonStartMonth.setValue(7);
+    component.form.controls.saisonEndMonth.setValue(10);
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({saisonStartMonth: 7, saisonEndMonth: 10}),
+    );
+  });
+
+  it('carries a null Saison window into the dialog result when left unset', () => {
+    const {component, dialogRef} = setup(makeProject());
+
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({saisonStartMonth: null, saisonEndMonth: null}),
+    );
+  });
 });

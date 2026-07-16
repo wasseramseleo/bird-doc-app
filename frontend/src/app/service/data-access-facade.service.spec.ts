@@ -732,10 +732,12 @@ describe('DataAccessFacadeService', () => {
         created: isoAt(9),
         updated: isoAt(9),
         comment: null,
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
+        is_dead_recovery: false,
+        is_non_standard: false,
         ...overrides,
       } as DataEntry;
     }
@@ -974,10 +976,12 @@ describe('DataAccessFacadeService', () => {
         created: '2026-07-01T08:00:00.000Z',
         updated: '2026-07-01T08:00:00.000Z',
         comment: null,
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
+        is_dead_recovery: false,
+        is_non_standard: false,
         ...overrides,
       } as DataEntry;
     }

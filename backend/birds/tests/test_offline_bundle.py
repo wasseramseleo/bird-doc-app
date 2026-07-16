@@ -23,6 +23,7 @@ from birds.models import (
     Scientist,
     SpeciesList,
     SpeciesNorm,
+    SpeciesRingSizeOverride,
 )
 
 BUNDLE_URL = "/api/birds/offline-bundle/"
@@ -449,6 +450,59 @@ def test_bundle_embeds_global_default_when_no_override(
 def test_bundle_norms_omit_species_with_no_norm(auth_client, scientist, organization, species):
     payload = auth_client.get(BUNDLE_URL).json()
     assert not any(n["species_id"] == str(species.id) for n in payload["norms"])
+
+
+# --- Empfohlene Ringgröße: pre-resolved per-org value (issue #372, ADR 0028) ---
+# The offline bundle ships the pre-resolved per-org Empfohlene Ringgröße on each
+# species (override ?? global ``Species.ring_size``) so the offline ring-size
+# pre-fill uses the org's effective value, alongside the norms.
+
+
+@pytest.mark.django_db
+def test_bundle_species_pool_ships_effective_ring_size_override(
+    auth_client, user, scientist, species, organization
+):
+    """A species with a per-org override ships that override's ring size, not the
+    global default, so the offline pre-fill uses the org's effective value."""
+    assert species.ring_size == Ring.RingSizes.V
+    sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
+    sl.species.add(species)
+    SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization, ring_size=Ring.RingSizes.S
+    )
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    row = _species_by_id(payload, species.id)
+    assert row["ring_size"] == Ring.RingSizes.S
+
+
+@pytest.mark.django_db
+def test_bundle_species_pool_ships_global_ring_size_without_override(
+    auth_client, user, scientist, species, organization
+):
+    """With no override the species inherits its global ``Species.ring_size``."""
+    sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
+    sl.species.add(species)
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    row = _species_by_id(payload, species.id)
+    assert row["ring_size"] == Ring.RingSizes.V
+
+
+@pytest.mark.django_db
+def test_bundle_effective_ring_size_is_tenant_isolated(
+    auth_client, user, scientist, species, organization, organization_b
+):
+    """Another Organisation's override never leaks into this bundle's ring size."""
+    sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
+    sl.species.add(species)
+    SpeciesRingSizeOverride.objects.create(
+        species=species, organization=organization_b, ring_size=Ring.RingSizes.X
+    )
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    row = _species_by_id(payload, species.id)
+    assert row["ring_size"] == Ring.RingSizes.V
 
 
 # --- Zentralen register + Projekt Zentrale + offline replay (issue #233) ------

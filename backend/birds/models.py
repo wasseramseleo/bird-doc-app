@@ -3,6 +3,7 @@ import uuid
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import ProtectedError
 from django.db.models.signals import pre_delete
@@ -591,6 +592,25 @@ class Project(models.Model):
         default=Projekttyp.SONSTIGES,
         verbose_name=_("Projekttyp"),
     )
+    # The optional per-Projekt Saison (ADR 0029): a recurring, inclusive month
+    # window [saison_start_month, saison_end_month] (1–12) that drives the
+    # dashboard's „Diese Saison" preset. Wrap-around allowed — when start > end the
+    # window spans the year boundary (Nov = 11 → März = 3). NOT a separate entity,
+    # NO Projekttyp coupling or seeding: set manually per Projekt. Both null ⇒ no
+    # season configured (the preset button is hidden). Admin-only, like the rest of
+    # Projektverwaltung (writes gated by IsOrgAdminOrReadOnly on the ViewSet).
+    saison_start_month = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        verbose_name=_("Saison-Startmonat"),
+    )
+    saison_end_month = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        verbose_name=_("Saison-Endmonat"),
+    )
     circumstance = models.CharField(max_length=8, default="25", verbose_name=_("Umstand"))
     capture_method = models.CharField(
         max_length=1,
@@ -664,6 +684,14 @@ class DataEntry(models.Model):
         ONE = 1, _("1")
         TWO = 2, _("2")
         THREE = 3, _("3")
+
+    class Parasit(models.TextChoices):
+        # Parasit (ADR 0027): the fixed, app-wide vocabulary of parasite types,
+        # identical for every Organisation (reference data, like the IWM codes —
+        # not tenant-configurable). The multi-valued ``parasites`` field stores a
+        # list of these codes. Ships with Milben; the remaining ~4 concrete types
+        # (feedback #7b) are added later as further enum values, no schema change.
+        MITES = "mites", _("Milben")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     species = models.ForeignKey(Species, on_delete=models.PROTECT, verbose_name=_("Art"))
@@ -774,10 +802,24 @@ class DataEntry(models.Model):
         null=True,
         blank=True,
     )
-    has_mites = models.BooleanField(default=False, verbose_name=_("Milben"))
+    # Parasit (ADR 0027): a multi-valued selection of parasite types, replacing
+    # the former single ``has_mites`` boolean. Stored as a JSON list of codes from
+    # the fixed ``Parasit`` vocabulary (e.g. ``["mites"]``) — portable across the
+    # sqlite dev/test DB and Postgres prod, JSON-friendly for the offline outbox,
+    # and growable by adding enum values without a schema change. No IWM export
+    # column exists, so each selected type's label is written into the Bemerkung.
+    parasites = models.JSONField(default=list, blank=True, verbose_name=_("Parasit"))
     has_hunger_stripes = models.BooleanField(default=False, verbose_name=_("Hungerstreifen"))
     has_brood_patch = models.BooleanField(default=False, verbose_name=_("Brutfleck"))
     has_cpl_plus = models.BooleanField(default=False, verbose_name=_("CPL+"))
+    # Fangmarker (ADR 0026): two independent booleans that flag a special capture
+    # situation WITHOUT replacing the real Art or Ring — the opposite of a
+    # Sonderart. Orthogonal: both may be true at once, and either may sit on an
+    # Aves-ignota capture. Forced off for a Ring-vernichtet capture (there is no
+    # bird to mark). Both make the Bemerkung mandatory (serializer/capture-service);
+    # neither alters the dashboard counts today (deferred, see ADR 0026).
+    is_dead_recovery = models.BooleanField(default=False, verbose_name=_("Tot-Fund"))
+    is_non_standard = models.BooleanField(default=False, verbose_name=_("Nicht-Standard-Fang"))
     date_time = models.DateTimeField(verbose_name=_("Datum"))
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
@@ -987,3 +1029,50 @@ class SpeciesNorm(models.Model):
     def __str__(self):
         scope = self.organization_id or "Standard"
         return f"Artennorm {self.species_id} ({scope})"
+
+
+class SpeciesRingSizeOverride(models.Model):
+    """A per-``(species, organization)`` override of the **Empfohlene Ringgröße**
+    (ADR 0028).
+
+    The global default stays on ``Species.ring_size`` (reference data, also read
+    by the public Wissen-Artenseite). This is a **standalone** override value,
+    deliberately its **own table** and **not** a column on the whole-row
+    ``SpeciesNorm``: setting or clearing a ring size neither creates nor disturbs a
+    norm-override row and never toggles a plausibility check. The effective
+    Empfohlene Ringgröße for a species in an Organisation is the override row's
+    ``ring_size`` if one exists, else ``Species.ring_size`` — a per-value coalesce
+    (a missing row means *inherit* the global). Overriding explicitly to "no
+    recommendation" is not modelled: a null ring size is simply no row.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    species = models.ForeignKey(
+        Species,
+        on_delete=models.CASCADE,
+        related_name="ring_size_overrides",
+        verbose_name=_("Art"),
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="species_ring_size_overrides",
+        verbose_name=_("Organisation"),
+    )
+    ring_size = models.CharField(
+        max_length=3,
+        choices=Ring.RingSizes.choices,
+        verbose_name=_("Empfohlene Ringgröße"),
+    )
+
+    class Meta:
+        constraints = [
+            # At most one ring-size override per (species, Organisation).
+            models.UniqueConstraint(
+                fields=["species", "organization"],
+                name="unique_ring_size_override_per_org",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Ringgröße {self.ring_size} für {self.species_id} ({self.organization_id})"

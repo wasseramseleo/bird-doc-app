@@ -6,10 +6,14 @@ import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSelect } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
+import {
+  MatAutocompleteSelectedEvent,
+  MatAutocompleteTrigger,
+} from '@angular/material/autocomplete';
 import { of, Subject } from 'rxjs';
 
 import { DataEntryFormComponent } from './data-entry-form';
@@ -18,6 +22,7 @@ import {
   BirdStatus,
   DataEntry,
   HandWingMoult,
+  Parasit,
   SelectOption,
   Sex,
   SmallFeatherAppMoult,
@@ -662,6 +667,177 @@ describe('DataEntryFormComponent', () => {
       expect(cellText('wing_span')).toBe('73,3');
       expect(cellText('weight_gram')).toBe('19,0');
     });
+
+    // Issue #374 (#1): a past Fang that carries a Bemerkung gets a yellow
+    // mat-badge dot on its info button, so the Beringer sees which recaptures
+    // carry a note before opening the detail dialog.
+    const infoButton = (): HTMLElement =>
+      fixture.nativeElement.querySelector('td.mat-column-actions button') as HTMLElement;
+
+    it('marks a past Fang that carries a comment with the Bemerkung indicator on its info button', () => {
+      component.recaptureHistory.set([historyRow({ comment: 'linker Flügel verletzt' })]);
+      fixture.detectChanges();
+
+      expect(infoButton()).not.toBeNull();
+      // MatBadge only renders the badge span when its content is non-empty.
+      expect(infoButton().querySelector('.mat-badge-content')).not.toBeNull();
+    });
+
+    it('shows no Bemerkung indicator for a past Fang without a comment', () => {
+      component.recaptureHistory.set([historyRow({ comment: null })]);
+      fixture.detectChanges();
+
+      expect(infoButton()).not.toBeNull();
+      expect(infoButton().querySelector('.mat-badge-content')).toBeNull();
+    });
+  });
+
+  // Issue #374 (#4): the Beringer autocomplete gains autoActiveFirstOption so
+  // the highlighted first existing match is committed by the existing Tab-select
+  // directive — exactly as the Art field already does. The "➕ Neuer Beringer"
+  // create option (value null) must never be auto-committed by Tab; creating a
+  // Beringer stays a deliberate click.
+  describe('Beringer first-match on Tab (#4)', () => {
+    const dialogMock = { open: jasmine.createSpy('open') };
+    const emptyPage = { count: 0, next: null, previous: null, results: [] as never[] };
+    const scientist = (over: Partial<Scientist> = {}): Scientist =>
+      ({ id: '7', handle: 'FRE', full_name: 'Filip Reiter', ...over }) as Scientist;
+
+    let facade: {
+      getSpecies: jasmine.Spy;
+      getRingingStations: jasmine.Spy;
+      getScientists: jasmine.Spy;
+      getCentrals: jasmine.Spy;
+      getNextRingNumber: jasmine.Spy;
+      getRingHistory: jasmine.Spy;
+      createScientist: jasmine.Spy;
+    };
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      facade = {
+        getSpecies: jasmine.createSpy('getSpecies').and.returnValue(of(emptyPage)),
+        getRingingStations: jasmine.createSpy('getRingingStations').and.returnValue(of(emptyPage)),
+        // A typed term that matches an existing Beringer returns it; anything
+        // else returns nothing (so only the create option is offered).
+        getScientists: jasmine.createSpy('getScientists').and.callFake((term?: string) =>
+          of({
+            ...emptyPage,
+            results:
+              term && 'filip reiter (fre)'.includes(term.toLowerCase()) ? [scientist()] : [],
+          }),
+        ),
+        getCentrals: jasmine.createSpy('getCentrals').and.returnValue(of(emptyPage)),
+        getNextRingNumber: jasmine.createSpy('getNextRingNumber').and.returnValue(
+          of({ next_number: null }),
+        ),
+        getRingHistory: jasmine
+          .createSpy('getRingHistory')
+          .and.returnValue(of({ entries: [], possiblyIncomplete: false })),
+        createScientist: jasmine.createSpy('createScientist').and.returnValue(of(scientist())),
+      };
+
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          { provide: LOCALE_ID, useValue: 'de-AT' },
+          { provide: DataAccessFacadeService, useValue: facade },
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>(createProject()),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+    });
+
+    const staffTrigger = (): MatAutocompleteTrigger =>
+      fixture.debugElement
+        .query(By.css('input[formControlName="staff"]'))
+        .injector.get(MatAutocompleteTrigger);
+
+    const staffInput = (): HTMLInputElement =>
+      fixture.nativeElement.querySelector('input[formControlName="staff"]') as HTMLInputElement;
+
+    const pressTab = (): void => {
+      staffInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    };
+
+    it('marks the Beringer autocomplete with autoActiveFirstOption, like the Art field', () => {
+      expect(staffTrigger().autocomplete.autoActiveFirstOption).toBe(true);
+    });
+
+    it('confirms the highlighted first existing match on Tab', () => {
+      const match = scientist();
+      // Feed the panel a real match (the debounced pipe is bypassed here).
+      component.filteredScientists = of([match]);
+      fixture.detectChanges();
+
+      const trigger = staffTrigger();
+      trigger.openPanel();
+      fixture.detectChanges();
+
+      // autoActiveFirstOption highlights the first existing match.
+      expect(trigger.activeOption?.value).toEqual(match);
+
+      pressTab();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('staff')!.value).toEqual(match);
+
+      trigger.closePanel();
+      fixture.detectChanges();
+    });
+
+    it('never commits the "Neuer Beringer" create option on Tab', () => {
+      // An unknown Kürzel with no matching Beringer: the only option offered is
+      // the "➕ Neuer Beringer" create row, whose value is null.
+      const internals = component as unknown as {
+        staffSearchTerm: { set(value: string): void };
+        staffResults: { set(value: Scientist[]): void };
+      };
+      internals.staffSearchTerm.set('FREX');
+      internals.staffResults.set([]);
+      component.filteredScientists = of([]);
+      component.entryForm.get('staff')!.setValue('FREX' as never);
+      fixture.detectChanges();
+
+      expect(component.showCreateBeringer()).toBe(true);
+
+      const trigger = staffTrigger();
+      trigger.openPanel();
+      fixture.detectChanges();
+
+      // autoActiveFirstOption highlights the lone create option, whose value is null.
+      expect(trigger.activeOption?.value).toBeNull();
+
+      pressTab();
+      fixture.detectChanges();
+
+      // The Tab-select guard refuses the create option: the typed text stays,
+      // the control is never set to null, and no create dialog is opened.
+      expect(component.entryForm.get('staff')!.value as unknown).toBe('FREX');
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      trigger.closePanel();
+      fixture.detectChanges();
+    });
   });
 
   describe('Ring Vernichtet sentinel (collapsing the form)', () => {
@@ -900,6 +1076,199 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #371 (ADR 0026): the two Fangmarker — Tot-Fund and Nicht-Standard-Fang —
+  // flag a capture situation WITHOUT replacing the Art or Ring.
+  describe('Fangmarker: Tot-Fund & Nicht-Standard-Fang (#371)', () => {
+    const sentinel: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      special_kind: 'ring_destroyed',
+    };
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      show_net_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const dialogMock = { open: jasmine.createSpy('open') };
+    let httpMock: HttpTestingController;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: { currentProject: signal<Project | null>(project), setCurrent: () => {}, clear: () => {} },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 1, next: null, previous: null, results: [sentinel] });
+    });
+
+    function fillValidCapture(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    const btn = (testid: string): HTMLButtonElement | null =>
+      fixture.nativeElement.querySelector(`.action-buttons button[data-testid="${testid}"]`);
+
+    it('renders both marker buttons next to "Ring vernichtet", skipped by Tab', () => {
+      const tot = btn('tot-fund-button');
+      const ns = btn('non-standard-button');
+      expect(tot).not.toBeNull();
+      expect(ns).not.toBeNull();
+      // Skipped by Tab — never in the focus order.
+      expect(tot!.getAttribute('tabindex')).toBe('-1');
+      expect(ns!.getAttribute('tabindex')).toBe('-1');
+    });
+
+    it('hides both marker buttons while Ring vernichtet is active', () => {
+      component.onSpeciesSelected({ option: { value: sentinel } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+
+      expect(component.isRingDestroyed()).toBe(true);
+      expect(btn('tot-fund-button')).toBeNull();
+      expect(btn('non-standard-button')).toBeNull();
+    });
+
+    it('forces the markers off when Ring vernichtet becomes active', () => {
+      component.entryForm.get('is_dead_recovery')!.setValue(true);
+      component.entryForm.get('is_non_standard')!.setValue(true);
+
+      component.onSpeciesSelected({ option: { value: sentinel } } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('is_dead_recovery')!.value).toBe(false);
+      expect(component.entryForm.get('is_non_standard')!.value).toBe(false);
+    });
+
+    it('opens the Tot-Fund popup and composes "Totfund; Umstände: <input>" on confirm', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of('unter dem Netz gefunden') });
+
+      component.onToggleDeadRecovery();
+
+      expect(dialogMock.open).toHaveBeenCalled();
+      expect(component.isDeadRecovery()).toBe(true);
+      expect(component.entryForm.get('comment')!.value).toBe('Totfund; Umstände: unter dem Netz gefunden');
+    });
+
+    it('leaves the capture un-marked when the Tot-Fund popup is cancelled', () => {
+      dialogMock.open.and.returnValue({ afterClosed: () => of(undefined) });
+
+      component.onToggleDeadRecovery();
+
+      expect(component.isDeadRecovery()).toBe(false);
+      expect(component.entryForm.get('comment')!.value).toBeNull();
+    });
+
+    it('opens the Tot-Fund popup pre-filled by parsing an existing composed Bemerkung', () => {
+      component.entryForm.get('comment')!.setValue('Totfund; Umstände: Beifang im Netz');
+      dialogMock.open.and.returnValue({ afterClosed: () => of(undefined) });
+
+      component.onToggleDeadRecovery();
+
+      const data = dialogMock.open.calls.mostRecent().args[1]?.data as { umstaende: string };
+      expect(data.umstaende).toBe('Beifang im Netz');
+    });
+
+    it('toggles the Tot-Fund marker off to undo, clearing the composed Bemerkung', () => {
+      component.entryForm.get('is_dead_recovery')!.setValue(true);
+      component.entryForm.get('comment')!.setValue('Totfund; Umstände: unter dem Netz');
+
+      component.onToggleDeadRecovery();
+
+      expect(component.isDeadRecovery()).toBe(false);
+      expect(component.entryForm.get('comment')!.value).toBeNull();
+      // No popup is opened when toggling off.
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+
+    it('toggles Nicht-Standard on and off without any popup', () => {
+      component.onToggleNonStandard();
+      expect(component.isNonStandard()).toBe(true);
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      component.onToggleNonStandard();
+      expect(component.isNonStandard()).toBe(false);
+    });
+
+    it('shows the coloured frame, badge and a Bemerkung hint for a Nicht-Standard-Fang', () => {
+      component.onToggleNonStandard();
+      fixture.detectChanges();
+
+      const form = fixture.nativeElement.querySelector('form.data-entry-form') as HTMLElement;
+      expect(form.classList).toContain('non-standard-mode');
+      expect(fixture.nativeElement.querySelector('[data-testid="non-standard-badge"]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="non-standard-hint"]')).not.toBeNull();
+    });
+
+    it('makes the Bemerkung mandatory while either marker is set', () => {
+      const comment = component.entryForm.get('comment')!;
+      expect(comment.hasError('required')).toBe(false);
+
+      component.onToggleNonStandard();
+      fixture.detectChanges(); // flush the validator-toggling effect
+      expect(comment.hasError('required')).toBe(true);
+
+      comment.setValue('Handfang bei einer Vorführung');
+      expect(comment.hasError('required')).toBe(false);
+    });
+
+    it('carries both markers, set at once, onto the write payload', () => {
+      fillValidCapture();
+      component.entryForm.get('is_dead_recovery')!.setValue(true);
+      component.entryForm.get('is_non_standard')!.setValue(true);
+      component.entryForm.get('comment')!.setValue('Totfund; Umstände: außerhalb des Protokolls');
+
+      component.onSubmit();
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      const body = post.request.body as Record<string, unknown>;
+      post.flush({});
+
+      expect(body['is_dead_recovery']).toBe(true);
+      expect(body['is_non_standard']).toBe(true);
+    });
+  });
+
   describe('edit mode (opening an existing entry via /data-entry/:id)', () => {
     const station: RingingStation = {
       handle: 'STAMT',
@@ -941,7 +1310,7 @@ describe('DataEntryFormComponent', () => {
         created: '2024-05-01T08:30:00Z',
         updated: '2024-05-01T08:30:00Z',
         comment: 'Wiederfang am Hauptnetz',
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
@@ -1203,7 +1572,7 @@ describe('DataEntryFormComponent', () => {
         notch_f2: null,
         inner_foot: null,
         comment: 'Erste Notiz',
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
@@ -3484,7 +3853,7 @@ describe('DataEntryFormComponent', () => {
         created: '2024-05-01T08:30:00Z',
         updated: '2024-05-01T08:30:00Z',
         comment: null,
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
@@ -3817,7 +4186,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -3997,7 +4366,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -4212,7 +4581,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -4529,7 +4898,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -4806,7 +5175,7 @@ describe('DataEntryFormComponent', () => {
           sex: Sex.Male,
           hand_wing: HandWingMoult.AtLeastOne,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -5810,7 +6179,7 @@ describe('DataEntryFormComponent', () => {
         hand_wing: HandWingMoult.AtLeastOne,
         bird_status: BirdStatus.ReCatch,
         date_time: '2024-05-01T08:30:00Z',
-        has_mites: false,
+        parasites: [],
         has_hunger_stripes: false,
         has_brood_patch: false,
         has_cpl_plus: false,
@@ -5971,7 +6340,7 @@ describe('DataEntryFormComponent', () => {
           age_class: AgeClass.ThisYear,
           sex: Sex.Female,
           date_time: '2024-05-01T08:30:00Z',
-          has_mites: false,
+          parasites: [],
           has_hunger_stripes: false,
           has_brood_patch: false,
           has_cpl_plus: false,
@@ -5981,6 +6350,49 @@ describe('DataEntryFormComponent', () => {
       const species = f.nativeElement.querySelector('[formControlName="species"]');
       // Edit mode never steals focus onto Art; the ringer is reviewing a record.
       expect(document.activeElement).not.toBe(species);
+    });
+  });
+
+  // ADR 0027 (#376): the optional Ja/Nein flags reorder to Brutfleck, CPL+,
+  // Hungerstreifen and the former single Milben checkbox becomes a multi-valued
+  // Parasit Mehrfachauswahl rendered after them.
+  describe('Parasit Mehrfachauswahl and flag order (ADR 0027, #376)', () => {
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      await setupCreateMode();
+    });
+
+    it('renders the Ja/Nein flags in the order Brutfleck, CPL+, Hungerstreifen', () => {
+      const labels = Array.from(
+        fixture.nativeElement.querySelectorAll('.form-section-checkboxes mat-checkbox'),
+      ).map((cb) => (cb as HTMLElement).textContent?.trim());
+      expect(labels).toEqual(['Brutfleck', 'CPL+', 'Hungerstreifen']);
+    });
+
+    it('has no standalone Milben checkbox any more', () => {
+      const mites = fixture.nativeElement.querySelector(
+        'mat-checkbox[formControlName="has_mites"]',
+      );
+      expect(mites).toBeNull();
+    });
+
+    it('renders a Parasit multi-select after the flags', () => {
+      const parasit = fixture.debugElement
+        .queryAll(By.directive(MatSelect))
+        .find((de) => de.attributes['formControlName'] === 'parasites');
+      expect(parasit).toBeTruthy();
+      expect((parasit!.componentInstance as MatSelect).multiple).toBe(true);
+    });
+
+    it('defaults the Parasit selection to an empty list', () => {
+      expect(component.entryForm.get('parasites')!.value).toEqual([]);
+    });
+
+    it('carries the selected parasite codes onto the form value', () => {
+      component.entryForm.get('parasites')!.setValue([Parasit.Mites]);
+      fixture.detectChanges();
+      expect(component.entryForm.getRawValue().parasites).toEqual([Parasit.Mites]);
     });
   });
 
@@ -6023,7 +6435,7 @@ describe('DataEntryFormComponent', () => {
 
     it('jumps immediately from a checkbox (no caret) on left arrow', fakeAsync(() => {
       const checkbox = fixture.nativeElement.querySelector(
-        'mat-checkbox[formControlName="has_mites"] input',
+        'mat-checkbox[formControlName="has_brood_patch"] input',
       ) as HTMLInputElement;
       checkbox.focus();
 
@@ -6031,7 +6443,8 @@ describe('DataEntryFormComponent', () => {
       checkbox.dispatchEvent(event);
       tick(50);
 
-      // has_mites' predecessor in the focus order is the Bemerkungen textarea.
+      // has_brood_patch is the first flag (ADR 0027 #7a order), so its predecessor
+      // in the focus order is the Bemerkungen textarea.
       expect(event.defaultPrevented).toBe(true);
       expect(document.activeElement).toBe(el('comment'));
     }));
