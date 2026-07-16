@@ -80,7 +80,7 @@ ENTRY_SPECS = [
             "net_location": 3,
             "net_height": 2,
             "net_direction": "L",
-            "parasites": ["mites"],
+            "parasites": ["red_mites"],
         },
     ),
     (
@@ -213,7 +213,9 @@ ENTRY_SPECS = [
             "small_feather_int": 1,
             "small_feather_app": "U",
             "hand_wing": 1,
-            "parasites": ["mites"],
+            # Several types at once — an ordinary finding, and the case the IWM
+            # Bemerkung has to keep readable (issue #406).
+            "parasites": ["red_mites", "tick"],
             "has_hunger_stripes": True,
             "comment": "Sehr mageres Tier",
         },
@@ -318,7 +320,7 @@ ENTRY_SPECS = [
             "small_feather_int": 1,
             "small_feather_app": "U",
             "hand_wing": 2,
-            "parasites": ["mites"],
+            "parasites": ["feather_lice"],
             "has_cpl_plus": True,
         },
     ),

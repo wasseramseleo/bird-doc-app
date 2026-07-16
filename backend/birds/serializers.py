@@ -578,6 +578,32 @@ class ProjectSerializer(serializers.ModelSerializer):
         return project
 
 
+class ParasitCodeField(serializers.ChoiceField):
+    """One parasite code from the Parasit vocabulary, tolerating retired codes.
+
+    Validates against ``DataEntry.Parasit`` but first rewrites any retired code
+    through ``DataEntry.PARASIT_ALIASES`` — the same rule as the 0070 data
+    migration, applied to data *in motion* rather than at rest (ADR 0031). The
+    alias is deliberately not an enum member, so the retired code can be written
+    but never offered or labelled.
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("choices", DataEntry.Parasit.choices)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        # Only a string can be an alias, and only a string is guaranteed
+        # hashable: a malformed ``["x"]``/``{}`` element would otherwise raise
+        # TypeError inside the dict lookup and surface as a 500. Anything
+        # non-str falls through to ChoiceField, which rejects it as a clean 400
+        # — and the offline replay skips-and-flags a 4xx per entry, where a 5xx
+        # would stop the whole run (sync.service.ts::syncEntry).
+        if isinstance(data, str):
+            data = DataEntry.PARASIT_ALIASES.get(data, data)
+        return super().to_internal_value(data)
+
+
 class DataEntrySerializer(serializers.ModelSerializer):
     species = SpeciesSerializer(read_only=True)
     ring = RingSerializer(read_only=True)
@@ -604,6 +630,23 @@ class DataEntrySerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
         error_messages={"does_not_exist": _("Unbekannter Zentralen-Code.")},
+    )
+
+    # Parasit (ADR 0027): validated against the vocabulary instead of trusting the
+    # JSONField, which has no ``choices`` and never sees ``full_clean()`` on the
+    # create path — ``parasites: ["banana", 42]`` used to persist in silence
+    # (issue #406). The check has to live HERE because both consumers swallow an
+    # unknown code by design (``_PARASIT_LABELS.get(code, code)`` falls back to the
+    # raw string), so a drift between the two hand-mirrored enums would otherwise
+    # surface as a literal ``white_mites`` in the Meldestelle's Bemerkungen column
+    # with nothing failing anywhere.
+    # ``mites`` stays writable through ParasitCodeField's alias for ~30 days
+    # (ADR 0031) — an offline device replaying an old bundle must not be 4xx'd
+    # into a skip-and-flag loop.
+    parasites = serializers.ListField(
+        child=ParasitCodeField(),
+        required=False,
+        allow_empty=True,
     )
 
     species_id = serializers.PrimaryKeyRelatedField(

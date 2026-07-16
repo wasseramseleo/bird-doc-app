@@ -16,6 +16,12 @@ VIENNA = ZoneInfo("Europe/Vienna")
 _MIGRATION_BEFORE_PARASIT = "0066_merge_0065_merge_20260716_0065_merge_20260716_0926"
 _MIGRATION_PARASIT = "0067_remove_dataentry_has_mites_dataentry_parasites"
 
+# The Parasit vocabulary migration (issue #406) and the state right before it —
+# used by the migration test that proves a stored „Milben" capture reads as Rote
+# Milben afterwards, and travels back unchanged on a rollback.
+_MIGRATION_BEFORE_PARASIT_VOCAB = "0069_remove_dataentry_unique_erstfang_per_ring_and_more"
+_MIGRATION_PARASIT_VOCAB = "0070_parasit_mites_to_red_mites"
+
 
 def _detail_url(pk):
     return f"{LIST_URL}{pk}/"
@@ -1218,15 +1224,108 @@ def test_create_persists_and_serializes_parasites(auth_client, species, scientis
     """A capture's Parasit selection is stored as a JSON list of codes and read
     back verbatim on the create response — a full round-trip (ADR 0027)."""
     payload = _payload(species, scientist, ringing_station, ring_number="910")
-    payload["parasites"] = ["mites"]
+    payload["parasites"] = ["red_mites"]
 
     response = auth_client.post(LIST_URL, payload, format="json")
 
     assert response.status_code == 201, response.json()
     body = response.json()
-    assert body["parasites"] == ["mites"]
+    assert body["parasites"] == ["red_mites"]
     entry = DataEntry.objects.get(id=body["id"])
-    assert entry.parasites == ["mites"]
+    assert entry.parasites == ["red_mites"]
+
+
+@pytest.mark.django_db
+def test_unknown_parasite_code_is_rejected(auth_client, species, scientist, ringing_station):
+    """A code outside the vocabulary is refused at the door (issue #406).
+
+    Both consumers fall back to the raw code by design (``_PARASIT_LABELS.get(
+    code, code)``), so without this an enum typo would sail through and land as a
+    literal ``white_mites`` in the Bemerkungen column of the official Meldung,
+    failing nowhere. The two hand-mirrored enums make that drift realistic."""
+    payload = _payload(species, scientist, ringing_station, ring_number="913")
+    payload["parasites"] = ["banana"]
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400, response.json()
+    assert "parasites" in response.json()
+    assert not DataEntry.objects.filter(ring__number="913").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("ring_number", "parasites"),
+    [
+        ("913a", [["nested"]]),
+        ("913b", [{}]),
+        ("913c", [{"a": 1}]),
+        ("913d", [42]),
+        ("913e", [None]),
+    ],
+)
+def test_malformed_parasite_json_is_rejected_not_a_server_error(
+    auth_client, species, scientist, ringing_station, ring_number, parasites
+):
+    """A non-string element is a *client* error (400), never a 500 (issue #406).
+
+    The alias rewrite must not assume the incoming value is hashable: a bare
+    ``PARASIT_ALIASES.get(data, data)`` raises ``TypeError: unhashable type`` on
+    a list or dict and turns a malformed payload into an unhandled server fault.
+
+    A 500 is strictly worse here than the 4xx it replaces, because of the very
+    mechanism the alias exists to protect: ``sync.service.ts::syncEntry`` flags a
+    4xx per entry (skip-and-flag) but treats a 5xx as *transient* and stops the
+    whole replay run. One malformed queued payload would head-of-line-block the
+    entire outbox on every reconnect and never drain."""
+    payload = _payload(species, scientist, ringing_station, ring_number=ring_number)
+    payload["parasites"] = parasites
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 400, response.json()
+    assert "parasites" in response.json()
+    assert not DataEntry.objects.filter(ring__number=ring_number).exists()
+
+
+@pytest.mark.django_db
+def test_retired_mites_code_is_accepted_and_rewritten(
+    auth_client, species, scientist, ringing_station
+):
+    """An old offline bundle may still POST the retired ``mites`` code — it is
+    accepted and stored as ``red_mites`` (issue #406).
+
+    Rejecting it would be a field bug, not strictness: a device can be offline
+    ~30 days and an open PWA tab runs an old bundle indefinitely, so a 4xx on
+    replay hits skip-and-flag — the capture stays in IndexedDB, is skipped by
+    every later replay, and the ringer's only repair path is the *old* form that
+    offers „Milben" again. A loop nothing breaks him out of."""
+    payload = _payload(species, scientist, ringing_station, ring_number="914")
+    payload["parasites"] = ["mites"]
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert response.json()["parasites"] == ["red_mites"]
+    assert DataEntry.objects.get(ring__number="914").parasites == ["red_mites"]
+
+
+@pytest.mark.django_db
+def test_several_parasite_types_round_trip(auth_client, species, scientist, ringing_station):
+    """Several types on one capture is an ordinary finding — Zecken *and* Rote
+    Milben — and the whole selection round-trips in the order it was sent."""
+    payload = _payload(species, scientist, ringing_station, ring_number="915")
+    payload["parasites"] = ["red_mites", "tick", "louse_fly"]
+
+    response = auth_client.post(LIST_URL, payload, format="json")
+
+    assert response.status_code == 201, response.json()
+    assert response.json()["parasites"] == ["red_mites", "tick", "louse_fly"]
+    assert DataEntry.objects.get(ring__number="915").parasites == [
+        "red_mites",
+        "tick",
+        "louse_fly",
+    ]
 
 
 @pytest.mark.django_db
@@ -1252,13 +1351,13 @@ def test_update_replaces_parasites_list(
     """An edit replaces the whole Parasit list and the new selection survives the
     write."""
     payload = _payload(species, scientist, ringing_station, ring_number="912")
-    payload["parasites"] = ["mites"]
+    payload["parasites"] = ["red_mites"]
 
     response = auth_client.put(_detail_url(data_entry.id), payload, format="json")
 
     assert response.status_code == 200, response.json()
     data_entry.refresh_from_db()
-    assert data_entry.parasites == ["mites"]
+    assert data_entry.parasites == ["red_mites"]
 
 
 @pytest.mark.django_db
@@ -1332,5 +1431,83 @@ def test_has_mites_true_migrates_to_parasites_mites():
     finally:
         # Always leave the DB migrated forward to the latest state so the rest of
         # the session's tests run against the current schema.
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+# --- Parasit vocabulary: „Milben" becomes Rote Milben (issue #406) ------------
+# The user's ruling: the historical „Milben" option always meant Dermanyssus
+# gallinae. The vocabulary now names five concrete types, so every stored
+# ``mites`` is rewritten to ``red_mites`` at rest — and the write path keeps
+# accepting ``mites`` from old offline bundles (see the alias tests below).
+
+
+@pytest.mark.django_db(transaction=True)
+def test_stored_mites_migrates_to_red_mites_and_back():
+    """A stored „Milben" capture reads as Rote Milben after the vocabulary
+    migration, and travels back to ``mites`` on a rollback — the migration is
+    reversible, so a bad release can be undone without stranding the data
+    (issue #406)."""
+    executor = MigrationExecutor(connection)
+    try:
+        executor.migrate([("birds", _MIGRATION_BEFORE_PARASIT_VOCAB)])
+        old_apps = executor.loader.project_state([("birds", _MIGRATION_BEFORE_PARASIT_VOCAB)]).apps
+
+        Organization = old_apps.get_model("birds", "Organization")
+        Species = old_apps.get_model("birds", "Species")
+        RingModel = old_apps.get_model("birds", "Ring")
+        Scientist = old_apps.get_model("birds", "Scientist")
+        RingingStation = old_apps.get_model("birds", "RingingStation")
+        Historic = old_apps.get_model("birds", "DataEntry")
+
+        org = Organization.objects.create(handle="VOCORG", name="Voc Org", country="AT")
+        sp = Species.objects.create(
+            common_name_de="Milbenvogel",
+            common_name_en="Mite Bird",
+            scientific_name="Acarus avis",
+            family_name="Testidae",
+            order_name="Testiformes",
+        )
+        sc = Scientist.objects.create(handle="VOC", organization=org)
+        st = RingingStation.objects.create(handle="VOCSTN", name="Voc Station", organization=org)
+
+        def _entry(number, parasites, hour):
+            return Historic.objects.create(
+                species=sp,
+                ring=RingModel.objects.create(number=number, size="V", organization=org),
+                staff=sc,
+                ringing_station=st,
+                organization=org,
+                parasites=parasites,
+                date_time=datetime(2020, 5, 1, hour, 0, tzinfo=UTC),
+            )
+
+        mites_entry = _entry("710", ["mites"], 8)
+        clean_entry = _entry("711", [], 9)
+        # A capture that already carries another type alongside Milben must keep
+        # that type, in place — the rewrite touches only the retired code.
+        mixed_entry = _entry("712", ["mites", "tick"], 10)
+
+        executor.loader.build_graph()
+        executor.migrate([("birds", _MIGRATION_PARASIT_VOCAB)])
+        new_apps = executor.loader.project_state([("birds", _MIGRATION_PARASIT_VOCAB)]).apps
+        Migrated = new_apps.get_model("birds", "DataEntry")
+
+        assert Migrated.objects.get(pk=mites_entry.pk).parasites == ["red_mites"]
+        assert Migrated.objects.get(pk=clean_entry.pk).parasites == []
+        assert Migrated.objects.get(pk=mixed_entry.pk).parasites == ["red_mites", "tick"]
+
+        # Reverse: back to the retired code, order preserved.
+        executor.loader.build_graph()
+        executor.migrate([("birds", _MIGRATION_BEFORE_PARASIT_VOCAB)])
+        reversed_apps = executor.loader.project_state(
+            [("birds", _MIGRATION_BEFORE_PARASIT_VOCAB)]
+        ).apps
+        Reversed = reversed_apps.get_model("birds", "DataEntry")
+
+        assert Reversed.objects.get(pk=mites_entry.pk).parasites == ["mites"]
+        assert Reversed.objects.get(pk=clean_entry.pk).parasites == []
+        assert Reversed.objects.get(pk=mixed_entry.pk).parasites == ["mites", "tick"]
+    finally:
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())

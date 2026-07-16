@@ -6567,9 +6567,9 @@ describe('DataEntryFormComponent', () => {
     });
 
     it('carries the selected parasite codes onto the form value', () => {
-      component.entryForm.get('parasites')!.setValue([Parasit.Mites]);
+      component.entryForm.get('parasites')!.setValue([Parasit.RedMites]);
       fixture.detectChanges();
-      expect(component.entryForm.getRawValue().parasites).toEqual([Parasit.Mites]);
+      expect(component.entryForm.getRawValue().parasites).toEqual([Parasit.RedMites]);
     });
   });
 
