@@ -1,4 +1,4 @@
-import { LOCALE_ID, signal } from '@angular/core';
+import { LOCALE_ID, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
@@ -14,7 +14,7 @@ import {
   MatAutocompleteSelectedEvent,
   MatAutocompleteTrigger,
 } from '@angular/material/autocomplete';
-import { EMPTY, of, Subject } from 'rxjs';
+import { EMPTY, firstValueFrom, Observable, of, Subject } from 'rxjs';
 
 import { DataEntryFormComponent } from './data-entry-form';
 import {
@@ -49,6 +49,7 @@ import { OfflineBundle } from '../models/offline-bundle.model';
 import { InfoDialogComponent } from '../shared/info-dialog/info-dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../shared/confirm-dialog/confirm-dialog';
 import { ConnectivityService } from '../core/offline/connectivity';
+import { unsavedChangesGuard } from '../core/guards/unsaved-changes.guard';
 
 registerLocaleData(localeDeAt);
 
@@ -7668,5 +7669,283 @@ describe('DataEntryFormComponent', () => {
       fixture.detectChanges();
       expect(btn('delete-entry-button')!.disabled).toBe(false);
     });
+  });
+});
+
+// #407 (ADR 0032): the capture form is the only place a half-entered Wiederfang
+// exists — there is no autosave and no drafts, and the Beringer entering it is
+// holding a bird. So the form publishes its dirty state through
+// UnsavedChangesService, and two things outside it now act on that answer: the
+// CanDeactivate guard (leaving the form, including the bare `n` shortcut) and
+// the nav bar's "Jetzt aktualisieren" (adopting a Version reloads the tab).
+// Both throw the input away when the answer is "nothing unsaved here", so these
+// tests drive the real guard against a real form: what gets asked, and what
+// silently disappears.
+describe('DataEntryFormComponent unsaved changes reach the CanDeactivate guard (#407, ADR 0032)', () => {
+  let component: DataEntryFormComponent;
+  let fixture: ComponentFixture<DataEntryFormComponent>;
+  // Two dialogs, deliberately kept apart: the form opens its own (Tot-Fund,
+  // Zurücksetzen) through the MatDialog in its component injector, while
+  // UnsavedChangesService opens the guard's question through the root one. So a
+  // Tot-Fund popup can never be miscounted as "the guard asked".
+  const guardDialog = { open: jasmine.createSpy('guardDialog.open') };
+  const formDialog = { open: jasmine.createSpy('formDialog.open') };
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  // focusNext() schedules a real setTimeout(50) to advance focus; let it settle
+  // so it neither leaks into a later spec nor races the assertions.
+  const drainFocusTimers = () => new Promise<void>((resolve) => setTimeout(resolve, 60));
+
+  const project = {
+    id: 'p1',
+    title: 'Herbst',
+    description: '',
+    show_optional_fields: true,
+    show_net_fields: true,
+    projekttyp: Projekttyp.Sonstiges,
+    organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+    default_station: null,
+    scientists: [],
+    created: '',
+    updated: '',
+  } as Project;
+
+  async function setup(extraProvider?: Provider): Promise<HttpTestingController> {
+    TestBed.resetTestingModule();
+    guardDialog.open.calls.reset();
+    formDialog.open.calls.reset();
+    guardDialog.open.and.returnValue({ afterClosed: () => of(undefined) });
+    formDialog.open.and.returnValue({ afterClosed: () => of(undefined) });
+    await TestBed.configureTestingModule({
+      imports: [DataEntryFormComponent],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+        {
+          provide: ProjectService,
+          useValue: {
+            currentProject: signal<Project | null>(project),
+            setCurrent: () => {},
+            clear: () => {},
+          },
+        },
+        { provide: MatDialog, useValue: guardDialog },
+        ...(extraProvider ? [extraProvider] : []),
+      ],
+    })
+      .overrideComponent(DataEntryFormComponent, {
+        add: { providers: [{ provide: MatDialog, useValue: formDialog }] },
+      })
+      .compileComponents();
+    fixture = TestBed.createComponent(DataEntryFormComponent);
+    component = fixture.componentInstance;
+    const httpMock = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+      .flush({ count: 0, next: null, previous: null, results: [] });
+    await settle();
+    return httpMock;
+  }
+
+  /** A complete saved Fang — complete on purpose: an incomplete one fails the
+   * form's validators, and `onSubmit()` would never reach the PUT. */
+  function savedEntry(): DataEntry {
+    return {
+      id: '42',
+      species: {
+        id: 's1',
+        common_name_de: 'Kohlmeise',
+        scientific_name: 'Parus major',
+        ring_size: RingSize.S,
+      },
+      ring: { id: 'r1', number: '901234', size: RingSize.S },
+      staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+      ringing_station: {
+        handle: 'STAMT',
+        name: 'Linz, Botanischer Garten',
+        organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      },
+      project: null,
+      net_location: 3,
+      net_height: 2,
+      net_direction: null,
+      feather_span: 54,
+      wing_span: 73,
+      tarsus: 19,
+      notch_f2: null,
+      inner_foot: null,
+      weight_gram: 18,
+      bird_status: BirdStatus.ReCatch,
+      fat_deposit: null,
+      muscle_class: null,
+      age_class: AgeClass.ThisYear,
+      sex: Sex.Female,
+      small_feather_int: null,
+      small_feather_app: null,
+      hand_wing: null,
+      date_time: '2024-05-01T08:30:00Z',
+      created: '2024-05-01T08:30:00Z',
+      updated: '2024-05-01T08:30:00Z',
+      comment: 'Wiederfang am Hauptnetz',
+      parasites: [],
+      has_hunger_stripes: false,
+      has_brood_patch: false,
+      has_cpl_plus: false,
+    } as unknown as DataEntry;
+  }
+
+  /** Opens an existing Fang at /data-entry/:id, the mode where a save navigates
+   * away rather than resetting. */
+  async function setupEditMode(entryId: string): Promise<HttpTestingController> {
+    const httpMock = await setup({
+      provide: ActivatedRoute,
+      useValue: {
+        snapshot: { paramMap: { get: (key: string) => (key === 'id' ? entryId : null) } },
+      },
+    });
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith(`/birds/data-entries/${entryId}/`))
+      .flush(savedEntry());
+    await settle();
+    fixture.detectChanges();
+    return httpMock;
+  }
+
+  // Drive a single-character keyboard shortcut through the MatSelect keydown
+  // handler, mimicking a Beringer typing the option key on a focused select —
+  // this app's signature keyboard workflow.
+  const keyPick = (controlName: string, options: SelectOption<any>[], key: string): void => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    const select = { close: jasmine.createSpy('close') } as unknown as MatSelect;
+    component.onSelectKeydown(event, controlName, options, select);
+  };
+
+  /** Leaves the form through the **real** guard — exactly what the router runs,
+   * whether the navigation came from `n`, a link, or a Version adoption.
+   * Answers the ConfirmDialog with `confirm`. */
+  async function leaveTheForm(confirm = false): Promise<{ asked: boolean; left: boolean }> {
+    guardDialog.open.calls.reset();
+    guardDialog.open.and.returnValue({ afterClosed: () => of(confirm) });
+    const left = await firstValueFrom(
+      TestBed.runInInjectionContext(() =>
+        unsavedChangesGuard(null as never, null as never, null as never, null as never),
+      ) as Observable<boolean>,
+    );
+    const asked = guardDialog.open.calls
+      .all()
+      .some((call) => call.args[0] === ConfirmDialogComponent);
+    return { asked, left };
+  }
+
+  it('lets an untouched form go without a question', async () => {
+    await setup();
+
+    const { asked, left } = await leaveTheForm();
+
+    expect(asked).withContext('nothing entered, nothing to lose').toBeFalse();
+    expect(left).toBeTrue();
+  });
+
+  // The one-key categorical picks are how this form is actually filled in. They
+  // write through setValue(), which — unlike a ControlValueAccessor write — does
+  // not mark the form dirty on its own.
+  it('asks before an Alter picked by keyboard shortcut is thrown away', async () => {
+    await setup();
+
+    keyPick('age_class', component.ageClassOptions, '3');
+    expect(component.entryForm.get('age_class')!.value).toBe(AgeClass.ThisYear);
+
+    const { asked, left } = await leaveTheForm();
+    expect(asked).withContext('a keyboard-picked Alter is real user input').toBeTrue();
+    expect(left).withContext('declining keeps the Beringer on his capture').toBeFalse();
+
+    await drainFocusTimers();
+  });
+
+  it('asks before a Geschlecht picked by keyboard shortcut is thrown away', async () => {
+    await setup();
+
+    keyPick('sex', component.sexOptions, '1');
+    expect(component.entryForm.get('sex')!.value).toBe(Sex.Male);
+
+    const { asked } = await leaveTheForm();
+    expect(asked).toBeTrue();
+
+    await drainFocusTimers();
+  });
+
+  it('asks before a Nicht-Standard-Fang marker is thrown away', async () => {
+    await setup();
+
+    component.onToggleNonStandard();
+    expect(component.entryForm.get('is_non_standard')!.value).toBeTrue();
+
+    const { asked } = await leaveTheForm();
+    expect(asked).toBeTrue();
+  });
+
+  it('asks before a confirmed Tot-Fund is thrown away', async () => {
+    await setup();
+    formDialog.open.and.returnValue({ afterClosed: () => of('Katze') });
+
+    component.onToggleDeadRecovery();
+    await settle();
+    expect(component.entryForm.get('is_dead_recovery')!.value).toBeTrue();
+
+    const { asked } = await leaveTheForm();
+    expect(asked).withContext('the Todesumstände were typed by a human').toBeTrue();
+  });
+
+  it('leaves once the Beringer confirms discarding his input', async () => {
+    await setup();
+    keyPick('sex', component.sexOptions, '1');
+
+    const { asked, left } = await leaveTheForm(true);
+
+    expect(asked).toBeTrue();
+    expect(left).toBeTrue();
+
+    await drainFocusTimers();
+  });
+
+  // The other half of the guard's job: it must not nag about work that is
+  // already safe. Edit mode is where this bites — the create path resets to a
+  // pristine form anyway, but an edit navigates away the moment it is saved, so
+  // a form still marked dirty would ask the Beringer to confirm discarding the
+  // very input he just saved.
+  it('does not ask about input the Beringer has just saved', async () => {
+    const httpMock = await setupEditMode('42');
+
+    keyPick('sex', component.sexOptions, '2');
+    expect(component.entryForm.dirty).withContext('an edit in progress').toBeTrue();
+
+    // An edit navigates to the list on success; this block registers no routes.
+    spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+
+    component.onSubmit();
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(savedEntry());
+    await settle();
+
+    const { asked, left } = await leaveTheForm();
+    expect(asked).withContext('it is saved — there is nothing to discard').toBeFalse();
+    expect(left).toBeTrue();
+
+    await drainFocusTimers();
+  });
+
+  it('stops asking once the capture form is gone', async () => {
+    await setup();
+    keyPick('sex', component.sexOptions, '1');
+    await drainFocusTimers();
+
+    fixture.destroy();
+
+    const { asked, left } = await leaveTheForm();
+    expect(asked).withContext('a destroyed form has no input to protect').toBeFalse();
+    expect(left).toBeTrue();
   });
 });
