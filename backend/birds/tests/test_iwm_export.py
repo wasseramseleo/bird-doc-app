@@ -1054,7 +1054,10 @@ def test_export_filename_falls_back_to_a_neutral_name(auth_client, project):
 def test_export_filename_length_is_capped(auth_client, project):
     """A runaway title is trimmed so the download does not hit a filesystem's
     name-length limit; the prefix and the date part still survive."""
-    project.title = "Ö" * 400
+    # The longest title the model actually permits — asking for more is not a
+    # runaway title but an invalid one, and PostgreSQL rejects it outright where
+    # SQLite would silently accept it.
+    project.title = "Ö" * Project._meta.get_field("title").max_length
     project.projekttyp = Project.Projekttyp.NESTLINGSBERINGUNG
     project.save()
 
