@@ -169,4 +169,51 @@ describe('ProjectEditDialogComponent', () => {
       jasmine.objectContaining({saisonStartMonth: null, saisonEndMonth: null}),
     );
   });
+
+  // --- Wochengrenze (ADR 0036, issue #431) -----------------------------------
+  // Wochentag + Uhrzeit, beside the Saison window. Unlike the Saison they are
+  // non-nullable: there is no „keine Wochengrenze", only the Montag-00:00 default.
+
+  it('pre-fills the Wochengrenze from the Projekt', () => {
+    const {fixture, component} = setup(
+      makeProject({wochengrenze_weekday: 5, wochengrenze_time: '12:00:00'}),
+    );
+
+    expect(component.form.controls.wochengrenzeWeekday.value).toBe(5);
+    expect(component.form.controls.wochengrenzeTime.value).toBe('12:00');
+    expect(fixture.nativeElement.textContent).toContain('Wochengrenze');
+    expect(fixture.nativeElement.textContent).toContain('Samstag');
+  });
+
+  it('falls back to Montag 00:00 for a Projekt whose payload predates the setting', () => {
+    const {component} = setup(makeProject());
+
+    expect(component.form.controls.wochengrenzeWeekday.value).toBe(0);
+    expect(component.form.controls.wochengrenzeTime.value).toBe('00:00');
+  });
+
+  it('round-trips an edited Wochengrenze into the dialog result', () => {
+    const {component, dialogRef} = setup(makeProject());
+
+    component.form.controls.wochengrenzeWeekday.setValue(5);
+    component.form.controls.wochengrenzeTime.setValue('12:00');
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({wochengrenzeWeekday: 5, wochengrenzeTime: '12:00'}),
+    );
+  });
+
+  it('reads an emptied Uhrzeit as midnight rather than clearing the Wochengrenze', () => {
+    const {component, dialogRef} = setup(
+      makeProject({wochengrenze_weekday: 5, wochengrenze_time: '12:00:00'}),
+    );
+
+    component.form.controls.wochengrenzeTime.setValue('');
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({wochengrenzeWeekday: 5, wochengrenzeTime: '00:00'}),
+    );
+  });
 });

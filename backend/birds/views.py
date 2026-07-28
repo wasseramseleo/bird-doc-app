@@ -790,8 +790,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
         #199, ADR 0017). Org-scoped through ``get_object()`` (a foreign-tenant
         Projekt is 404, like ``export-iwm``); the counting semantics live in
         ``project_stats.compute_project_stats``. The range is a ``preset``
-        (``week``|``month``|``year``|``all``, default ``week``) or explicit
-        ``from``/``to`` ISO dates, bucketed in Europe/Vienna."""
+        (``week``|``month``|``year``|``all``|``today``|``season``, default
+        ``week``) or explicit ``from``/``to`` ISO dates, bucketed in
+        Europe/Vienna. The *served* bounds are ISO-8601 instants with the Vienna
+        offset for every preset — ``from`` inclusive, ``to`` exclusive (ADR 0036);
+        ``week`` („Diese Woche") runs from the Projekt's own Wochengrenze up to
+        now, every other preset keeps its midnight bounds."""
         project = self.get_object()
         preset = request.query_params.get("preset")
         date_from = _parse_iso_date(request.query_params.get("from"), "from")

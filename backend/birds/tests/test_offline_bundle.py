@@ -600,6 +600,22 @@ def test_bundle_project_carries_its_optionale_felder(auth_client, scientist, pro
 
 
 @pytest.mark.django_db
+def test_bundle_project_carries_its_wochengrenze(auth_client, scientist, project, organization):
+    """Each bundled Projekt carries its Wochengrenze (ADR 0036) — non-nullable with
+    a Montag-00:00 default, so a cached Projekt always has the pair the „Diese
+    Woche"-Auswertung is configured from."""
+    project.wochengrenze_weekday = 5
+    project.wochengrenze_time = "12:00"
+    project.save()
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    row = next(row for row in payload["projects"] if row["title"] == project.title)
+
+    assert row["wochengrenze_weekday"] == 5
+    assert row["wochengrenze_time"] == "12:00:00"
+
+
+@pytest.mark.django_db
 def test_offline_replay_with_flat_central_is_accepted(
     auth_client, species, scientist, ringing_station, project, organization
 ):

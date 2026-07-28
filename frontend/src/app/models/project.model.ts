@@ -102,6 +102,35 @@ export function hiddenOptionalFieldsFrom(
   return OPTIONAL_FIELD_ORDER.filter((field) => visibility[field] !== true);
 }
 
+// Die Wochengrenze (ADR 0036, issue #431): der Wochentag, an dem die
+// Beringungswoche eines Projekts umspringt. Nummeriert wie im Backend — Montag = 0
+// bis Sonntag = 6 (Pythons ``date.weekday()``).
+export const WOCHENGRENZE_WEEKDAY_OPTIONS: {value: number; label: string}[] = [
+  'Montag',
+  'Dienstag',
+  'Mittwoch',
+  'Donnerstag',
+  'Freitag',
+  'Samstag',
+  'Sonntag',
+].map((label, index) => ({value: index, label}));
+
+// Die Voreinstellung: Montag 00:00. Anders als beim nullbaren Saison-Fenster gibt
+// es kein „keine Wochengrenze" — „unkonfiguriert" ist schlicht dieser Default, und
+// die „Diese Woche"-Voreinstellung kann deshalb nie verschwinden.
+export const DEFAULT_WOCHENGRENZE_WEEKDAY = 0;
+export const DEFAULT_WOCHENGRENZE_TIME = '00:00';
+
+/**
+ * The `HH:MM` value a `<input type="time">` control carries, from whatever the API
+ * returned (`HH:MM:SS`), a value the user cleared (`''`), or a Projekt whose cached
+ * payload predates the field. Never null: the Wochengrenze always has a value.
+ */
+export function wochengrenzeTimeValue(raw: string | null | undefined): string {
+  const match = /^(\d{2}):(\d{2})/.exec(raw ?? '');
+  return match ? `${match[1]}:${match[2]}` : DEFAULT_WOCHENGRENZE_TIME;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -121,6 +150,12 @@ export interface Project {
   // the dashboard treats „configured" as both months present.
   saison_start_month?: number | null;
   saison_end_month?: number | null;
+  // Die Wochengrenze (ADR 0036, issue #431): Wochentag (0 = Montag … 6 = Sonntag)
+  // und Uhrzeit (`HH:MM:SS` aus dem API). Serverseitig nicht nullbar mit Default
+  // Montag 00:00; hier optional, weil ein von einem älteren Bundle zwischen-
+  // gespeichertes Projekt das Feld noch nicht kennt — dann gilt derselbe Default.
+  wochengrenze_weekday?: number | null;
+  wochengrenze_time?: string | null;
   organization: Organization;
   // The Projekt's Zentrale (ADR 0019), carried on the GET/bundle shape (#233) so
   // a bundled Projekt knows the Zentrale a domestic capture defaults to. Optional
@@ -146,6 +181,9 @@ export interface ProjectCreatePayload {
   // The Saison window (ADR 0029): both null ⇒ the Projekt gets no season.
   saison_start_month?: number | null;
   saison_end_month?: number | null;
+  // Die Wochengrenze (ADR 0036): nicht abwählbar, omitted ⇒ Montag 00:00.
+  wochengrenze_weekday?: number;
+  wochengrenze_time?: string;
 }
 
 export interface ProjectUpdatePayload {
@@ -160,4 +198,8 @@ export interface ProjectUpdatePayload {
   // The Saison window (ADR 0029): both null clears the season (preset hidden).
   saison_start_month?: number | null;
   saison_end_month?: number | null;
+  // Die Wochengrenze (ADR 0036): es gibt nichts zu leeren — der Wochentag und die
+  // Uhrzeit werden immer als Paar geschrieben.
+  wochengrenze_weekday?: number;
+  wochengrenze_time?: string;
 }

@@ -1,3 +1,4 @@
+import datetime
 import secrets
 import uuid
 from decimal import Decimal
@@ -544,6 +545,18 @@ class Project(models.Model):
         INNER_FOOT = "inner_foot", _("Innenfuß")
         NET_BLOCK = "net_block", _("Netz-Block (Netznr., Netzfach, Flugrichtung)")
 
+    class Weekday(models.IntegerChoices):
+        # The Wochengrenze's weekday (ADR 0036). Numbered like Python's
+        # ``date.weekday()`` — Montag = 0 — so the resolver compares against it
+        # without a translation table.
+        MONTAG = 0, _("Montag")
+        DIENSTAG = 1, _("Dienstag")
+        MITTWOCH = 2, _("Mittwoch")
+        DONNERSTAG = 3, _("Donnerstag")
+        FREITAG = 4, _("Freitag")
+        SAMSTAG = 5, _("Samstag")
+        SONNTAG = 6, _("Sonntag")
+
     class Projekttyp(models.TextChoices):
         # Which programme a Projekt runs — descriptive, internal metadata only
         # (ADR 0023). It is never exported and gates no capture field; an unset
@@ -630,6 +643,24 @@ class Project(models.Model):
         blank=True,
         validators=[MinValueValidator(1), MaxValueValidator(12)],
         verbose_name=_("Saison-Endmonat"),
+    )
+    # The per-Projekt Wochengrenze (ADR 0036): the Wochentag + Uhrzeit
+    # (Europe/Vienna) at which this Projekt's Beringungswoche turns over, e.g.
+    # Samstag 12:00. It drives the dashboard's „Diese Woche" preset and NOTHING
+    # else — Heute stays a calendar day, Monat/Jahr/Alles/Saison keep their
+    # midnight bounds. Deliberately unlike the nullable Saison window: both fields
+    # are NON-nullable with a default (Montag 00:00), so „unkonfiguriert" is not a
+    # state of its own and the preset can never disappear or mean two things.
+    # Admin-only to write, like the rest of Projektverwaltung.
+    wochengrenze_weekday = models.PositiveSmallIntegerField(
+        choices=Weekday.choices,
+        default=Weekday.MONTAG,
+        validators=[MaxValueValidator(6)],
+        verbose_name=_("Wochengrenze (Wochentag)"),
+    )
+    wochengrenze_time = models.TimeField(
+        default=datetime.time(0, 0),
+        verbose_name=_("Wochengrenze (Uhrzeit)"),
     )
     circumstance = models.CharField(max_length=8, default="25", verbose_name=_("Umstand"))
     capture_method = models.CharField(

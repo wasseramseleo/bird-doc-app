@@ -205,6 +205,45 @@ describe('ProjectCreateDialogComponent', () => {
     );
   });
 
+  // --- Wochengrenze (ADR 0036, issue #431) -----------------------------------
+  // Anlage und Bearbeitung tragen dieselben zwei Eingaben neben dem
+  // Saison-Fenster. Nicht abwählbar: ein neues Projekt startet auf Montag 00:00.
+
+  it('starts a new Projekt on the Montag-00:00 Wochengrenze', () => {
+    const {fixture, component} = setup();
+
+    expect(component.form.controls.wochengrenzeWeekday.value).toBe(0);
+    expect(component.form.controls.wochengrenzeTime.value).toBe('00:00');
+    expect(fixture.nativeElement.textContent).toContain('Wochengrenze');
+    expect(fixture.nativeElement.textContent).toContain('Samstag');
+  });
+
+  it('round-trips the chosen Wochengrenze into the dialog result', () => {
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Samstagsprojekt');
+    component.form.controls.wochengrenzeWeekday.setValue(5);
+    component.form.controls.wochengrenzeTime.setValue('12:00');
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({wochengrenzeWeekday: 5, wochengrenzeTime: '12:00'}),
+    );
+  });
+
+  it('reads an emptied Uhrzeit as midnight rather than leaving the Wochengrenze unset', () => {
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Ohne Uhrzeit');
+    component.form.controls.wochengrenzeWeekday.setValue(5);
+    component.form.controls.wochengrenzeTime.setValue('');
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({wochengrenzeWeekday: 5, wochengrenzeTime: '00:00'}),
+    );
+  });
+
   it('renders the fields in the Bearbeiten-Dialog’s order', () => {
     const {fixture} = setup();
     const text: string = fixture.nativeElement.textContent;
@@ -217,6 +256,7 @@ describe('ProjectCreateDialogComponent', () => {
       'Projekttyp',
       'Standard-Station',
       'Saison-Start',
+      'Wochengrenze',
       'Optionale Felder',
     ].map((label) => text.indexOf(label));
 

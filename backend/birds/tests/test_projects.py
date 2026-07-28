@@ -1,3 +1,5 @@
+from datetime import time
+
 import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -617,6 +619,91 @@ def test_mitglied_cannot_set_saison_window(mitglied_client, mitglied_scientist, 
     project.refresh_from_db()
     assert project.saison_start_month is None
     assert project.saison_end_month is None
+
+
+# --- Wochengrenze: Wochentag + Uhrzeit pro Projekt ---------------------------
+# ADR 0036, issue #431. The instant a Projekt's Beringungswoche turns over, e.g.
+# Samstag 12:00. Deliberately UNLIKE the nullable Saison window: both fields are
+# non-nullable with a default (Montag 00:00), so „unkonfiguriert" is not a state of
+# its own and the „Diese Woche" preset can never disappear. Admin-only to write,
+# like the rest of Projektverwaltung.
+
+
+@pytest.mark.django_db
+def test_project_defaults_the_wochengrenze_to_montag_midnight(auth_client, scientist, project):
+    """A freshly created Projekt already carries a Wochengrenze — Montag 00:00 —
+    rather than an „unset" state the dashboard would have to interpret."""
+    response = auth_client.get(f"{LIST_URL}{project.id}/")
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["wochengrenze_weekday"] == 0
+    assert body["wochengrenze_time"] == "00:00:00"
+
+
+@pytest.mark.django_db
+def test_admin_can_set_the_wochengrenze_and_it_round_trips(auth_client, project):
+    """An Admin sets the Beringungsrhythmus (Samstag 12:00); it persists and
+    round-trips on the read shape."""
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"wochengrenze_weekday": 5, "wochengrenze_time": "12:00"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["wochengrenze_weekday"] == 5
+    assert body["wochengrenze_time"] == "12:00:00"
+    project.refresh_from_db()
+    assert project.wochengrenze_weekday == 5
+    assert project.wochengrenze_time == time(12, 0)
+
+
+@pytest.mark.django_db
+def test_wochengrenze_rejects_a_weekday_outside_the_week(auth_client, project):
+    """The Wochentag is the seven-value vocabulary (Montag = 0 … Sonntag = 6); a 7
+    is a 400, not a silently-stored value that resolves to nothing."""
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"wochengrenze_weekday": 7},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    project.refresh_from_db()
+    assert project.wochengrenze_weekday == 0
+
+
+@pytest.mark.django_db
+def test_wochengrenze_cannot_be_cleared_to_null(auth_client, project):
+    """There is no „keine Wochengrenze": null is refused, because the preset must
+    mean the same thing on every Projekt."""
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"wochengrenze_time": None},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    project.refresh_from_db()
+    assert project.wochengrenze_time == time(0, 0)
+
+
+@pytest.mark.django_db
+def test_mitglied_cannot_set_the_wochengrenze(mitglied_client, mitglied_scientist, project):
+    """The Wochengrenze rides the Admin-only write rule: a plain Mitglied cannot set
+    it (the whole Projekt write is refused with a 403)."""
+    response = mitglied_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"wochengrenze_weekday": 5, "wochengrenze_time": "12:00"},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    project.refresh_from_db()
+    assert project.wochengrenze_weekday == 0
+    assert project.wochengrenze_time == time(0, 0)
 
 
 # --- Mindestens ein Beringer: the min-1 rule lives in the serializer ---------

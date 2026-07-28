@@ -99,6 +99,10 @@ export class ProjectActionsService {
           default_station_id: result.defaultStationHandle || null,
           saison_start_month: result.saisonStartMonth,
           saison_end_month: result.saisonEndMonth,
+          // Die Wochengrenze (ADR 0036): reist immer mit, weil sie sich nicht
+          // abwählen lässt — ohne Änderung ist es der Montag-00:00-Default.
+          wochengrenze_weekday: result.wochengrenzeWeekday,
+          wochengrenze_time: result.wochengrenzeTime,
         })
         .subscribe({
           next: (project) => {
@@ -142,6 +146,10 @@ export class ProjectActionsService {
           // The Saison window (ADR 0029): both null clears the season.
           saison_start_month: result.saisonStartMonth,
           saison_end_month: result.saisonEndMonth,
+          // Die Wochengrenze (ADR 0036): nichts zu leeren — Wochentag und Uhrzeit
+          // werden als Paar geschrieben.
+          wochengrenze_weekday: result.wochengrenzeWeekday,
+          wochengrenze_time: result.wochengrenzeTime,
         })
         .subscribe({
           next: (updated) => {
