@@ -172,6 +172,65 @@ describe('DataAccessFacadeService', () => {
       const result = await resultPromise;
       expect(result.results).toEqual([]);
     });
+
+    // #427: the Sonderart lookup asks at the discriminator. Online the server
+    // narrows the candidates; offline the cached pool is filtered by the very
+    // same key, so both paths answer identically by construction.
+    it('passes the special_kind discriminator to the server while online', async () => {
+      const resultPromise = firstValueFrom(service.getSpecies('', 'p1', 'ring_destroyed'));
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/species/'),
+      );
+      expect(req.request.params.get('special_kind')).toBe('ring_destroyed');
+      req.flush(page0([KOHLMEISE]));
+
+      await resultPromise;
+    });
+
+    it('filters the cached species pool by the special_kind discriminator while offline', async () => {
+      const kohlmeise = offlineSpecies({id: 's1', common_name_de: 'Kohlmeise', usage_count: 12});
+      const avesIgnota = offlineSpecies({
+        id: 'ai',
+        common_name_de: 'Art nicht in der Liste (Aves ignota)',
+        scientific_name: 'Aves ignota',
+        special_kind: 'unknown_species',
+      });
+      const ringVernichtet = offlineSpecies({
+        id: 'sv',
+        common_name_de: 'Ring Vernichtet',
+        common_name_en: '',
+        scientific_name: '',
+        special_kind: 'ring_destroyed',
+      });
+      await cache.save({
+        bundle: {...EMPTY_BUNDLE, species: [kohlmeise, avesIgnota, ringVernichtet]},
+        refreshedAt: '2026-06-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getSpecies('', undefined, 'ring_destroyed'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.results).toEqual([ringVernichtet]);
+    });
+
+    it('returns an empty offline page for a special_kind nothing in the cached pool carries', async () => {
+      await cache.save({
+        bundle: {...EMPTY_BUNDLE, species: [offlineSpecies({id: 's1'})]},
+        refreshedAt: '2026-06-01T09:00:00.000Z',
+      });
+
+      const resultPromise = firstValueFrom(service.getSpecies('', undefined, 'ring_destroyed'));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .error(new ProgressEvent('error'));
+
+      const result = await resultPromise;
+      expect(result.results).toEqual([]);
+    });
   });
 
   describe('getRingingStations()', () => {

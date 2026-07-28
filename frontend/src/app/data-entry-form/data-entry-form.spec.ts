@@ -1358,6 +1358,131 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
+  // #427: Der Knopf war ONLINE wirkungslos, weil die Maske die Sonderart auf der
+  // ungefilterten, nach Nutzungshäufigkeit sortierten ERSTEN SEITE vermutete —
+  // dort steht eine seltene Sonderart praktisch nie. Jede andere Masken-Spec
+  // mockt eine Artenliste, in der die Sonderart vorkommt; genau deshalb war der
+  // Fehler für die Suite unsichtbar. Dieser Block antwortet stattdessen wie der
+  // echte Endpunkt: ohne den Diskriminator kommt eine volle erste Seite OHNE
+  // Sonderart zurück, nur die Abfrage am special_kind findet sie.
+  describe('Schnell-Button "Ring vernichtet" ohne Sonderart auf Seite 1 (#427)', () => {
+    const sentinel: Species = {
+      id: 'sent',
+      common_name_de: 'Ring Vernichtet',
+      common_name_en: '',
+      scientific_name: '',
+      family_name: '',
+      order_name: '',
+      ring_size: null,
+      special_kind: 'ring_destroyed',
+    };
+    // Zehn vielgenutzte Arten — genau eine Seite (PAGE_SIZE = 10), ohne Sonderart.
+    const firstPage: Species[] = Array.from({ length: 10 }, (_, index) => ({
+      ...sentinel,
+      id: `s${index}`,
+      common_name_de: `Häufige Art ${index}`,
+      scientific_name: `Frequens nr${index}`,
+      special_kind: '' as const,
+    }));
+    const project = {
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      show_optional_fields: true,
+      show_net_fields: true,
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    } as Project;
+    const dialogMock = { open: jasmine.createSpy('open') };
+    let httpMock: HttpTestingController;
+
+    /**
+     * Beantwortet die Arten-Abfrage der Maske so, wie es der Server tut: ohne
+     * `special_kind` die nach Nutzung sortierte erste Seite (ohne Sonderart),
+     * mit `special_kind` die am Diskriminator gefilterte Kandidatenmenge.
+     */
+    function answerSpeciesLookup(pool: Species[]): void {
+      const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'));
+      const kind = req.request.params.get('special_kind');
+      const results = kind === null ? firstPage : pool.filter((s) => s.special_kind === kind);
+      req.flush({ count: results.length, next: null, previous: null, results });
+    }
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      dialogMock.open.calls.reset();
+      await TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: { currentProject: signal<Project | null>(project), setCurrent: () => {}, clear: () => {} },
+          },
+        ],
+      })
+        .overrideComponent(DataEntryFormComponent, {
+          add: { providers: [{ provide: MatDialog, useValue: dialogMock }] },
+        })
+        .compileComponents();
+
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+    });
+
+    it('öffnet den Bestätigungsdialog, obwohl die Sonderart auf der ersten Seite fehlt', () => {
+      answerSpeciesLookup([...firstPage, sentinel]);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onDestroyedRing();
+
+      expect(dialogMock.open).toHaveBeenCalled();
+      expect(component.entryForm.get('species')!.value).toEqual(sentinel);
+      expect(component.isRingDestroyed()).toBe(true);
+    });
+
+    it('dampft die Maske nach dem Bestätigen auf Ring, Beringer, Station, Datum und Bemerkung ein', () => {
+      answerSpeciesLookup([...firstPage, sentinel]);
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+
+      component.onDestroyedRing();
+      fixture.detectChanges();
+
+      const has = (selector: string) => fixture.nativeElement.querySelector(selector) !== null;
+      expect(has('[formControlName="ring_size"]')).toBe(true);
+      expect(has('[formControlName="ring_number"]')).toBe(true);
+      expect(has('[formControlName="staff"]')).toBe(true);
+      expect(has('[formControlName="ringing_station"]')).toBe(true);
+      expect(has('[formControlName="date_time"]')).toBe(true);
+      expect(has('[formControlName="comment"]')).toBe(true);
+      expect(has('[formControlName="age_class"]')).toBe(false);
+      expect(has('[formControlName="bird_status"]')).toBe(false);
+    });
+
+    it('meldet sichtbar, wenn die Sonderart gar nicht aufzulösen ist — nie stumm wirkungslos', () => {
+      const snackBar = (component as unknown as { snackBar: MatSnackBar }).snackBar;
+      const openSpy = spyOn(snackBar, 'open').and.callThrough();
+      // Die Sonderart fehlt in dieser Installation komplett.
+      answerSpeciesLookup([...firstPage]);
+
+      component.onDestroyedRing();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+      expect(openSpy).toHaveBeenCalled();
+      expect(openSpy.calls.mostRecent().args[0] as string).toContain('Ring vernichtet');
+      expect(component.isRingDestroyed()).toBe(false);
+    });
+  });
+
   // #371 (ADR 0026): the two Fangmarker — Tot-Fund and Nicht-Standard-Fang —
   // flag a capture situation WITHOUT replacing the Art or Ring.
   describe('Fangmarker: Tot-Fund & Nicht-Standard-Fang (#371)', () => {

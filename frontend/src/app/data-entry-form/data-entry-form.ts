@@ -1010,12 +1010,21 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
 
     this.prefillRememberedBeringer();
 
-    // Issue #19/#57: load the "Ring Vernichtet" Art so the quick-button can
-    // apply it in one click. It is identified by special_kind === 'ring_destroyed'.
-    this.dataAccess.getSpecies('', this.currentProject()?.id).subscribe(response => {
-      this.ringDestroyedSpecies.set(
-        response.results.find(s => s.special_kind === 'ring_destroyed') ?? null,
-      );
+    // Issue #19/#57, #427: load the "Ring Vernichtet" Art so the quick-button can
+    // apply it in one click — ASKED FOR at the special_kind discriminator, not
+    // hoped for on the usage-sorted first page of the unfiltered species list
+    // (where a rare Sonderart practically never appears, which left the button
+    // silently inert online). The same call offline filters the cached species
+    // pool by that identical key, so both paths resolve the same row.
+    this.dataAccess.getSpecies('', this.currentProject()?.id, 'ring_destroyed').subscribe({
+      next: response => {
+        this.ringDestroyedSpecies.set(
+          response.results.find(s => s.special_kind === 'ring_destroyed') ?? null,
+        );
+      },
+      // A failed lookup leaves the Sonderart unresolved; the click says so out
+      // loud rather than doing nothing (see onDestroyedRing).
+      error: () => this.ringDestroyedSpecies.set(null),
     });
 
     // PRD #245: load the per-org Artennormen from the offline reference bundle
@@ -1117,6 +1126,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   onDestroyedRing(): void {
     const ringDestroyed = this.ringDestroyedSpecies();
     if (!ringDestroyed) {
+      // #427: ein Knopf, der wortlos nichts tut, ist genau der Defekt hier.
+      // Lässt sich die Sonderart nicht auflösen, sagt der Klick das sichtbar.
+      this.snackBar.open(
+        'Die Sonderart „Ring vernichtet" ist gerade nicht verfügbar — bitte die Seite neu laden.',
+        'Schließen',
+        {duration: 5000},
+      );
       return;
     }
     const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(

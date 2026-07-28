@@ -112,6 +112,25 @@ describe('ApiService', () => {
     req.flush({ count: 0, next: null, previous: null, results: [] });
   });
 
+  // #427: asking for a Sonderart by its discriminator instead of hoping it turns
+  // up on the usage-sorted first page.
+  it('getSpecies narrows the query to the given special_kind discriminator', () => {
+    service.getSpecies('', 'proj-1', 'ring_destroyed').subscribe();
+
+    const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'));
+    expect(req.request.params.get('special_kind')).toBe('ring_destroyed');
+    expect(req.request.params.get('project')).toBe('proj-1');
+    req.flush({ count: 0, next: null, previous: null, results: [] });
+  });
+
+  it('getSpecies omits the special_kind param when none is given', () => {
+    service.getSpecies('Ams').subscribe();
+
+    const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'));
+    expect(req.request.params.has('special_kind')).toBe(false);
+    req.flush({ count: 0, next: null, previous: null, results: [] });
+  });
+
   it('getDataEntries issues a project-scoped paginated request and maps the response', () => {
     const response: PaginatedApiResponse<DataEntry> = {
       count: 1,

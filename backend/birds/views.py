@@ -377,6 +377,14 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
         rows (every Species whose ``special_kind`` is set — "Ring Vernichtet" and
         "Aves ignota"); otherwise all species are candidates. Frequency only
         reorders the candidates — see ``_order_by_usage``.
+
+        On top of that, ``?special_kind=`` narrows the candidates to one value of
+        the Sonderart discriminator (issue #427). It is a pure narrowing: the
+        active-Artenliste membership and the usage ordering above are untouched,
+        which is what lets a caller ask for a rare Sonderart by name-independent
+        key instead of hoping it turns up on the usage-sorted first page. An
+        unknown value simply matches no row — an empty page, never an error —
+        and an absent parameter leaves the endpoint exactly as it was.
         """
         user = self.request.user
         active_list = SpeciesList.objects.filter(user=user, is_active=True).first()
@@ -387,6 +395,10 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
             candidates = Species.objects.filter(id__in=candidate_ids)
         else:
             candidates = Species.objects.all()
+
+        special_kind = self.request.query_params.get("special_kind")
+        if special_kind is not None:
+            candidates = candidates.filter(special_kind=special_kind)
 
         return self._order_by_usage(candidates, self.request.query_params.get("project"))
 
