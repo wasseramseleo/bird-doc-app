@@ -37,6 +37,12 @@ their fields; ``Zusatzmarkierung="ZZ"`` (no additional marking) rides along
 without a model field to land in. Ring numbers import as-is so historical Ring
 identities are preserved (ADR 0006).
 
+The condition codes close the loop back to the export (ADR 0034, issue #428): a
+row whose **Umstand is 08** is reconstructed as a **Tot-Fund** — that code alone
+decides, Zustand is corroborating and ignored — and such rows are excluded from
+the Projekt context reconciliation below, so a single Totfund never costs a
+Projekt its Standardumstand.
+
 An unknown species, a missing required field (no ring number / no date) and a
 blank Aves-ignota Bemerkung are blocking errors, as is a cross-Organisation
 Kürzel collision (``_RowError``). Duplicate detection, the row cap and
@@ -53,6 +59,11 @@ from django.db import transaction
 from django.utils.timezone import make_aware
 
 from .capture_service import CaptureValidationError, create_capture, validate_capture
+
+# The Tot-Fund's Umstand code is taken from the exporter rather than restated
+# here: export and import are coupled through it (ADR 0034 Consequences), so one
+# definition is what keeps the two halves of the round-trip from drifting apart.
+from .iwm_export import TOT_FUND_UMSTAND
 from .models import (
     AUW_SCHEME_CODE,
     Central,
@@ -439,6 +450,20 @@ _CONTEXT_COLUMNS = (
     ("Umstand", "circumstance", "Umstand"),
 )
 
+# What a reconstructed Tot-Fund's Bemerkung becomes when the file row carries
+# none: a bare transcription of the code, never a fabricated „Umstände: …" clause
+# (ADR 0034). It also satisfies the Fangmarker's mandatory-Bemerkung rule before
+# ``validate_capture`` runs, so an Altdatei that imported yesterday still imports.
+TOT_FUND_FALLBACK_COMMENT = "Totfund"
+
+
+def _is_tot_fund_row(values, header_index):
+    """Whether a data row is a Tot-Fund, decided by **Umstand 08 alone** (ADR
+    0034). Zustand corroborates the marker in the file but is never required and
+    is ignored here — a foreign file carrying 08 with a divergent Zustand must not
+    lose its marker silently."""
+    return _clean(_cell(values, header_index, "Umstand")) == TOT_FUND_UMSTAND
+
 
 def _reconcile_context(data_rows, header_index, project):
     """Reconcile the file's Projekt-scoped context columns against the Projekt.
@@ -453,15 +478,26 @@ def _reconcile_context(data_rows, header_index, project):
     * a **heterogeneous** file (differing values across rows) → a warning, since
       the model cannot store a per-capture method.
 
+    Tot-Fund rows (Umstand 08) are left out of this reconciliation altogether
+    (ADR 0034): their columns describe *that* capture, not the Projekt's standard
+    protocol, so they neither warn nor are adopted. A file made up only of them
+    simply says nothing about the Projekt — a single Totfund must never cost a
+    Projekt its Standardumstand.
+
     Returns ``(warnings, adoptions)``."""
     warnings = []
     adoptions = {}
+    context_rows = [
+        (row_num, values)
+        for row_num, values in data_rows
+        if not _is_tot_fund_row(values, header_index)
+    ]
     for column, field, label in _CONTEXT_COLUMNS:
         if column not in header_index:
             continue
         seen = [
             (row_num, value)
-            for row_num, values in data_rows
+            for row_num, values in context_rows
             if (value := _clean(_cell(values, header_index, column))) is not None
         ]
         if not seen:
@@ -596,6 +632,16 @@ def _resolve_row(values, header_index, row_num, project, resolver):
     if not kuerzel:
         return _ResolvedRow(row_num, error="Beringer:in fehlt.")
 
+    # The Tot-Fund Fangmarker, reconstructed from the row's own Umstand 08 (ADR
+    # 0034) — the export's inverse, so a Tot-Fund survives the round-trip as the
+    # marker itself instead of only as prose. A marked row without a Bemerkung
+    # gets the bare word „Totfund"; an existing one stays verbatim and is never
+    # rewritten into the „Totfund; Umstände: …" shape the capture form composes.
+    is_dead_recovery = _is_tot_fund_row(values, header_index)
+    comment = text("Bemerkungen")
+    if is_dead_recovery and not comment:
+        comment = TOT_FUND_FALLBACK_COMMENT
+
     place_code = text("Ortskodierung")
     name = text("Ort")
     if not place_code and not name:
@@ -636,7 +682,8 @@ def _resolve_row(values, header_index, row_num, project, resolver):
         "organization": project.organization,
         "project": project,
         "date_time": date_time,
-        "comment": text("Bemerkungen"),
+        "comment": comment,
+        "is_dead_recovery": is_dead_recovery,
         "bird_status": _RINGSTATUS.get((text("Ringstatus") or "").upper()),
         "sex": _GESCHLECHT.get((text("Geschlecht") or "").upper()),
         "age_class": _parse_int(_cell(values, header_index, "Alter")),
@@ -660,8 +707,15 @@ def _resolve_row(values, header_index, row_num, project, resolver):
     # Run the shared creation invariants now (e.g. the *Aves ignota* mandatory
     # Bemerkung — ADR 0004) so the dry-run preview reports exactly the blocking
     # errors a commit would raise, instead of surfacing them only at commit time.
+    # The reconstructed Tot-Fund is passed along with the Bemerkung it was just
+    # given, so the Fangmarker's own mandatory-Bemerkung rule (ADR 0026) is
+    # already satisfied here and never turns an importable Altdatei blocking.
     try:
-        validate_capture(kwargs["species"], kwargs["comment"])
+        validate_capture(
+            kwargs["species"],
+            kwargs["comment"],
+            is_dead_recovery=kwargs["is_dead_recovery"],
+        )
     except CaptureValidationError as exc:
         return _ResolvedRow(row_num, error=str(exc.message))
     return _ResolvedRow(row_num, kwargs=kwargs)

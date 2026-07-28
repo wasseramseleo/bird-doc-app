@@ -1595,3 +1595,216 @@ def test_reimporting_our_own_export_with_foreign_rows_round_trips(
         for e in DataEntry.objects.filter(project=fresh_project)
     }
     assert clones == {("AUW", "V", "00604"), ("SKB", "S", "1234")}
+
+
+# --- Tot-Fund read back from Umstand 08 (ADR 0034, issue #428) -----------------
+# The export writes a Tot-Fund's own codes (Umstand 08, Zustand 2), so the import
+# reads the Fangmarker back out of them. Umstand 08 *alone* decides — Zustand is
+# corroborating and ignored on read — and such rows drop out of the Projekt
+# context-column reconciliation entirely: a single Totfund must never cost a
+# Projekt its Standardumstand.
+
+# The header set plus the two condition columns a Tot-Fund row carries.
+_CONDITION_HEADERS = [*HEADERS, "Umstand", "Zustand"]
+
+
+@pytest.mark.django_db
+def test_umstand_08_row_imports_as_tot_fund(
+    auth_client, scientist, ringing_station, project, species
+):
+    content = _workbook(
+        [
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                Umstand="08",
+                Zustand="2",
+                Bemerkungen="Totfund; Umstände: unter dem Netz",
+            )
+        ],
+        headers=_CONDITION_HEADERS,
+    )
+
+    response = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["created"] == 1
+    entry = DataEntry.objects.get()
+    assert entry.is_dead_recovery is True
+    assert entry.is_non_standard is False
+
+
+@pytest.mark.django_db
+def test_umstand_08_row_without_bemerkung_imports_and_gets_the_bare_word_totfund(
+    auth_client, scientist, ringing_station, project, species
+):
+    """A reconstructed Tot-Fund's mandatory Bemerkung is satisfied *before* the
+    shared creation validation runs, so a previously importable Altdatei never
+    turns blocking — and the Bemerkung is the bare code transcription, never an
+    invented „Umstände: …" clause."""
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, Umstand="08")],
+        headers=_CONDITION_HEADERS,
+    )
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+    assert preview["importable"] == 1
+    assert preview["errors"] == []
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+
+    assert result["created"] == 1
+    assert result["errors"] == []
+    entry = DataEntry.objects.get()
+    assert entry.is_dead_recovery is True
+    assert entry.comment == "Totfund"
+
+
+@pytest.mark.django_db
+def test_umstand_08_row_keeps_an_existing_bemerkung_word_for_word(
+    auth_client, scientist, ringing_station, project, species
+):
+    """An existing Bemerkung survives verbatim — it is never rewritten into the
+    „Totfund; Umstände: …" shape the capture form composes."""
+    content = _workbook(
+        [
+            _valid_row(
+                species, scientist, ringing_station, Umstand="08", Bemerkungen="Von Katze gebracht"
+            )
+        ],
+        headers=_CONDITION_HEADERS,
+    )
+
+    auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    entry = DataEntry.objects.get()
+    assert entry.is_dead_recovery is True
+    assert entry.comment == "Von Katze gebracht"
+
+
+@pytest.mark.django_db
+def test_umstand_08_rows_raise_no_uneinheitliche_werte_warning(
+    auth_client, scientist, ringing_station, project, species
+):
+    """A file mixing ordinary rows with a Totfund row is not heterogeneous: the 08
+    row drops out of the reconciliation, so the remaining Umstand agrees with the
+    Projekt and nothing is warned about."""
+    assert project.circumstance == "25"
+    content = _workbook(
+        [
+            _valid_row(species, scientist, ringing_station, Umstand="25"),
+            _valid_row(
+                species,
+                scientist,
+                ringing_station,
+                Ringnummer="V00705",
+                Umstand="08",
+                Bemerkungen="Totfund; Umstände: Scheibenanflug",
+            ),
+        ],
+        headers=_CONDITION_HEADERS,
+    )
+
+    preview = auth_client.post(
+        _import_url(project), {"file": _upload(content)}, format="multipart"
+    ).json()
+
+    assert preview["importable"] == 2
+    assert preview["errors"] == []
+    assert preview["warnings"] == []
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+    assert result["created"] == 2
+    project.refresh_from_db()
+    assert project.circumstance == "25"
+
+
+@pytest.mark.django_db
+def test_umstand_08_is_never_adopted_as_the_projekt_circumstance(
+    auth_client, scientist, ringing_station, project, species
+):
+    """Even when 08 is the file's only Umstand the Projekt keeps its unset value —
+    such a file says nothing at all about the Projekt-Umstand."""
+    project.circumstance = ""
+    project.save(update_fields=["circumstance"])
+    content = _workbook(
+        [
+            _valid_row(species, scientist, ringing_station, Umstand="08"),
+            _valid_row(species, scientist, ringing_station, Ringnummer="V00706", Umstand="08"),
+        ],
+        headers=_CONDITION_HEADERS,
+    )
+
+    result = auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    ).json()
+
+    assert result["created"] == 2
+    assert result["errors"] == []
+    project.refresh_from_db()
+    assert project.circumstance == ""
+
+
+@pytest.mark.django_db
+def test_zustand_2_alone_does_not_make_a_tot_fund(
+    auth_client, scientist, ringing_station, project, species
+):
+    """Zustand is ignored on read: a row carrying 2 under a non-08 Umstand is an
+    ordinary capture."""
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, Umstand="25", Zustand="2")],
+        headers=_CONDITION_HEADERS,
+    )
+
+    auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    entry = DataEntry.objects.get()
+    assert entry.is_dead_recovery is False
+    assert entry.comment is None
+
+
+@pytest.mark.django_db
+def test_umstand_8_is_a_different_code_and_triggers_nothing(
+    auth_client, scientist, ringing_station, project, species
+):
+    """Exact text comparison after trimming: „8" is not „08"."""
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, Umstand="8")],
+        headers=_CONDITION_HEADERS,
+    )
+
+    auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert DataEntry.objects.get().is_dead_recovery is False
+
+
+@pytest.mark.django_db
+def test_padded_umstand_08_still_reconstructs_the_marker(
+    auth_client, scientist, ringing_station, project, species
+):
+    """Surrounding whitespace in a hand-edited file is trimmed before comparing."""
+    content = _workbook(
+        [_valid_row(species, scientist, ringing_station, Umstand="  08  ")],
+        headers=_CONDITION_HEADERS,
+    )
+
+    auth_client.post(
+        _import_url(project), {"file": _upload(content), "commit": "true"}, format="multipart"
+    )
+
+    assert DataEntry.objects.get().is_dead_recovery is True
