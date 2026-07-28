@@ -165,12 +165,14 @@ The Fangmarker for a dead ringed bird (found dead, or handed in) — the real Ar
 and Ring stay. Clicking it opens a popup for the **Todesumstände** (required); the
 Bemerkung is then composed as **„Totfund; Umstände: <Eingabe>"** and stays
 mandatory. The Todesumstände is not stored separately — it lives inside the
-composed Bemerkung. In the IWM export it surfaces only as that Bemerkung text in
-the Bemerkungsspalte — no row colour, method columns unchanged. Carries a row icon in „Letzte Fänge" and the Wiederfang-Historie. Not
+composed Bemerkung. In the IWM export that Bemerkung text travels along in the
+Bemerkungsspalte and the row takes **no row colour**. Carries a row icon in „Letzte Fänge" and the Wiederfang-Historie. Not
 an Erst/Wiederfang distinction and not a Sonderart.
-In the IWM export it additionally sets the row's **Umstand to 08** and its
+Beyond the Bemerkung the export row also sets its **Umstand to 08** and its
 **Zustand to 2** (ADR 0034) — the only capture-level facts that displace a
-Projekt-derived export column. Those two codes make a Tot-Fund **machine-readable**,
+Projekt-derived export column. (Until ADR 0034 a Tot-Fund reached the export
+*solely* as that Bemerkung text, leaving the method columns at the Projekt's
+values; that is what the two codes replaced.) Those two codes make a Tot-Fund **machine-readable**,
 so the IWM import reconstructs the marker from **Umstand 08 alone** (Zustand is
 corroborating, never required); a reconstructed Tot-Fund whose file row carries no
 Bemerkung gets the bare word „Totfund" — a transcription of the code, never a
