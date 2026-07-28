@@ -876,13 +876,12 @@ def test_projekttyp_does_not_change_the_export(species, scientist, ringing_stati
 
 
 @pytest.mark.django_db
-def test_hiding_net_fields_does_not_alter_stored_or_exported_net_data(
+def test_hiding_optional_fields_does_not_alter_stored_or_exported_data(
     species, scientist, ringing_station, project
 ):
-    """Hiding the net block (show_net_fields=False) is display-only (issue #336,
-    ADR 0023): the net-field values already stored on captures are untouched and
-    the IWM export still emits them, so the export is byte-for-byte identical
-    whatever the Projekt's show_net_fields is."""
+    """Switching optional fields off is display-only (ADR 0035): the values already
+    stored on historical captures are untouched and the IWM export still emits them,
+    so the export is byte-for-byte identical whatever the Projekt hides."""
     entry = DataEntry.objects.create(
         species=species,
         ring=Ring.objects.create(number="611", size=Ring.RingSizes.V),
@@ -891,20 +890,25 @@ def test_hiding_net_fields_does_not_alter_stored_or_exported_net_data(
         project=project,
         net_location=7,
         net_height=3,
+        notch_f2=Decimal("12.5"),
         date_time=datetime(2026, 3, 1, 8, 0, tzinfo=UTC),
     )
 
-    assert project.show_net_fields is True
+    assert project.hidden_optional_fields == []
     baseline = build_iwm_workbook(DataEntry.objects.all())
 
-    project.show_net_fields = False
+    project.hidden_optional_fields = [
+        Project.OptionalField.NET_BLOCK,
+        Project.OptionalField.NOTCH_F2,
+    ]
     project.save()
     after = build_iwm_workbook(DataEntry.objects.all())
 
-    # The stored net data on the capture is untouched by flipping the Projekt flag.
+    # The stored values on the capture are untouched by reconfiguring the Projekt.
     entry.refresh_from_db()
     assert entry.net_location == 7
     assert entry.net_height == 3
+    assert entry.notch_f2 == Decimal("12.5")
 
     # And the export payload (everything but the live save-timestamp) is identical,
     # still carrying the Netz value.

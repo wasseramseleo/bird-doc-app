@@ -16,8 +16,6 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     id: 'p1',
     title: 'Schilfgürtel Linz',
     description: '',
-    show_optional_fields: false,
-    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
     default_station: null,

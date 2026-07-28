@@ -10,7 +10,7 @@ import { of } from 'rxjs';
 import { ProjectActionsService } from './project-actions.service';
 import { AuthService } from './auth.service';
 import { ProjectService } from './project.service';
-import { Project, Projekttyp } from '../models/project.model';
+import { OptionalField, Project, Projekttyp } from '../models/project.model';
 import { Organization } from '../models/organization.model';
 import { Scientist } from '../models/scientist.model';
 import { ProjectEditDialogComponent, ProjectEditDialogResult } from '../home/project-edit-dialog/project-edit-dialog';
@@ -25,8 +25,7 @@ function createResult(overrides: Partial<ProjectCreateDialogResult> = {}): Proje
     title: 'Neues Projekt',
     description: 'Beschreibung',
     scientistIds: ['s1'],
-    showOptionalFields: false,
-    showNetFields: true,
+    hiddenOptionalFields: [],
     projekttyp: Projekttyp.Sonstiges,
     defaultStationHandle: '',
     saisonStartMonth: null,
@@ -40,8 +39,7 @@ function editResult(overrides: Partial<ProjectEditDialogResult> = {}): ProjectEd
     title: 'Neuer Titel',
     description: 'Beschreibung',
     scientistIds: ['s1'],
-    showOptionalFields: false,
-    showNetFields: true,
+    hiddenOptionalFields: [],
     projekttyp: Projekttyp.Sonstiges,
     defaultStationHandle: '',
     saisonStartMonth: null,
@@ -61,8 +59,6 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     id: 'p1',
     title: 'Schilfgürtel Linz',
     description: '',
-    show_optional_fields: false,
-    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz', handle: 'iwm' } as Project['organization'],
     default_station: null,
@@ -168,7 +164,7 @@ describe('ProjectActionsService', () => {
           title: 'Neuer Titel',
           description: 'desc',
           scientistIds: ['s1', 's2'],
-          showOptionalFields: true,
+          hiddenOptionalFields: [OptionalField.Hungerstreifen],
           projekttyp: Projekttyp.IWM,
           defaultStationHandle: 'st1',
         }),
@@ -184,8 +180,7 @@ describe('ProjectActionsService', () => {
         title: 'Neuer Titel',
         description: 'desc',
         scientist_ids: ['s1', 's2'],
-        show_optional_fields: true,
-        show_net_fields: true,
+        hidden_optional_fields: [OptionalField.Hungerstreifen],
         projekttyp: Projekttyp.IWM,
         default_station_id: 'st1',
         saison_start_month: null,
@@ -299,7 +294,7 @@ describe('ProjectActionsService', () => {
       const setCurrent = spyOn(ctx.projectService, 'setCurrent').and.callThrough();
       const navigate = spyOn(ctx.router, 'navigateByUrl').and.stub();
       const snack = spyOn(ctx.snackBar, 'open');
-      stubDialog(ctx.dialog, createResult({ title: 'Neues Projekt', description: 'd', scientistIds: ['s1', 's2'], showOptionalFields: true, projekttyp: Projekttyp.Nestlingsberingung, saisonStartMonth: 11, saisonEndMonth: 3 }));
+      stubDialog(ctx.dialog, createResult({ title: 'Neues Projekt', description: 'd', scientistIds: ['s1', 's2'], hiddenOptionalFields: [OptionalField.NetzBlock], projekttyp: Projekttyp.Nestlingsberingung, saisonStartMonth: 11, saisonEndMonth: 3 }));
 
       ctx.service.create();
 
@@ -312,8 +307,7 @@ describe('ProjectActionsService', () => {
         description: 'd',
         scientist_ids: ['s1', 's2'],
         projekttyp: Projekttyp.Nestlingsberingung,
-        show_optional_fields: true,
-        show_net_fields: true,
+        hidden_optional_fields: [OptionalField.NetzBlock],
         default_station_id: null,
         saison_start_month: 11,
         saison_end_month: 3,
