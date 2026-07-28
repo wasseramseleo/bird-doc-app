@@ -5,7 +5,7 @@ import openpyxl
 from django.utils.timezone import localtime
 from openpyxl.styles import PatternFill
 
-from .models import DataEntry
+from .models import DataEntry, Species
 
 TEMPLATE_PATH = (
     Path(__file__).resolve().parent / "templates" / "iwm" / "Datenmeldung_Vorlage_IWM.xlsx"
@@ -19,10 +19,32 @@ NON_STANDARD_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_t
 # A no-fill reset, applied to every data cell before writing so a template example
 # row's leftover styling never leaks onto a real export row.
 _NO_FILL = PatternFill(fill_type=None)
-# The three project-derived method columns a Nicht-Standard-Fang blanks — the
-# capture happened outside the Projekt's standard protocol, so its defaults do not
-# describe it (ADR 0026).
-NON_STANDARD_BLANK_COLUMNS = frozenset({"Fangmethode", "Lockmittel", "Umstand"})
+# What a Nicht-Standard-Fang blanks, phrased over the *source* of the value rather
+# than as a fixed column list (ADR 0034): the method columns the **Projekt**
+# supplies. The capture happened outside the Projekt's standard protocol, so those
+# defaults do not describe it (ADR 0026). Fangmethode and Lockmittel are always the
+# Projekt's, so they always blank; Umstand is the Projekt's too — unless the capture
+# is also a Tot-Fund, whose 08 is a fact about *that* capture and therefore survives
+# the combination. Zustand is never Projekt-derived and never blanks.
+_ALWAYS_PROJECT_SOURCED_COLUMNS = frozenset({"Fangmethode", "Lockmittel"})
+
+
+def _project_sourced_columns(entry):
+    """The columns whose value this capture takes from its Projekt — exactly the
+    ones a Nicht-Standard-Fang leaves empty."""
+    if entry.is_dead_recovery:
+        return _ALWAYS_PROJECT_SOURCED_COLUMNS
+    return _ALWAYS_PROJECT_SOURCED_COLUMNS | {"Umstand"}
+
+
+# The Tot-Fund's own codes (ADR 0034). Both are *derived* from the Fangmarker at
+# export time and never stored on the capture: the Beringer picks no code.
+TOT_FUND_UMSTAND = "08"
+TOT_FUND_ZUSTAND = "2"
+# "lebend, unverletzt freigelassen" — what every other row asserts. The authentic
+# Datenmeldung has no blank Zustand cell, so BirdDoc emits one on every row; see
+# the ADR's Consequences for the imprecision this knowingly accepts.
+DEFAULT_ZUSTAND = "8"
 
 # "No additional marking" — every authentic Datenmeldung row carries it (the
 # importer reads and discards it, having no model field to land it in).
@@ -78,6 +100,25 @@ def _parasite_labels(entry):
     return [_PARASIT_LABELS.get(code, code) for code in entry.parasites or []]
 
 
+def _umstand(entry):
+    """The row's Umstand: the Projekt's circumstance, displaced by ``08`` on a
+    Tot-Fund — the one capture-level fact about the circumstance of *that* catch
+    (ADR 0034). A Tot-Fund keeps its Bemerkung alongside the code."""
+    if entry.is_dead_recovery:
+        return TOT_FUND_UMSTAND
+    return entry.project.circumstance if entry.project else None
+
+
+def _zustand(entry):
+    """The bird's condition when it left the Beringer's hand (ADR 0034): ``2`` on a
+    Tot-Fund, ``8`` otherwise — and nothing at all for a *Ring vernichtet* row,
+    where there was no bird whose condition could be asserted (the same reasoning
+    that leaves that row's biometry empty)."""
+    if entry.species and entry.species.special_kind == Species.SpecialKind.RING_DESTROYED:
+        return None
+    return TOT_FUND_ZUSTAND if entry.is_dead_recovery else DEFAULT_ZUSTAND
+
+
 def _build_comment(entry):
     parts = [entry.comment] if entry.comment else []
     parts.extend(_parasite_labels(entry))
@@ -96,8 +137,6 @@ def _build_comment(entry):
 
 
 # IWM header text → callable(entry) -> cell value (None = leave blank).
-# Zustand is the one breeding/condition header absent from this map — still
-# deferred per the task brief and written as empty.
 COLUMN_MAP = {
     # The ring's own issuing Zentrale — an EURING scheme code, never free prose.
     # The AUW backfill (ADR 0019) guarantees ``central`` is never null, so a
@@ -133,7 +172,8 @@ COLUMN_MAP = {
         lambda e: e.ringing_station.place_code or None if e.ringing_station else None
     ),
     "Geo-Koordinaten": _geo_coordinates,
-    "Umstand": lambda e: e.project.circumstance if e.project else None,
+    "Umstand": _umstand,
+    "Zustand": _zustand,
     "Fangmethode": lambda e: e.project.capture_method if e.project else None,
     "Lockmittel": lambda e: e.project.lure if e.project else None,
     "Bemerkungen": _build_comment,
@@ -164,13 +204,15 @@ def build_iwm_workbook(entries) -> bytes:
             cell.fill = _NO_FILL
 
     for row_idx, entry in enumerate(entries, start=2):
-        # Nicht-Standard-Fang (ADR 0026): fill the whole row and blank the three
-        # project-derived method columns. A Tot-Fund gets neither — it reaches the
-        # export only as its Bemerkung text.
+        # Nicht-Standard-Fang (ADR 0026): fill the whole row and blank the method
+        # columns the Projekt supplies. A Tot-Fund is not filled — it carries its
+        # own Umstand/Zustand codes instead (ADR 0034), which is also why its
+        # Umstand is no longer Projekt-sourced and therefore survives the
+        # combination of both Fangmarker.
         non_standard = entry.is_non_standard
+        blank_columns = _project_sourced_columns(entry) if non_standard else frozenset()
         for header, getter in COLUMN_MAP.items():
-            blank = non_standard and header in NON_STANDARD_BLANK_COLUMNS
-            value = None if blank else getter(entry)
+            value = None if header in blank_columns else getter(entry)
             ws.cell(row=row_idx, column=header_to_col[header]).value = value
         if non_standard:
             for col in header_to_col.values():

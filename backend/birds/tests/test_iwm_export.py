@@ -272,8 +272,9 @@ def test_non_standard_row_is_filled_and_blanks_method_columns(
 def test_tot_fund_row_has_no_fill_and_keeps_method_columns(
     species, scientist, ringing_station, project
 ):
-    """A Tot-Fund row gets no fill and keeps its method columns — it reaches the
-    export solely as the Bemerkung text (ADR 0026)."""
+    """A Tot-Fund row gets no fill and keeps the Projekt's Fangmethode/Lockmittel
+    (ADR 0026). Its Umstand is the one column the marker displaces — see the
+    Tot-Fund code tests below (ADR 0034)."""
     DataEntry.objects.create(
         species=species,
         ring=Ring.objects.create(number="911", size=Ring.RingSizes.V),
@@ -288,7 +289,7 @@ def test_tot_fund_row_has_no_fill_and_keeps_method_columns(
     content = build_iwm_workbook(DataEntry.objects.all())
     row = _read_rows(content)
 
-    assert row["Umstand"] == "25"
+    assert row["Umstand"] == "08"
     assert row["Fangmethode"] == "M"
     assert row["Lockmittel"] == "N"
     assert row["Bemerkungen"] == "Totfund; Umstände: unter dem Netz"
@@ -368,9 +369,10 @@ def test_multi_station_project_exports_each_entrys_own_station_geography(
 
 
 @pytest.mark.django_db
-def test_deferred_columns_remain_blank(species, scientist, ringing_station, project):
-    # Zustand is the one breeding/condition column still deferred (issue #375
-    # filled Brutfleck & Kloake — see their own tests below). It stays blank.
+def test_every_mapped_column_is_written(species, scientist, ringing_station, project):
+    # No condition column is deferred any more: issue #375 filled Brutfleck &
+    # Kloake (see their own tests below) and ADR 0034 brought Zustand in — the
+    # authentic Datenmeldung has no blank Zustand cell.
     ringing_station.country = "Austria"
     ringing_station.save()
     DataEntry.objects.create(
@@ -384,7 +386,7 @@ def test_deferred_columns_remain_blank(species, scientist, ringing_station, proj
 
     row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
 
-    assert row["Zustand"] is None
+    assert row["Zustand"] == "8"
 
 
 # --- Brutfleck & Kloake breeding-indicator columns (issue #375) ----------------
@@ -1085,3 +1087,185 @@ def test_downloaded_workbook_still_carries_no_projekttyp(
     assert len(rows) == 1
     assert not any("projekttyp" in str(header).lower() for header in rows[0])
     assert not any("ZUGVOGELMONITORING" in str(value) for value in rows[0].values())
+
+
+# --- Tot-Fund codes: Umstand 08 + Zustand 2 (ADR 0034, issue #428) ------------
+# The Meldestelle reads codes, not prose: a Tot-Fund's row carries Umstand 08 and
+# Zustand 2 instead of reaching the export only as its Bemerkung text. Both codes
+# are *derived* from the Fangmarker — nothing is stored on the capture. Zustand
+# enters the column mapping at the same time: every authentic Datenmeldung row
+# carries one, so an ordinary row asserts 8 (lebend, unverletzt freigelassen).
+
+
+@pytest.mark.django_db
+def test_ordinary_row_exports_zustand_8(species, scientist, ringing_station, project):
+    """Every ordinary row carries Zustand 8 — the column is no longer blank."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="950", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Zustand"] == "8"
+    assert row["Umstand"] == "25"  # the Projektwert, untouched
+
+
+@pytest.mark.django_db
+def test_tot_fund_exports_umstand_08_and_zustand_2_and_keeps_bemerkung(
+    species, scientist, ringing_station, project
+):
+    """A Tot-Fund displaces the Projekt's Umstand with 08 and asserts Zustand 2 —
+    and keeps its Bemerkung alongside, so the Todesumstände stay readable."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="951", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        is_dead_recovery=True,
+        comment="Totfund; Umstände: unter dem Netz",
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Umstand"] == "08"
+    assert row["Zustand"] == "2"
+    assert row["Bemerkungen"] == "Totfund; Umstände: unter dem Netz"
+
+
+@pytest.mark.django_db
+def test_tot_fund_codes_are_derived_from_the_marker_not_stored(
+    species, scientist, ringing_station, project
+):
+    """The codes are derived at export time, never persisted: dropping the
+    Fangmarker on the very same capture hands the row straight back to the
+    Projektwert and the default Zustand, and the Projekt's own circumstance is
+    never rewritten by an export."""
+    entry = DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="952", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        is_dead_recovery=True,
+        comment="Totfund; Umstände: Katze",
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    marked = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+    assert (marked["Umstand"], marked["Zustand"]) == ("08", "2")
+
+    entry.is_dead_recovery = False
+    entry.save(update_fields=["is_dead_recovery"])
+    unmarked = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert (unmarked["Umstand"], unmarked["Zustand"]) == ("25", "8")
+    project.refresh_from_db()
+    assert project.circumstance == "25"
+
+
+@pytest.mark.django_db
+def test_tot_fund_and_non_standard_together_keep_the_tot_fund_codes(
+    species, scientist, ringing_station, project
+):
+    """Both Fangmarker on one capture: the Nicht-Standard-Fang blanks the columns
+    the *Projekt* supplies (Fangmethode, Lockmittel), while the Tot-Fund's 08 —
+    a fact about that very capture — survives, as does its Zustand 2. The amber
+    row fill is unchanged."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="953", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        is_dead_recovery=True,
+        is_non_standard=True,
+        comment="Totfund; Umstände: Scheibenanflug",
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    content = build_iwm_workbook(DataEntry.objects.all())
+    row = _read_rows(content)
+
+    assert row["Umstand"] == "08"
+    assert row["Zustand"] == "2"
+    assert row["Fangmethode"] is None
+    assert row["Lockmittel"] is None
+    assert _row_fills(content) == [True]
+
+
+@pytest.mark.django_db
+def test_ring_vernichtet_row_carries_no_zustand_but_keeps_the_projekt_umstand(
+    sentinel_species, scientist, ringing_station, project
+):
+    """A „Ring vernichtet" row had no bird whose condition could be asserted — the
+    same reasoning that leaves its biometry blank — so it carries no Zustand at
+    all. Its Umstand stays the Projektwert."""
+    DataEntry.objects.create(
+        species=sentinel_species,
+        ring=Ring.objects.create(number="954", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+        bird_status=None,
+        age_class=None,
+        sex=None,
+        comment="Produktionsfehler",
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Zustand"] is None
+    assert row["Umstand"] == "25"
+
+
+@pytest.mark.django_db
+def test_tot_fund_survives_export_import_export_as_a_marker(
+    species, scientist, ringing_station, project, organization
+):
+    """The full loop: the codes make a Tot-Fund machine-readable, so it comes back
+    from an import as the Fangmarker itself — not as prose — and the second export
+    carries the very same codes (ADR 0034 closes ADR 0013's silent gap)."""
+    ringing_station.place_code = "AU03"
+    ringing_station.region = "Oberösterreich"
+    ringing_station.country = "Austria"
+    ringing_station.save()
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="00955", size=Ring.RingSizes.V, organization=organization),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        organization=organization,
+        is_dead_recovery=True,
+        comment="Totfund; Umstände: Scheibenanflug",
+        date_time=make_aware(datetime(2026, 6, 30, 8, 15)),
+    )
+
+    first = build_iwm_workbook(DataEntry.objects.filter(project=project))
+    assert _read_rows(first)["Umstand"] == "08"
+
+    # Remove the source capture so the re-import is not skipped as a duplicate of
+    # the very data it round-trips, then import into a fresh Projekt of the same
+    # Organisation (Beringer and Station re-resolve, nothing is auto-created).
+    DataEntry.objects.filter(project=project).delete()
+    fresh_project = Project.objects.create(title="Round-Trip", organization=organization)
+    result = commit_import(first, fresh_project)
+
+    assert result["created"] == 1
+    assert result["errors"] == []
+    clone = DataEntry.objects.get(project=fresh_project)
+    assert clone.is_dead_recovery is True
+    assert clone.comment == "Totfund; Umstände: Scheibenanflug"
+
+    second = _read_rows(build_iwm_workbook(DataEntry.objects.filter(project=fresh_project)))
+    assert second["Umstand"] == "08"
+    assert second["Zustand"] == "2"
+    assert second["Bemerkungen"] == "Totfund; Umstände: Scheibenanflug"
