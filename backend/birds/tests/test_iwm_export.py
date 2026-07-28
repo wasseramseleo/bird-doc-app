@@ -997,8 +997,14 @@ def test_export_filename_carries_umlauts_through_the_utf8_form(auth_client, proj
 @pytest.mark.django_db
 def test_export_filename_survives_quotes_slashes_and_line_breaks(auth_client, project):
     """A title with header-breaking characters still yields ONE valid header and a
-    filename a filesystem accepts — the response is not torn apart."""
-    project.title = 'Netz "A"/B\r\nZeile\\Süd\tOst'
+    filename a filesystem accepts — the response is not torn apart.
+
+    The fullwidth twins (`＂` U+FF02, `／` U+FF0F, `＼` U+FF3C, `℅` U+2105) are the
+    interesting half: they pass the sanitiser untouched — they are neither control
+    characters nor themselves illegal — and only turn into `"`, `/`, `\\` and `c/o`
+    when the ASCII fallback folds them. That fallback path is the one that tears the
+    quoted-string header apart, so it must be sanitised *after* folding too."""
+    project.title = 'Netz "A"/B\r\nZeile\\Süd\tOst ＂C＂／D＼E ℅ F'
     project.projekttyp = Project.Projekttyp.ZUGVOGELMONITORING
     project.save()
 
@@ -1007,6 +1013,9 @@ def test_export_filename_survives_quotes_slashes_and_line_breaks(auth_client, pr
     assert response.status_code == 200
     header = response["Content-Disposition"]
     assert "\r" not in header and "\n" not in header
+    # Exactly one quoted `filename="…"` — a smuggled quote would close it early and
+    # leave an RFC-conformant parser reading a truncated name plus garbage.
+    assert header.count('"') == 2, header
 
     for name in (_ascii_filename(response), _utf8_filename(response)):
         assert not (set(name) & _FORBIDDEN_FILENAME_CHARS), name

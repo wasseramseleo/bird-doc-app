@@ -35,8 +35,10 @@ PROJEKTTYP_PREFIXES = {
 
 # What is left when a title sanitises down to nothing — never an empty name.
 FALLBACK_TITLE = "Projekt"
-# Long enough for any real Projekttitel, short enough to keep the whole name well
-# inside the ~255-byte limit common filesystems impose.
+# Long enough for any real Projekttitel, short enough to keep the whole name inside
+# the ~255-byte limit common filesystems impose. Counted in characters, not bytes:
+# a German title stays far below the limit, and the multi-byte scripts that could
+# approach it do not occur in a Projekttitel here.
 MAX_TITLE_LENGTH = 80
 
 # Illegal on Windows and/or hostile in a shell or a header; replaced, not dropped,
@@ -70,22 +72,36 @@ def _tidy(text):
     return text[:MAX_TITLE_LENGTH].strip(_EDGE_CHARS)
 
 
+def _strip_forbidden(text):
+    """The single place that says what a file name may not carry: control
+    characters and line breaks out, filesystem-illegal characters replaced. Every
+    path that produces a name runs through here — including the ASCII folding,
+    which would otherwise hand back what an earlier pass had already removed."""
+    text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
+    return _ILLEGAL_CHARS.sub("-", text)
+
+
 def sanitize_title(title):
     """A Projekttitel made fit for a file name: line breaks and control characters
     out, filesystem-illegal characters replaced, whitespace runs collapsed, length
     capped. A title of which nothing survives falls back to a neutral name."""
     text = _WHITESPACE_RUN.sub(" ", title or "")
-    text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
-    text = _ILLEGAL_CHARS.sub("-", text)
-    return _tidy(text) or FALLBACK_TITLE
+    return _tidy(_strip_forbidden(text)) or FALLBACK_TITLE
 
 
 def _to_ascii(text):
     """The pure-ASCII twin of an already-sanitised name, for the header's fallback
-    form (which cannot carry non-ASCII)."""
+    form (which cannot carry non-ASCII).
+
+    The folding is sanitised **again**, because decomposition re-creates the very
+    characters ``sanitize_title`` took out: the fullwidth twins fold back to their
+    ASCII originals (``＂`` → ``"``, ``／`` → ``/``, ``＼`` → ``\\``) and some
+    abbreviation glyphs expand into them (``℅`` → ``c/o``). A quote smuggled in this
+    way would close the header's quoted string early, leaving a conformant client
+    with a truncated file name and a tail of garbage."""
     folded = unicodedata.normalize("NFKD", text.translate(_ASCII_FOLDING))
     folded = folded.encode("ascii", "ignore").decode("ascii")
-    return _tidy(folded) or FALLBACK_TITLE
+    return _tidy(_strip_forbidden(folded)) or FALLBACK_TITLE
 
 
 def _build(project, day, ascii_only):
