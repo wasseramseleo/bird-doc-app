@@ -5,7 +5,7 @@ import {HttpClient, HttpParams, HttpResponse} from '@angular/common/http';
 import {EMPTY, Observable} from 'rxjs';
 import {expand, reduce} from 'rxjs/operators';
 import {DataEntry} from '../models/data-entry.model';
-import {Species} from '../models/species.model';
+import {SpecialKind, Species} from '../models/species.model';
 import {RingSize} from '../models/ring.model';
 import {PaginatedApiResponse} from '../models/paginated-api-response.model';
 import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
@@ -83,13 +83,23 @@ export class ApiService {
     return this.http.post<DataEntry>(`${this.apiUrl}/data-entries/${id}/restore/`, {});
   }
 
-  getSpecies(searchTerm?: string, projectId?: string): Observable<PaginatedApiResponse<Species>> {
+  // #427: `specialKind` narrows the candidates to one value of the Sonderart
+  // discriminator, so a rare Sonderart is fetched by key instead of being hoped
+  // for on the usage-sorted first page. Left off, the query is unchanged.
+  getSpecies(
+    searchTerm?: string,
+    projectId?: string,
+    specialKind?: SpecialKind,
+  ): Observable<PaginatedApiResponse<Species>> {
     let params = new HttpParams();
     if (searchTerm) {
       params = params.set('search', searchTerm);
     }
     if (projectId) {
       params = params.set('project', projectId);
+    }
+    if (specialKind) {
+      params = params.set('special_kind', specialKind);
     }
     return this.http.get<PaginatedApiResponse<Species>>(`${this.apiUrl}/species/`, {params});
   }

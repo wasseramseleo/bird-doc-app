@@ -11,7 +11,7 @@ import {Project} from '../models/project.model';
 import {Ring, RingSize} from '../models/ring.model';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
-import {Species} from '../models/species.model';
+import {SpecialKind, Species} from '../models/species.model';
 import {ApiService} from './api.service';
 import {OutboxService} from './outbox.service';
 import {PendingBeringerService} from './pending-beringer.service';
@@ -60,12 +60,29 @@ export class DataAccessFacadeService {
   private readonly pendingBeringer = inject(PendingBeringerService);
   private readonly recentEntriesCache = inject(RecentEntriesCacheService);
 
-  getSpecies(searchTerm?: string, projectId?: string): Observable<PaginatedApiResponse<Species>> {
-    return this.withOfflineFallback(this.api.getSpecies(searchTerm, projectId), () =>
+  /**
+   * The species picker's read — and, with `specialKind`, the Sonderart lookup
+   * (#427). Online the server narrows the candidates on the `special_kind`
+   * discriminator; offline the cached pool is filtered by that very same key —
+   * the same discriminator the queued-capture rope-consumption rule already
+   * keys on ({@link isConsumingQueuedEntry}). Both paths therefore answer
+   * identically by construction, not by coincidence: a Sonderart the server
+   * would return is exactly the one the cache returns, and neither path depends
+   * on a German display name or on where usage ordering happens to place it.
+   */
+  getSpecies(
+    searchTerm?: string,
+    projectId?: string,
+    specialKind?: SpecialKind,
+  ): Observable<PaginatedApiResponse<Species>> {
+    return this.withOfflineFallback(this.api.getSpecies(searchTerm, projectId, specialKind), () =>
       this.loadCache().pipe(
         map((cached) => {
           const pool = cached?.bundle.species ?? [];
-          const filtered = filterBySearch(pool, searchTerm, (s) => [
+          const candidates = specialKind
+            ? pool.filter((s) => s.special_kind === specialKind)
+            : pool;
+          const filtered = filterBySearch(candidates, searchTerm, (s) => [
             s.common_name_de,
             s.scientific_name,
           ]);
