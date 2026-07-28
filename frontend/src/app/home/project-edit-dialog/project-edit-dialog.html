@@ -70,6 +70,33 @@
       </mat-form-field>
     </div>
 
+    <!-- Wochengrenze (ADR 0036): Wochentag + Uhrzeit, neben dem Saison-Fenster.
+         Nicht abwählbar — „unkonfiguriert" heißt Montag 00:00. -->
+    <p class="wochengrenze-hint">
+      Wochengrenze: legt fest, wann die Beringungswoche umspringt — die
+      „Diese Woche"-Auswertung im Dashboard läuft ab diesem Zeitpunkt bis jetzt
+      (z. B. Samstag 12:00). Ohne Änderung gilt Montag 00:00.
+    </p>
+    <div class="wochengrenze-fields">
+      <mat-form-field appearance="outline" class="wochengrenze-field">
+        <mat-label>Wochengrenze (Wochentag)</mat-label>
+        <mat-select formControlName="wochengrenzeWeekday" data-testid="wochengrenze-weekday">
+          @for (day of wochengrenzeWeekdayOptions; track day.value) {
+            <mat-option [value]="day.value">{{ day.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="wochengrenze-field">
+        <mat-label>Wochengrenze (Uhrzeit)</mat-label>
+        <input
+          matInput
+          type="time"
+          formControlName="wochengrenzeTime"
+          data-testid="wochengrenze-time" />
+      </mat-form-field>
+    </div>
+
     <!-- Optionale Felder (ADR 0035): angehakt = sichtbar. Gespeichert wird, was
          abgewählt ist — die Umkehr passiert beim Speichern. -->
     <p class="optional-fields-hint">

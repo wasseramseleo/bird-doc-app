@@ -14,13 +14,13 @@ established here and reused by later dashboard slices:
   *data-bearing* day, computed in Europe/Vienna (timestamps stored UTC).
 """
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from itertools import count
 
 import pytest
 
-from birds.models import DataEntry, Ring, Scientist, Species
-from birds.project_stats import compute_project_stats, resolve_range
+from birds.models import DataEntry, Project, Ring, Scientist, Species
+from birds.project_stats import VIENNA, compute_project_stats, resolve_range
 
 _ring_seq = count(1)
 
@@ -43,6 +43,15 @@ def stats_url(project_id, **params):
         query = "&".join(f"{k}={v}" for k, v in params.items())
         url = f"{url}?{query}"
     return url
+
+
+def _parsed_vienna_instant(value):
+    """Parse a served range bound and assert it is an ISO-8601 *instant* carrying
+    the Vienna offset for that moment — not a bare date, and not UTC (ADR 0036)."""
+    assert "T" in value, value
+    parsed = datetime.fromisoformat(value)
+    assert parsed.utcoffset() == parsed.astimezone(VIENNA).utcoffset(), value
+    return parsed
 
 
 def _capture(project, species, ringing_station, scientist, when, *, status="e"):
@@ -93,10 +102,34 @@ def test_default_preset_is_week(auth_client, scientist, project):
 
 @pytest.mark.django_db
 def test_explicit_from_to_echoes_range(auth_client, scientist, project):
+    """The free „von–bis" range is echoed as the half-open Vienna instants it
+    resolves to: the „von" day's start, and the day *after* the „bis" day, because
+    ``to`` is exclusive and the typed „bis" day is included (ADR 0036)."""
     response = auth_client.get(stats_url(project.id, **{"from": "2026-06-01", "to": "2026-07-03"}))
     assert response.status_code == 200
-    assert response.data["range"]["from"] == "2026-06-01"
-    assert response.data["range"]["to"] == "2026-07-03"
+    assert response.data["range"]["from"] == "2026-06-01T00:00:00+02:00"
+    assert response.data["range"]["to"] == "2026-07-04T00:00:00+02:00"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("preset", ["week", "month", "year", "all", "today", "season"])
+def test_every_preset_serves_vienna_instants(auth_client, scientist, project, preset):
+    """One payload shape, not two (ADR 0036): every preset carries ``from``/``to``
+    as ISO-8601 instants with the Vienna offset — never a bare date — with ``from``
+    null only for the open lower bound of ``Alles``."""
+    project.saison_start_month = 1
+    project.saison_end_month = 12
+    project.save()
+
+    response = auth_client.get(stats_url(project.id, preset=preset))
+
+    assert response.status_code == 200
+    bounds = response.data["range"]
+    end = _parsed_vienna_instant(bounds["to"])
+    if preset == "all":
+        assert bounds["from"] is None
+        return
+    assert _parsed_vienna_instant(bounds["from"]) <= end
 
 
 # --- Empty range -------------------------------------------------------------
@@ -837,122 +870,154 @@ def test_erstnachweise_empty_when_range_has_no_captures(auth_client, scientist, 
 
 # --- range resolver: Heute + Diese Saison presets (ADR 0029, issue #373) ------
 #
-# ``resolve_range`` is the single home of the preset bounds (against a Vienna
-# "today"). These unit-test it directly — deterministic, no HTTP "today" mocking
+# ``resolve_range`` is the single home of the preset bounds (resolved against an
+# aware „now"). These unit-test it directly — deterministic, no HTTP clock to mock
 # — for the two additive presets plus the recurring-month-window season logic.
+# Since ADR 0036 the bounds are half-open Europe/Vienna **instants** for every
+# preset: ``start`` inclusive, ``end`` exclusive.
 
 
-def test_resolve_today_preset_is_today_to_today():
-    """``Heute`` resolves to ``today..today`` (Europe/Vienna) — a one-day range."""
-    today = date(2026, 7, 16)
-    preset, date_from, date_to = resolve_range(today=today, preset="today")
+def _midnight(*ymd):
+    """A Vienna midnight instant — the shape the midnight-aligned presets return."""
+    return datetime(*ymd, tzinfo=VIENNA)
+
+
+def test_resolve_today_preset_is_the_current_calendar_day():
+    """``Heute`` stays a calendar day (ADR 0036): today's midnight up to the next
+    day's, regardless of the Projekt's Wochengrenze."""
+    now = datetime(2026, 7, 16, 14, 30, tzinfo=VIENNA)
+    preset, start, end = resolve_range(
+        now=now, preset="today", wochengrenze_weekday=SAMSTAG, wochengrenze_time=time(12, 0)
+    )
     assert preset == "today"
-    assert date_from == today
-    assert date_to == today
+    assert start == _midnight(2026, 7, 16)
+    assert end == _midnight(2026, 7, 17)
 
 
-def test_existing_presets_and_custom_range_are_unchanged():
-    """The two new presets are purely additive: the existing bounds and the
-    explicit-from/to custom range behave exactly as before."""
-    today = date(2026, 7, 16)
-    assert resolve_range(today=today, preset="week") == ("week", date(2026, 7, 9), today)
-    assert resolve_range(today=today, preset="year") == ("year", date(2025, 7, 16), today)
-    assert resolve_range(today=today, preset="all") == ("all", None, today)
-    # Explicit from/to still wins over any preset and clears it.
+def test_midnight_presets_and_custom_range_keep_their_bounds():
+    """Monat, Jahr and Alles keep their midnight bounds and the free „von–bis"
+    range stays day-granular — only „Diese Woche" reads the Wochengrenze."""
+    now = datetime(2026, 7, 16, 14, 30, tzinfo=VIENNA)
+    assert resolve_range(now=now, preset="month") == (
+        "month",
+        _midnight(2026, 6, 16),
+        _midnight(2026, 7, 17),
+    )
+    assert resolve_range(now=now, preset="year") == (
+        "year",
+        _midnight(2025, 7, 16),
+        _midnight(2026, 7, 17),
+    )
+    assert resolve_range(now=now, preset="all") == ("all", None, _midnight(2026, 7, 17))
+    # Explicit from/to still wins over any preset and clears it. Day-granular: the
+    # „bis" day is included, so the exclusive upper bound is the following day.
     assert resolve_range(
-        today=today, preset="season", date_from=date(2026, 1, 1), date_to=date(2026, 3, 1)
-    ) == (None, date(2026, 1, 1), date(2026, 3, 1))
+        now=now, preset="season", date_from=date(2026, 1, 1), date_to=date(2026, 3, 1)
+    ) == (None, _midnight(2026, 1, 1), _midnight(2026, 3, 2))
+
+
+def test_custom_range_ignores_the_wochengrenze():
+    """A hand-typed „von–bis" is day-granular even on a Samstag-12:00 Projekt: the
+    Wochengrenze governs „Diese Woche" and nothing else (ADR 0036)."""
+    now = datetime(2026, 7, 16, 14, 30, tzinfo=VIENNA)
+    assert resolve_range(
+        now=now,
+        date_from=date(2026, 7, 11),
+        date_to=date(2026, 7, 11),
+        wochengrenze_weekday=SAMSTAG,
+        wochengrenze_time=time(12, 0),
+    ) == (None, _midnight(2026, 7, 11), _midnight(2026, 7, 12))
 
 
 def test_resolve_season_in_season_non_wrap_is_start_to_today():
     """A Jul–Okt window with today inside it (August) ⇒ ``from`` = this year's
-    season start (1 Jul), ``to`` = today (capped at today, never future)."""
-    today = date(2026, 8, 15)
-    preset, date_from, date_to = resolve_range(
-        today=today, preset="season", saison_start_month=7, saison_end_month=10
+    season start (1 Jul), ``to`` = the end of today (capped, never future)."""
+    now = datetime(2026, 8, 15, 10, 0, tzinfo=VIENNA)
+    preset, start, end = resolve_range(
+        now=now, preset="season", saison_start_month=7, saison_end_month=10
     )
     assert preset == "season"
-    assert date_from == date(2026, 7, 1)
-    assert date_to == today
+    assert start == _midnight(2026, 7, 1)
+    assert end == _midnight(2026, 8, 16)
 
 
 def test_resolve_season_off_season_after_non_wrap_is_last_ended_occurrence():
     """Jul–Okt, today in November (after the window ended this year) ⇒ the
     most-recently-ended occurrence: 1 Jul .. 31 Okt of this year."""
-    today = date(2026, 11, 15)
-    preset, date_from, date_to = resolve_range(
-        today=today, preset="season", saison_start_month=7, saison_end_month=10
+    now = datetime(2026, 11, 15, 10, 0, tzinfo=VIENNA)
+    preset, start, end = resolve_range(
+        now=now, preset="season", saison_start_month=7, saison_end_month=10
     )
     assert preset == "season"
-    assert date_from == date(2026, 7, 1)
-    assert date_to == date(2026, 10, 31)
+    assert start == _midnight(2026, 7, 1)
+    assert end == _midnight(2026, 11, 1)
 
 
 def test_resolve_season_off_season_before_non_wrap_is_previous_year_occurrence():
     """Jul–Okt, today in May (before this year's window has started) ⇒ the
     most-recently-ended occurrence is last year's: 1 Jul .. 31 Okt 2025."""
-    today = date(2026, 5, 15)
-    _, date_from, date_to = resolve_range(
-        today=today, preset="season", saison_start_month=7, saison_end_month=10
+    now = datetime(2026, 5, 15, 10, 0, tzinfo=VIENNA)
+    _, start, end = resolve_range(
+        now=now, preset="season", saison_start_month=7, saison_end_month=10
     )
-    assert date_from == date(2025, 7, 1)
-    assert date_to == date(2025, 10, 31)
+    assert start == _midnight(2025, 7, 1)
+    assert end == _midnight(2025, 11, 1)
 
 
 def test_resolve_season_wrap_in_season_autumn_tail():
     """A wrap-around Nov–März window with today in the autumn tail (December) ⇒
-    ``from`` = this year's 1 Nov, ``to`` = today."""
-    today = date(2025, 12, 10)
-    _, date_from, date_to = resolve_range(
-        today=today, preset="season", saison_start_month=11, saison_end_month=3
+    ``from`` = this year's 1 Nov, ``to`` = the end of today."""
+    now = datetime(2025, 12, 10, 10, 0, tzinfo=VIENNA)
+    _, start, end = resolve_range(
+        now=now, preset="season", saison_start_month=11, saison_end_month=3
     )
-    assert date_from == date(2025, 11, 1)
-    assert date_to == today
+    assert start == _midnight(2025, 11, 1)
+    assert end == _midnight(2025, 12, 11)
 
 
 def test_resolve_season_wrap_in_season_spring_tail_starts_previous_year():
     """Nov–März with today in the spring tail (January) ⇒ the occurrence began
-    last November: ``from`` = 1 Nov of the previous year, ``to`` = today."""
-    today = date(2026, 1, 15)
-    _, date_from, date_to = resolve_range(
-        today=today, preset="season", saison_start_month=11, saison_end_month=3
+    last November: ``from`` = 1 Nov of the previous year."""
+    now = datetime(2026, 1, 15, 10, 0, tzinfo=VIENNA)
+    _, start, end = resolve_range(
+        now=now, preset="season", saison_start_month=11, saison_end_month=3
     )
-    assert date_from == date(2025, 11, 1)
-    assert date_to == today
+    assert start == _midnight(2025, 11, 1)
+    assert end == _midnight(2026, 1, 16)
 
 
 def test_resolve_season_wrap_off_season_is_last_ended_occurrence():
     """Nov–März, today in July (off-season) ⇒ the most-recently-ended occurrence,
     which spanned the year boundary: 1 Nov 2025 .. 31 März 2026."""
-    today = date(2026, 7, 15)
-    _, date_from, date_to = resolve_range(
-        today=today, preset="season", saison_start_month=11, saison_end_month=3
+    now = datetime(2026, 7, 15, 10, 0, tzinfo=VIENNA)
+    _, start, end = resolve_range(
+        now=now, preset="season", saison_start_month=11, saison_end_month=3
     )
-    assert date_from == date(2025, 11, 1)
-    assert date_to == date(2026, 3, 31)
+    assert start == _midnight(2025, 11, 1)
+    assert end == _midnight(2026, 4, 1)
 
 
 def test_resolve_season_end_month_boundary_is_in_season():
     """The window is inclusive at both ends: today on the last day of the end
-    month (März) is still in-season, capped at today."""
-    today = date(2026, 3, 31)
-    _, date_from, date_to = resolve_range(
-        today=today, preset="season", saison_start_month=11, saison_end_month=3
+    month (März) is still in-season, capped at the end of today."""
+    now = datetime(2026, 3, 31, 10, 0, tzinfo=VIENNA)
+    _, start, end = resolve_range(
+        now=now, preset="season", saison_start_month=11, saison_end_month=3
     )
-    assert date_from == date(2025, 11, 1)
-    assert date_to == today
+    assert start == _midnight(2025, 11, 1)
+    assert end == _midnight(2026, 4, 1)
 
 
 def test_resolve_season_without_window_falls_back_to_default_preset():
     """``season`` requested but the Projekt has no window configured (either month
     ``None``) is unusable, so it falls back to the default preset (``week``). The
     button is hidden client-side, but the resolver stays defensive."""
-    today = date(2026, 7, 16)
-    assert resolve_range(today=today, preset="season") == ("week", date(2026, 7, 9), today)
-    assert resolve_range(today=today, preset="season", saison_start_month=11) == (
+    now = datetime(2026, 7, 16, 10, 0, tzinfo=VIENNA)  # Donnerstag
+    assert resolve_range(now=now, preset="season") == ("week", _midnight(2026, 7, 13), now)
+    assert resolve_range(now=now, preset="season", saison_start_month=11) == (
         "week",
-        date(2026, 7, 9),
-        today,
+        _midnight(2026, 7, 13),
+        now,
     )
 
 
@@ -970,10 +1035,285 @@ def test_compute_project_stats_reads_season_window_off_the_project(
     _capture(project, species, ringing_station, scientist, datetime(2026, 1, 5, 8, 0, tzinfo=UTC))
     _capture(project, species, ringing_station, scientist, datetime(2025, 8, 1, 8, 0, tzinfo=UTC))
 
-    payload = compute_project_stats(project, preset="season", today=date(2026, 2, 10))
+    payload = compute_project_stats(
+        project, preset="season", now=datetime(2026, 2, 10, 10, 0, tzinfo=VIENNA)
+    )
     assert payload["range"]["preset"] == "season"
-    # In-season (February) ⇒ from = 1 Nov 2025, to = today; only the January
-    # capture is inside the occurrence.
-    assert payload["range"]["from"] == "2025-11-01"
-    assert payload["range"]["to"] == "2026-02-10"
+    # In-season (February) ⇒ from = 1 Nov 2025, to = the end of today; only the
+    # January capture is inside the occurrence.
+    assert payload["range"]["from"] == "2025-11-01T00:00:00+01:00"
+    assert payload["range"]["to"] == "2026-02-11T00:00:00+01:00"
     assert payload["totals"]["faenge"] == 1
+
+
+# --- range resolver: die Wochengrenze und „Diese Woche" (ADR 0036, issue #431) -
+#
+# „Diese Woche" runs from the most recent Wochengrenze occurrence that is not in
+# the future up to *now* — a running range, not a rolling seven-day window. The
+# Wochengrenze is a per-Projekt (weekday, time) pair in Europe/Vienna, non-nullable
+# with a Montag-00:00 default. These exercise the pure resolver: deterministic, no
+# HTTP clock to mock.
+
+# Samstag 12:00 — the Beringungsbetrieb rhythm the feedback described.
+SAMSTAG = 5
+
+
+def _week_bounds(now, *, weekday=None, boundary=None):
+    """The „Diese Woche" bounds for a ``now``, with the Wochengrenze left at its
+    default unless given."""
+    kwargs = {}
+    if weekday is not None:
+        kwargs["wochengrenze_weekday"] = weekday
+    if boundary is not None:
+        kwargs["wochengrenze_time"] = boundary
+    preset, start, end = resolve_range(now=now, preset="week", **kwargs)
+    assert preset == "week"
+    return start, end
+
+
+def test_week_runs_from_the_most_recent_wochengrenze_up_to_now():
+    """Samstag 12:00, asked on the Saturday afternoon: the range starts at *this*
+    Saturday's noon, not seven days back — the previous Saturday morning's captures
+    stay in the week they belong to."""
+    now = datetime(2026, 7, 11, 15, 30, tzinfo=VIENNA)  # Samstag, 15:30
+    start, end = _week_bounds(now, weekday=SAMSTAG, boundary=time(12, 0))
+    assert start == datetime(2026, 7, 11, 12, 0, tzinfo=VIENNA)
+    assert end == now
+
+
+def test_week_just_before_the_changeover_still_belongs_to_the_running_week():
+    """A minute before Samstag 12:00 the running week is still last week's — it
+    started at the previous Saturday's noon."""
+    now = datetime(2026, 7, 11, 11, 59, tzinfo=VIENNA)
+    start, _ = _week_bounds(now, weekday=SAMSTAG, boundary=time(12, 0))
+    assert start == datetime(2026, 7, 4, 12, 0, tzinfo=VIENNA)
+
+
+def test_week_at_the_changeover_starts_the_new_week():
+    """Exactly at the Wochengrenze the new week has begun: the boundary itself is
+    „not in the future", so it is the lower bound and the range is empty."""
+    now = datetime(2026, 7, 11, 12, 0, tzinfo=VIENNA)
+    start, end = _week_bounds(now, weekday=SAMSTAG, boundary=time(12, 0))
+    assert start == now
+    assert end == now
+
+
+def test_week_without_a_configured_wochengrenze_runs_from_montag_midnight():
+    """Unconfigured is not a state of its own — it is the Montag-00:00 default, so
+    the preset means the same thing on every Projekt."""
+    now = datetime(2026, 7, 15, 9, 0, tzinfo=VIENNA)  # Mittwoch
+    start, end = _week_bounds(now)
+    assert start == datetime(2026, 7, 13, 0, 0, tzinfo=VIENNA)  # Montag
+    assert end == now
+
+
+# The whole Wochentag × Uhrzeit × „now" combinatorics against the pure resolver:
+# whatever the pair, the lower bound is a real occurrence of it, is not in the
+# future, and is the most recent one (the next occurrence lies past ``now``).
+# July carries no Zeitumstellung, so wall time and offset are constant here; the
+# changeover cases get their own tests below.
+
+
+@pytest.mark.parametrize("weekday", range(7))
+@pytest.mark.parametrize("boundary", [time(0, 0), time(6, 30), time(12, 0), time(23, 59)])
+@pytest.mark.parametrize("hours_into_the_week", [0, 1, 11, 12, 13, 23, 24, 47, 100, 167])
+def test_wochengrenze_lower_bound_is_the_most_recent_occurrence(
+    weekday, boundary, hours_into_the_week
+):
+    # Montag, 2026-07-06, 00:00 Vienna plus an offset that sweeps a whole week.
+    now = datetime(2026, 7, 6, 0, 0, tzinfo=VIENNA) + timedelta(hours=hours_into_the_week)
+
+    start, end = _week_bounds(now, weekday=weekday, boundary=boundary)
+
+    assert end == now
+    # A real occurrence of the configured Wochengrenze …
+    assert start.weekday() == weekday
+    assert start.time() == boundary
+    # … not in the future …
+    assert start <= now
+    # … and the most recent one: the next occurrence has not happened yet.
+    assert start + timedelta(days=7) > now
+
+
+def test_the_unconfigured_wochengrenze_is_the_montag_default_not_a_second_path():
+    """Leaving the Wochengrenze out and passing Montag 00:00 explicitly resolve
+    identically — „unkonfiguriert" is the default, not a state of its own."""
+    now = datetime(2026, 7, 8, 17, 0, tzinfo=VIENNA)  # Mittwoch
+    assert resolve_range(now=now, preset="week") == resolve_range(
+        now=now, preset="week", wochengrenze_weekday=0, wochengrenze_time=time(0, 0)
+    )
+
+
+# --- Zeitumstellung: the Wochengrenze is local wall time ----------------------
+#
+# Europe/Vienna 2026: the clock jumps 02:00 → 03:00 on Sonntag 29. März and runs
+# 02:00–03:00 twice on Sonntag 25. Oktober. The convention pinned in
+# ``project_stats``: a non-existent local time resolves to the nearest LATER valid
+# one, a doubled one to the FIRST occurrence.
+
+SONNTAG = 6
+
+
+def test_wochengrenze_on_a_non_existent_local_time_moves_to_the_next_valid_one():
+    """A Sonntag-02:30 Wochengrenze does not exist on the Frühjahrsumstellung — the
+    clock skips from 02:00 to 03:00. The boundary is the first valid instant after
+    the gap, 03:00 Sommerzeit, never a silently dropped week."""
+    now = datetime(2026, 3, 29, 9, 0, tzinfo=VIENNA)
+    start, _ = _week_bounds(now, weekday=SONNTAG, boundary=time(2, 30))
+    assert start == datetime(2026, 3, 29, 3, 0, tzinfo=VIENNA)
+    assert start.utcoffset() == timedelta(hours=2)
+
+
+def test_wochengrenze_in_the_gap_is_still_in_the_future_before_the_changeover():
+    """Asked at 01:30 Winterzeit — before the gap — that Sunday's boundary has not
+    happened yet, so the running week is still the previous one's."""
+    now = datetime(2026, 3, 29, 1, 30, tzinfo=VIENNA)
+    start, _ = _week_bounds(now, weekday=SONNTAG, boundary=time(2, 30))
+    assert start == datetime(2026, 3, 22, 2, 30, tzinfo=VIENNA)
+    assert start.utcoffset() == timedelta(hours=1)
+
+
+def test_wochengrenze_on_a_doubled_local_time_takes_the_first_occurrence():
+    """On the Herbstumstellung 02:30 happens twice. The boundary is the first —
+    still Sommerzeit — so the new week starts at the earlier of the two."""
+    now = datetime(2026, 10, 25, 9, 0, tzinfo=VIENNA)
+    start, _ = _week_bounds(now, weekday=SONNTAG, boundary=time(2, 30))
+    assert start == datetime(2026, 10, 25, 2, 30, tzinfo=VIENNA, fold=0)
+    assert start.utcoffset() == timedelta(hours=2)
+
+
+def test_zeitumstellung_does_not_shift_a_samstag_boundary():
+    """Samstag 12:00 is never ambiguous: across both changeover weekends the
+    boundary stays 12:00 local, only its UTC offset follows the season."""
+    spring, _ = _week_bounds(
+        datetime(2026, 3, 29, 9, 0, tzinfo=VIENNA), weekday=SAMSTAG, boundary=time(12, 0)
+    )
+    autumn, _ = _week_bounds(
+        datetime(2026, 10, 25, 9, 0, tzinfo=VIENNA), weekday=SAMSTAG, boundary=time(12, 0)
+    )
+    assert spring == datetime(2026, 3, 28, 12, 0, tzinfo=VIENNA)
+    assert spring.utcoffset() == timedelta(hours=1)
+    assert autumn == datetime(2026, 10, 24, 12, 0, tzinfo=VIENNA)
+    assert autumn.utcoffset() == timedelta(hours=2)
+
+
+# --- „Diese Woche" over real captures (ADR 0036) ------------------------------
+#
+# The Wochengrenze reaches the figures through ``compute_project_stats``, which
+# reads it off the Projekt. A Fangtag stays a Vienna CALENDAR day (CONTEXT.md,
+# *Fangtag*): a Samstag-12:00 boundary splits one Fangtag across two weekly views
+# rather than redefining the day.
+
+
+def _samstag_projekt(project):
+    """A Projekt whose Beringungswoche turns over Samstag 12:00."""
+    project.wochengrenze_weekday = Project.Weekday.SAMSTAG
+    project.wochengrenze_time = time(12, 0)
+    project.save()
+    return project
+
+
+@pytest.mark.django_db
+def test_saturday_afternoon_no_longer_drags_in_the_morning_captures(
+    project, ringing_station, scientist, species
+):
+    """The feedback case: with Samstag 12:00 configured, asking on the Saturday
+    afternoon shows the week that just started — that morning's captures belong to
+    the week that just ended, and the rolling seven-day window is gone."""
+    projekt = _samstag_projekt(project)
+    moments = [
+        datetime(2026, 7, 10, 9, 0, tzinfo=VIENNA),
+        datetime(2026, 7, 11, 8, 0, tzinfo=VIENNA),
+        datetime(2026, 7, 11, 15, 0, tzinfo=VIENNA),
+    ]
+    for moment in moments:
+        _capture(projekt, species, ringing_station, scientist, moment)
+
+    payload = compute_project_stats(
+        projekt, preset="week", now=datetime(2026, 7, 11, 18, 0, tzinfo=VIENNA)
+    )
+
+    assert payload["range"]["from"] == "2026-07-11T12:00:00+02:00"
+    assert payload["totals"]["faenge"] == 1
+
+
+@pytest.mark.django_db
+def test_an_unconfigured_projekt_runs_its_week_from_montag_midnight(
+    project, ringing_station, scientist, species
+):
+    """A Projekt nobody configured is not a special case: it carries the Montag-00:00
+    default straight from the column, so „Diese Woche" means the same thing on it as
+    on the Samstag-12:00 Projekt beside it."""
+    moments = [
+        datetime(2026, 7, 12, 9, 0, tzinfo=VIENNA),  # Sonntag, last week
+        datetime(2026, 7, 13, 9, 0, tzinfo=VIENNA),  # Montag, this week
+    ]
+    for moment in moments:
+        _capture(project, species, ringing_station, scientist, moment)
+
+    payload = compute_project_stats(
+        project, preset="week", now=datetime(2026, 7, 15, 18, 0, tzinfo=VIENNA)
+    )
+
+    assert payload["range"]["from"] == "2026-07-13T00:00:00+02:00"
+    assert payload["totals"]["faenge"] == 1
+
+
+@pytest.mark.django_db
+def test_a_fangtag_split_by_the_wochengrenze_lands_in_both_weeks(
+    project, ringing_station, scientist, species
+):
+    """Samstag stays ONE Fangtag and shows up in two consecutive weekly views —
+    its morning in the ending week, its afternoon in the starting one."""
+    projekt = _samstag_projekt(project)
+    moments = [
+        datetime(2026, 7, 11, 8, 0, tzinfo=VIENNA),
+        datetime(2026, 7, 11, 9, 0, tzinfo=VIENNA),
+        datetime(2026, 7, 11, 15, 0, tzinfo=VIENNA),
+    ]
+    for moment in moments:
+        _capture(projekt, species, ringing_station, scientist, moment)
+
+    ending = compute_project_stats(
+        projekt, preset="week", now=datetime(2026, 7, 11, 11, 0, tzinfo=VIENNA)
+    )
+    starting = compute_project_stats(
+        projekt, preset="week", now=datetime(2026, 7, 11, 18, 0, tzinfo=VIENNA)
+    )
+
+    # The same calendar day, counted once in each view: two Fänge in the ending
+    # week, one in the starting week, and a Fangtag in both.
+    assert ending["totals"]["faenge"] == 2
+    assert ending["totals"]["fangtage"] == 1
+    assert ending["last_fangtag"]["date"] == "2026-07-11"
+    assert ending["last_fangtag"]["faenge"] == 2
+    assert starting["totals"]["faenge"] == 1
+    assert starting["totals"]["fangtage"] == 1
+    assert starting["last_fangtag"]["date"] == "2026-07-11"
+    assert starting["last_fangtag"]["faenge"] == 1
+
+
+@pytest.mark.django_db
+def test_an_empty_running_week_reports_an_honest_zero(project, ringing_station, scientist, species):
+    """Half an hour into a new Beringungswoche nothing has been caught yet. The
+    dashboard reports zero over exactly that week — it does not quietly fall back to
+    the previous week's numbers."""
+    projekt = _samstag_projekt(project)
+    moments = [
+        datetime(2026, 7, 9, 7, 0, tzinfo=VIENNA),
+        datetime(2026, 7, 11, 9, 0, tzinfo=VIENNA),
+    ]
+    for moment in moments:
+        _capture(projekt, species, ringing_station, scientist, moment)
+
+    payload = compute_project_stats(
+        projekt, preset="week", now=datetime(2026, 7, 11, 12, 30, tzinfo=VIENNA)
+    )
+
+    assert payload["range"]["from"] == "2026-07-11T12:00:00+02:00"
+    assert payload["range"]["to"] == "2026-07-11T12:30:00+02:00"
+    assert payload["totals"]["faenge"] == 0
+    assert payload["totals"]["fangtage"] == 0
+    assert payload["last_fangtag"] is None
+    assert payload["series"] == {"days": [], "lines": []}
+    assert payload["hour_histogram"] == [0] * 24

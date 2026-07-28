@@ -3,12 +3,17 @@
 // semantics live server-side (ADR 0017); the client only renders these numbers.
 
 // `today` (Heute) and `season` (Diese Saison) are additive presets (ADR 0029):
-// `today` is today..today; `season` resolves the Projekt's own recurring month
-// window server-side. Both are resolved backend-side against a Vienna „today".
+// `today` is the current calendar day; `season` resolves the Projekt's own
+// recurring month window server-side. `week` is „Diese Woche" (ADR 0036): from the
+// Projekt's Wochengrenze up to now. Every one of them is resolved backend-side.
 export type StatsRangePreset = 'week' | 'month' | 'year' | 'all' | 'today' | 'season';
 
 export interface ProjectStatsRange {
-  // ISO dates (`YYYY-MM-DD`); `from` may be null for an open lower bound (`all`).
+  // ISO-8601 instants with the Europe/Vienna offset — `from` inclusive, `to`
+  // exclusive — for every preset alike (ADR 0036, one payload shape rather than
+  // two). `from` is null for an open lower bound (`all`). The dashboard sends
+  // `preset`/`from`/`to` and reads only `preset` back, so these are carried, not
+  // rendered.
   from: string | null;
   to: string | null;
   // Null when the range was given as explicit from/to rather than a preset.

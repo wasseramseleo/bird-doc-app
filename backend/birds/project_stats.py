@@ -23,22 +23,90 @@ from zoneinfo import ZoneInfo
 from django.db.models import Count, Min
 from django.db.models.functions import ExtractHour, TruncDate
 
-from .models import DataEntry, Species
+from .models import DataEntry, Project, Species
 
 VIENNA = ZoneInfo("Europe/Vienna")
 
 # The named range presets. ``today`` and ``season`` are additive (ADR 0029):
 # ``today`` is a one-day range; ``season`` resolves the Projekt's own recurring
-# month window. The other four keep their prior lower-bound-to-today semantics.
+# month window. ``week`` is „Diese Woche": from the Projekt's most recent
+# Wochengrenze up to now (ADR 0036) — the one preset whose bounds are not
+# midnight-aligned. The rest keep their lower-bound-to-end-of-today semantics.
 PRESETS = ("week", "month", "year", "all", "today", "season")
 DEFAULT_PRESET = "week"
 
+# The Wochengrenze default (ADR 0036), read off the model so the resolver's
+# fallback and the column default can never drift apart: „unkonfiguriert" is not a
+# state of its own, it is simply Montag 00:00.
+DEFAULT_WOCHENGRENZE_WEEKDAY = Project.Weekday.MONTAG
+DEFAULT_WOCHENGRENZE_TIME = datetime.time(0, 0)
+
+
+def _local_instant(day, time_of_day):
+    """The Europe/Vienna wall-clock ``(day, time_of_day)`` as an instant.
+
+    **Sommerzeit-Konvention** (pinned here because this module is where the range
+    resolution lives). A Wochengrenze is a *local wall time*, so twice a year it can
+    name a local time that either does not exist or exists twice. Samstag 12:00
+    never does; a Sonntag-02:30 Wochengrenze does:
+
+    - **nicht existent** (Frühjahrsumstellung, the clock jumps 02:00 → 03:00): the
+      **nächstliegende spätere gültige Zeit** — the first instant past the gap.
+    - **doppelt** (Herbstumstellung, 02:00–03:00 runs twice): the **erste**
+      Auftreten, i.e. still Sommerzeit.
+
+    ``fold=0`` is already the first occurrence of a doubled local time, so only the
+    gap needs the explicit forward snap.
+    """
+    naive = datetime.datetime.combine(day, time_of_day)
+    aware = naive.replace(tzinfo=VIENNA)
+    if aware.astimezone(datetime.UTC).astimezone(VIENNA).replace(tzinfo=None) == naive:
+        return aware
+    # A non-existent local time: the wall clock never shows it. Bisect for the
+    # first instant whose local time has reached ``naive`` — the transition itself.
+    # ``fold=1`` reads the wall time with the post-transition offset and so lands
+    # *before* the gap, ``fold=0`` with the pre-transition offset and so *after* it.
+    low = naive.replace(tzinfo=VIENNA, fold=1).astimezone(datetime.UTC)
+    high = aware.astimezone(datetime.UTC)
+    second = datetime.timedelta(seconds=1)
+    while high - low > second:
+        middle = low + datetime.timedelta(seconds=int((high - low).total_seconds() // 2))
+        if middle.astimezone(VIENNA).replace(tzinfo=None) < naive:
+            low = middle
+        else:
+            high = middle
+    return high.astimezone(VIENNA)
+
+
+def _day_start(day):
+    """The inclusive start instant of a Vienna calendar day."""
+    return _local_instant(day, datetime.time.min)
+
+
+def _day_end(day):
+    """The exclusive end instant of a Vienna calendar day — the next day's start."""
+    return _day_start(day + datetime.timedelta(days=1))
+
+
+def _wochengrenze_before(now, weekday, time_of_day):
+    """The most recent occurrence of the Wochengrenze that is **not in the future**.
+
+    The boundary instant itself counts as reached (``<= now``), so at exactly
+    Samstag 12:00 the new week has begun and „Diese Woche" is momentarily empty —
+    an honest zero, not the previous week in disguise.
+    """
+    today = now.astimezone(VIENNA).date()
+    day = today - datetime.timedelta(days=(today.weekday() - weekday) % 7)
+    instant = _local_instant(day, time_of_day)
+    if instant > now:
+        instant = _local_instant(day - datetime.timedelta(days=7), time_of_day)
+    return instant
+
 
 def _preset_from(today, preset):
-    """The inclusive lower bound (a Vienna date) for a preset, or ``None`` for
-    ``all`` (no lower bound). ``to`` is always ``today``."""
-    if preset == "week":
-        return today - datetime.timedelta(days=7)
+    """The inclusive lower-bound **date** for a midnight-aligned preset, or ``None``
+    for ``all`` (no lower bound). ``week`` is not among them — it reads the
+    Wochengrenze instead (ADR 0036)."""
     if preset == "month":
         month = today.month - 1 or 12
         year = today.year - (1 if today.month == 1 else 0)
@@ -95,71 +163,76 @@ def _season_range(today, start_month, end_month):
 
 def resolve_range(
     *,
-    today,
+    now,
     preset=None,
     date_from=None,
     date_to=None,
     saison_start_month=None,
     saison_end_month=None,
+    wochengrenze_weekday=DEFAULT_WOCHENGRENZE_WEEKDAY,
+    wochengrenze_time=DEFAULT_WOCHENGRENZE_TIME,
 ):
-    """Resolve the request's range into ``(preset, date_from, date_to)``.
+    """Resolve the request's range into ``(preset, start, end)``.
+
+    ``start``/``end`` are Europe/Vienna **instants**, ``start`` inclusive and
+    ``end`` exclusive — one shape for every preset (ADR 0036), never a mix of
+    dates and instants. ``start`` is ``None`` for an open lower bound (``all``).
 
     Explicit ``from``/``to`` win over a preset and clear it (``preset=None``);
-    otherwise the named preset (default ``week``) computes the bounds against
-    ``today`` (a Vienna date). ``today`` is a one-day range; ``season`` resolves
-    the Projekt's recurring month window (``saison_start_month``/
-    ``saison_end_month``) — falling back to the default preset when no window is
-    configured (either month ``None``). ``date_from`` may be ``None`` for an open
-    lower bound (``all``)."""
+    that free „von–bis" range stays **day-granular**: day start to the following
+    day's start. Otherwise the named preset (default ``week``) computes the bounds
+    against ``now`` (an aware instant):
+
+    - ``week`` — „Diese Woche": from the most recent occurrence of the Projekt's
+      Wochengrenze (``wochengrenze_weekday`` + ``wochengrenze_time``, defaulting to
+      Montag 00:00) up to **now**. The only preset that reads the Wochengrenze and
+      the only one whose bounds are not midnight-aligned.
+    - ``today`` — the current Vienna calendar day.
+    - ``season`` — the Projekt's recurring month window (``saison_start_month`` /
+      ``saison_end_month``), falling back to the default preset when no window is
+      configured (either month ``None``).
+    - ``month`` / ``year`` / ``all`` — their unchanged midnight lower bound up to
+      the end of today.
+    """
+    today = now.astimezone(VIENNA).date()
     if date_from is not None or date_to is not None:
-        return None, date_from, date_to or today
+        start = _day_start(date_from) if date_from is not None else None
+        return None, start, _day_end(date_to or today)
     has_season = saison_start_month is not None and saison_end_month is not None
     if preset == "season" and not has_season:
         preset = DEFAULT_PRESET
     if preset not in PRESETS:
         preset = DEFAULT_PRESET
+    if preset == "week":
+        boundary = _wochengrenze_before(now, wochengrenze_weekday, wochengrenze_time)
+        return preset, boundary, now.astimezone(VIENNA)
     if preset == "today":
-        return preset, today, today
+        return preset, _day_start(today), _day_end(today)
     if preset == "season":
-        date_from, date_to = _season_range(today, saison_start_month, saison_end_month)
-        return preset, date_from, date_to
-    return preset, _preset_from(today, preset), today
+        season_from, season_to = _season_range(today, saison_start_month, saison_end_month)
+        return preset, _day_start(season_from), _day_end(season_to)
+    lower = _preset_from(today, preset)
+    return preset, _day_start(lower) if lower is not None else None, _day_end(today)
 
 
-def _range_bounds(date_from, date_to):
-    """Half-open UTC-comparable instants for the inclusive Vienna date range."""
-    start = (
-        datetime.datetime.combine(date_from, datetime.time.min, tzinfo=VIENNA)
-        if date_from is not None
-        else None
-    )
-    end = (
-        datetime.datetime.combine(
-            date_to + datetime.timedelta(days=1), datetime.time.min, tzinfo=VIENNA
-        )
-        if date_to is not None
-        else None
-    )
-    return start, end
-
-
-def compute_project_stats(project, *, preset=None, date_from=None, date_to=None, today=None):
+def compute_project_stats(project, *, preset=None, date_from=None, date_to=None, now=None):
     """Aggregate one Projekt's captures over a date range into the dashboard
     payload: ``range`` + ``totals`` + ``last_fangtag`` (``None`` when empty)."""
-    if today is None:
+    if now is None:
         from django.utils import timezone
 
-        today = timezone.localdate()
+        now = timezone.now()
 
-    preset, date_from, date_to = resolve_range(
-        today=today,
+    preset, start, end = resolve_range(
+        now=now,
         preset=preset,
         date_from=date_from,
         date_to=date_to,
         saison_start_month=project.saison_start_month,
         saison_end_month=project.saison_end_month,
+        wochengrenze_weekday=project.wochengrenze_weekday,
+        wochengrenze_time=project.wochengrenze_time,
     )
-    start, end = _range_bounds(date_from, date_to)
 
     # The single root every figure below reads. Deleted (``is_cancelled``)
     # captures are excluded here once, not per helper (ADR 0030): the rule is
@@ -174,9 +247,12 @@ def compute_project_stats(project, *, preset=None, date_from=None, date_to=None,
         captures = captures.filter(date_time__lt=end)
 
     payload = {
+        # The bounds ride out as ISO-8601 instants with the Vienna offset — ``from``
+        # inclusive, ``to`` exclusive — for EVERY preset, so the payload has one
+        # shape rather than two (ADR 0036).
         "range": {
-            "from": date_from.isoformat() if date_from is not None else None,
-            "to": date_to.isoformat() if date_to is not None else None,
+            "from": start.isoformat() if start is not None else None,
+            "to": end.isoformat(),
             "preset": preset,
         },
         "totals": _totals(captures),

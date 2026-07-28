@@ -30,6 +30,10 @@ function createResult(overrides: Partial<ProjectCreateDialogResult> = {}): Proje
     defaultStationHandle: '',
     saisonStartMonth: null,
     saisonEndMonth: null,
+    // Die Wochengrenze (ADR 0036) ist nicht abwählbar — der Default Montag 00:00
+    // reist auf jedem Schreibvorgang mit.
+    wochengrenzeWeekday: 0,
+    wochengrenzeTime: '00:00',
     ...overrides,
   };
 }
@@ -44,6 +48,10 @@ function editResult(overrides: Partial<ProjectEditDialogResult> = {}): ProjectEd
     defaultStationHandle: '',
     saisonStartMonth: null,
     saisonEndMonth: null,
+    // Die Wochengrenze (ADR 0036) ist nicht abwählbar — der Default Montag 00:00
+    // reist auf jedem Schreibvorgang mit.
+    wochengrenzeWeekday: 0,
+    wochengrenzeTime: '00:00',
     ...overrides,
   };
 }
@@ -185,6 +193,8 @@ describe('ProjectActionsService', () => {
         default_station_id: 'st1',
         saison_start_month: null,
         saison_end_month: null,
+        wochengrenze_weekday: 0,
+        wochengrenze_time: '00:00',
       });
 
       const updated = makeProject({ id: 'p3', title: 'Neuer Titel' });
@@ -214,6 +224,18 @@ describe('ProjectActionsService', () => {
       const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p3/'));
       expect(req.request.body.saison_start_month).toBe(11);
       expect(req.request.body.saison_end_month).toBe(3);
+      req.flush(makeProject({ id: 'p3' }));
+    });
+
+    it('maps the edited Wochengrenze into the PATCH payload (ADR 0036)', () => {
+      const { service, httpMock, dialog } = setup();
+      stubDialog(dialog, editResult({ wochengrenzeWeekday: 5, wochengrenzeTime: '12:00' }));
+
+      service.edit(makeProject({ id: 'p3' }));
+
+      const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p3/'));
+      expect(req.request.body.wochengrenze_weekday).toBe(5);
+      expect(req.request.body.wochengrenze_time).toBe('12:00');
       req.flush(makeProject({ id: 'p3' }));
     });
 
@@ -311,6 +333,8 @@ describe('ProjectActionsService', () => {
         default_station_id: null,
         saison_start_month: 11,
         saison_end_month: 3,
+        wochengrenze_weekday: 0,
+        wochengrenze_time: '00:00',
       });
 
       const created = makeProject({ id: 'p-new', title: 'Neues Projekt' });
@@ -321,6 +345,20 @@ describe('ProjectActionsService', () => {
       expect(setCurrent).toHaveBeenCalledWith(created);
       expect(navigate).toHaveBeenCalledWith('/');
       expect(snack.calls.mostRecent().args[0] as string).toContain('erstellt');
+    });
+
+    it('maps the chosen Wochengrenze into the create payload (ADR 0036)', () => {
+      const ctx = setup();
+      signIn(ctx, makeOrg());
+      loadRefs(ctx);
+      stubDialog(ctx.dialog, createResult({ wochengrenzeWeekday: 5, wochengrenzeTime: '12:00' }));
+
+      ctx.service.create();
+
+      const req = ctx.httpMock.expectOne((r) => r.url.endsWith('/projects/') && r.method === 'POST');
+      expect(req.request.body.wochengrenze_weekday).toBe(5);
+      expect(req.request.body.wochengrenze_time).toBe('12:00');
+      req.flush(makeProject({ id: 'p-new' }));
     });
 
     it('hands the dialog the active Organisation and the creating Beringer-Kürzel', () => {

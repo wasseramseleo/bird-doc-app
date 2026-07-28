@@ -8,14 +8,17 @@ import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatSelectModule} from '@angular/material/select';
 import {
+  DEFAULT_WOCHENGRENZE_WEEKDAY,
   OPTIONAL_FIELD_OPTIONS,
   OPTIONAL_FIELD_ORDER,
   OptionalField,
   PROJEKTTYP_OPTIONS,
   Project,
   Projekttyp,
+  WOCHENGRENZE_WEEKDAY_OPTIONS,
   hiddenOptionalFieldsFrom,
   optionalFieldVisibility,
+  wochengrenzeTimeValue,
 } from '../../models/project.model';
 import {RingingStation} from '../../models/ringing-station.model';
 import {Scientist} from '../../models/scientist.model';
@@ -39,6 +42,10 @@ export interface ProjectEditDialogResult {
   // The optional per-Projekt Saison window (ADR 0029): both null ⇒ no season.
   saisonStartMonth: number | null;
   saisonEndMonth: number | null;
+  // Die Wochengrenze (ADR 0036): Wochentag (0 = Montag … 6 = Sonntag) plus
+  // Uhrzeit als `HH:MM`. Nie null — „unkonfiguriert" ist Montag 00:00.
+  wochengrenzeWeekday: number;
+  wochengrenzeTime: string;
 }
 
 /**
@@ -99,6 +106,7 @@ export class ProjectEditDialogComponent {
   readonly stations = signal<RingingStation[]>([]);
   readonly projekttypOptions = PROJEKTTYP_OPTIONS;
   readonly saisonMonthOptions = SAISON_MONTH_OPTIONS;
+  readonly wochengrenzeWeekdayOptions = WOCHENGRENZE_WEEKDAY_OPTIONS;
   readonly optionalFieldOptions = OPTIONAL_FIELD_OPTIONS;
 
   readonly form = this.fb.nonNullable.group({
@@ -122,6 +130,13 @@ export class ProjectEditDialogComponent {
       this.data.project.saison_start_month ?? null,
     ),
     saisonEndMonth: this.fb.control<number | null>(this.data.project.saison_end_month ?? null),
+    // Die Wochengrenze (ADR 0036): nicht abwählbar. Ein Projekt ohne gesetzte
+    // Wochengrenze — auch eines, dessen zwischengespeicherte Kopie das Feld noch
+    // nicht kennt — landet auf Montag 00:00, demselben Default wie serverseitig.
+    wochengrenzeWeekday: [
+      this.data.project.wochengrenze_weekday ?? DEFAULT_WOCHENGRENZE_WEEKDAY,
+    ],
+    wochengrenzeTime: [wochengrenzeTimeValue(this.data.project.wochengrenze_time)],
   });
 
   constructor() {
@@ -136,10 +151,13 @@ export class ProjectEditDialogComponent {
       this.form.markAllAsTouched();
       return;
     }
-    const {optionalFields, ...rest} = this.form.getRawValue();
+    const {optionalFields, wochengrenzeTime, ...rest} = this.form.getRawValue();
     this.dialogRef.close({
       ...rest,
       hiddenOptionalFields: hiddenOptionalFieldsFrom(optionalFields),
+      // Ein geleertes Uhrzeit-Feld ist kein „keine Wochengrenze", sondern
+      // Mitternacht — die Wochengrenze lässt sich nicht abschalten (ADR 0036).
+      wochengrenzeTime: wochengrenzeTimeValue(wochengrenzeTime),
     });
   }
 

@@ -9,11 +9,15 @@ import {MatInputModule} from '@angular/material/input';
 import {MatSelectModule} from '@angular/material/select';
 import {Organization} from '../../models/organization.model';
 import {
+  DEFAULT_WOCHENGRENZE_TIME,
+  DEFAULT_WOCHENGRENZE_WEEKDAY,
   OPTIONAL_FIELD_OPTIONS,
   OptionalField,
   PROJEKTTYP_OPTIONS,
   Projekttyp,
+  WOCHENGRENZE_WEEKDAY_OPTIONS,
   hiddenOptionalFieldsFrom,
+  wochengrenzeTimeValue,
 } from '../../models/project.model';
 import {RingingStation} from '../../models/ringing-station.model';
 import {Scientist} from '../../models/scientist.model';
@@ -47,6 +51,10 @@ export interface ProjectCreateDialogResult {
   // The optional per-Projekt Saison window (ADR 0029): both null ⇒ no season.
   saisonStartMonth: number | null;
   saisonEndMonth: number | null;
+  // Die Wochengrenze (ADR 0036): Wochentag (0 = Montag … 6 = Sonntag) plus
+  // Uhrzeit als `HH:MM` — dieselbe Form wie im Bearbeiten-Dialog. Nie null.
+  wochengrenzeWeekday: number;
+  wochengrenzeTime: string;
 }
 
 @Component({
@@ -73,6 +81,7 @@ export class ProjectCreateDialogComponent {
   readonly stations = signal<RingingStation[]>([]);
   readonly projekttypOptions = PROJEKTTYP_OPTIONS;
   readonly saisonMonthOptions = SAISON_MONTH_OPTIONS;
+  readonly wochengrenzeWeekdayOptions = WOCHENGRENZE_WEEKDAY_OPTIONS;
   readonly optionalFieldOptions = OPTIONAL_FIELD_OPTIONS;
 
   readonly form = this.fb.nonNullable.group({
@@ -94,6 +103,11 @@ export class ProjectCreateDialogComponent {
     // „Keine" selection leaves the new Projekt without a season.
     saisonStartMonth: this.fb.control<number | null>(null),
     saisonEndMonth: this.fb.control<number | null>(null),
+    // Die Wochengrenze (ADR 0036): anders als die Saison nicht abwählbar — ein
+    // neues Projekt startet auf dem Default Montag 00:00, demselben, den der
+    // Server setzt, wenn nichts mitgeschickt wird.
+    wochengrenzeWeekday: [DEFAULT_WOCHENGRENZE_WEEKDAY],
+    wochengrenzeTime: [DEFAULT_WOCHENGRENZE_TIME],
   });
 
   constructor() {
@@ -132,10 +146,13 @@ export class ProjectCreateDialogComponent {
       this.form.markAllAsTouched();
       return;
     }
-    const {optionalFields, ...rest} = this.form.getRawValue();
+    const {optionalFields, wochengrenzeTime, ...rest} = this.form.getRawValue();
     this.dialogRef.close({
       ...rest,
       hiddenOptionalFields: hiddenOptionalFieldsFrom(optionalFields),
+      // Ein geleertes Uhrzeit-Feld ist Mitternacht, kein „keine Wochengrenze" —
+      // dieselbe Regel wie im Bearbeiten-Dialog (ADR 0036).
+      wochengrenzeTime: wochengrenzeTimeValue(wochengrenzeTime),
     });
   }
 

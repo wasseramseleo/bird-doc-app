@@ -512,6 +512,12 @@ class ProjectSerializer(serializers.ModelSerializer):
             # (the ViewSet's IsOrgAdminOrReadOnly gates the whole write).
             "saison_start_month",
             "saison_end_month",
+            # The per-Projekt Wochengrenze (ADR 0036): Wochentag + Uhrzeit, both
+            # NON-nullable with a Montag-00:00 default, so every read carries a
+            # usable pair and „unkonfiguriert" never becomes a client-side special
+            # case. Writable Admin-only, like the Saison window beside it.
+            "wochengrenze_weekday",
+            "wochengrenze_time",
             "organization",
             "organization_id",
             "central",

@@ -115,7 +115,10 @@ export class ProjectDashboardComponent {
   // configured (ADR 0029). Custom Von/Bis lives in the template alongside these.
   readonly presets = computed<readonly RangePresetOption[]>(() => {
     const options: RangePresetOption[] = [
-      {preset: 'week', label: 'Letzte Woche'},
+      // „Diese Woche" (ADR 0036): the range runs from the Projekt's Wochengrenze
+      // up to now, so the label says what it shows — it is no longer the rolling
+      // seven-day window „Letzte Woche" once was.
+      {preset: 'week', label: 'Diese Woche'},
       {preset: 'month', label: 'Letzter Monat'},
       {preset: 'year', label: 'Dieses Jahr'},
       {preset: 'all', label: 'Alles'},
