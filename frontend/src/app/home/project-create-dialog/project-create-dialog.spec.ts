@@ -10,7 +10,12 @@ import {
 } from './project-create-dialog';
 import {ApiService} from '../../service/api.service';
 import {Organization} from '../../models/organization.model';
-import {Projekttyp} from '../../models/project.model';
+import {
+  OPTIONAL_FIELD_LABELS,
+  OPTIONAL_FIELD_ORDER,
+  OptionalField,
+  Projekttyp,
+} from '../../models/project.model';
 import {Scientist} from '../../models/scientist.model';
 
 const ORG = {handle: 'ORG1', name: 'IWM Linz'} as Organization;
@@ -71,72 +76,63 @@ describe('ProjectCreateDialogComponent', () => {
     );
   });
 
-  it('offers a Netzfelder checkbox defaulting to on', () => {
+  // --- Optionale Felder (ADR 0035, issue #430) -------------------------------
+  // One „angehakt = sichtbar" checkbox per vocabulary entry — the same control the
+  // Bearbeiten-Dialog shows. Stored is what was un-ticked.
+
+  it('offers one checkbox per optional field, all ticked by default', () => {
     const {fixture, component} = setup();
 
-    expect(component.form.controls.showNetFields).toBeDefined();
-    expect(component.form.controls.showNetFields.value).toBe(true);
-    expect(fixture.nativeElement.textContent).toContain('Netzfelder');
+    expect(Object.keys(component.form.controls.optionalFields.controls)).toEqual([
+      ...OPTIONAL_FIELD_ORDER,
+    ]);
+    expect(Object.values(component.form.controls.optionalFields.getRawValue())).toEqual(
+      OPTIONAL_FIELD_ORDER.map(() => true),
+    );
+    for (const label of Object.values(OPTIONAL_FIELD_LABELS)) {
+      expect(fixture.nativeElement.textContent).toContain(label);
+    }
   });
 
-  it('round-trips the Netzfelder value into the dialog result', () => {
+  it('submits an empty opt-out list when the Admin never touches a checkbox', () => {
+    // US 33: a new Projekt nobody configured shows every optional field.
     const {component, dialogRef} = setup();
 
-    component.form.controls.title.setValue('Nest boxes');
-    component.form.controls.showNetFields.setValue(false);
+    component.form.controls.title.setValue('Unangetastet');
     component.submit();
 
     expect(dialogRef.close).toHaveBeenCalledWith(
-      jasmine.objectContaining({showNetFields: false}),
+      jasmine.objectContaining({hiddenOptionalFields: []}),
     );
   });
 
-  it('seeds Netzfelder off when Nestlingsberingung is chosen (AC #1)', () => {
+  it('submits exactly the un-ticked fields as the opt-out list', () => {
+    // The inversion happens on save: the display follows the Admin's expectation
+    // („angehakt = sichtbar"), the storage follows the opt-out rule.
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Nur Parasit');
+    component.form.controls.optionalFields.controls[OptionalField.Hungerstreifen].setValue(false);
+    component.form.controls.optionalFields.controls[OptionalField.NetzBlock].setValue(false);
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        hiddenOptionalFields: [OptionalField.Hungerstreifen, OptionalField.NetzBlock],
+      }),
+    );
+  });
+
+  it('does not let the Projekttyp preset the Optionale Felder', () => {
+    // ADR 0023 permits the type to seed the default; ADR 0035 leaves the permission
+    // unused, so two Projekte created the same way never differ silently.
     const {component} = setup();
 
     component.form.controls.projekttyp.setValue(Projekttyp.Nestlingsberingung);
 
-    expect(component.form.controls.showNetFields.value).toBe(false);
-  });
-
-  it('lets the Admin turn Netzfelder back on after the auto-off, and submits that choice (AC #2)', () => {
-    const {component, dialogRef} = setup();
-
-    // Picking Nestlingsberingung seeds the checkbox off as a convenience...
-    component.form.controls.projekttyp.setValue(Projekttyp.Nestlingsberingung);
-    expect(component.form.controls.showNetFields.value).toBe(false);
-
-    // ...but the Admin overrides it back on, and the seed never re-forces it —
-    // the overridden value is what gets submitted.
-    component.form.controls.showNetFields.setValue(true);
-    component.form.controls.title.setValue('Nest project with nets after all');
-    component.submit();
-
-    expect(component.form.controls.showNetFields.value).toBe(true);
-    expect(dialogRef.close).toHaveBeenCalledWith(
-      jasmine.objectContaining({showNetFields: true}),
+    expect(component.form.controls.optionalFields.controls[OptionalField.NetzBlock].value).toBe(
+      true,
     );
-  });
-
-  it('does not force Netzfelder to any value when a non-Nestlingsberingung type is chosen (AC #3)', () => {
-    const {component} = setup();
-
-    // From the default-on state, a net-based type leaves the checkbox untouched.
-    component.form.controls.projekttyp.setValue(Projekttyp.IWM);
-    expect(component.form.controls.showNetFields.value).toBe(true);
-
-    // And it does not force nets back on: an Admin who turned nets off keeps that
-    // choice when they then pick a net-based type (the seed only pushes off, and
-    // only for Nestlingsberingung — it never re-raises the checkbox).
-    component.form.controls.showNetFields.setValue(false);
-    component.form.controls.projekttyp.setValue(Projekttyp.IMS);
-    expect(component.form.controls.showNetFields.value).toBe(false);
-
-    // Nestlingsberingung → off, then another type must leave it off, not re-raise it.
-    component.form.controls.projekttyp.setValue(Projekttyp.Nestlingsberingung);
-    expect(component.form.controls.showNetFields.value).toBe(false);
-    component.form.controls.projekttyp.setValue(Projekttyp.Zugvogelmonitoring);
-    expect(component.form.controls.showNetFields.value).toBe(false);
   });
 
   // --- Projekt-Anlage-Parität (issue #389, PRD #384) -------------------------
@@ -176,34 +172,14 @@ describe('ProjectCreateDialogComponent', () => {
     expect('organizationHandle' in component.form.controls).toBe(false);
   });
 
-  it('offers an „Optionale Felder" checkbox defaulting to on, matching the model default', () => {
-    const {component} = setup();
-
-    expect(component.form.controls.showOptionalFields.value).toBe(true);
-  });
-
-  it('submits show_optional_fields on when the Admin never touches the checkbox', () => {
-    // The create payload always carries this value, so an untouched dialog must
-    // reproduce the model default (Project.show_optional_fields = True) rather
-    // than quietly create a Projekt with a reduced Erfassungsformular.
-    const {component, dialogRef} = setup();
-
-    component.form.controls.title.setValue('Unangetastet');
-    component.submit();
-
-    expect(dialogRef.close).toHaveBeenCalledWith(
-      jasmine.objectContaining({showOptionalFields: true}),
-    );
-  });
-
   it('round-trips the four settings the Anlegen-Dialog gained into the result', () => {
     const {component, dialogRef} = setup();
 
     component.form.controls.title.setValue('Schilfgürtel');
     component.form.controls.scientistIds.setValue(['s-alice', 's-bob']);
-    // Set away from the default (true) so this genuinely proves the round-trip
+    // Set away from the default (ticked) so this genuinely proves the round-trip
     // rather than passing on the default value.
-    component.form.controls.showOptionalFields.setValue(false);
+    component.form.controls.optionalFields.controls[OptionalField.CplPlus].setValue(false);
     component.form.controls.saisonStartMonth.setValue(11);
     component.form.controls.saisonEndMonth.setValue(3);
     component.submit();
@@ -211,7 +187,7 @@ describe('ProjectCreateDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalledWith(
       jasmine.objectContaining({
         scientistIds: ['s-alice', 's-bob'],
-        showOptionalFields: false,
+        hiddenOptionalFields: [OptionalField.CplPlus],
         saisonStartMonth: 11,
         saisonEndMonth: 3,
       }),
@@ -229,6 +205,45 @@ describe('ProjectCreateDialogComponent', () => {
     );
   });
 
+  // --- Wochengrenze (ADR 0036, issue #431) -----------------------------------
+  // Anlage und Bearbeitung tragen dieselben zwei Eingaben neben dem
+  // Saison-Fenster. Nicht abwählbar: ein neues Projekt startet auf Montag 00:00.
+
+  it('starts a new Projekt on the Montag-00:00 Wochengrenze', () => {
+    const {fixture, component} = setup();
+
+    expect(component.form.controls.wochengrenzeWeekday.value).toBe(0);
+    expect(component.form.controls.wochengrenzeTime.value).toBe('00:00');
+    expect(fixture.nativeElement.textContent).toContain('Wochengrenze');
+    expect(fixture.nativeElement.textContent).toContain('Samstag');
+  });
+
+  it('round-trips the chosen Wochengrenze into the dialog result', () => {
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Samstagsprojekt');
+    component.form.controls.wochengrenzeWeekday.setValue(5);
+    component.form.controls.wochengrenzeTime.setValue('12:00');
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({wochengrenzeWeekday: 5, wochengrenzeTime: '12:00'}),
+    );
+  });
+
+  it('reads an emptied Uhrzeit as midnight rather than leaving the Wochengrenze unset', () => {
+    const {component, dialogRef} = setup();
+
+    component.form.controls.title.setValue('Ohne Uhrzeit');
+    component.form.controls.wochengrenzeWeekday.setValue(5);
+    component.form.controls.wochengrenzeTime.setValue('');
+    component.submit();
+
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({wochengrenzeWeekday: 5, wochengrenzeTime: '00:00'}),
+    );
+  });
+
   it('renders the fields in the Bearbeiten-Dialog’s order', () => {
     const {fixture} = setup();
     const text: string = fixture.nativeElement.textContent;
@@ -241,8 +256,8 @@ describe('ProjectCreateDialogComponent', () => {
       'Projekttyp',
       'Standard-Station',
       'Saison-Start',
+      'Wochengrenze',
       'Optionale Felder',
-      'Netzfelder',
     ].map((label) => text.indexOf(label));
 
     expect(positions).not.toContain(-1);

@@ -391,11 +391,11 @@
     </div>
 
     @if (!isRingDestroyed()) {
-    <!-- #336: the net block (Netznr./Netzfach/Flugrichtung) is hidden per-Projekt
-         via showNetFields(), independently of the Ring-vernichtet collapse above.
-         The three controls are also disabled + dropped from focusOrder when hidden
-         so keyboard nav never lands on them. -->
-    @if (showNetFields()) {
+    <!-- #336/#430 (ADR 0035): the Netz-Block (Netznr./Netzfach/Flugrichtung) is ONE
+         switchable Optionales Feld, hidden per-Projekt and independently of the
+         Ring-vernichtet collapse above. The three controls are also disabled +
+         dropped from focusOrder when hidden so keyboard nav never lands on them. -->
+    @if (isOptionalFieldVisible(OptionalField.NetzBlock)) {
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Netznummer</mat-label>
@@ -568,43 +568,64 @@
         }
       </mat-form-field>
     </div>
-    @if (showOptionalFields() && !isRingDestroyed()) {
-      <div class="form-section-checkboxes">
-        <mat-checkbox formControlName="has_brood_patch">Brutfleck</mat-checkbox>
-        <mat-checkbox formControlName="has_cpl_plus">CPL+</mat-checkbox>
-        <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
-        <mat-form-field appearance="outline" floatLabel="always" class="parasit-field">
-          <mat-label>Parasit</mat-label>
-          <mat-select formControlName="parasites" multiple>
-            @for (option of parasitOptions; track option.value) {
-              <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
-      </div>
+    <!-- #430 (ADR 0035): each optional field is switched on or off on its own, so
+         keeping Parasit no longer drags Hungerstreifen, CPL+ und Kerbe F2 along.
+         „Ring vernichtet" keeps precedence: while the Sonderart is active the WHOLE
+         optional block stays hidden, whatever the Projekt configured — there is no
+         bird whose Brutfleck or Kerbe one could record. -->
+    @if (!isRingDestroyed()) {
+      @if (showOptionalCheckboxRow()) {
+        <div class="form-section-checkboxes">
+          @if (isOptionalFieldVisible(OptionalField.Brutfleck)) {
+            <mat-checkbox formControlName="has_brood_patch">Brutfleck</mat-checkbox>
+          }
+          @if (isOptionalFieldVisible(OptionalField.CplPlus)) {
+            <mat-checkbox formControlName="has_cpl_plus">CPL+</mat-checkbox>
+          }
+          @if (isOptionalFieldVisible(OptionalField.Hungerstreifen)) {
+            <mat-checkbox formControlName="has_hunger_stripes">Hungerstreifen</mat-checkbox>
+          }
+          @if (isOptionalFieldVisible(OptionalField.Parasit)) {
+            <mat-form-field appearance="outline" floatLabel="always" class="parasit-field">
+              <mat-label>Parasit</mat-label>
+              <mat-select formControlName="parasites" multiple>
+                @for (option of parasitOptions; track option.value) {
+                  <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
+        </div>
+      }
 
-      <div class="biometrics-section">
-        <div class="column">
-          <mat-form-field appearance="outline" floatLabel="always">
-            <mat-label>Kerbe F2 (mm)</mat-label>
-            <input matInput type="text" inputmode="decimal" appNumberMask="decimal" formControlName="notch_f2" (blur)="onMeasurementBlur('notch_f2')">
-            @if (suffixWarningByField()['notch_f2']; as msg) {
-              <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
-                        data-testid="plausibility-notch_f2-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
+      @if (showOptionalMeasurements()) {
+        <div class="biometrics-section">
+          <div class="column">
+            @if (isOptionalFieldVisible(OptionalField.KerbeF2)) {
+              <mat-form-field appearance="outline" floatLabel="always">
+                <mat-label>Kerbe F2 (mm)</mat-label>
+                <input matInput type="text" inputmode="decimal" appNumberMask="decimal" formControlName="notch_f2" (blur)="onMeasurementBlur('notch_f2')">
+                @if (suffixWarningByField()['notch_f2']; as msg) {
+                  <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
+                            data-testid="plausibility-notch_f2-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
+                }
+              </mat-form-field>
             }
-          </mat-form-field>
-        </div>
-        <div class="column">
-          <mat-form-field appearance="outline" floatLabel="always">
-            <mat-label>Innenfuß (mm)</mat-label>
-            <input matInput type="text" inputmode="decimal" appNumberMask="decimal" formControlName="inner_foot" (blur)="onMeasurementBlur('inner_foot')">
-            @if (suffixWarningByField()['inner_foot']; as msg) {
-              <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
-                        data-testid="plausibility-inner_foot-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
+          </div>
+          <div class="column">
+            @if (isOptionalFieldVisible(OptionalField.Innenfuss)) {
+              <mat-form-field appearance="outline" floatLabel="always">
+                <mat-label>Innenfuß (mm)</mat-label>
+                <input matInput type="text" inputmode="decimal" appNumberMask="decimal" formControlName="inner_foot" (blur)="onMeasurementBlur('inner_foot')">
+                @if (suffixWarningByField()['inner_foot']; as msg) {
+                  <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
+                            data-testid="plausibility-inner_foot-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
+                }
+              </mat-form-field>
             }
-          </mat-form-field>
+          </div>
         </div>
-      </div>
+      }
     }
 
     <div class="action-buttons">

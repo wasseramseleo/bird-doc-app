@@ -10,7 +10,7 @@ import { of } from 'rxjs';
 import { ProjectActionsService } from './project-actions.service';
 import { AuthService } from './auth.service';
 import { ProjectService } from './project.service';
-import { Project, Projekttyp } from '../models/project.model';
+import { OptionalField, Project, Projekttyp } from '../models/project.model';
 import { Organization } from '../models/organization.model';
 import { Scientist } from '../models/scientist.model';
 import { ProjectEditDialogComponent, ProjectEditDialogResult } from '../home/project-edit-dialog/project-edit-dialog';
@@ -25,12 +25,15 @@ function createResult(overrides: Partial<ProjectCreateDialogResult> = {}): Proje
     title: 'Neues Projekt',
     description: 'Beschreibung',
     scientistIds: ['s1'],
-    showOptionalFields: false,
-    showNetFields: true,
+    hiddenOptionalFields: [],
     projekttyp: Projekttyp.Sonstiges,
     defaultStationHandle: '',
     saisonStartMonth: null,
     saisonEndMonth: null,
+    // Die Wochengrenze (ADR 0036) ist nicht abwählbar — der Default Montag 00:00
+    // reist auf jedem Schreibvorgang mit.
+    wochengrenzeWeekday: 0,
+    wochengrenzeTime: '00:00',
     ...overrides,
   };
 }
@@ -40,12 +43,15 @@ function editResult(overrides: Partial<ProjectEditDialogResult> = {}): ProjectEd
     title: 'Neuer Titel',
     description: 'Beschreibung',
     scientistIds: ['s1'],
-    showOptionalFields: false,
-    showNetFields: true,
+    hiddenOptionalFields: [],
     projekttyp: Projekttyp.Sonstiges,
     defaultStationHandle: '',
     saisonStartMonth: null,
     saisonEndMonth: null,
+    // Die Wochengrenze (ADR 0036) ist nicht abwählbar — der Default Montag 00:00
+    // reist auf jedem Schreibvorgang mit.
+    wochengrenzeWeekday: 0,
+    wochengrenzeTime: '00:00',
     ...overrides,
   };
 }
@@ -61,8 +67,6 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     id: 'p1',
     title: 'Schilfgürtel Linz',
     description: '',
-    show_optional_fields: false,
-    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz', handle: 'iwm' } as Project['organization'],
     default_station: null,
@@ -168,7 +172,7 @@ describe('ProjectActionsService', () => {
           title: 'Neuer Titel',
           description: 'desc',
           scientistIds: ['s1', 's2'],
-          showOptionalFields: true,
+          hiddenOptionalFields: [OptionalField.Hungerstreifen],
           projekttyp: Projekttyp.IWM,
           defaultStationHandle: 'st1',
         }),
@@ -184,12 +188,13 @@ describe('ProjectActionsService', () => {
         title: 'Neuer Titel',
         description: 'desc',
         scientist_ids: ['s1', 's2'],
-        show_optional_fields: true,
-        show_net_fields: true,
+        hidden_optional_fields: [OptionalField.Hungerstreifen],
         projekttyp: Projekttyp.IWM,
         default_station_id: 'st1',
         saison_start_month: null,
         saison_end_month: null,
+        wochengrenze_weekday: 0,
+        wochengrenze_time: '00:00',
       });
 
       const updated = makeProject({ id: 'p3', title: 'Neuer Titel' });
@@ -219,6 +224,18 @@ describe('ProjectActionsService', () => {
       const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p3/'));
       expect(req.request.body.saison_start_month).toBe(11);
       expect(req.request.body.saison_end_month).toBe(3);
+      req.flush(makeProject({ id: 'p3' }));
+    });
+
+    it('maps the edited Wochengrenze into the PATCH payload (ADR 0036)', () => {
+      const { service, httpMock, dialog } = setup();
+      stubDialog(dialog, editResult({ wochengrenzeWeekday: 5, wochengrenzeTime: '12:00' }));
+
+      service.edit(makeProject({ id: 'p3' }));
+
+      const req = httpMock.expectOne((r) => r.url.endsWith('/projects/p3/'));
+      expect(req.request.body.wochengrenze_weekday).toBe(5);
+      expect(req.request.body.wochengrenze_time).toBe('12:00');
       req.flush(makeProject({ id: 'p3' }));
     });
 
@@ -299,7 +316,7 @@ describe('ProjectActionsService', () => {
       const setCurrent = spyOn(ctx.projectService, 'setCurrent').and.callThrough();
       const navigate = spyOn(ctx.router, 'navigateByUrl').and.stub();
       const snack = spyOn(ctx.snackBar, 'open');
-      stubDialog(ctx.dialog, createResult({ title: 'Neues Projekt', description: 'd', scientistIds: ['s1', 's2'], showOptionalFields: true, projekttyp: Projekttyp.Nestlingsberingung, saisonStartMonth: 11, saisonEndMonth: 3 }));
+      stubDialog(ctx.dialog, createResult({ title: 'Neues Projekt', description: 'd', scientistIds: ['s1', 's2'], hiddenOptionalFields: [OptionalField.NetzBlock], projekttyp: Projekttyp.Nestlingsberingung, saisonStartMonth: 11, saisonEndMonth: 3 }));
 
       ctx.service.create();
 
@@ -312,11 +329,12 @@ describe('ProjectActionsService', () => {
         description: 'd',
         scientist_ids: ['s1', 's2'],
         projekttyp: Projekttyp.Nestlingsberingung,
-        show_optional_fields: true,
-        show_net_fields: true,
+        hidden_optional_fields: [OptionalField.NetzBlock],
         default_station_id: null,
         saison_start_month: 11,
         saison_end_month: 3,
+        wochengrenze_weekday: 0,
+        wochengrenze_time: '00:00',
       });
 
       const created = makeProject({ id: 'p-new', title: 'Neues Projekt' });
@@ -327,6 +345,20 @@ describe('ProjectActionsService', () => {
       expect(setCurrent).toHaveBeenCalledWith(created);
       expect(navigate).toHaveBeenCalledWith('/');
       expect(snack.calls.mostRecent().args[0] as string).toContain('erstellt');
+    });
+
+    it('maps the chosen Wochengrenze into the create payload (ADR 0036)', () => {
+      const ctx = setup();
+      signIn(ctx, makeOrg());
+      loadRefs(ctx);
+      stubDialog(ctx.dialog, createResult({ wochengrenzeWeekday: 5, wochengrenzeTime: '12:00' }));
+
+      ctx.service.create();
+
+      const req = ctx.httpMock.expectOne((r) => r.url.endsWith('/projects/') && r.method === 'POST');
+      expect(req.request.body.wochengrenze_weekday).toBe(5);
+      expect(req.request.body.wochengrenze_time).toBe('12:00');
+      req.flush(makeProject({ id: 'p-new' }));
     });
 
     it('hands the dialog the active Organisation and the creating Beringer-Kürzel', () => {

@@ -20,7 +20,16 @@ const PROJECT = {
   id: 'p1',
   title: 'Schilfgürtel Linz',
   description: '',
-  show_optional_fields: false,
+  // Optionale Felder (ADR 0035): der frühere `show_optional_fields: false`
+  // entspricht genau den sechs abgewählten Optional-Schlüsseln.
+  hidden_optional_fields: [
+    'brood_patch',
+    'cpl_plus',
+    'hunger_stripes',
+    'parasit',
+    'notch_f2',
+    'inner_foot',
+  ],
   organization: {id: 'o1', name: 'IWM Linz'},
   default_station: null,
   scientists: [],
@@ -52,7 +61,13 @@ function isoDaysAgo(n: number): string {
 // chip / quiet-phase note.
 function stats(lastFangtagDate: string) {
   return {
-    range: {from: '2026-06-26', to: '2026-07-03', preset: 'week'},
+    // `from`/`to` are Vienna ISO-8601 instants since ADR 0036 — `from` inclusive,
+    // `to` exclusive — for every preset alike.
+    range: {
+      from: '2026-06-27T12:00:00+02:00',
+      to: '2026-07-03T09:30:00+02:00',
+      preset: 'week',
+    },
     totals: {faenge: 120, artenzahl: 17, fangtage: 16, erstfaenge: 90, wiederfaenge: 30},
     top_species: [
       {species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34},

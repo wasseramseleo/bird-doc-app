@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .accounts import normalize_email
+from .export_filename import iwm_export_content_disposition
 from .invitations import account_for_email, seats_available
 from .iwm_export import build_iwm_workbook
 from .iwm_import import (
@@ -377,6 +378,14 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
         rows (every Species whose ``special_kind`` is set — "Ring Vernichtet" and
         "Aves ignota"); otherwise all species are candidates. Frequency only
         reorders the candidates — see ``_order_by_usage``.
+
+        On top of that, ``?special_kind=`` narrows the candidates to one value of
+        the Sonderart discriminator (issue #427). It is a pure narrowing: the
+        active-Artenliste membership and the usage ordering above are untouched,
+        which is what lets a caller ask for a rare Sonderart by name-independent
+        key instead of hoping it turns up on the usage-sorted first page. An
+        unknown value simply matches no row — an empty page, never an error —
+        and an absent parameter leaves the endpoint exactly as it was.
         """
         user = self.request.user
         active_list = SpeciesList.objects.filter(user=user, is_active=True).first()
@@ -387,6 +396,10 @@ class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
             candidates = Species.objects.filter(id__in=candidate_ids)
         else:
             candidates = Species.objects.all()
+
+        special_kind = self.request.query_params.get("special_kind")
+        if special_kind is not None:
+            candidates = candidates.filter(special_kind=special_kind)
 
         return self._order_by_usage(candidates, self.request.query_params.get("project"))
 
@@ -777,8 +790,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
         #199, ADR 0017). Org-scoped through ``get_object()`` (a foreign-tenant
         Projekt is 404, like ``export-iwm``); the counting semantics live in
         ``project_stats.compute_project_stats``. The range is a ``preset``
-        (``week``|``month``|``year``|``all``, default ``week``) or explicit
-        ``from``/``to`` ISO dates, bucketed in Europe/Vienna."""
+        (``week``|``month``|``year``|``all``|``today``|``season``, default
+        ``week``) or explicit ``from``/``to`` ISO dates, bucketed in
+        Europe/Vienna. The *served* bounds are ISO-8601 instants with the Vienna
+        offset for every preset — ``from`` inclusive, ``to`` exclusive (ADR 0036);
+        ``week`` („Diese Woche") runs from the Projekt's own Wochengrenze up to
+        now, every other preset keeps its midnight bounds."""
         project = self.get_object()
         preset = request.query_params.get("preset")
         date_from = _parse_iso_date(request.query_params.get("from"), "from")
@@ -792,12 +809,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def export_iwm(self, request, pk=None):
         project = self.get_object()
         content = build_iwm_workbook(iwm_export_entries(project))
-        filename = f"IWM_{project.title}_{datetime.date.today():%Y-%m-%d}.xlsx"
         response = HttpResponse(
             content,
             content_type=("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
         )
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        # The download is named after the Projekttyp (ADR 0023 amendment, issue
+        # #429) — the file's *content* still carries no trace of it.
+        response["Content-Disposition"] = iwm_export_content_disposition(project)
         return response
 
     @action(detail=True, methods=["post"], url_path="import-iwm")

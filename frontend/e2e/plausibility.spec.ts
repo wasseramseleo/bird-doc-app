@@ -84,7 +84,6 @@ const PROJECT = {
   id: 'p1',
   title: 'Schilfgürtel Linz',
   description: '',
-  show_optional_fields: true,
   organization: ORGANIZATION,
   default_station: STATION,
   scientists: [BERINGER],

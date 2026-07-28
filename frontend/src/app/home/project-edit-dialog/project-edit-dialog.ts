@@ -1,13 +1,25 @@
 import {ChangeDetectionStrategy, Component, inject, signal} from '@angular/core';
 
-import {FormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
+import {FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators} from '@angular/forms';
 import {MatButtonModule} from '@angular/material/button';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatDialogModule, MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatInputModule} from '@angular/material/input';
 import {MatSelectModule} from '@angular/material/select';
-import {PROJEKTTYP_OPTIONS, Project, Projekttyp} from '../../models/project.model';
+import {
+  DEFAULT_WOCHENGRENZE_WEEKDAY,
+  OPTIONAL_FIELD_OPTIONS,
+  OPTIONAL_FIELD_ORDER,
+  OptionalField,
+  PROJEKTTYP_OPTIONS,
+  Project,
+  Projekttyp,
+  WOCHENGRENZE_WEEKDAY_OPTIONS,
+  hiddenOptionalFieldsFrom,
+  optionalFieldVisibility,
+  wochengrenzeTimeValue,
+} from '../../models/project.model';
 import {RingingStation} from '../../models/ringing-station.model';
 import {Scientist} from '../../models/scientist.model';
 import {ApiService} from '../../service/api.service';
@@ -21,13 +33,35 @@ export interface ProjectEditDialogResult {
   title: string;
   description: string;
   scientistIds: string[];
-  showOptionalFields: boolean;
-  showNetFields: boolean;
+  // Optionale Felder (ADR 0035): what the Admin switched OFF. The dialog shows
+  // „angehakt = sichtbar"; the inversion to the stored opt-out list happens here,
+  // on save, so the display follows the expectation and the storage follows the rule.
+  hiddenOptionalFields: OptionalField[];
   projekttyp: Projekttyp;
   defaultStationHandle: string;
   // The optional per-Projekt Saison window (ADR 0029): both null ⇒ no season.
   saisonStartMonth: number | null;
   saisonEndMonth: number | null;
+  // Die Wochengrenze (ADR 0036): Wochentag (0 = Montag … 6 = Sonntag) plus
+  // Uhrzeit als `HH:MM`. Nie null — „unkonfiguriert" ist Montag 00:00.
+  wochengrenzeWeekday: number;
+  wochengrenzeTime: string;
+}
+
+/**
+ * The „angehakt = sichtbar" checkbox group both Projekt-Dialoge render (ADR 0035,
+ * the Anlage/Bearbeiten parity PRD #384 established). One boolean control per
+ * vocabulary entry, pre-filled from the Projekt's opt-out list.
+ */
+export function buildOptionalFieldGroup(
+  fb: FormBuilder,
+  hidden: readonly OptionalField[] | null | undefined,
+): FormGroup<Record<OptionalField, FormControl<boolean>>> {
+  const visible = optionalFieldVisibility(hidden);
+  const controls = Object.fromEntries(
+    OPTIONAL_FIELD_ORDER.map((field) => [field, fb.nonNullable.control(visible[field])]),
+  ) as Record<OptionalField, FormControl<boolean>>;
+  return fb.group(controls);
 }
 
 // The Saison-window month options for the settings selects. de-AT month names
@@ -72,6 +106,8 @@ export class ProjectEditDialogComponent {
   readonly stations = signal<RingingStation[]>([]);
   readonly projekttypOptions = PROJEKTTYP_OPTIONS;
   readonly saisonMonthOptions = SAISON_MONTH_OPTIONS;
+  readonly wochengrenzeWeekdayOptions = WOCHENGRENZE_WEEKDAY_OPTIONS;
+  readonly optionalFieldOptions = OPTIONAL_FIELD_OPTIONS;
 
   readonly form = this.fb.nonNullable.group({
     title: [this.data.project.title, Validators.required],
@@ -80,10 +116,10 @@ export class ProjectEditDialogComponent {
       this.data.project.scientists.map((s) => s.id),
       [Validators.required, Validators.minLength(1)],
     ],
-    showOptionalFields: [this.data.project.show_optional_fields],
-    // Netzfelder anzeigen (issue #336): pre-filled from the Projekt, independent
-    // of show_optional_fields and of the Projekttyp. Default on for legacy rows.
-    showNetFields: [this.data.project.show_net_fields ?? true],
+    // Optionale Felder (ADR 0035): angehakt = sichtbar, pre-filled from the
+    // Projekt's opt-out list. A Projekt that hides nothing — including one whose
+    // cached copy predates the field — shows every box ticked.
+    optionalFields: buildOptionalFieldGroup(this.fb, this.data.project.hidden_optional_fields),
     projekttyp: [this.data.project.projekttyp ?? Projekttyp.Sonstiges],
     defaultStationHandle: [this.data.project.default_station?.handle ?? ''],
     // The optional per-Projekt Saison window (ADR 0029): two nullable month
@@ -94,6 +130,13 @@ export class ProjectEditDialogComponent {
       this.data.project.saison_start_month ?? null,
     ),
     saisonEndMonth: this.fb.control<number | null>(this.data.project.saison_end_month ?? null),
+    // Die Wochengrenze (ADR 0036): nicht abwählbar. Ein Projekt ohne gesetzte
+    // Wochengrenze — auch eines, dessen zwischengespeicherte Kopie das Feld noch
+    // nicht kennt — landet auf Montag 00:00, demselben Default wie serverseitig.
+    wochengrenzeWeekday: [
+      this.data.project.wochengrenze_weekday ?? DEFAULT_WOCHENGRENZE_WEEKDAY,
+    ],
+    wochengrenzeTime: [wochengrenzeTimeValue(this.data.project.wochengrenze_time)],
   });
 
   constructor() {
@@ -108,7 +151,14 @@ export class ProjectEditDialogComponent {
       this.form.markAllAsTouched();
       return;
     }
-    this.dialogRef.close(this.form.getRawValue());
+    const {optionalFields, wochengrenzeTime, ...rest} = this.form.getRawValue();
+    this.dialogRef.close({
+      ...rest,
+      hiddenOptionalFields: hiddenOptionalFieldsFrom(optionalFields),
+      // Ein geleertes Uhrzeit-Feld ist kein „keine Wochengrenze", sondern
+      // Mitternacht — die Wochengrenze lässt sich nicht abschalten (ADR 0036).
+      wochengrenzeTime: wochengrenzeTimeValue(wochengrenzeTime),
+    });
   }
 
   cancel(): void {

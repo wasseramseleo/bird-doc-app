@@ -481,6 +481,19 @@ class ProjectSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    # Optionale Felder (ADR 0035): the opt-out list, validated against the
+    # ``OptionalField`` vocabulary instead of trusting the JSONField, which has no
+    # ``choices`` and never sees ``full_clean()`` on the create path. This is THE
+    # place the backend vocabulary and its hand-mirrored frontend twin are kept from
+    # drifting apart: both readers ignore a key they do not know, so a typo would
+    # otherwise persist in silence as „nothing hidden" (the same reasoning as the
+    # Parasit ListField, issue #406). Order-independent and de-duplicated in
+    # ``validate_hidden_optional_fields`` — the list is a set of switched-off fields.
+    hidden_optional_fields = serializers.ListField(
+        child=serializers.ChoiceField(choices=Project.OptionalField.choices),
+        required=False,
+        allow_empty=True,
+    )
 
     class Meta:
         model = Project
@@ -488,8 +501,10 @@ class ProjectSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
-            "show_optional_fields",
-            "show_net_fields",
+            # Optionale Felder (ADR 0035): ONE opt-out list replacing the retired
+            # ``show_optional_fields`` / ``show_net_fields`` booleans — a hard cut,
+            # with no derived pass-through of the two across the offline window.
+            "hidden_optional_fields",
             "projekttyp",
             # The optional per-Projekt Saison window (ADR 0029): two nullable month
             # fields (1–12) set in the Projekt settings — read on GET so the
@@ -497,6 +512,12 @@ class ProjectSerializer(serializers.ModelSerializer):
             # (the ViewSet's IsOrgAdminOrReadOnly gates the whole write).
             "saison_start_month",
             "saison_end_month",
+            # The per-Projekt Wochengrenze (ADR 0036): Wochentag + Uhrzeit, both
+            # NON-nullable with a Montag-00:00 default, so every read carries a
+            # usable pair and „unkonfiguriert" never becomes a client-side special
+            # case. Writable Admin-only, like the Saison window beside it.
+            "wochengrenze_weekday",
+            "wochengrenze_time",
             "organization",
             "organization_id",
             "central",
@@ -554,6 +575,16 @@ class ProjectSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"scientist_ids": _("Ein Projekt braucht mindestens eine:n Beringer:in.")}
             )
+
+    def validate_hidden_optional_fields(self, value):
+        """Normalise the opt-out list to a canonical, de-duplicated form.
+
+        The list names *which* fields are switched off, not an order: a key given
+        twice is one switched-off field, and two Projekte handed the same keys in
+        different orders end up configured identically. Storing it in vocabulary
+        order makes that observable rather than merely intended."""
+        chosen = set(value)
+        return [field.value for field in Project.OptionalField if field.value in chosen]
 
     def validate(self, attrs):
         station = attrs.get("default_station")

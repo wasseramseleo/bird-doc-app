@@ -32,8 +32,6 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     id: 'p1',
     title: 'Schilfgürtel Linz',
     description: '',
-    show_optional_fields: false,
-    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', name: 'IWM Linz' } as Project['organization'],
     default_station: null,
@@ -46,7 +44,9 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 
 function makeStats(overrides: Partial<ProjectStats> = {}): ProjectStats {
   return {
-    range: { from: '2026-06-26', to: '2026-07-03', preset: 'week' },
+    // Vienna ISO-8601 instants since ADR 0036 — `from` inclusive, `to` exclusive,
+    // the same shape for every preset. The dashboard carries them, never renders them.
+    range: { from: '2026-06-27T12:00:00+02:00', to: '2026-07-03T09:30:00+02:00', preset: 'week' },
     totals: { faenge: 120, artenzahl: 17, fangtage: 16, erstfaenge: 90, wiederfaenge: 30 },
     top_species: [
       { species_id: 'sp-1', name: 'Mönchsgrasmücke', count: 34 },
@@ -510,7 +510,11 @@ describe('ProjectDashboardComponent', () => {
     expect(second.request.params.get('preset')).toBe('month');
     second.flush(
       makeStats({
-        range: { from: '2026-06-03', to: '2026-07-03', preset: 'month' },
+        range: {
+          from: '2026-06-03T00:00:00+02:00',
+          to: '2026-07-04T00:00:00+02:00',
+          preset: 'month',
+        },
         top_species: [{ species_id: 'sp-9', name: 'Buchfink', count: 99 }],
         series: {
           days: ['2026-06-10', '2026-07-01'],
@@ -976,11 +980,14 @@ describe('ProjectDashboardComponent', () => {
     httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
     fixture.detectChanges();
 
-    // Nothing removed: the four original presets plus the additive Heute.
+    // Nothing removed: the four original presets plus the additive Heute. The
+    // week preset reads „Diese Woche" since ADR 0036 — the range runs from the
+    // Projekt's Wochengrenze up to now, so the label has to say so.
     const texts = presetButtonTexts(fixture);
     expect(texts).toEqual(
-      jasmine.arrayContaining(['Letzte Woche', 'Letzter Monat', 'Dieses Jahr', 'Alles', 'Heute']),
+      jasmine.arrayContaining(['Diese Woche', 'Letzter Monat', 'Dieses Jahr', 'Alles', 'Heute']),
     );
+    expect(texts).not.toContain('Letzte Woche');
     // The custom Von/Bis range is still present too.
     expect(fixture.nativeElement.querySelector('.range-selector__custom')).not.toBeNull();
     httpMock.verify();

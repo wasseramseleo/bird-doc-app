@@ -26,7 +26,6 @@ const PROJECT = {
   id: 'p1',
   title: 'Schilfgürtel Linz',
   description: '',
-  show_optional_fields: true,
   organization: STATION.organization,
   default_station: STATION,
   scientists: [],

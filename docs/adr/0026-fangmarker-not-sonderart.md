@@ -65,6 +65,19 @@ on `Species`. The real Art and Ring are always kept.
 - **Tot-Fund visual + export** — **no** form frame/badge; the IWM export gets
   **no** row colour and keeps the method columns; Tot-Fund reaches the export only
   as the "Tot-Fund" text already in the Bemerkung column.
+
+> **Amended (ADR 0034).** Two changes to the two bullets above.
+>
+> 1. Tot-Fund no longer reaches the export "solely via the Bemerkung": its row now
+>    carries **Umstand 08** and **Zustand 2**.
+> 2. The Nicht-Standard blanking rule is **restated about the source of the value,
+>    not a fixed column list**: Nicht-Standard blanks the method columns **the
+>    Projekt supplies**. `Fangmethode` and `Lockmittel` are always the Projekt's, so
+>    they always blank. `Umstand` blanks too — **unless** the capture is also a
+>    Tot-Fund, in which case 08 is a fact about *that* capture rather than a Projekt
+>    default, and survives; so does Zustand 2. This resolves the collision the
+>    original wording left open for a capture carrying **both** markers, which the
+>    same ADR explicitly permits.
 - **Both markers** — a distinct **row icon** in the "Letzte Fänge" list *and* the
   "Bisherige Fänge" (Wiederfang-Historie) table.
 - **Statistics unchanged (for now)** — the markers do **not** alter the dashboard
@@ -83,6 +96,11 @@ on `Species`. The real Art and Ring are always kept.
 - **Reuse the project-level Umstand code for non-standard** — rejected: Umstand is
   a Projekt property, constant across its captures (CONTEXT.md), so it cannot
   flag a single capture.
+  > **Note (ADR 0034).** This rejection stands for *Nicht-Standard*, which has no
+  > IWM circumstance code of its own. It does **not** generalise: Tot-Fund *does*
+  > have one (08), so its export row legitimately departs from the Projekt's
+  > Umstand. The difference is that 08 is derived from the marker and never
+  > entered — the capture gains no Umstand field.
 
 ## Consequences
 

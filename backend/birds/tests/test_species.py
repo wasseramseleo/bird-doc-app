@@ -221,6 +221,102 @@ def test_active_list_filter_still_limits_which_species_appear(
 
 
 @pytest.mark.django_db
+def test_special_kind_param_finds_a_sonderart_that_is_off_the_first_page(
+    auth_client, sentinel_species, scientist, ringing_station, project
+):
+    """The defect this parameter closes (#427): a rare Sonderart is nowhere near
+    the usage-sorted first page, so asking for an unfiltered page 1 and picking
+    the ``ring_destroyed`` row out of it never finds anything. Asking at the
+    discriminator does."""
+    for index in range(12):
+        used = Species.objects.create(
+            common_name_de=f"Aaatestvogel {index}",
+            common_name_en=f"Aaatest Bird {index}",
+            scientific_name=f"Aaatestus nr{index}",
+            family_name="Aaatestidae",
+            order_name="Aaatestiformes",
+            ring_size=Ring.RingSizes.V,
+        )
+        _use_species(used, scientist, ringing_station, project=project, ring_number=str(index))
+
+    unfiltered = _order(auth_client.get(LIST_URL, {"project": str(project.id)}))
+    assert str(sentinel_species.id) not in unfiltered
+
+    filtered = auth_client.get(
+        LIST_URL, {"project": str(project.id), "special_kind": "ring_destroyed"}
+    )
+    assert _order(filtered) == [str(sentinel_species.id)]
+
+
+@pytest.mark.django_db
+def test_special_kind_param_narrows_to_the_requested_kind_only(
+    auth_client, species, sentinel_species, aves_ignota_species
+):
+    """Each discriminator value answers with its own Sonderart — never the other
+    kind, never a normal taxon."""
+    response = auth_client.get(LIST_URL, {"special_kind": "unknown_species"})
+
+    assert {row["id"] for row in response.json()["results"]} == {str(aves_ignota_species.id)}
+
+
+@pytest.mark.django_db
+def test_special_kind_param_still_honours_the_active_artenliste(
+    auth_client, user, species, sentinel_species
+):
+    """The parameter narrows the candidate set only: the active-Artenliste
+    filtering is untouched, and a Sonderart stays always-selectable through it."""
+    sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
+    sl.species.add(species)
+
+    response = auth_client.get(LIST_URL, {"special_kind": "ring_destroyed"})
+
+    assert {row["id"] for row in response.json()["results"]} == {str(sentinel_species.id)}
+
+
+@pytest.mark.django_db
+def test_unknown_special_kind_returns_an_empty_page(auth_client, species, sentinel_species):
+    """An unknown discriminator value is simply a candidate set nobody matches —
+    an empty 200, never a 400 or a 500."""
+    response = auth_client.get(LIST_URL, {"special_kind": "gibt_es_nicht"})
+
+    assert response.status_code == 200
+    assert response.json()["results"] == []
+
+
+@pytest.mark.django_db
+def test_absent_special_kind_leaves_membership_and_ordering_unchanged(
+    auth_client,
+    user,
+    species,
+    species_other,
+    sentinel_species,
+    aves_ignota_species,
+    scientist,
+    ringing_station,
+    project,
+):
+    """Regression guard for #427: without the parameter the endpoint answers
+    exactly as it did — same membership (Artenliste members plus the
+    always-selectable Sonderart rows), same most-used-first ordering."""
+    sl = SpeciesList.objects.create(name="Mine", user=user, is_active=True)
+    sl.species.add(species)
+    sl.species.add(species_other)
+    _use_species(species_other, scientist, ringing_station, project=project, ring_number="1")
+    _use_species(species_other, scientist, ringing_station, project=project, ring_number="2")
+    _use_species(species, scientist, ringing_station, project=project, ring_number="3")
+
+    order = _order(auth_client.get(LIST_URL, {"project": str(project.id)}))
+
+    assert set(order) == {
+        str(species.id),
+        str(species_other.id),
+        str(sentinel_species.id),
+        str(aves_ignota_species.id),
+    }
+    assert order[:2] == [str(species_other.id), str(species.id)]
+
+
+@pytest.mark.django_db
 def test_species_endpoint_is_read_only(auth_client):
     response = auth_client.post(
         LIST_URL,

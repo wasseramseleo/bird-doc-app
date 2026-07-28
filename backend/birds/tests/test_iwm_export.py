@@ -1,7 +1,9 @@
+import re
 import zipfile
 from datetime import UTC, datetime, time
 from decimal import Decimal
 from io import BytesIO
+from urllib.parse import unquote
 
 import openpyxl
 import pytest
@@ -270,8 +272,9 @@ def test_non_standard_row_is_filled_and_blanks_method_columns(
 def test_tot_fund_row_has_no_fill_and_keeps_method_columns(
     species, scientist, ringing_station, project
 ):
-    """A Tot-Fund row gets no fill and keeps its method columns — it reaches the
-    export solely as the Bemerkung text (ADR 0026)."""
+    """A Tot-Fund row gets no fill and keeps the Projekt's Fangmethode/Lockmittel
+    (ADR 0026). Its Umstand is the one column the marker displaces — see the
+    Tot-Fund code tests below (ADR 0034)."""
     DataEntry.objects.create(
         species=species,
         ring=Ring.objects.create(number="911", size=Ring.RingSizes.V),
@@ -286,7 +289,7 @@ def test_tot_fund_row_has_no_fill_and_keeps_method_columns(
     content = build_iwm_workbook(DataEntry.objects.all())
     row = _read_rows(content)
 
-    assert row["Umstand"] == "25"
+    assert row["Umstand"] == "08"
     assert row["Fangmethode"] == "M"
     assert row["Lockmittel"] == "N"
     assert row["Bemerkungen"] == "Totfund; Umstände: unter dem Netz"
@@ -366,9 +369,10 @@ def test_multi_station_project_exports_each_entrys_own_station_geography(
 
 
 @pytest.mark.django_db
-def test_deferred_columns_remain_blank(species, scientist, ringing_station, project):
-    # Zustand is the one breeding/condition column still deferred (issue #375
-    # filled Brutfleck & Kloake — see their own tests below). It stays blank.
+def test_every_mapped_column_is_written(species, scientist, ringing_station, project):
+    # No condition column is deferred any more: issue #375 filled Brutfleck &
+    # Kloake (see their own tests below) and ADR 0034 brought Zustand in — the
+    # authentic Datenmeldung has no blank Zustand cell.
     ringing_station.country = "Austria"
     ringing_station.save()
     DataEntry.objects.create(
@@ -382,7 +386,7 @@ def test_deferred_columns_remain_blank(species, scientist, ringing_station, proj
 
     row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
 
-    assert row["Zustand"] is None
+    assert row["Zustand"] == "8"
 
 
 # --- Brutfleck & Kloake breeding-indicator columns (issue #375) ----------------
@@ -876,13 +880,12 @@ def test_projekttyp_does_not_change_the_export(species, scientist, ringing_stati
 
 
 @pytest.mark.django_db
-def test_hiding_net_fields_does_not_alter_stored_or_exported_net_data(
+def test_hiding_optional_fields_does_not_alter_stored_or_exported_data(
     species, scientist, ringing_station, project
 ):
-    """Hiding the net block (show_net_fields=False) is display-only (issue #336,
-    ADR 0023): the net-field values already stored on captures are untouched and
-    the IWM export still emits them, so the export is byte-for-byte identical
-    whatever the Projekt's show_net_fields is."""
+    """Switching optional fields off is display-only (ADR 0035): the values already
+    stored on historical captures are untouched and the IWM export still emits them,
+    so the export is byte-for-byte identical whatever the Projekt hides."""
     entry = DataEntry.objects.create(
         species=species,
         ring=Ring.objects.create(number="611", size=Ring.RingSizes.V),
@@ -891,22 +894,385 @@ def test_hiding_net_fields_does_not_alter_stored_or_exported_net_data(
         project=project,
         net_location=7,
         net_height=3,
+        notch_f2=Decimal("12.5"),
         date_time=datetime(2026, 3, 1, 8, 0, tzinfo=UTC),
     )
 
-    assert project.show_net_fields is True
+    assert project.hidden_optional_fields == []
     baseline = build_iwm_workbook(DataEntry.objects.all())
 
-    project.show_net_fields = False
+    project.hidden_optional_fields = [
+        Project.OptionalField.NET_BLOCK,
+        Project.OptionalField.NOTCH_F2,
+    ]
     project.save()
     after = build_iwm_workbook(DataEntry.objects.all())
 
-    # The stored net data on the capture is untouched by flipping the Projekt flag.
+    # The stored values on the capture are untouched by reconfiguring the Projekt.
     entry.refresh_from_db()
     assert entry.net_location == 7
     assert entry.net_height == 3
+    assert entry.notch_f2 == Decimal("12.5")
 
     # And the export payload (everything but the live save-timestamp) is identical,
     # still carrying the Netz value.
     assert _export_payload(after) == _export_payload(baseline)
     assert _read_rows(after)["Netz"] == "7"
+
+
+# --- The export filename follows the Projekttyp (issue #429, ADR 0023) -------
+# The filename is packaging, not payload: it names the programme the Projekt runs
+# so several programmes stay apart in the Downloads folder, while the workbook
+# itself keeps carrying no trace of the Projekttyp.
+
+PROJECTS_URL = "/api/birds/projects/"
+
+# The characters that must never survive into either header form: they are illegal
+# on common filesystems and/or would break the header apart.
+_FORBIDDEN_FILENAME_CHARS = set('"\\/:*?<>|\r\n\t')
+
+
+def _today_iso():
+    return datetime.now().date().isoformat()
+
+
+def _ascii_filename(response):
+    """The ASCII fallback of ``Content-Disposition`` — ``filename="…"``."""
+    match = re.search(r'filename="([^"]*)"', response["Content-Disposition"])
+    assert match, response["Content-Disposition"]
+    return match.group(1)
+
+
+def _utf8_filename(response):
+    """The RFC 5987 form of ``Content-Disposition`` — ``filename*=UTF-8''…`` —
+    decoded exactly the way the frontend decodes it."""
+    match = re.search(r"filename\*=UTF-8''([^;]+)", response["Content-Disposition"])
+    assert match, response["Content-Disposition"]
+    return unquote(match.group(1))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("projekttyp", "prefix"),
+    [
+        (Project.Projekttyp.IWM, "IWM_"),
+        (Project.Projekttyp.IMS, "IMS_"),
+        (Project.Projekttyp.ZUGVOGELMONITORING, "ZUG_"),
+        (Project.Projekttyp.NESTLINGSBERINGUNG, "NEST_"),
+        (Project.Projekttyp.SONSTIGES, ""),
+        # No Projekttyp set at all reads as Sonstiges — and therefore claims no
+        # programme in the filename either.
+        ("", ""),
+    ],
+)
+def test_export_filename_prefix_follows_the_projekttyp(auth_client, project, projekttyp, prefix):
+    project.title = "Donau-Auen"
+    project.projekttyp = projekttyp
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    expected = f"{prefix}Donau-Auen_{_today_iso()}.xlsx"
+    # Both header forms name the same file; the date part is untouched, so
+    # existing folders keep sorting.
+    assert _ascii_filename(response) == expected
+    assert _utf8_filename(response) == expected
+
+
+@pytest.mark.django_db
+def test_export_filename_carries_umlauts_through_the_utf8_form(auth_client, project):
+    """„Fänge Illmitz" must arrive intact, not as „FÃ¤nge Illmitz": the real title
+    rides the RFC 5987 form while the quoted fallback stays pure ASCII."""
+    project.title = "Fänge Illmitz"
+    project.projekttyp = Project.Projekttyp.IWM
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    assert _utf8_filename(response) == f"IWM_Fänge Illmitz_{_today_iso()}.xlsx"
+
+    fallback = _ascii_filename(response)
+    assert fallback.isascii(), fallback
+    assert fallback.startswith("IWM_")
+    assert fallback.endswith(f"_{_today_iso()}.xlsx")
+    assert "Illmitz" in fallback
+
+
+@pytest.mark.django_db
+def test_export_filename_survives_quotes_slashes_and_line_breaks(auth_client, project):
+    """A title with header-breaking characters still yields ONE valid header and a
+    filename a filesystem accepts — the response is not torn apart.
+
+    The fullwidth twins (`＂` U+FF02, `／` U+FF0F, `＼` U+FF3C, `℅` U+2105) are the
+    interesting half: they pass the sanitiser untouched — they are neither control
+    characters nor themselves illegal — and only turn into `"`, `/`, `\\` and `c/o`
+    when the ASCII fallback folds them. That fallback path is the one that tears the
+    quoted-string header apart, so it must be sanitised *after* folding too."""
+    project.title = 'Netz "A"/B\r\nZeile\\Süd\tOst ＂C＂／D＼E ℅ F'
+    project.projekttyp = Project.Projekttyp.ZUGVOGELMONITORING
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    header = response["Content-Disposition"]
+    assert "\r" not in header and "\n" not in header
+    # Exactly one quoted `filename="…"` — a smuggled quote would close it early and
+    # leave an RFC-conformant parser reading a truncated name plus garbage.
+    assert header.count('"') == 2, header
+
+    for name in (_ascii_filename(response), _utf8_filename(response)):
+        assert not (set(name) & _FORBIDDEN_FILENAME_CHARS), name
+        assert name.startswith("ZUG_")
+        assert name.endswith(f"_{_today_iso()}.xlsx")
+
+    # And the attachment is still a readable workbook.
+    assert SHEET_NAME in openpyxl.load_workbook(BytesIO(response.content)).sheetnames
+
+
+@pytest.mark.django_db
+def test_export_filename_falls_back_to_a_neutral_name(auth_client, project):
+    """A title of which nothing survives sanitising falls back to a neutral name —
+    never to an empty one."""
+    project.title = '  "/\\  '
+    project.projekttyp = Project.Projekttyp.IWM
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    suffix = f"_{_today_iso()}.xlsx"
+    for name in (_ascii_filename(response), _utf8_filename(response)):
+        assert name.startswith("IWM_")
+        assert name.endswith(suffix)
+        assert name[len("IWM_") : -len(suffix)].strip(), name
+
+
+@pytest.mark.django_db
+def test_export_filename_length_is_capped(auth_client, project):
+    """A runaway title is trimmed so the download does not hit a filesystem's
+    name-length limit; the prefix and the date part still survive."""
+    # The longest title the model actually permits — asking for more is not a
+    # runaway title but an invalid one, and PostgreSQL rejects it outright where
+    # SQLite would silently accept it.
+    project.title = "Ö" * Project._meta.get_field("title").max_length
+    project.projekttyp = Project.Projekttyp.NESTLINGSBERINGUNG
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    for name in (_ascii_filename(response), _utf8_filename(response)):
+        assert len(name) <= 120, len(name)
+        assert name.startswith("NEST_")
+        assert name.endswith(f"_{_today_iso()}.xlsx")
+
+
+@pytest.mark.django_db
+def test_downloaded_workbook_still_carries_no_projekttyp(
+    auth_client, project, species, scientist, ringing_station
+):
+    """The filename names the programme, the sheet does not (ADR 0023): the
+    Meldestelle finds no trace of the Projekttyp in the downloaded workbook."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="712", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 3, 1, 8, 0, tzinfo=UTC),
+    )
+    project.projekttyp = Project.Projekttyp.ZUGVOGELMONITORING
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    rows = _read_all_rows(response.content)
+    assert len(rows) == 1
+    assert not any("projekttyp" in str(header).lower() for header in rows[0])
+    assert not any("ZUGVOGELMONITORING" in str(value) for value in rows[0].values())
+
+
+# --- Tot-Fund codes: Umstand 08 + Zustand 2 (ADR 0034, issue #428) ------------
+# The Meldestelle reads codes, not prose: a Tot-Fund's row carries Umstand 08 and
+# Zustand 2 instead of reaching the export only as its Bemerkung text. Both codes
+# are *derived* from the Fangmarker — nothing is stored on the capture. Zustand
+# enters the column mapping at the same time: every authentic Datenmeldung row
+# carries one, so an ordinary row asserts 8 (lebend, unverletzt freigelassen).
+
+
+@pytest.mark.django_db
+def test_ordinary_row_exports_zustand_8(species, scientist, ringing_station, project):
+    """Every ordinary row carries Zustand 8 — the column is no longer blank."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="950", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Zustand"] == "8"
+    assert row["Umstand"] == "25"  # the Projektwert, untouched
+
+
+@pytest.mark.django_db
+def test_tot_fund_exports_umstand_08_and_zustand_2_and_keeps_bemerkung(
+    species, scientist, ringing_station, project
+):
+    """A Tot-Fund displaces the Projekt's Umstand with 08 and asserts Zustand 2 —
+    and keeps its Bemerkung alongside, so the Todesumstände stay readable."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="951", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        is_dead_recovery=True,
+        comment="Totfund; Umstände: unter dem Netz",
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Umstand"] == "08"
+    assert row["Zustand"] == "2"
+    assert row["Bemerkungen"] == "Totfund; Umstände: unter dem Netz"
+
+
+@pytest.mark.django_db
+def test_tot_fund_codes_are_derived_from_the_marker_not_stored(
+    species, scientist, ringing_station, project
+):
+    """The codes are derived at export time, never persisted: dropping the
+    Fangmarker on the very same capture hands the row straight back to the
+    Projektwert and the default Zustand, and the Projekt's own circumstance is
+    never rewritten by an export."""
+    entry = DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="952", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        is_dead_recovery=True,
+        comment="Totfund; Umstände: Katze",
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    marked = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+    assert (marked["Umstand"], marked["Zustand"]) == ("08", "2")
+
+    entry.is_dead_recovery = False
+    entry.save(update_fields=["is_dead_recovery"])
+    unmarked = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert (unmarked["Umstand"], unmarked["Zustand"]) == ("25", "8")
+    project.refresh_from_db()
+    assert project.circumstance == "25"
+
+
+@pytest.mark.django_db
+def test_tot_fund_and_non_standard_together_keep_the_tot_fund_codes(
+    species, scientist, ringing_station, project
+):
+    """Both Fangmarker on one capture: the Nicht-Standard-Fang blanks the columns
+    the *Projekt* supplies (Fangmethode, Lockmittel), while the Tot-Fund's 08 —
+    a fact about that very capture — survives, as does its Zustand 2. The amber
+    row fill is unchanged."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="953", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        is_dead_recovery=True,
+        is_non_standard=True,
+        comment="Totfund; Umstände: Scheibenanflug",
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+    )
+
+    content = build_iwm_workbook(DataEntry.objects.all())
+    row = _read_rows(content)
+
+    assert row["Umstand"] == "08"
+    assert row["Zustand"] == "2"
+    assert row["Fangmethode"] is None
+    assert row["Lockmittel"] is None
+    assert _row_fills(content) == [True]
+
+
+@pytest.mark.django_db
+def test_ring_vernichtet_row_carries_no_zustand_but_keeps_the_projekt_umstand(
+    sentinel_species, scientist, ringing_station, project
+):
+    """A „Ring vernichtet" row had no bird whose condition could be asserted — the
+    same reasoning that leaves its biometry blank — so it carries no Zustand at
+    all. Its Umstand stays the Projektwert."""
+    DataEntry.objects.create(
+        species=sentinel_species,
+        ring=Ring.objects.create(number="954", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 2, 1, 8, 0, tzinfo=UTC),
+        bird_status=None,
+        age_class=None,
+        sex=None,
+        comment="Produktionsfehler",
+    )
+
+    row = _read_rows(build_iwm_workbook(DataEntry.objects.all()))
+
+    assert row["Zustand"] is None
+    assert row["Umstand"] == "25"
+
+
+@pytest.mark.django_db
+def test_tot_fund_survives_export_import_export_as_a_marker(
+    species, scientist, ringing_station, project, organization
+):
+    """The full loop: the codes make a Tot-Fund machine-readable, so it comes back
+    from an import as the Fangmarker itself — not as prose — and the second export
+    carries the very same codes (ADR 0034 closes ADR 0013's silent gap)."""
+    ringing_station.place_code = "AU03"
+    ringing_station.region = "Oberösterreich"
+    ringing_station.country = "Austria"
+    ringing_station.save()
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="00955", size=Ring.RingSizes.V, organization=organization),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        organization=organization,
+        is_dead_recovery=True,
+        comment="Totfund; Umstände: Scheibenanflug",
+        date_time=make_aware(datetime(2026, 6, 30, 8, 15)),
+    )
+
+    first = build_iwm_workbook(DataEntry.objects.filter(project=project))
+    assert _read_rows(first)["Umstand"] == "08"
+
+    # Remove the source capture so the re-import is not skipped as a duplicate of
+    # the very data it round-trips, then import into a fresh Projekt of the same
+    # Organisation (Beringer and Station re-resolve, nothing is auto-created).
+    DataEntry.objects.filter(project=project).delete()
+    fresh_project = Project.objects.create(title="Round-Trip", organization=organization)
+    result = commit_import(first, fresh_project)
+
+    assert result["created"] == 1
+    assert result["errors"] == []
+    clone = DataEntry.objects.get(project=fresh_project)
+    assert clone.is_dead_recovery is True
+    assert clone.comment == "Totfund; Umstände: Scheibenanflug"
+
+    second = _read_rows(build_iwm_workbook(DataEntry.objects.filter(project=fresh_project)))
+    assert second["Umstand"] == "08"
+    assert second["Zustand"] == "2"
+    assert second["Bemerkungen"] == "Totfund; Umstände: Scheibenanflug"

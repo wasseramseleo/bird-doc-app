@@ -79,8 +79,14 @@ A named campaign that groups captures, scoped to one Organisation and a **non-em
 _Avoid_: Campaign
 
 **Projekttyp**:
-The ringing programme a Projekt runs under, chosen from a fixed single-valued list — **IWM, IMS, Zugvogelmonitoring, Nestlingsberingung, Sonstiges**. Purely a **descriptive, internal** organising label: it is **never exported** (the IWM export ignores it) and **drives no behaviour** — in particular it does **not** gate any capture field. Optional; a Projekt with none set reads as Sonstiges. Deliberately **decoupled from field visibility**: although Nestlingsberingung inherently uses no mist-nets, whether a Projekt shows the Netz/Netzfach fields is a **separate per-Projekt toggle**, not derived from the type — the type may at most seed that toggle's default at project creation, never enforce it.
+The ringing programme a Projekt runs under, chosen from a fixed single-valued list — **IWM, IMS, Zugvogelmonitoring, Nestlingsberingung, Sonstiges**. A **descriptive, internal** organising label. It **never appears in the exported data** — the Meldestelle sees no trace of it, the Fangdaten sheet has no column for it — and it **gates no capture field**. It **may, however, label the export *file***: the workbook is named `IWM_ / IMS_ / ZUG_ / NEST_` after the type, and a **Sonstiges or untyped** Projekt gets **no prefix at all** rather than an invented one (ADR 0023). An earlier version of this entry said "never exported / drives no behaviour" flatly; the rule is about the *data*, not the packaging. Optional; a Projekt with none set reads as Sonstiges.
+Deliberately **decoupled from field visibility**: although Nestlingsberingung inherently uses no mist-nets, which fields a Projekt shows is the separate, manually-set **Optionale Felder** selection, never derived from the type. ADR 0023 permits the type to *seed* that selection's default at creation; that permission is deliberately **left unused** (ADR 0035), so two Projekte created the same way never differ silently — the same ruling ADR 0029 made for the Saison.
 _Avoid_: Project type (English), Programm, Projektkategorie, Kategorie
+
+**Optionale Felder**:
+The capture-form fields a Projekt may switch **off**, chosen individually per Projekt from a fixed vocabulary of seven: **Brutfleck, CPL+, Hungerstreifen, Parasit, Kerbe F2, Innenfuß** and the **Netz-Block** (Netznr., Netzfach, Flugrichtung — one item, since they are only ever wanted together). Everything else the form asks for is **not** optional: the Spine (Station, Beringer, Datum, Art, Ringstatus, Zentrale, Ringgröße, Ringnummer, Bemerkung) identifies the record, and the Kern (Alter, Geschlecht, Fett, Muskel, Kleingefieder, Handschwingen, Tarsus, Teilfederlänge, Flügellänge, Gewicht) feeds the Datenmeldung and the Artennorm checks — a Projekt cannot switch those off and quietly ship an empty column (ADR 0035).
+Modelled as an **opt-out**: a Projekt records only what it has switched *off*, so nothing configured means every optional field is shown, and an optional field added later appears everywhere without touching a single Projekt. **Display-only** — values already stored on historical captures are untouched and still export, exactly as the retired Netzfelder toggle behaved. Admin-only, like the rest of Projektverwaltung.
+_Avoid_: Feldkonfiguration, Formularprofil, Zusatzfelder; "optionale Felder" as an all-or-nothing switch (the single toggle it replaced)
 
 **Erstfang / Wiederfang**:
 First capture of a bird (new ring applied) vs. a later recapture of an already-ringed bird. A physical ring is applied to a bird exactly once, so within an Organisation a given ring — now keyed by **(Organisation, Zentrale, Ringgröße, Nummer)** (ADR 0019, extending ADR 0006) — may be the subject of **at most one Erstfang** — a second Erstfang on the same ring is a genuine ring-uniqueness collision and is refused (`capture_service.create_capture`), while any number of Wiederfänge of that ring are expected. A **gelöschter** Erstfang does not count against this: deleting it frees the ring for a new one (ADR 0030). This is what turns two concurrent offline devices that record the same Erstfang into exactly one flagged sync error on the losing device, never a silent duplicate (issue #164). An **Erstfang** — and a **Ring vernichtet** — always carries the **Projekt-Zentrale** (AUW today), so a free-form, non-Austrian Ringgröße can only appear on a **Wiederfang** of a foreign ring; the next-number rope suggestion counts only Erstfang/Ring-vernichtet entries and so never sees a foreign size.
@@ -91,7 +97,7 @@ The **first record of an Art within a selected range** — the per-species arriv
 _Avoid_: First record (English), Erstfang (a different concept — the first capture of an individual bird), Saison-Erstfang
 
 **Fangtag**:
-A single calendar day (Europe/Vienna) on which a Projekt recorded at least one capture — the unit the dashboard groups daily figures by. A day with no capture is not a Fangtag: the daily series is sparse (only days that happened), never a padded continuous calendar.
+A single calendar day (Europe/Vienna) on which a Projekt recorded at least one capture — the unit the dashboard groups daily figures by. A day with no capture is not a Fangtag: the daily series is sparse (only days that happened), never a padded continuous calendar. It stays a **calendar** day even where the Projekt's **Wochengrenze** falls mid-day: the Saturday a Sa-12:00 week turns on is one Fangtag, but it appears in two consecutive weekly views as two partial bars, its morning in the one and its afternoon in the other. A Fangwoche is therefore not "seven Fangtage" and the two units are deliberately not aligned.
 _Avoid_: Catch day (English), Session, Fangsession
 
 **Fänge / Individuenzahl**:
@@ -105,6 +111,11 @@ _Avoid_: Species count (English), Artenvielfalt / diversity (a plain richness co
 **Saison**:
 A ringing campaign period a Beringer treats as one stretch of effort (e.g. an autumn migration run). Modelled as an **optional per-Projekt recurring month window** (`saison_start_month`…`saison_end_month`, inclusive, wrap-around allowed so Nov–März spans the year boundary) — **not** a separate entity/row, and set manually per Projekt with **no Projekttyp coupling** (ADR 0029). It drives the dashboard's **„Diese Saison"** preset: in-season it shows the current occurrence up to today, off-season the most-recently-ended one. A Projekt with no window configured simply hides the preset. To the user a Saison is still only a date range over the Fangtage, never anything more than the chosen window.
 _Avoid_: Season (English); year (as a synonym — a calendar year is only a rough stand-in for a Saison)
+
+**Wochengrenze**:
+The instant a Projekt's ringing week turns over — a **weekday plus a time of day** (e.g. Samstag 12:00, Europe/Vienna), set manually per Projekt beside the Saison and Admin-only, exactly like it (ADR 0029). It exists because a Beringungsbetrieb's week is a rhythm of effort, not a calendar convention: a run that goes Samstag Mittag to Samstag Mittag is one week's work, and cutting it at midnight drags the tail of the previous week into this one's figures.
+It governs the dashboard's **„Diese Woche"** preset and nothing else — Heute stays a calendar day, and Monat/Jahr/Saison keep their midnight bounds (ADR 0036). „Diese Woche" means **the most recent Wochengrenze up to now**, an in-progress range like „Diese Saison" in-season, deliberately **not** the last completed week. Every Projekt has one: unconfigured means **Montag 00:00**, so the preset has a single meaning everywhere and never depends on invisible configuration. This replaced a rolling „letzte 7 Tage" range that was labelled „Letzte Woche" and was neither.
+_Avoid_: Week boundary (English), Wochenwechsel, Wochenstart (it is an instant, not a date), Fangwoche (the resulting range, not the boundary)
 
 **Diesjährig**:
 A bird hatched in the current calendar year (age class 3). Diesjährig gates a single field — the Kleingefieder *Fortschritt* (post-juvenile small-feather moult progress, J/U/M/N), recorded for diesjährige birds alone because only a this-year bird undergoes its first post-juvenile moult. The Kleingefieder *Intensität* and the Handschwingenmauser are recorded for **all** age classes.
@@ -154,9 +165,18 @@ The Fangmarker for a dead ringed bird (found dead, or handed in) — the real Ar
 and Ring stay. Clicking it opens a popup for the **Todesumstände** (required); the
 Bemerkung is then composed as **„Totfund; Umstände: <Eingabe>"** and stays
 mandatory. The Todesumstände is not stored separately — it lives inside the
-composed Bemerkung. In the IWM export it surfaces only as that Bemerkung text in
-the Bemerkungsspalte — no row colour, method columns unchanged. Carries a row icon in „Letzte Fänge" and the Wiederfang-Historie. Not
+composed Bemerkung. In the IWM export that Bemerkung text travels along in the
+Bemerkungsspalte and the row takes **no row colour**. Carries a row icon in „Letzte Fänge" and the Wiederfang-Historie. Not
 an Erst/Wiederfang distinction and not a Sonderart.
+Beyond the Bemerkung the export row also sets its **Umstand to 08** and its
+**Zustand to 2** (ADR 0034) — the only capture-level facts that displace a
+Projekt-derived export column. (Until ADR 0034 a Tot-Fund reached the export
+*solely* as that Bemerkung text, leaving the method columns at the Projekt's
+values; that is what the two codes replaced.) Those two codes make a Tot-Fund **machine-readable**,
+so the IWM import reconstructs the marker from **Umstand 08 alone** (Zustand is
+corroborating, never required); a reconstructed Tot-Fund whose file row carries no
+Bemerkung gets the bare word „Totfund" — a transcription of the code, never a
+fabricated Todesumstände clause.
 _Avoid_: Totmeldung, Wiederfund (a recovery need not be dead), Sonderart
 
 **Nicht-Standard-Fang**:
@@ -164,8 +184,12 @@ The Fangmarker for a bird caught **outside the Standard-Fangprotokoll** (Handfan
 Zufallsfang, Schaufang). It makes the Bemerkung mandatory (with a hint) and
 outlines the form with a coloured frame + badge. In the IWM export its row is
 background-coloured — purely for the user's own review, since the Meldestelle
-ignores formatting — and the three project-derived method columns (**Fangmethode,
-Lockmittel, Umstand**) are left empty. Carries a row icon in „Letzte Fänge" and
+ignores formatting — and the method columns **the Projekt supplies** are left
+empty. That is the rule, and it is deliberately phrased about the *source* of the
+value rather than a fixed column list (ADR 0034): **Fangmethode** and **Lockmittel**
+are always the Projekt's, so they always blank; **Umstand** blanks too — unless the
+capture is also a **Tot-Fund**, whose 08 is a fact about that capture and therefore
+survives the combination, as does its Zustand 2. Carries a row icon in „Letzte Fänge" and
 the Wiederfang-Historie. Does not change the standard statistics today (deferred).
 _Avoid_: Beifang, Zufallsfang (one cause of it, not the marker itself), Sonderart
 
@@ -194,8 +218,12 @@ Any lure used to attract the bird, recorded as an IWM code (e.g. N = no lure). A
 _Avoid_: Bait, decoy
 
 **Umstand**:
-The circumstance under which a bird was caught, recorded as an IWM code (e.g. 25 = caught by humans for a scientific project). A property of the Projekt. Distinct from _Zustand_ (the bird's condition, a separate IWM field).
+The circumstance under which a bird was caught, recorded as an IWM code (e.g. 25 = caught by humans for a scientific project). A property of the **Projekt** — the Beringer never types one. It is nonetheless not *invariably* the Projekt's value in the export: a **Tot-Fund** is a statement about the circumstance of *that* capture, so its row is exported as **08** instead (ADR 0034). This is the first realisation of the per-capture override ADR 0002 deferred — derived from the Fangmarker, never entered. Distinct from _Zustand_ (the bird's condition, a separate IWM field).
 _Avoid_: Reason, condition
+
+**Zustand**:
+The bird's condition when it left the Beringer's hand, recorded as an IWM code. **Every** exported row carries one — the authentic Datenmeldung has no blank Zustand cell — so BirdDoc emits **8** (lebend, unverletzt freigelassen) by default and **2** on a **Tot-Fund** (ADR 0034). Not modelled per capture and not enterable: BirdDoc records no condition beyond the Fangmarker, so the 8 is an assertion the app makes on the Beringer's behalf, not something it knows. A bird released alive but injured is therefore exported as 8 today; recording condition properly would mean a real per-capture field. Distinct from _Umstand_ (the circumstance of the catch).
+_Avoid_: Condition (English), Vogelzustand, Verfassung
 
 **Referenzprojekt**:
 The de-identified demo tenant — realised as a real **Organisation** (currently _BirdDoc Demo_, handle `BDDEMO`) holding one **Projekt** of plausible-but-non-real captures — used to onboard new users, generate marketing visualisations, and test features. Seeded from a real IWM export whose every reality-linking field (Beringer, Station, Ringnummer, capture year) is transformed so no row matches a real capture and the source dataset cannot be recognised or reconstructed: the demo captures are explicitly **not Fangdaten**. It is an ordinary tenant with no schema marker — real Mitglieder never see it (they hold no Mitgliedschaft in it), and code that must single it out does so by its known handle. See ADR 0012.

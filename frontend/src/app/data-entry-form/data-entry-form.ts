@@ -60,6 +60,7 @@ import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cach
 import {resolveQueuedEntryDisplay} from '../core/offline/queued-entry-display';
 import {OutboxEntry} from '../models/outbox-entry.model';
 import {Species} from '../models/species.model';
+import {OPTIONAL_FIELD_ORDER, OptionalField} from '../models/project.model';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {RingingStation} from '../models/ringing-station.model';
 import {Scientist} from '../models/scientist.model';
@@ -171,12 +172,43 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // CONTEXT.md gestützt: die ist heute nur an einer Stelle durchgesetzt (Heute-Seite)
   // und über die Fangliste umgehbar. Diese Lücke ist #386 und hier nicht Thema.
   readonly isOffline = this.connectivity.isOffline;
-  readonly showOptionalFields = computed(() => this.currentProject()?.show_optional_fields ?? true);
-  // #336: whether the capture form shows the net block (Netznr./Netzfach/
-  // Flugrichtung). Mirrors showOptionalFields — read from the active Projekt, so
-  // it is honoured offline from the project cache too. Defaults to true when the
-  // Projekt (or its cached copy) predates the flag, keeping the net fields visible.
-  readonly showNetFields = computed(() => this.currentProject()?.show_net_fields ?? true);
+  // #430 (ADR 0035): the Optionale-Felder vocabulary, exposed so the template can
+  // ask the single visibility question per field key.
+  readonly OptionalField = OptionalField;
+  // The Projekt's opt-out list — read from the active Projekt, so it is honoured
+  // offline from the project cache on exactly the path the Projekte already take.
+  // A Projekt (or a cached copy) that predates the field hides nothing, keeping
+  // every optional field visible.
+  private readonly hiddenOptionalFields = computed(
+    () => new Set<OptionalField>(this.currentProject()?.hidden_optional_fields ?? []),
+  );
+
+  /**
+   * #430 (ADR 0035): the one visibility question the form asks — „is this field key
+   * visible?" — replacing the two separate all-or-nothing computations. Only the
+   * seven vocabulary entries are switchable; Spine and Kern are never asked about.
+   */
+  isOptionalFieldVisible(field: OptionalField): boolean {
+    return !this.hiddenOptionalFields().has(field);
+  }
+
+  // The Ja/Nein-Zeile of the optional block (Brutfleck, CPL+, Hungerstreifen,
+  // Parasit) and the two optional Messwerte (Kerbe F2, Innenfuß) each live in their
+  // own container; the container goes away entirely once every field inside it is
+  // switched off, rather than leaving an empty row behind.
+  readonly showOptionalCheckboxRow = computed(() =>
+    [
+      OptionalField.Brutfleck,
+      OptionalField.CplPlus,
+      OptionalField.Hungerstreifen,
+      OptionalField.Parasit,
+    ].some((field) => !this.hiddenOptionalFields().has(field)),
+  );
+  readonly showOptionalMeasurements = computed(() =>
+    [OptionalField.KerbeF2, OptionalField.Innenfuss].some(
+      (field) => !this.hiddenOptionalFields().has(field),
+    ),
+  );
 
   // Component State
   private readonly entryId = signal<string | null>(this.route.snapshot.paramMap.get('id'));
@@ -510,11 +542,21 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     );
   });
 
-  // #336: the three net controls, gated by the Projekt's showNetFields() — kept
-  // as one list so the focus order and the disabling effect stay in lock-step.
-  private static readonly NET_FIELD_CONTROLS: readonly string[] = [
-    'net_location', 'net_height', 'net_direction',
-  ];
+  // #430 (ADR 0035): which form controls each vocabulary entry gates — kept as one
+  // table so the rendering, the focus order and the disabling effect stay in
+  // lock-step. The Netz-Block is one entry over three controls, which is exactly
+  // why the three are never switchable individually.
+  private static readonly OPTIONAL_FIELD_CONTROLS: Readonly<
+    Record<OptionalField, readonly string[]>
+  > = {
+    [OptionalField.Brutfleck]: ['has_brood_patch'],
+    [OptionalField.CplPlus]: ['has_cpl_plus'],
+    [OptionalField.Hungerstreifen]: ['has_hunger_stripes'],
+    [OptionalField.Parasit]: ['parasites'],
+    [OptionalField.KerbeF2]: ['notch_f2'],
+    [OptionalField.Innenfuss]: ['inner_foot'],
+    [OptionalField.NetzBlock]: ['net_location', 'net_height', 'net_direction'],
+  };
 
   // #341: every numeric control wearing the appNumberMask (both Netz-Nummern +
   // the six Messwerte). Rendered as type="text", so their value accessor is the
@@ -541,19 +583,30 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     'notch_f2', 'inner_foot'
   ];
 
-  // #336: when the Projekt hides the net block, its three controls drop out of the
-  // focus/arrow order entirely so Tab/Enter/arrow-nav never lands on a hidden
-  // input (they are also disabled by the effect below). Otherwise the order is
+  // #336/#430: a control the Projekt switched off drops out of the focus/arrow
+  // order entirely, so Tab/Enter/arrow-nav never lands on a hidden input (it is
+  // also disabled by the effect below). With nothing switched off the order is
   // unchanged.
   private get focusOrder(): string[] {
-    if (this.showNetFields()) {
+    const hidden = this.hiddenOptionalControls();
+    if (hidden.size === 0) {
       return this.baseFocusOrder;
     }
-    return this.baseFocusOrder.filter(
-      (name) => !DataEntryFormComponent.NET_FIELD_CONTROLS.includes(name),
-    );
+    return this.baseFocusOrder.filter((name) => !hidden.has(name));
   }
 
+  // The form-control names behind the currently switched-off vocabulary entries.
+  private readonly hiddenOptionalControls = computed(() => {
+    const names = new Set<string>();
+    for (const field of OPTIONAL_FIELD_ORDER) {
+      if (this.hiddenOptionalFields().has(field)) {
+        for (const name of DataEntryFormComponent.OPTIONAL_FIELD_CONTROLS[field]) {
+          names.add(name);
+        }
+      }
+    }
+    return names;
+  });
 
   birdStatusOptions: SelectOption<BirdStatus | null>[] = [
     {value: null, viewValue: '---'},
@@ -752,21 +805,24 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       }
     });
 
-    // #336: when the Projekt hides the net block (showNetFields() false), the three
-    // net controls are disabled so keyboard nav skips them (focusNext already skips
-    // disabled fields) and the hidden inputs are inert. The values are NOT cleared:
-    // getRawValue() includes disabled controls, so editing an existing capture with
-    // hidden net fields re-saves its stored net data untouched (non-destructive).
+    // #336/#430: a control the Projekt switched off is disabled so keyboard nav
+    // skips it (focusNext already skips disabled fields) and the hidden input is
+    // inert. The values are NOT cleared: getRawValue() includes disabled controls,
+    // so editing an existing capture whose Projekt hides a field re-saves its stored
+    // value untouched — switching a field off is display-only and deletes nothing
+    // (ADR 0035).
     effect(() => {
-      const show = this.showNetFields();
-      for (const name of DataEntryFormComponent.NET_FIELD_CONTROLS) {
-        const control = this.entryForm.get(name)!;
-        if (show) {
-          if (control.disabled) {
+      const hidden = this.hiddenOptionalControls();
+      for (const names of Object.values(DataEntryFormComponent.OPTIONAL_FIELD_CONTROLS)) {
+        for (const name of names) {
+          const control = this.entryForm.get(name)!;
+          if (hidden.has(name)) {
+            if (!control.disabled) {
+              control.disable({ emitEvent: false });
+            }
+          } else if (control.disabled) {
             control.enable({ emitEvent: false });
           }
-        } else if (!control.disabled) {
-          control.disable({ emitEvent: false });
         }
       }
     });
@@ -1010,12 +1066,21 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
 
     this.prefillRememberedBeringer();
 
-    // Issue #19/#57: load the "Ring Vernichtet" Art so the quick-button can
-    // apply it in one click. It is identified by special_kind === 'ring_destroyed'.
-    this.dataAccess.getSpecies('', this.currentProject()?.id).subscribe(response => {
-      this.ringDestroyedSpecies.set(
-        response.results.find(s => s.special_kind === 'ring_destroyed') ?? null,
-      );
+    // Issue #19/#57, #427: load the "Ring Vernichtet" Art so the quick-button can
+    // apply it in one click — ASKED FOR at the special_kind discriminator, not
+    // hoped for on the usage-sorted first page of the unfiltered species list
+    // (where a rare Sonderart practically never appears, which left the button
+    // silently inert online). The same call offline filters the cached species
+    // pool by that identical key, so both paths resolve the same row.
+    this.dataAccess.getSpecies('', this.currentProject()?.id, 'ring_destroyed').subscribe({
+      next: response => {
+        this.ringDestroyedSpecies.set(
+          response.results.find(s => s.special_kind === 'ring_destroyed') ?? null,
+        );
+      },
+      // A failed lookup leaves the Sonderart unresolved; the click says so out
+      // loud rather than doing nothing (see onDestroyedRing).
+      error: () => this.ringDestroyedSpecies.set(null),
     });
 
     // PRD #245: load the per-org Artennormen from the offline reference bundle
@@ -1117,6 +1182,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   onDestroyedRing(): void {
     const ringDestroyed = this.ringDestroyedSpecies();
     if (!ringDestroyed) {
+      // #427: ein Knopf, der wortlos nichts tut, ist genau der Defekt hier.
+      // Lässt sich die Sonderart nicht auflösen, sagt der Klick das sichtbar.
+      this.snackBar.open(
+        'Die Sonderart „Ring vernichtet" ist gerade nicht verfügbar — bitte die Seite neu laden.',
+        'Schließen',
+        {duration: 5000},
+      );
       return;
     }
     const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(

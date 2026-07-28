@@ -21,7 +21,16 @@ const PROJECT = {
   id: 'p1',
   title: 'Schilfgürtel Linz',
   description: '',
-  show_optional_fields: false,
+  // Optionale Felder (ADR 0035): der frühere `show_optional_fields: false`
+  // entspricht genau den sechs abgewählten Optional-Schlüsseln.
+  hidden_optional_fields: [
+    'brood_patch',
+    'cpl_plus',
+    'hunger_stripes',
+    'parasit',
+    'notch_f2',
+    'inner_foot',
+  ],
   organization: STATION.organization,
   default_station: STATION,
   scientists: [],
