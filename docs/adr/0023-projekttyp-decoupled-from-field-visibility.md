@@ -25,6 +25,15 @@ that.
 Sonstiges), single-valued, **never exported** (the IWM export ignores it), and **gates no
 capture field**.
 
+> **Amended (PRD for user feedback, 2026-07-28).** "Never exported" is a rule about the
+> exported **data**, not the packaging. The Meldestelle still sees no trace of the
+> Projekttyp — the Fangdaten sheet has no column for it and none is added — but the
+> **export file is named after it**: `IWM_ / IMS_ / ZUG_ / NEST_` + Projekttitel + Datum.
+> A **Sonstiges or untyped** Projekt gets **no prefix at all**, rather than the old
+> unconditional `IWM_` (which mislabelled every non-IWM project) or an invented filler
+> token. This is presentation, is trivially reversible, and does not re-open "Make
+> Projekttyp feed the IWM export" below — that option stays rejected.
+
 **Net/pocket visibility is an independent per-Projekt boolean** (a new flag parallel to
 the existing `show_optional_fields`), default **on**, hiding the whole net block
 (Netznr. + Netzfach + Flugrichtung) when off. Hiding is display-only — values already
@@ -33,6 +42,13 @@ stored on historical captures are untouched and still export.
 The Projekttyp may at most **seed that toggle's default** at project creation (e.g. a new
 Nestlingsberingung project starts with nets off) — a convenience, never an enforced
 coupling.
+
+> **Amended (ADR 0035).** The independent boolean became one of seven independently
+> switchable **Optionale Felder**, stored as an opt-out list; `show_net_fields` and
+> `show_optional_fields` are both retired into it. The seeding permission above is
+> **left unused**: a new Projekt always starts with every optional field visible,
+> whatever its type — the same ruling ADR 0029 made for the Saison, so two Projekte
+> created the same way never differ silently.
 
 ## Considered options
 
