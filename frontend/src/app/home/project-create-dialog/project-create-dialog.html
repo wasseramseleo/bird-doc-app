@@ -70,13 +70,19 @@
       </mat-form-field>
     </div>
 
-    <mat-checkbox formControlName="showOptionalFields">
-      Optionale Felder im Eingabeformular anzeigen
-    </mat-checkbox>
-
-    <mat-checkbox formControlName="showNetFields">
-      Netzfelder im Eingabeformular anzeigen
-    </mat-checkbox>
+    <!-- Optionale Felder (ADR 0035): dasselbe Control wie im Bearbeiten-Dialog —
+         angehakt = sichtbar. Gespeichert wird, was abgewählt ist. -->
+    <p class="optional-fields-hint">
+      Optionale Felder: angehakt heißt, das Feld erscheint im Eingabeformular.
+      Gewicht, Flügellänge und die übrigen Kernfelder sind nicht abschaltbar.
+    </p>
+    <div class="optional-fields" formGroupName="optionalFields" data-testid="optional-fields">
+      @for (option of optionalFieldOptions; track option.value) {
+        <mat-checkbox [formControlName]="option.value" [attr.data-testid]="'optional-field-' + option.value">
+          {{ option.viewValue }}
+        </mat-checkbox>
+      }
+    </div>
   </mat-dialog-content>
   <mat-dialog-actions align="end">
     <button mat-button type="button" (click)="cancel()">Abbrechen</button>

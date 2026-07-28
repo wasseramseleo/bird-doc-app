@@ -1,8 +1,16 @@
 import pytest
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 
 from birds.models import Organization, Project, RingingStation
 
 LIST_URL = "/api/birds/projects/"
+
+# The Optionale-Felder migration (ADR 0035, issue #430) and the state right before
+# it — used by the migration test that proves the two retired visibility booleans
+# fold into the opt-out list in all four combinations.
+_MIGRATION_BEFORE_OPTIONAL_FIELDS = "0071_unmigratablepayload"
+_MIGRATION_OPTIONAL_FIELDS = "0072_project_hidden_optional_fields"
 
 
 @pytest.mark.django_db
@@ -263,69 +271,285 @@ def test_mitglied_cannot_set_projekttyp(mitglied_client, mitglied_scientist, pro
     assert project.projekttyp == Project.Projekttyp.SONSTIGES
 
 
-# --- Netzfelder anzeigen: per-Projekt net-block visibility toggle -------------
-# Issue #336, PRD #332, ADR 0023. ``show_net_fields`` is an independent per-Projekt
-# boolean (default on, parallel to ``show_optional_fields``, NOT derived from
-# Projekttyp): when off the capture form hides the whole net block. Admin-only to
-# write; hiding is display-only and never touches stored/exported net data.
+# --- Optionale Felder: one per-Projekt opt-out list ---------------------------
+# Issue #430, PRD #426, ADR 0035. ``hidden_optional_fields`` is ONE list over a
+# fixed seven-entry vocabulary (Brutfleck, CPL+, Hungerstreifen, Parasit, Kerbe F2,
+# Innenfuß, Netz-Block) replacing the retired ``show_optional_fields`` /
+# ``show_net_fields`` booleans. Stored is what was switched OFF: an empty list means
+# every optional field is visible, so a Projekt nobody configured shows everything.
+# Admin-only to write; hiding is display-only and never touches stored/exported data.
 
 
 @pytest.mark.django_db
-def test_create_project_defaults_show_net_fields_to_true(auth_client, scientist, organization):
-    """A Projekt created without naming show_net_fields keeps the net fields on."""
+def test_create_project_defaults_hidden_optional_fields_to_empty(
+    auth_client, scientist, organization
+):
+    """A Projekt created without naming the setting hides nothing — the opt-out list
+    starts empty, so every optional field is visible (doing nothing breaks nothing)."""
     response = auth_client.post(LIST_URL, {"title": "P"}, format="json")
 
     assert response.status_code == 201, response.json()
-    assert response.json()["show_net_fields"] is True
-    assert Project.objects.get(title="P").show_net_fields is True
+    assert response.json()["hidden_optional_fields"] == []
+    assert Project.objects.get(title="P").hidden_optional_fields == []
 
 
 @pytest.mark.django_db
-def test_create_project_with_show_net_fields_false_round_trips(
+def test_create_project_with_hidden_optional_fields_round_trips(
     auth_client, scientist, organization
 ):
-    """An explicit show_net_fields=False on create is persisted and echoed back."""
+    """An explicit opt-out list on create is persisted and echoed back."""
     response = auth_client.post(
         LIST_URL,
-        {"title": "P", "show_net_fields": False},
+        {"title": "P", "hidden_optional_fields": ["hunger_stripes", "net_block"]},
         format="json",
     )
 
     assert response.status_code == 201, response.json()
-    assert response.json()["show_net_fields"] is False
-    assert Project.objects.get(title="P").show_net_fields is False
+    assert response.json()["hidden_optional_fields"] == ["hunger_stripes", "net_block"]
+    assert Project.objects.get(title="P").hidden_optional_fields == ["hunger_stripes", "net_block"]
 
 
 @pytest.mark.django_db
-def test_update_project_show_net_fields_round_trips(auth_client, project):
-    """An Admin can hide the net block on an existing Projekt; the value round-trips."""
-    assert project.show_net_fields is True
+def test_update_project_hidden_optional_fields_round_trips(auth_client, project):
+    """An Admin can switch optional fields off on an existing Projekt; the list
+    round-trips."""
+    assert project.hidden_optional_fields == []
 
     response = auth_client.patch(
         f"{LIST_URL}{project.id}/",
-        {"show_net_fields": False},
+        {"hidden_optional_fields": ["cpl_plus"]},
         format="json",
     )
 
     assert response.status_code == 200, response.json()
-    assert response.json()["show_net_fields"] is False
+    assert response.json()["hidden_optional_fields"] == ["cpl_plus"]
     project.refresh_from_db()
-    assert project.show_net_fields is False
+    assert project.hidden_optional_fields == ["cpl_plus"]
 
 
 @pytest.mark.django_db
-def test_mitglied_cannot_set_show_net_fields(mitglied_client, mitglied_scientist, project):
-    """show_net_fields rides the Admin-only write rule: a plain Mitglied cannot
-    change it (the whole Projekt write is refused with a 403)."""
+def test_optional_fields_switch_independently_of_one_another(auth_client, project):
+    """The whole point of ADR 0035: keeping Parasit no longer forces Hungerstreifen,
+    CPL+, Kerbe F2 and Innenfuß along with it. Switching four of the six off leaves
+    the other two — Brutfleck and Parasit — visible."""
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"hidden_optional_fields": ["cpl_plus", "hunger_stripes", "notch_f2", "inner_foot"]},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    hidden = response.json()["hidden_optional_fields"]
+    assert "brood_patch" not in hidden
+    assert "parasit" not in hidden
+
+
+@pytest.mark.django_db
+def test_the_vocabulary_is_the_seven_entries_with_the_net_block_as_one(
+    auth_client, scientist, organization
+):
+    """Exactly seven keys are accepted, and the Netz-Block is ONE of them: Netznr.,
+    Netzfach and Flugrichtung are never switchable individually."""
+    response = auth_client.post(
+        LIST_URL,
+        {
+            "title": "P",
+            "hidden_optional_fields": [
+                "brood_patch",
+                "cpl_plus",
+                "hunger_stripes",
+                "parasit",
+                "notch_f2",
+                "inner_foot",
+                "net_block",
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    assert len(response.json()["hidden_optional_fields"]) == 7
+
+    for single_net_field in ("net_location", "net_height", "net_direction"):
+        refused = auth_client.post(
+            LIST_URL,
+            {"title": "Q", "hidden_optional_fields": [single_net_field]},
+            format="json",
+        )
+        assert refused.status_code == 400, refused.json()
+
+
+@pytest.mark.django_db
+def test_unknown_optional_field_key_is_rejected(auth_client, scientist, organization):
+    """A typo must not pass silently as „nothing hidden": an unknown key is a 400
+    and nothing is created."""
+    response = auth_client.post(
+        LIST_URL,
+        {"title": "P", "hidden_optional_fields": ["hungerstriefen"]},
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    assert "hidden_optional_fields" in response.json()
+    assert not Project.objects.filter(title="P").exists()
+
+
+@pytest.mark.django_db
+def test_core_fields_are_not_switchable(auth_client, scientist, organization):
+    """Gewicht, Flügellänge and the rest of the Kern are outside the vocabulary, so
+    no Projekt can switch them off and quietly file a Datenmeldung with an empty
+    mandatory column."""
+    for core_field in ("weight_gram", "wing_span", "ring_number", "age_class"):
+        response = auth_client.post(
+            LIST_URL,
+            {"title": "P", "hidden_optional_fields": [core_field]},
+            format="json",
+        )
+        assert response.status_code == 400, response.json()
+
+
+@pytest.mark.django_db
+def test_duplicate_optional_field_keys_collapse(auth_client, project):
+    """A key named twice is one switched-off field, not two."""
+    response = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"hidden_optional_fields": ["parasit", "parasit", "net_block"]},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    project.refresh_from_db()
+    assert sorted(project.hidden_optional_fields) == ["net_block", "parasit"]
+
+
+@pytest.mark.django_db
+def test_optional_field_order_is_irrelevant(auth_client, project, organization, scientist):
+    """The list is a set of switched-off fields, not a sequence: two Projekte given
+    the same keys in different orders end up configured identically."""
+    other = Project.objects.create(title="Zweitprojekt", organization=organization)
+    other.scientists.add(scientist)
+
+    first = auth_client.patch(
+        f"{LIST_URL}{project.id}/",
+        {"hidden_optional_fields": ["net_block", "brood_patch"]},
+        format="json",
+    )
+    second = auth_client.patch(
+        f"{LIST_URL}{other.id}/",
+        {"hidden_optional_fields": ["brood_patch", "net_block"]},
+        format="json",
+    )
+
+    assert first.status_code == 200, first.json()
+    assert second.status_code == 200, second.json()
+    assert first.json()["hidden_optional_fields"] == second.json()["hidden_optional_fields"]
+
+
+@pytest.mark.django_db
+def test_mitglied_cannot_set_hidden_optional_fields(mitglied_client, mitglied_scientist, project):
+    """The setting rides the Admin-only write rule: a plain Mitglied cannot
+    reconfigure the mask out from under their colleagues (403)."""
     response = mitglied_client.patch(
         f"{LIST_URL}{project.id}/",
-        {"show_net_fields": False},
+        {"hidden_optional_fields": ["parasit"]},
         format="json",
     )
 
     assert response.status_code == 403
     project.refresh_from_db()
-    assert project.show_net_fields is True
+    assert project.hidden_optional_fields == []
+
+
+@pytest.mark.django_db
+def test_retired_visibility_booleans_are_gone_from_the_payload(auth_client, project):
+    """Hard cut (ADR 0035): both booleans leave the payload with the model, without
+    a derived pass-through across the offline window."""
+    response = auth_client.get(f"{LIST_URL}{project.id}/")
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert "show_optional_fields" not in body
+    assert "show_net_fields" not in body
+    assert "hidden_optional_fields" in body
+
+
+# --- Migration: the two booleans fold into the opt-out list -------------------
+# ADR 0035, all four combinations. ``show_optional_fields=False`` ⇒ the six optional
+# keys; ``show_net_fields=False`` ⇒ the Netz key; both ⇒ all seven; neither ⇒ an
+# empty list, so a Projekt shows after the update exactly what it showed before.
+
+
+@pytest.mark.django_db(transaction=True)
+def test_migration_folds_both_booleans_into_the_opt_out_list():
+    """A Projekt with the optional block off ends up hiding exactly the six optional
+    keys, one with the net block off exactly the Netz key, one with both all seven,
+    and an untouched Projekt an empty list."""
+    executor = MigrationExecutor(connection)
+    try:
+        executor.migrate([("birds", _MIGRATION_BEFORE_OPTIONAL_FIELDS)])
+        old_apps = executor.loader.project_state(
+            [("birds", _MIGRATION_BEFORE_OPTIONAL_FIELDS)]
+        ).apps
+
+        Organization = old_apps.get_model("birds", "Organization")
+        Historic = old_apps.get_model("birds", "Project")
+
+        org = Organization.objects.create(handle="OPTORG", name="Opt Org", country="AT")
+        everything = Historic.objects.create(
+            title="Alles an",
+            organization=org,
+            show_optional_fields=True,
+            show_net_fields=True,
+        )
+        no_optional = Historic.objects.create(
+            title="Optionalblock aus",
+            organization=org,
+            show_optional_fields=False,
+            show_net_fields=True,
+        )
+        no_net = Historic.objects.create(
+            title="Netzblock aus",
+            organization=org,
+            show_optional_fields=True,
+            show_net_fields=False,
+        )
+        nothing = Historic.objects.create(
+            title="Beides aus",
+            organization=org,
+            show_optional_fields=False,
+            show_net_fields=False,
+        )
+
+        executor.loader.build_graph()
+        executor.migrate([("birds", _MIGRATION_OPTIONAL_FIELDS)])
+        new_apps = executor.loader.project_state([("birds", _MIGRATION_OPTIONAL_FIELDS)]).apps
+        Migrated = new_apps.get_model("birds", "Project")
+
+        def hidden(pk):
+            return sorted(Migrated.objects.get(pk=pk).hidden_optional_fields)
+
+        assert hidden(everything.pk) == []
+        assert hidden(no_optional.pk) == [
+            "brood_patch",
+            "cpl_plus",
+            "hunger_stripes",
+            "inner_foot",
+            "notch_f2",
+            "parasit",
+        ]
+        assert hidden(no_net.pk) == ["net_block"]
+        assert hidden(nothing.pk) == [
+            "brood_patch",
+            "cpl_plus",
+            "hunger_stripes",
+            "inner_foot",
+            "net_block",
+            "notch_f2",
+            "parasit",
+        ]
+    finally:
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())
 
 
 # --- Saison window: optional per-Projekt recurring month window --------------

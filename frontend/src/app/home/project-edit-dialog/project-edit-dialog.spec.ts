@@ -9,7 +9,13 @@ import {
   ProjectEditDialogResult,
 } from './project-edit-dialog';
 import {ApiService} from '../../service/api.service';
-import {Project, Projekttyp} from '../../models/project.model';
+import {
+  OPTIONAL_FIELD_LABELS,
+  OPTIONAL_FIELD_ORDER,
+  OptionalField,
+  Project,
+  Projekttyp,
+} from '../../models/project.model';
 import {Organization} from '../../models/organization.model';
 import {Scientist} from '../../models/scientist.model';
 
@@ -18,8 +24,6 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     id: 'p1',
     title: 'Schilfgürtel Linz',
     description: '',
-    show_optional_fields: false,
-    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: {handle: 'ORG1', name: 'IWM Linz'} as Organization,
     default_station: null,
@@ -74,21 +78,54 @@ describe('ProjectEditDialogComponent', () => {
     );
   });
 
-  it('pre-fills the Netzfelder checkbox from the Projekt', () => {
-    const {fixture, component} = setup(makeProject({show_net_fields: false}));
+  // --- Optionale Felder (ADR 0035, issue #430) -------------------------------
+  // The Bearbeiten-Dialog shows the SAME control as the Anlegen-Dialog: one
+  // „angehakt = sichtbar" checkbox per vocabulary entry.
 
-    expect(component.form.controls.showNetFields.value).toBe(false);
-    expect(fixture.nativeElement.textContent).toContain('Netzfelder');
+  it('offers one checkbox per optional field, ticked = visible', () => {
+    const {fixture, component} = setup(
+      makeProject({hidden_optional_fields: [OptionalField.NetzBlock]}),
+    );
+    const boxes = component.form.controls.optionalFields;
+
+    expect(Object.keys(boxes.controls)).toEqual([...OPTIONAL_FIELD_ORDER]);
+    expect(boxes.controls[OptionalField.NetzBlock].value).toBe(false);
+    expect(boxes.controls[OptionalField.Parasit].value).toBe(true);
+    for (const label of Object.values(OPTIONAL_FIELD_LABELS)) {
+      expect(fixture.nativeElement.textContent).toContain(label);
+    }
   });
 
-  it('round-trips the edited Netzfelder value into the dialog result', () => {
-    const {component, dialogRef} = setup(makeProject({show_net_fields: true}));
+  it('ticks every box for a Projekt that hides nothing', () => {
+    // US 33: an unconfigured Projekt shows all optional fields.
+    const {component} = setup(makeProject({hidden_optional_fields: []}));
 
-    component.form.controls.showNetFields.setValue(false);
+    expect(Object.values(component.form.controls.optionalFields.getRawValue())).toEqual(
+      OPTIONAL_FIELD_ORDER.map(() => true),
+    );
+  });
+
+  it('ticks every box for a Projekt whose payload predates the setting', () => {
+    const {component} = setup(makeProject());
+
+    expect(Object.values(component.form.controls.optionalFields.getRawValue())).toEqual(
+      OPTIONAL_FIELD_ORDER.map(() => true),
+    );
+  });
+
+  it('round-trips the un-ticked fields into the dialog result as the opt-out list', () => {
+    const {component, dialogRef} = setup(
+      makeProject({hidden_optional_fields: [OptionalField.Brutfleck]}),
+    );
+
+    // Brutfleck comes back on, Kerbe F2 goes off — the result names exactly what is
+    // switched off after the edit, in vocabulary order.
+    component.form.controls.optionalFields.controls[OptionalField.Brutfleck].setValue(true);
+    component.form.controls.optionalFields.controls[OptionalField.KerbeF2].setValue(false);
     component.submit();
 
     expect(dialogRef.close).toHaveBeenCalledWith(
-      jasmine.objectContaining({showNetFields: false}),
+      jasmine.objectContaining({hiddenOptionalFields: [OptionalField.KerbeF2]}),
     );
   });
 

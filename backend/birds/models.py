@@ -526,6 +526,24 @@ class Project(models.Model):
         TAPE_OTHER = "G", _("Klangattrappe (andere Arten)")
         WHISTLE = "H", _("Lockpfeife")
 
+    class OptionalField(models.TextChoices):
+        # Optionale Felder (ADR 0035): the fixed, app-wide vocabulary of capture-form
+        # fields a Projekt may switch OFF — reference data, identical for every
+        # Organisation, exactly like the Parasit vocabulary. ``NET_BLOCK`` is ONE
+        # entry covering Netznr., Netzfach and Flugrichtung together: the three are
+        # never wanted individually. Everything else the form asks for — the Spine
+        # and the Kern (Gewicht, Flügellänge, …) — is deliberately absent, so no
+        # Projekt can switch a mandatory Datenmeldung column off. Mirrored by hand in
+        # the frontend's ``OptionalField`` enum (project.model.ts) — same keys; the
+        # serializer's ChoiceField is what stops the two drifting silently apart.
+        BROOD_PATCH = "brood_patch", _("Brutfleck")
+        CPL_PLUS = "cpl_plus", _("CPL+")
+        HUNGER_STRIPES = "hunger_stripes", _("Hungerstreifen")
+        PARASIT = "parasit", _("Parasit")
+        NOTCH_F2 = "notch_f2", _("Kerbe F2")
+        INNER_FOOT = "inner_foot", _("Innenfuß")
+        NET_BLOCK = "net_block", _("Netz-Block (Netznr., Netzfach, Flugrichtung)")
+
     class Projekttyp(models.TextChoices):
         # Which programme a Projekt runs — descriptive, internal metadata only
         # (ADR 0023). It is never exported and gates no capture field; an unset
@@ -572,19 +590,21 @@ class Project(models.Model):
         blank=True,
         verbose_name=_("Beringer"),
     )
-    show_optional_fields = models.BooleanField(
-        default=True,
-        verbose_name=_("Optionale Felder anzeigen"),
-    )
-    # Netzfelder anzeigen (issue #336, ADR 0023): an independent per-Projekt
-    # switch — parallel to ``show_optional_fields`` and NOT derived from
-    # ``projekttyp`` — that hides the capture form's whole net block (Netznr.,
-    # Netzfach, Flugrichtung) when off. Default on so every existing Projekt keeps
-    # showing the net fields. Display-only: values already stored on historical
-    # captures are untouched and still export.
-    show_net_fields = models.BooleanField(
-        default=True,
-        verbose_name=_("Netzfelder anzeigen"),
+    # Optionale Felder (ADR 0035): the capture-form fields this Projekt has switched
+    # OFF, as a list of ``OptionalField`` keys. An **opt-out** — the empty default
+    # means every optional field is visible, so a Projekt nobody configured shows
+    # everything and an optional field added later appears everywhere without a
+    # backfill migration. Replaces the retired ``show_optional_fields`` /
+    # ``show_net_fields`` booleans (migration 0072). Stored as JSON for the same
+    # reasons ``DataEntry.parasites`` is: portable across the sqlite dev/test DB and
+    # Postgres prod, JSON-friendly for the offline bundle, and growable by adding a
+    # vocabulary entry without a schema change. NO Projekttyp coupling or seeding —
+    # ADR 0023 permits it, ADR 0035 leaves the permission unused. Display-only:
+    # values already stored on historical captures are untouched and still export.
+    hidden_optional_fields = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name=_("Ausgeblendete optionale Felder"),
     )
     projekttyp = models.CharField(
         max_length=32,

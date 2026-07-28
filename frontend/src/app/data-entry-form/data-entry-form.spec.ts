@@ -34,7 +34,7 @@ import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
 import { ProjectService } from '../service/project.service';
 import { AUDIO_CONTEXT_FACTORY, SoundService } from '../service/sound.service';
 import { WorkbenchStorageService } from '../service/workbench-storage.service';
-import { Project, Projekttyp } from '../models/project.model';
+import { OptionalField, Project, Projekttyp } from '../models/project.model';
 import { RingingStation } from '../models/ringing-station.model';
 import { RingSize } from '../models/ring.model';
 import { AUW_SCHEME_CODE, Central, PROJEKT_ZENTRALE } from '../models/central.model';
@@ -64,8 +64,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -427,8 +425,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: station.organization!,
       default_station: station,
@@ -470,16 +466,30 @@ describe('DataEntryFormComponent', () => {
     });
   });
 
-  describe('per-Projekt Netzfelder visibility (#336)', () => {
-    const NET_CONTROLS = ['net_location', 'net_height', 'net_direction'];
+  // Optionale Felder (ADR 0035, issue #430): the Projekt carries ONE opt-out list
+  // over the seven-entry vocabulary; the mask hides exactly the deselected fields
+  // and nothing else. Replaces the two all-or-nothing computations (#336's
+  // show_net_fields and the older show_optional_fields).
+  describe('per-Projekt Optionale Felder (#430)', () => {
+    // Which form controls each vocabulary entry is expected to gate — asserted
+    // through the rendered form, not through the component's own table.
+    const CONTROLS_BY_FIELD: Record<OptionalField, string[]> = {
+      [OptionalField.Brutfleck]: ['has_brood_patch'],
+      [OptionalField.CplPlus]: ['has_cpl_plus'],
+      [OptionalField.Hungerstreifen]: ['has_hunger_stripes'],
+      [OptionalField.Parasit]: ['parasites'],
+      [OptionalField.KerbeF2]: ['notch_f2'],
+      [OptionalField.Innenfuss]: ['inner_foot'],
+      [OptionalField.NetzBlock]: ['net_location', 'net_height', 'net_direction'],
+    };
+    const ALL_OPTIONAL_CONTROLS = Object.values(CONTROLS_BY_FIELD).flat();
 
-    const projectWithNet = (show_net_fields: boolean): Project =>
+    const projectHiding = (hidden: OptionalField[]): Project =>
       ({
         id: 'p1',
         title: 'Herbst',
         description: '',
-        show_optional_fields: true,
-        show_net_fields,
+        hidden_optional_fields: hidden,
         projekttyp: Projekttyp.Sonstiges,
         organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
         default_station: null,
@@ -488,7 +498,7 @@ describe('DataEntryFormComponent', () => {
         updated: '',
       }) as Project;
 
-    async function setupWith(show_net_fields: boolean) {
+    async function setupWith(project: Project) {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
         imports: [DataEntryFormComponent],
@@ -500,7 +510,7 @@ describe('DataEntryFormComponent', () => {
           {
             provide: ProjectService,
             useValue: {
-              currentProject: signal<Project | null>(projectWithNet(show_net_fields)),
+              currentProject: signal<Project | null>(project),
               setCurrent: () => {},
               clear: () => {},
             },
@@ -517,39 +527,129 @@ describe('DataEntryFormComponent', () => {
       return f;
     }
 
-    const netEl = (f: ComponentFixture<DataEntryFormComponent>, name: string) =>
+    const el = (f: ComponentFixture<DataEntryFormComponent>, name: string) =>
       f.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement | null;
 
-    it('renders the net block and keeps it in the focus order when show_net_fields is true', async () => {
-      const f = await setupWith(true);
+    it('shows every optional field for a Projekt that has configured nothing', async () => {
+      // US 33: doing nothing breaks nothing — an empty opt-out list means all seven.
+      const f = await setupWith(projectHiding([]));
       const component = f.componentInstance;
+      const order = (component as unknown as { focusOrder: string[] }).focusOrder;
 
-      expect(component.showNetFields()).toBe(true);
-      for (const name of NET_CONTROLS) {
-        expect(netEl(f, name)).not.toBeNull();
+      for (const name of ALL_OPTIONAL_CONTROLS) {
+        expect(el(f, name)).not.toBeNull();
         expect(component.entryForm.get(name)!.disabled).toBe(false);
-        // The three net controls participate in Tab/Enter/arrow navigation.
-        expect((component as unknown as { focusOrder: string[] }).focusOrder).toContain(name);
+        expect(order).toContain(name);
       }
     });
 
-    it('hides the net block, disables its controls, and drops them from the focus order when show_net_fields is false', async () => {
-      const f = await setupWith(false);
+    it('shows every optional field for a Projekt whose cached copy predates the setting', async () => {
+      // An older bundle carries no list at all; that reads as „nothing hidden".
+      const legacy = projectHiding([]);
+      delete (legacy as {hidden_optional_fields?: unknown}).hidden_optional_fields;
+      const f = await setupWith(legacy);
+
+      for (const name of ALL_OPTIONAL_CONTROLS) {
+        expect(el(f, name)).not.toBeNull();
+      }
+    });
+
+    for (const field of Object.keys(CONTROLS_BY_FIELD) as OptionalField[]) {
+      it(`hides exactly the controls of "${field}" and nothing else`, async () => {
+        // US 31: the six switch independently of one another, and US 32: the
+        // Netz-Block is ONE entry covering all three net controls.
+        const f = await setupWith(projectHiding([field]));
+        const component = f.componentInstance;
+        const order = (component as unknown as { focusOrder: string[] }).focusOrder;
+
+        for (const name of CONTROLS_BY_FIELD[field]) {
+          // Absent from the DOM, so focus can never land on a hidden input.
+          expect(el(f, name)).toBeNull();
+          // Disabled so keyboard nav skips it and getRawValue stays
+          // inert-but-preserved (switching a field off deletes nothing).
+          expect(component.entryForm.get(name)!.disabled).toBe(true);
+          expect(order).not.toContain(name);
+        }
+        for (const name of ALL_OPTIONAL_CONTROLS) {
+          if (CONTROLS_BY_FIELD[field].includes(name)) {
+            continue;
+          }
+          expect(el(f, name)).not.toBeNull();
+          expect(component.entryForm.get(name)!.disabled).toBe(false);
+          expect(order).toContain(name);
+        }
+      });
+    }
+
+    it('keeps Parasit while dropping Hungerstreifen, CPL+ und Kerbe F2', async () => {
+      // US 30, the feedback that started this: Parasit no longer drags the rest along.
+      const f = await setupWith(
+        projectHiding([
+          OptionalField.Hungerstreifen,
+          OptionalField.CplPlus,
+          OptionalField.KerbeF2,
+        ]),
+      );
+
+      expect(el(f, 'parasites')).not.toBeNull();
+      expect(el(f, 'has_brood_patch')).not.toBeNull();
+      expect(el(f, 'has_hunger_stripes')).toBeNull();
+      expect(el(f, 'has_cpl_plus')).toBeNull();
+      expect(el(f, 'notch_f2')).toBeNull();
+    });
+
+    it('leaves Gewicht, Flügellänge and the rest of the Kern untouched whatever the Projekt hides', async () => {
+      // US 39: the core fields are not switchable at all, so no Projekt can file a
+      // Datenmeldung with an empty mandatory column.
+      const f = await setupWith(projectHiding(Object.keys(CONTROLS_BY_FIELD) as OptionalField[]));
+      const component = f.componentInstance;
+      const order = (component as unknown as { focusOrder: string[] }).focusOrder;
+
+      for (const name of [
+        'weight_gram', 'wing_span', 'feather_span', 'tarsus',
+        'age_class', 'sex', 'fat_deposit', 'muscle_class',
+        'ring_size', 'ring_number', 'comment',
+      ]) {
+        expect(el(f, name)).not.toBeNull();
+        expect(component.entryForm.get(name)!.disabled).toBe(false);
+        expect(order).toContain(name);
+      }
+      // And nothing optional is left behind either.
+      for (const name of ALL_OPTIONAL_CONTROLS) {
+        expect(el(f, name)).toBeNull();
+      }
+    });
+
+    it('hides the whole optional block while „Ring vernichtet" is active, whatever the Projekt configured', async () => {
+      // The Sonderart keeps precedence: there is no bird whose Brutfleck or Kerbe
+      // one could record, so the block goes regardless of the opt-out list.
+      const f = await setupWith(projectHiding([]));
       const component = f.componentInstance;
 
-      expect(component.showNetFields()).toBe(false);
-      const order = (component as unknown as { focusOrder: string[] }).focusOrder;
-      for (const name of NET_CONTROLS) {
-        // Absent from the DOM, so focus can never land on a hidden input.
-        expect(netEl(f, name)).toBeNull();
-        // Disabled so keyboard nav skips them and getRawValue stays inert-but-preserved.
-        expect(component.entryForm.get(name)!.disabled).toBe(true);
-        // Dropped from the shared focus/arrow order entirely.
-        expect(order).not.toContain(name);
+      expect(el(f, 'has_brood_patch')).not.toBeNull();
+      expect(el(f, 'notch_f2')).not.toBeNull();
+      expect(el(f, 'net_location')).not.toBeNull();
+
+      component.onSpeciesSelected({
+        option: {
+          value: {
+            id: 'sent',
+            common_name_de: 'Ring Vernichtet',
+            common_name_en: '',
+            scientific_name: '',
+            family_name: '',
+            order_name: '',
+            ring_size: null,
+            special_kind: 'ring_destroyed',
+          } as Species,
+        },
+      } as MatAutocompleteSelectedEvent);
+      f.detectChanges();
+
+      expect(component.isRingDestroyed()).toBe(true);
+      for (const name of ALL_OPTIONAL_CONTROLS) {
+        expect(el(f, name)).toBeNull();
       }
-      // The fields immediately around the net block still navigate to each other.
-      expect(order).toContain('ring_number');
-      expect(order).toContain('age_class');
     });
   });
 
@@ -1269,8 +1369,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -1500,8 +1598,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -1691,8 +1787,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -3303,8 +3397,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -4756,8 +4848,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -5240,8 +5330,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -5500,8 +5588,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -5777,8 +5863,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -6069,8 +6153,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -6383,8 +6465,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -6694,8 +6774,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -6940,8 +7018,6 @@ describe('DataEntryFormComponent', () => {
       id: 'p1',
       title: 'Herbst',
       description: '',
-      show_optional_fields: true,
-      show_net_fields: true,
       projekttyp: Projekttyp.Sonstiges,
       organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
       default_station: null,
@@ -7449,8 +7525,7 @@ describe('DataEntryFormComponent', () => {
         id: 'p1',
         title: 'Herbst',
         description: '',
-        show_optional_fields: true,
-        show_net_fields: false,
+        hidden_optional_fields: [OptionalField.NetzBlock],
         projekttyp: Projekttyp.Sonstiges,
         organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
         default_station: null,
@@ -7824,8 +7899,6 @@ describe('DataEntryFormComponent unsaved changes reach the CanDeactivate guard (
     id: 'p1',
     title: 'Herbst',
     description: '',
-    show_optional_fields: true,
-    show_net_fields: true,
     projekttyp: Projekttyp.Sonstiges,
     organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
     default_station: null,

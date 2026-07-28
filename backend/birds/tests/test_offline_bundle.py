@@ -583,6 +583,23 @@ def test_bundle_project_carries_its_zentrale(auth_client, scientist, project, or
 
 
 @pytest.mark.django_db
+def test_bundle_project_carries_its_optionale_felder(auth_client, scientist, project, organization):
+    """Each bundled Projekt carries its Optionale-Felder opt-out list (ADR 0035), so
+    the capture mask offers offline exactly the selection it offers online. The two
+    retired visibility booleans are gone from the bundled shape as well — the hard
+    cut has no derived pass-through across the offline window."""
+    project.hidden_optional_fields = ["parasit", "net_block"]
+    project.save()
+
+    payload = auth_client.get(BUNDLE_URL).json()
+    row = next(row for row in payload["projects"] if row["title"] == project.title)
+
+    assert row["hidden_optional_fields"] == ["parasit", "net_block"]
+    assert "show_optional_fields" not in row
+    assert "show_net_fields" not in row
+
+
+@pytest.mark.django_db
 def test_offline_replay_with_flat_central_is_accepted(
     auth_client, species, scientist, ringing_station, project, organization
 ):

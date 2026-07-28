@@ -93,8 +93,9 @@ export class ProjectActionsService {
           description: result.description,
           scientist_ids: result.scientistIds,
           projekttyp: result.projekttyp,
-          show_optional_fields: result.showOptionalFields,
-          show_net_fields: result.showNetFields,
+          // Optionale Felder (ADR 0035): the dialog already inverted „angehakt =
+          // sichtbar" into the opt-out list that gets stored.
+          hidden_optional_fields: result.hiddenOptionalFields,
           default_station_id: result.defaultStationHandle || null,
           saison_start_month: result.saisonStartMonth,
           saison_end_month: result.saisonEndMonth,
@@ -133,8 +134,9 @@ export class ProjectActionsService {
           title: result.title,
           description: result.description,
           scientist_ids: result.scientistIds,
-          show_optional_fields: result.showOptionalFields,
-          show_net_fields: result.showNetFields,
+          // Optionale Felder (ADR 0035): the stored opt-out list, already inverted
+          // from the dialog's „angehakt = sichtbar" checkboxes.
+          hidden_optional_fields: result.hiddenOptionalFields,
           projekttyp: result.projekttyp,
           default_station_id: result.defaultStationHandle || null,
           // The Saison window (ADR 0029): both null clears the season.
