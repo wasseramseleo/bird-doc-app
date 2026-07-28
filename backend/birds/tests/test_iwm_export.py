@@ -1,7 +1,9 @@
+import re
 import zipfile
 from datetime import UTC, datetime, time
 from decimal import Decimal
 from io import BytesIO
+from urllib.parse import unquote
 
 import openpyxl
 import pytest
@@ -910,3 +912,176 @@ def test_hiding_net_fields_does_not_alter_stored_or_exported_net_data(
     # still carrying the Netz value.
     assert _export_payload(after) == _export_payload(baseline)
     assert _read_rows(after)["Netz"] == "7"
+
+
+# --- The export filename follows the Projekttyp (issue #429, ADR 0023) -------
+# The filename is packaging, not payload: it names the programme the Projekt runs
+# so several programmes stay apart in the Downloads folder, while the workbook
+# itself keeps carrying no trace of the Projekttyp.
+
+PROJECTS_URL = "/api/birds/projects/"
+
+# The characters that must never survive into either header form: they are illegal
+# on common filesystems and/or would break the header apart.
+_FORBIDDEN_FILENAME_CHARS = set('"\\/:*?<>|\r\n\t')
+
+
+def _today_iso():
+    return datetime.now().date().isoformat()
+
+
+def _ascii_filename(response):
+    """The ASCII fallback of ``Content-Disposition`` — ``filename="…"``."""
+    match = re.search(r'filename="([^"]*)"', response["Content-Disposition"])
+    assert match, response["Content-Disposition"]
+    return match.group(1)
+
+
+def _utf8_filename(response):
+    """The RFC 5987 form of ``Content-Disposition`` — ``filename*=UTF-8''…`` —
+    decoded exactly the way the frontend decodes it."""
+    match = re.search(r"filename\*=UTF-8''([^;]+)", response["Content-Disposition"])
+    assert match, response["Content-Disposition"]
+    return unquote(match.group(1))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("projekttyp", "prefix"),
+    [
+        (Project.Projekttyp.IWM, "IWM_"),
+        (Project.Projekttyp.IMS, "IMS_"),
+        (Project.Projekttyp.ZUGVOGELMONITORING, "ZUG_"),
+        (Project.Projekttyp.NESTLINGSBERINGUNG, "NEST_"),
+        (Project.Projekttyp.SONSTIGES, ""),
+        # No Projekttyp set at all reads as Sonstiges — and therefore claims no
+        # programme in the filename either.
+        ("", ""),
+    ],
+)
+def test_export_filename_prefix_follows_the_projekttyp(auth_client, project, projekttyp, prefix):
+    project.title = "Donau-Auen"
+    project.projekttyp = projekttyp
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    expected = f"{prefix}Donau-Auen_{_today_iso()}.xlsx"
+    # Both header forms name the same file; the date part is untouched, so
+    # existing folders keep sorting.
+    assert _ascii_filename(response) == expected
+    assert _utf8_filename(response) == expected
+
+
+@pytest.mark.django_db
+def test_export_filename_carries_umlauts_through_the_utf8_form(auth_client, project):
+    """„Fänge Illmitz" must arrive intact, not as „FÃ¤nge Illmitz": the real title
+    rides the RFC 5987 form while the quoted fallback stays pure ASCII."""
+    project.title = "Fänge Illmitz"
+    project.projekttyp = Project.Projekttyp.IWM
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    assert _utf8_filename(response) == f"IWM_Fänge Illmitz_{_today_iso()}.xlsx"
+
+    fallback = _ascii_filename(response)
+    assert fallback.isascii(), fallback
+    assert fallback.startswith("IWM_")
+    assert fallback.endswith(f"_{_today_iso()}.xlsx")
+    assert "Illmitz" in fallback
+
+
+@pytest.mark.django_db
+def test_export_filename_survives_quotes_slashes_and_line_breaks(auth_client, project):
+    """A title with header-breaking characters still yields ONE valid header and a
+    filename a filesystem accepts — the response is not torn apart.
+
+    The fullwidth twins (`＂` U+FF02, `／` U+FF0F, `＼` U+FF3C, `℅` U+2105) are the
+    interesting half: they pass the sanitiser untouched — they are neither control
+    characters nor themselves illegal — and only turn into `"`, `/`, `\\` and `c/o`
+    when the ASCII fallback folds them. That fallback path is the one that tears the
+    quoted-string header apart, so it must be sanitised *after* folding too."""
+    project.title = 'Netz "A"/B\r\nZeile\\Süd\tOst ＂C＂／D＼E ℅ F'
+    project.projekttyp = Project.Projekttyp.ZUGVOGELMONITORING
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    header = response["Content-Disposition"]
+    assert "\r" not in header and "\n" not in header
+    # Exactly one quoted `filename="…"` — a smuggled quote would close it early and
+    # leave an RFC-conformant parser reading a truncated name plus garbage.
+    assert header.count('"') == 2, header
+
+    for name in (_ascii_filename(response), _utf8_filename(response)):
+        assert not (set(name) & _FORBIDDEN_FILENAME_CHARS), name
+        assert name.startswith("ZUG_")
+        assert name.endswith(f"_{_today_iso()}.xlsx")
+
+    # And the attachment is still a readable workbook.
+    assert SHEET_NAME in openpyxl.load_workbook(BytesIO(response.content)).sheetnames
+
+
+@pytest.mark.django_db
+def test_export_filename_falls_back_to_a_neutral_name(auth_client, project):
+    """A title of which nothing survives sanitising falls back to a neutral name —
+    never to an empty one."""
+    project.title = '  "/\\  '
+    project.projekttyp = Project.Projekttyp.IWM
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    suffix = f"_{_today_iso()}.xlsx"
+    for name in (_ascii_filename(response), _utf8_filename(response)):
+        assert name.startswith("IWM_")
+        assert name.endswith(suffix)
+        assert name[len("IWM_") : -len(suffix)].strip(), name
+
+
+@pytest.mark.django_db
+def test_export_filename_length_is_capped(auth_client, project):
+    """A runaway title is trimmed so the download does not hit a filesystem's
+    name-length limit; the prefix and the date part still survive."""
+    project.title = "Ö" * 400
+    project.projekttyp = Project.Projekttyp.NESTLINGSBERINGUNG
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    for name in (_ascii_filename(response), _utf8_filename(response)):
+        assert len(name) <= 120, len(name)
+        assert name.startswith("NEST_")
+        assert name.endswith(f"_{_today_iso()}.xlsx")
+
+
+@pytest.mark.django_db
+def test_downloaded_workbook_still_carries_no_projekttyp(
+    auth_client, project, species, scientist, ringing_station
+):
+    """The filename names the programme, the sheet does not (ADR 0023): the
+    Meldestelle finds no trace of the Projekttyp in the downloaded workbook."""
+    DataEntry.objects.create(
+        species=species,
+        ring=Ring.objects.create(number="712", size=Ring.RingSizes.V),
+        staff=scientist,
+        ringing_station=ringing_station,
+        project=project,
+        date_time=datetime(2026, 3, 1, 8, 0, tzinfo=UTC),
+    )
+    project.projekttyp = Project.Projekttyp.ZUGVOGELMONITORING
+    project.save()
+
+    response = auth_client.get(f"{PROJECTS_URL}{project.id}/export-iwm/")
+
+    assert response.status_code == 200
+    rows = _read_all_rows(response.content)
+    assert len(rows) == 1
+    assert not any("projekttyp" in str(header).lower() for header in rows[0])
+    assert not any("ZUGVOGELMONITORING" in str(value) for value in rows[0].values())

@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .accounts import normalize_email
+from .export_filename import iwm_export_content_disposition
 from .invitations import account_for_email, seats_available
 from .iwm_export import build_iwm_workbook
 from .iwm_import import (
@@ -792,12 +793,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def export_iwm(self, request, pk=None):
         project = self.get_object()
         content = build_iwm_workbook(iwm_export_entries(project))
-        filename = f"IWM_{project.title}_{datetime.date.today():%Y-%m-%d}.xlsx"
         response = HttpResponse(
             content,
             content_type=("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
         )
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        # The download is named after the Projekttyp (ADR 0023 amendment, issue
+        # #429) — the file's *content* still carries no trace of it.
+        response["Content-Disposition"] = iwm_export_content_disposition(project)
         return response
 
     @action(detail=True, methods=["post"], url_path="import-iwm")
