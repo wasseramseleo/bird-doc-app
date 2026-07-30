@@ -7,6 +7,7 @@ import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
+import {AppIconEmptyDirective} from '../shared/app-icons';
 import {ApiService} from '../service/api.service';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
@@ -37,6 +38,7 @@ import {
     MatProgressSpinnerModule,
     MatDialogModule,
     MatSnackBarModule,
+    AppIconEmptyDirective,
   ],
   templateUrl: './beringer.html',
   styleUrl: './beringer.scss',

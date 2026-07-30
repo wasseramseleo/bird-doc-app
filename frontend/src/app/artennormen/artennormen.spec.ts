@@ -171,6 +171,10 @@ describe('ArtennormenComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.norm-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Artennormen');
+    // #439: der leere Zustand trägt das benannte App-Icon; welche Glyphe dahinter
+    // steht, weiß nur der Seam.
+    expect(fixture.nativeElement.querySelector('.artennormen__empty mat-icon[app-icon-empty]'))
+      .not.toBeNull();
   });
 
   it('adds an override from the dialog via POST /species-norm-overrides/ and reloads', () => {

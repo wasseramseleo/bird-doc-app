@@ -22,6 +22,11 @@
   padding: 2rem;
   text-align: center;
   opacity: 0.75;
+
+  // #439: das benannte App-Icon des leeren Zustands sitzt über dem Satz.
+  mat-icon {
+    margin-bottom: 8px;
+  }
 }
 
 .artennormen__list {

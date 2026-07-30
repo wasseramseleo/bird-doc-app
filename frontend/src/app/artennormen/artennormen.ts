@@ -7,6 +7,7 @@ import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
+import {AppIconEmptyDirective} from '../shared/app-icons';
 import {ApiService} from '../service/api.service';
 import {
   EffectiveSpeciesNorm,
@@ -40,6 +41,7 @@ interface NormRow {
     MatProgressSpinnerModule,
     MatDialogModule,
     MatSnackBarModule,
+    AppIconEmptyDirective,
   ],
   templateUrl: './artennormen.html',
   styleUrl: './artennormen.scss',

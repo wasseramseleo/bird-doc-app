@@ -231,6 +231,8 @@ describe('TodaySessionComponent', () => {
 
       const row = fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement;
       expect(row.classList).toContain('session-row--error');
+      // #439: das Fehler-Abzeichen benennt sein App-Icon, nicht eine Material-Glyphe.
+      expect(row.querySelector('.session-row__badge--error mat-icon[app-icon-error]')).toBeTruthy();
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Sync-Fehler');
       expect(text).toContain(

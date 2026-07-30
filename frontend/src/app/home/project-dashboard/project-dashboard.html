@@ -82,13 +82,13 @@
     }
     @case ('error') {
       <div class="dashboard__state dashboard__state--error">
-        <mat-icon aria-hidden="true">error_outline</mat-icon>
+        <mat-icon app-icon-error aria-hidden="true"></mat-icon>
         <p>Statistiken konnten nicht geladen werden. Bitte versuche es später erneut.</p>
       </div>
     }
     @case ('empty') {
       <div class="dashboard__state dashboard__state--empty">
-        <mat-icon aria-hidden="true">insights</mat-icon>
+        <mat-icon app-icon-empty aria-hidden="true"></mat-icon>
         <p>In diesem Zeitraum gibt es noch keine Fänge.</p>
       </div>
     }

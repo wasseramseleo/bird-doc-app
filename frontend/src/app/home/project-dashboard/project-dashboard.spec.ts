@@ -566,6 +566,10 @@ describe('ProjectDashboardComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Fänge');
+    // #439: der leere Zustand trägt das benannte App-Icon; welche Glyphe dahinter
+    // steht, weiß nur der Seam.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--empty mat-icon[app-icon-empty]'))
+      .not.toBeNull();
     httpMock.verify();
   });
 
@@ -1043,6 +1047,10 @@ describe('ProjectDashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('.dashboard__state--error')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
     expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
+    // #439: der kaputte Zustand trägt das benannte App-Icon — und ein anderes als
+    // der leere.
+    expect(fixture.nativeElement.querySelector('.dashboard__state--error mat-icon[app-icon-error]'))
+      .not.toBeNull();
     httpMock.verify();
   });
 });

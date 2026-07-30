@@ -97,6 +97,29 @@ describe('DataEntryListComponent', () => {
   // einen Erfolg, den der Bildschirm widerlegt; wer das sieht, erfasst den Fang
   // plausibel erneut und erzeugt genau die zweite lebende Erstfang-Zeile auf
   // einer Ringnummer, die ADR 0019 verbietet.
+  // #439 (ADR 0037): „Der leere und der kaputte Zustand bekommen verschiedene
+  // Vögel." Beide Zustände benennen ihr App-Icon, keiner eine Material-Glyphe.
+  describe('Icon-Seam der beiden Zustände', () => {
+    it('renders the named error icon when the list could not be loaded', () => {
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'))
+        .flush('boom', { status: 500, statusText: 'Server Error' });
+      fixture.detectChanges();
+
+      const state = fixture.nativeElement.querySelector('.entry-list__state--error');
+      expect(state).not.toBeNull();
+      expect(state.querySelector('mat-icon[app-icon-error]')).not.toBeNull();
+    });
+
+    it('renders the named empty icon when the Projekt has no Fang yet', () => {
+      flushEntries([]);
+
+      const state = fixture.nativeElement.querySelector('.entry-list__state');
+      expect(state.textContent).toContain('noch keine Einträge');
+      expect(state.querySelector('mat-icon[app-icon-empty]')).not.toBeNull();
+    });
+  });
+
   describe('refresh after a restore (#392)', () => {
     it('reloads and shows the restored row again', () => {
       flushEntries([row({ id: 'bleibt' })]);

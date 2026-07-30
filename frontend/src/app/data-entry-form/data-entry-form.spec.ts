@@ -1988,6 +1988,8 @@ describe('DataEntryFormComponent', () => {
 
       const el = f.nativeElement as HTMLElement;
       expect(el.querySelector('[data-testid="load-error"]')).toBeTruthy();
+      // #439: der Fehlerzustand benennt sein App-Icon, nicht eine Material-Glyphe.
+      expect(el.querySelector('[data-testid="load-error"] mat-icon[app-icon-error]')).toBeTruthy();
       expect(el.querySelector('mat-spinner')).toBeNull();
       // "instead of the form" — an empty form behind an error message is exactly
       // the dead end #385 reports.

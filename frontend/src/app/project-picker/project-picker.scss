@@ -32,10 +32,12 @@
   text-align: center;
 }
 
-.picker__empty-logo {
+.picker__empty-icon {
   width: 96px;
   height: 96px;
+  font-size: 96px;
   margin-bottom: 48px;
+  color: var(--bd-ink-faint);
 }
 
 .picker__empty p {

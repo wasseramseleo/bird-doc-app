@@ -88,6 +88,23 @@ describe('StationenComponent', () => {
     expect(archived.textContent).toContain('Archiviert');
   });
 
+  it('shows an empty state with the named App-Icon when the org has no Station', () => {
+    const {fixture} = setup();
+
+    fixture.detectChanges();
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/ringing-stations/'))
+      .flush(page0([]));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.station-card')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('keine Stationen angelegt');
+    // #439: der leere Zustand trägt das benannte App-Icon; welche Glyphe dahinter
+    // steht, weiß nur der Seam.
+    expect(fixture.nativeElement.querySelector('.stationen__empty mat-icon[app-icon-empty]'))
+      .not.toBeNull();
+  });
+
   it('archives a Station via PATCH {is_active:false}', () => {
     const {fixture, component} = setup();
     spyOnSnackBar(fixture);

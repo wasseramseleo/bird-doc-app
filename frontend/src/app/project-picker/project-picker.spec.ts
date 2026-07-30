@@ -73,10 +73,17 @@ function render(ctx: ReturnType<typeof setup>, projects: Project[]): void {
   ctx.fixture.detectChanges();
 }
 
-/** The text of the empty state, as the affected account reads it. */
+/**
+ * The text of the empty state, as the affected account reads it. Das App-Icon
+ * (#439) ist `aria-hidden` und trägt seine Ligatur als Text — es gehört nicht zu
+ * dem, was vorgelesen oder gelesen wird, und bleibt hier außen vor.
+ */
 function emptyText(ctx: ReturnType<typeof setup>): string {
   const empty = ctx.fixture.nativeElement.querySelector('.picker__empty') as HTMLElement | null;
-  return empty?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  if (!empty) return '';
+  const readable = empty.cloneNode(true) as HTMLElement;
+  readable.querySelectorAll('mat-icon').forEach((icon) => icon.remove());
+  return readable.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
 /** The page-level "Neues Projekt" create action, or null when it is not rendered. */
@@ -176,6 +183,17 @@ describe('ProjectPickerComponent', () => {
   // untrue thing: "Du bist noch keinem Projekt zugeordnet."
 
   describe('empty state', () => {
+    // #439: der leere Zustand trägt das benannte App-Icon an der Stelle, an der
+    // später die gezeichnete Spot-Illustration hängt (docs/artist-brief.md, B1).
+    it('renders the named App-Icon of the empty state', () => {
+      const ctx = setup();
+      signIn('FRE', 'mitglied');
+      render(ctx, []);
+
+      expect(ctx.fixture.nativeElement.querySelector('.picker__empty mat-icon[app-icon-empty]'))
+        .not.toBeNull();
+    });
+
     it('names the missing Beringer as the cause for a no-Beringer Admin, not a missing Projekt-Zuordnung', () => {
       const ctx = setup();
       signIn(null, 'admin');

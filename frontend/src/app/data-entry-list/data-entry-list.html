@@ -38,11 +38,12 @@
     </div>
   } @else if (error()) {
     <div class="entry-list__state entry-list__state--error">
-      <mat-icon>error_outline</mat-icon>
+      <mat-icon app-icon-error></mat-icon>
       <p>Die Einträge konnten nicht geladen werden.</p>
     </div>
   } @else if (entries().length === 0) {
     <div class="entry-list__state">
+      <mat-icon app-icon-empty aria-hidden="true"></mat-icon>
       <p>Für dieses Projekt gibt es noch keine Einträge.</p>
     </div>
   } @else {

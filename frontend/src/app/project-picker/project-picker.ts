@@ -6,6 +6,7 @@ import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
+import {AppIconEmptyDirective} from '../shared/app-icons';
 import {ProjectService} from '../service/project.service';
 import {ProjectActionsService} from '../service/project-actions.service';
 import {AuthService} from '../service/auth.service';
@@ -47,6 +48,7 @@ export type PickerEmptyCase =
     MatIconModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    AppIconEmptyDirective,
   ],
   templateUrl: './project-picker.html',
   styleUrl: './project-picker.scss',

@@ -177,6 +177,10 @@ describe('BeringerComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.beringer-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Beringer');
+    // #439: der leere Zustand trägt das benannte App-Icon; welche Glyphe dahinter
+    // steht, weiß nur der Seam.
+    expect(fixture.nativeElement.querySelector('.beringer__empty mat-icon[app-icon-empty]'))
+      .not.toBeNull();
   });
 
   it('adds a Beringer from the dialog result via POST /scientists/ and reloads', () => {
