@@ -23,29 +23,42 @@ import { Directive } from '@angular/core';
  * greifen unverändert weiter.
  */
 
-/** Der kaputte Zustand — vorerst hinterlegt mit Material `error_outline`. */
-@Directive({
-  selector: 'mat-icon[app-icon-error]',
-  host: {
-    '[textContent]': 'ligature',
-  },
-})
-export class AppIconErrorDirective {
-  readonly ligature = 'error_outline';
-}
-
 /**
- * Der leere Zustand — vorerst hinterlegt mit Material `inbox`.
+ * Die Hinterlegung der beiden Namen — die eine Stelle, die eine Glyphe kennt.
+ *
+ * Bewusst ein Objektliteral aus String-Literalen und bewusst exportiert:
+ * `scripts/check-icon-seam.mjs` **liest diese Tabelle aus dieser Datei**, statt
+ * sie zu wiederholen. Sonst wäre „Einwechseln ist eine Datei" gelogen — nach
+ * einem Tausch bewachte der Check weiter die alte Glyphe, würde grün und
+ * bewachte nichts mehr. Wer hier tauscht, ändert genau diese zwei Zeilen; Check,
+ * Specs und Templates ziehen von allein nach.
  *
  * Der Künstler-Dateiname `icon/keine-fänge` ist nach Fängen benannt, tut hier
  * aber allgemeinen Dienst: „hier ist noch nichts" auf jedem Bildschirm.
  */
+export const APP_ICON_BACKINGS = {
+  'app-icon-error': 'error_outline',
+  'app-icon-empty': 'inbox',
+} as const;
+
+/** Der kaputte Zustand. */
+@Directive({
+  selector: 'mat-icon[app-icon-error]',
+  host: {
+    '[textContent]': 'backing',
+  },
+})
+export class AppIconErrorDirective {
+  readonly backing = APP_ICON_BACKINGS['app-icon-error'];
+}
+
+/** Der leere Zustand. */
 @Directive({
   selector: 'mat-icon[app-icon-empty]',
   host: {
-    '[textContent]': 'ligature',
+    '[textContent]': 'backing',
   },
 })
 export class AppIconEmptyDirective {
-  readonly ligature = 'inbox';
+  readonly backing = APP_ICON_BACKINGS['app-icon-empty'];
 }

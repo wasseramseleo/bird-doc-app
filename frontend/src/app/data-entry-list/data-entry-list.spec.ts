@@ -11,6 +11,8 @@ import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 
 import { DataEntryListComponent } from './data-entry-list';
+import { AppIconEmptyDirective, AppIconErrorDirective } from '../shared/app-icons';
+import { renderedGlyph, seamGlyph } from '../shared/app-icons.testing';
 
 registerLocaleData(localeDeAt);
 import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
@@ -98,7 +100,15 @@ describe('DataEntryListComponent', () => {
   // plausibel erneut und erzeugt genau die zweite lebende Erstfang-Zeile auf
   // einer Ringnummer, die ADR 0019 verbietet.
   // #439 (ADR 0037): „Der leere und der kaputte Zustand bekommen verschiedene
-  // Vögel." Beide Zustände benennen ihr App-Icon, keiner eine Material-Glyphe.
+  // Vögel." Diese Liste ist der einzige Bildschirm, der beide Zustände kennt —
+  // also wird hier geprüft, dass sie sich unterscheiden, statt nur, dass jeder
+  // *irgendein* Icon hat.
+  //
+  // Geprüft wird am gezeichneten Ergebnis: nach `mat-icon[app-icon-error]` zu
+  // suchen hieße bloß, das Attribut zurückzulesen, das das Template selbst
+  // hineinschreibt. Fehlt die Direktive im `imports`-Array der Komponente, ist
+  // das für Angular kein Fehler — das Attribut stünde im DOM, das Icon bliebe
+  // im Browser leer, und die Spec merkte nichts.
   describe('Icon-Seam der beiden Zustände', () => {
     it('renders the named error icon when the list could not be loaded', () => {
       httpMock
@@ -108,7 +118,10 @@ describe('DataEntryListComponent', () => {
 
       const state = fixture.nativeElement.querySelector('.entry-list__state--error');
       expect(state).not.toBeNull();
-      expect(state.querySelector('mat-icon[app-icon-error]')).not.toBeNull();
+      expect(renderedGlyph(state.querySelector('mat-icon'))).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+      // Der kaputte Zustand trägt nicht den Vogel des leeren.
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
     });
 
     it('renders the named empty icon when the Projekt has no Fang yet', () => {
@@ -116,7 +129,27 @@ describe('DataEntryListComponent', () => {
 
       const state = fixture.nativeElement.querySelector('.entry-list__state');
       expect(state.textContent).toContain('noch keine Einträge');
-      expect(state.querySelector('mat-icon[app-icon-empty]')).not.toBeNull();
+      expect(renderedGlyph(state.querySelector('mat-icon'))).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
+      // ...und der leere nicht den des kaputten.
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBe('');
+    });
+
+    it('draws a different bird for the empty state than for the broken one', () => {
+      flushEntries([]);
+      const empty = seamGlyph(fixture, AppIconEmptyDirective);
+
+      // Dieselbe Komponente, frisch geladen — diesmal bricht das GET.
+      component.onPageChange({pageIndex: 0, pageSize: 25, length: 0} as PageEvent);
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'))
+        .flush('boom', { status: 500, statusText: 'Server Error' });
+      fixture.detectChanges();
+      const error = seamGlyph(fixture, AppIconErrorDirective);
+
+      expect(empty).toBeTruthy();
+      expect(error).toBeTruthy();
+      expect(error).not.toEqual(empty);
     });
   });
 

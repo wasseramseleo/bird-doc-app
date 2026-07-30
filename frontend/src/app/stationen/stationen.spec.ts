@@ -7,6 +7,8 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {EMPTY, of} from 'rxjs';
 
 import {StationenComponent} from './stationen';
+import {AppIconEmptyDirective} from '../shared/app-icons';
+import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {RingingStation} from '../models/ringing-station.model';
 
 let httpMock: HttpTestingController;
@@ -99,10 +101,14 @@ describe('StationenComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.station-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Stationen angelegt');
-    // #439: der leere Zustand trägt das benannte App-Icon; welche Glyphe dahinter
-    // steht, weiß nur der Seam.
-    expect(fixture.nativeElement.querySelector('.stationen__empty mat-icon[app-icon-empty]'))
-      .not.toBeNull();
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template. Nach
+    // `mat-icon[app-icon-empty]` zu suchen hieße, das Attribut zurückzulesen, das
+    // das Template selbst hineinschreibt — ein vergessener `imports`-Eintrag
+    // bliebe unsichtbar und das Icon im Browser leer.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.stationen__empty mat-icon')))
+      .toBeTruthy();
+    // ...und gezeichnet hat es der Name des *leeren* Zustands.
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
   });
 
   it('archives a Station via PATCH {is_active:false}', () => {

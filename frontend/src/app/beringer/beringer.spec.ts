@@ -7,6 +7,8 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {of} from 'rxjs';
 
 import {BeringerComponent} from './beringer';
+import {AppIconEmptyDirective} from '../shared/app-icons';
+import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
 import {SeatPickerDialogData} from './seat-picker-dialog/seat-picker-dialog';
@@ -177,10 +179,13 @@ describe('BeringerComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.beringer-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Beringer');
-    // #439: der leere Zustand trägt das benannte App-Icon; welche Glyphe dahinter
-    // steht, weiß nur der Seam.
-    expect(fixture.nativeElement.querySelector('.beringer__empty mat-icon[app-icon-empty]'))
-      .not.toBeNull();
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template — ein
+    // vergessener `imports`-Eintrag ist für Angular kein Fehler und ließe das
+    // Icon im Browser leer, während das Attribut im DOM stünde.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.beringer__empty mat-icon')))
+      .toBeTruthy();
+    // ...und gezeichnet hat es der Name des *leeren* Zustands.
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
   });
 
   it('adds a Beringer from the dialog result via POST /scientists/ and reloads', () => {

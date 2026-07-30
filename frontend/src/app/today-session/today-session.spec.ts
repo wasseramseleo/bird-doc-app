@@ -10,6 +10,8 @@ import {MatDialog} from '@angular/material/dialog';
 import {of} from 'rxjs';
 
 import {TodaySessionComponent} from './today-session';
+import {AppIconErrorDirective} from '../shared/app-icons';
+import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {ProjectService} from '../service/project.service';
 import {Project, Projekttyp} from '../models/project.model';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
@@ -231,8 +233,11 @@ describe('TodaySessionComponent', () => {
 
       const row = fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement;
       expect(row.classList).toContain('session-row--error');
-      // #439: das Fehler-Abzeichen benennt sein App-Icon, nicht eine Material-Glyphe.
-      expect(row.querySelector('.session-row__badge--error mat-icon[app-icon-error]')).toBeTruthy();
+      // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template —
+      // `app-icon-error` ohne die Direktive in `imports` ist für Angular kein
+      // Fehler und ließe das Abzeichen im Browser ohne Icon.
+      expect(renderedGlyph(row.querySelector('.session-row__badge--error mat-icon'))).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Sync-Fehler');
       expect(text).toContain(

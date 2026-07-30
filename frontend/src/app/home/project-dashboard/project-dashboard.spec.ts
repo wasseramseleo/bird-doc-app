@@ -13,6 +13,8 @@ import { By } from '@angular/platform-browser';
 registerLocaleData(localeDeAt);
 
 import { ProjectDashboardComponent } from './project-dashboard';
+import { AppIconEmptyDirective, AppIconErrorDirective } from '../../shared/app-icons';
+import { renderedGlyph, seamGlyph } from '../../shared/app-icons.testing';
 import { DASHBOARD_NOW } from './dashboard-state';
 import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
 import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
@@ -566,10 +568,14 @@ describe('ProjectDashboardComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Fänge');
-    // #439: der leere Zustand trägt das benannte App-Icon; welche Glyphe dahinter
-    // steht, weiß nur der Seam.
-    expect(fixture.nativeElement.querySelector('.dashboard__state--empty mat-icon[app-icon-empty]'))
-      .not.toBeNull();
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker — `app-icon-empty`
+    // im Template ohne die Direktive in `imports` ist für Angular kein Fehler,
+    // ließe aber ein leeres `<mat-icon>` im Browser stehen.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.dashboard__state--empty mat-icon')))
+      .toBeTruthy();
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
+    // Der leere Zustand trägt nicht den Vogel des kaputten (ADR 0037).
+    expect(seamGlyph(fixture, AppIconErrorDirective)).toBe('');
     httpMock.verify();
   });
 
@@ -1047,10 +1053,12 @@ describe('ProjectDashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('.dashboard__state--error')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
     expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
-    // #439: der kaputte Zustand trägt das benannte App-Icon — und ein anderes als
-    // der leere.
-    expect(fixture.nativeElement.querySelector('.dashboard__state--error mat-icon[app-icon-error]'))
-      .not.toBeNull();
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.dashboard__state--error mat-icon')))
+      .toBeTruthy();
+    expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+    // Der kaputte Zustand trägt nicht den Vogel des leeren (ADR 0037).
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
     httpMock.verify();
   });
 });

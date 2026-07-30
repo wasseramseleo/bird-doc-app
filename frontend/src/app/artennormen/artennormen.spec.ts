@@ -7,6 +7,8 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {of} from 'rxjs';
 
 import {ArtennormenComponent} from './artennormen';
+import {AppIconEmptyDirective} from '../shared/app-icons';
+import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {
   EffectiveSpeciesNorm,
   SpeciesNormOverride,
@@ -171,10 +173,13 @@ describe('ArtennormenComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.norm-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Artennormen');
-    // #439: der leere Zustand trägt das benannte App-Icon; welche Glyphe dahinter
-    // steht, weiß nur der Seam.
-    expect(fixture.nativeElement.querySelector('.artennormen__empty mat-icon[app-icon-empty]'))
-      .not.toBeNull();
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template — ein
+    // vergessener `imports`-Eintrag ist für Angular kein Fehler und ließe das
+    // Icon im Browser leer, während das Attribut im DOM stünde.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.artennormen__empty mat-icon')))
+      .toBeTruthy();
+    // ...und gezeichnet hat es der Name des *leeren* Zustands.
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
   });
 
   it('adds an override from the dialog via POST /species-norm-overrides/ and reloads', () => {

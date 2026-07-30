@@ -29,6 +29,8 @@ import {
   SmallFeatherIntMoult,
 } from '../models/data-entry.model';
 import { Species } from '../models/species.model';
+import { AppIconErrorDirective } from '../shared/app-icons';
+import { renderedGlyph, seamGlyph } from '../shared/app-icons.testing';
 import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
 import { ProjectService } from '../service/project.service';
@@ -1988,8 +1990,12 @@ describe('DataEntryFormComponent', () => {
 
       const el = f.nativeElement as HTMLElement;
       expect(el.querySelector('[data-testid="load-error"]')).toBeTruthy();
-      // #439: der Fehlerzustand benennt sein App-Icon, nicht eine Material-Glyphe.
-      expect(el.querySelector('[data-testid="load-error"] mat-icon[app-icon-error]')).toBeTruthy();
+      // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template. Nach
+      // `mat-icon[app-icon-error]` zu suchen hieße, das Attribut zurückzulesen,
+      // das das Template selbst hineinschreibt — fehlte die Direktive im
+      // `imports`-Array, bliebe das Icon im Browser leer und die Spec grün.
+      expect(renderedGlyph(el.querySelector('[data-testid="load-error"] mat-icon'))).toBeTruthy();
+      expect(seamGlyph(f, AppIconErrorDirective)).toBeTruthy();
       expect(el.querySelector('mat-spinner')).toBeNull();
       // "instead of the form" — an empty form behind an error message is exactly
       // the dead end #385 reports.
@@ -2283,6 +2289,9 @@ describe('DataEntryFormComponent', () => {
     async function setupQueuedEditMode(
       outboxId: string,
       payload: Record<string, unknown>,
+      // #164: the server's rejection message, left on the queued entry. Present
+      // means the form opens with the Sync-Fehler-Banner over it.
+      syncError?: string,
     ): Promise<{ f: ComponentFixture<DataEntryFormComponent>; httpMock: HttpTestingController }> {
       const routeStub = {
         snapshot: { paramMap: { get: (key: string) => (key === 'id' ? outboxId : null) } },
@@ -2311,6 +2320,7 @@ describe('DataEntryFormComponent', () => {
         accountKey: 'fre',
         payload,
         queuedAt: '2026-07-02T09:00:00.000Z',
+        ...(syncError === undefined ? {} : { syncError }),
       });
       // The outbox must have finished restoring before the component is
       // constructed — see the `entryId` effect's comment on why the
@@ -2561,6 +2571,28 @@ describe('DataEntryFormComponent', () => {
       expect(stored[0].payload['ring_size']).toBe('SA');
       expect(stored[0].payload['ring_number']).toBe('AB1234');
       expect(stored[0].payload['comment']).toBe('Tippfehler korrigiert');
+    });
+
+    // #439 (ADR 0037): das Sync-Fehler-Banner ist der zweite Fehlerzustand dieses
+    // Bildschirms — neben `load-error` — und der einzige, den ein Beringer im
+    // Feld regelmäßig sieht. Auch er benennt sein App-Icon, statt eine Glyphe zu
+    // nennen; geprüft wird am gezeichneten Ergebnis, nicht am Marker im Template.
+    it('renders the App-Icon of the broken state in the Sync-Fehler-Banner', async () => {
+      const { f } = await setupQueuedEditMode(
+        'outbox-uuid-1',
+        queuedPayload(),
+        'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.',
+      );
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      const el = f.nativeElement as HTMLElement;
+      const banner = el.querySelector('[data-testid="sync-error-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner!.textContent).toContain('Synchronisierung abgelehnt');
+      expect(renderedGlyph(banner!.querySelector('mat-icon'))).toBeTruthy();
+      expect(seamGlyph(f, AppIconErrorDirective)).toBeTruthy();
     });
   });
 
