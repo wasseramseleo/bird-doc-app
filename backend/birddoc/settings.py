@@ -127,6 +127,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # The Fehlervertrag (ADR 0038): one global handler, and every endpoint carries
+    # a machine-readable ``errors`` list beside its unchanged German prose body.
+    "EXCEPTION_HANDLER": "birds.errors.exception_handler",
 }
 
 LOGGING = {
