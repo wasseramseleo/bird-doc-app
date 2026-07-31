@@ -211,6 +211,28 @@ survives the combination, as does its Zustand 2. Carries a row icon in „Letzte
 the Wiederfang-Historie. Does not change the standard statistics today (deferred).
 _Avoid_: Beifang, Zufallsfang (one cause of it, not the marker itself), Sonderart
 
+**Detail-Zeichen**:
+The ⓘ of the Marker-Spalte. It appears when the capture carries something the
+columns do not show — **Brutfleck**, **CPL+** or a **Bemerkung** — names it in the
+tooltip and opens the **Detail-Dialog** (ADR 0042). Its text is called _das
+Bemerkenswerte_: the vocabulary first, the free Bemerkung explicitly labelled as
+„Bemerkung: …" behind it. **Not a Fangmarker**: it shares the column with ♥ and ⚑
+but does not belong to them (ADR 0026) — those flag a situation about the capture,
+this one only says that there is more to read. It does **not** know the Optionale-Felder
+configuration (#468): a Brutfleck was recorded on the bird, not on the form, so a
+Projekt that switched the field off still sees it on a historical capture.
+_Avoid_: Bemerkungs-Indikator (it means more than the Bemerkung since #468), info icon (English), Fangmarker
+
+**Detail-Dialog**:
+The complete, **read-only** record of one Fang. It shows **every** attribute,
+including one a Projekt switched off via the Optionale Felder, and is therefore the
+only thing that keeps the Detail-Zeichen's promise in every Projekt. It is the target
+of the Detail-Zeichen in every Fang-Tabelle, and additionally the target of the
+ordinary row click in the Wiederfang-Historie (where navigating away would destroy a
+capture in progress) and in „Heute" while offline (ADR 0042). It carries no
+„Bearbeiten" — the row click in „Letzte Fänge" is the direct way there.
+_Avoid_: Detailansicht, Fang-Popup, detail view (English), Bearbeitungsmaske (the editable form — a different screen)
+
 **Parasit**:
 A capture's recorded ectoparasite findings, held as a **multi-valued** selection
 from a fixed, app-wide vocabulary of parasite types (shared reference data, not
