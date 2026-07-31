@@ -4,7 +4,7 @@ import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
 import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
@@ -55,6 +55,11 @@ import { ConnectivityService } from '../core/offline/connectivity';
 import { unsavedChangesGuard } from '../core/guards/unsaved-changes.guard';
 import { HTTP_INTERCEPTORS_IN_ORDER } from '../app.config';
 import { ApiService } from '../service/api.service';
+import {
+  classifyFailure,
+  Fehlerklasse,
+  SyncErrorEnvelope,
+} from '../core/errors/app-failure';
 
 registerLocaleData(localeDeAt);
 
@@ -2419,6 +2424,9 @@ describe('DataEntryFormComponent', () => {
       // #164: the server's rejection message, left on the queued entry. Present
       // means the form opens with the Sync-Fehler-Banner over it.
       syncError?: string,
+      // #445: the whole rejection beside it — Klasse, Code, Text, Feld, Kontext.
+      // Absent (with a `syncError` present) is what an older bundle left behind.
+      syncErrorEnvelope?: SyncErrorEnvelope,
     ): Promise<{ f: ComponentFixture<DataEntryFormComponent>; httpMock: HttpTestingController }> {
       const routeStub = {
         snapshot: { paramMap: { get: (key: string) => (key === 'id' ? outboxId : null) } },
@@ -2448,6 +2456,7 @@ describe('DataEntryFormComponent', () => {
         payload,
         queuedAt: '2026-07-02T09:00:00.000Z',
         ...(syncError === undefined ? {} : { syncError }),
+        ...(syncErrorEnvelope === undefined ? {} : { syncErrorEnvelope }),
       });
       // The outbox must have finished restoring before the component is
       // constructed — see the `entryId` effect's comment on why the
@@ -2722,6 +2731,111 @@ describe('DataEntryFormComponent', () => {
       expect(banner!.textContent).toContain('Synchronisierung abgelehnt');
       expect(renderedGlyph(banner!.querySelector('mat-icon'))).toBeTruthy();
       expect(seamGlyph(f, AppIconErrorDirective)).toBeTruthy();
+    });
+
+    // #445 (ADR 0038, User Story 31): Tage später, ohne Netz. Was der Eintrag
+    // beim Flaggen nicht mitbekommen hat, kann er sich jetzt nirgends mehr
+    // holen — kein Nachfassen, und schon gar keins ohne Empfang.
+    describe('ein zurückgewiesener Eintrag, Tage später wieder geöffnet (#445)', () => {
+      const KOLLISION =
+        'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+      const RIVAL = {
+        rival: {
+          id: '6f1a6a1e-0f0e-4f5a-9a3b-2f9d1c7e5b40',
+          date_time: '2026-03-01T12:00:00Z',
+          species: 'Teichrohrsänger',
+          staff: 'FRE',
+        },
+      };
+
+      it('zeigt ohne Netz dasselbe vollständige Banner wie online — kollidierender Erstfang inbegriffen', async () => {
+        const { f, httpMock } = await setupQueuedEditMode(
+          'outbox-uuid-1',
+          queuedPayload(),
+          KOLLISION,
+          {
+            klasse: Fehlerklasse.Korrigieren,
+            code: 'ring_already_first_caught',
+            field: 'ring_number',
+            detail: KOLLISION,
+            context: RIVAL,
+          },
+        );
+        f.detectChanges();
+        await settle();
+        f.detectChanges();
+
+        // Derselbe Fehlschlag, den die Leitung getragen hätte — nur dass hier
+        // keine Leitung ist.
+        const wiederGeoeffnet = f.componentInstance.bannerFailure()!;
+        expect(wiederGeoeffnet.klasse).toBe(Fehlerklasse.Korrigieren);
+        expect(wiederGeoeffnet.code).toBe('ring_already_first_caught');
+        expect(wiederGeoeffnet.field).toBe('ring_number');
+        expect(wiederGeoeffnet.text).toBe(KOLLISION);
+        expect(wiederGeoeffnet.context).toEqual(RIVAL);
+
+        // Und es ist wirklich derselbe: online eingeordnet ergibt derselbe
+        // Antwortkörper Feld für Feld dasselbe.
+        const online = classifyFailure(
+          new HttpErrorResponse({
+            status: 400,
+            statusText: 'Bad Request',
+            url: 'https://app.birddoc.eu/api/birds/data-entries/',
+            error: {
+              ring_number: KOLLISION,
+              errors: [
+                {
+                  field: 'ring_number',
+                  code: 'ring_already_first_caught',
+                  detail: KOLLISION,
+                  context: RIVAL,
+                },
+              ],
+            },
+          }),
+        );
+        expect(wiederGeoeffnet.klasse).toBe(online.klasse);
+        expect(wiederGeoeffnet.code).toBe(online.code);
+        expect(wiederGeoeffnet.field).toBe(online.field);
+        expect(wiederGeoeffnet.text).toBe(online.text);
+        expect(wiederGeoeffnet.context).toEqual(online.context);
+
+        const banner = (f.nativeElement as HTMLElement).querySelector(
+          '[data-testid="failure-banner"]',
+        );
+        expect(banner!.textContent).toContain(KOLLISION);
+        // Nichts davon wurde erfragt: kein Nachfassen, das offline nie ankäme —
+        // der Fehler trägt seinen Kontext selbst (ADR 0038). Geprüft an jeder
+        // Anfrage, die den kollidierenden Erstfang überhaupt liefern könnte:
+        // der Fang selbst und die Ringhistorie.
+        const nachgefasst = httpMock
+          .match(() => true)
+          .map((r) => r.request.urlWithParams)
+          .filter((url) => url.includes('data-entries') || url.includes('rings'));
+        expect(nachgefasst).toEqual([]);
+      });
+
+      it('erfindet für einen von einem älteren Bundle geflaggten Eintrag keinen Code', async () => {
+        // Ein Gerät, das wochenlang ohne Netz war, hält genau diese Einträge:
+        // eine blanke Zeile Prosa, ohne Umschlag. Sie bleibt lesbar und gilt
+        // als reines `detail` — mehr behauptet niemand über sie.
+        const { f } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload(), KOLLISION);
+        f.detectChanges();
+        await settle();
+        f.detectChanges();
+
+        const failure = f.componentInstance.bannerFailure()!;
+        expect(failure.klasse).toBe(Fehlerklasse.Korrigieren);
+        expect(failure.text).toBe(KOLLISION);
+        expect(failure.code).toBeNull();
+        expect(failure.field).toBeNull();
+        expect(failure.context).toBeNull();
+
+        const banner = (f.nativeElement as HTMLElement).querySelector(
+          '[data-testid="failure-banner"]',
+        );
+        expect(banner!.textContent).toContain(KOLLISION);
+      });
     });
   });
 

@@ -5,6 +5,7 @@ import {
   failureFromSyncError,
   FEHLERKLASSE_WORTE,
   Fehlerklasse,
+  syncErrorEnvelopeOf,
 } from './app-failure';
 
 /**
@@ -281,5 +282,106 @@ describe('failureFromSyncError — ein gemerkter Synchronisierungsfehler', () =>
     expect(failure.code).toBeNull();
     expect(failure.field).toBeNull();
     expect(failure.status).toBeNull();
+  });
+});
+
+describe('Der gemerkte Synchronisierungsfehler trägt die volle Struktur (#445, ADR 0038)', () => {
+  /**
+   * Der kollidierende Erstfang, wie ihn `ring_already_first_caught` mitbringt —
+   * `backend/birds/tests/test_error_context.py::test_the_collision_names_the_
+   * erstfang_that_holds_the_number`, Feld für Feld.
+   */
+  const RIVAL = {
+    rival: {
+      id: '6f1a6a1e-0f0e-4f5a-9a3b-2f9d1c7e5b40',
+      date_time: '2026-03-01T12:00:00Z',
+      species: 'Teichrohrsänger',
+      staff: 'FRE',
+    },
+  };
+
+  /** Die Zurückweisung, mit der PRD #438 anfing — mit ihrem Kontext. */
+  function ringKollision(): HttpErrorResponse {
+    return rejection(400, {
+      ring_number: RING_ALREADY_FIRST_CAUGHT,
+      errors: [
+        {
+          field: 'ring_number',
+          code: 'ring_already_first_caught',
+          detail: RING_ALREADY_FIRST_CAUGHT,
+          context: RIVAL,
+        },
+      ],
+    });
+  }
+
+  it('nimmt der Zurückweisung Klasse, Code, Text, Feld und Kontext für den Eintrag ab', () => {
+    const umschlag = syncErrorEnvelopeOf(classifyFailure(ringKollision()));
+
+    expect(umschlag).toEqual({
+      klasse: Fehlerklasse.Korrigieren,
+      code: 'ring_already_first_caught',
+      field: 'ring_number',
+      detail: RING_ALREADY_FIRST_CAUGHT,
+      context: RIVAL,
+    });
+  });
+
+  it('lässt sich durch IndexedDB tragen — nichts daran ist unklonbar', () => {
+    // Was auf den Eintrag geschrieben wird, geht durch den strukturierten Klon
+    // der IndexedDB. Der Ursprungsfehler (ein `HttpErrorResponse`) ist genau
+    // deshalb *nicht* dabei: er würde den Schreibvorgang werfen lassen.
+    const umschlag = syncErrorEnvelopeOf(classifyFailure(ringKollision()));
+
+    expect(structuredClone(umschlag)).toEqual(umschlag);
+  });
+
+  it('gibt Tage später, ohne Netz, denselben Fehlschlag zurück, den die Leitung trug', () => {
+    // User Story 31: derselbe vollständige Fehlschlag — samt kollidierendem
+    // Erstfang —, obwohl nichts davon noch einmal erfragt werden könnte.
+    const online = classifyFailure(ringKollision());
+
+    const wiederGeoeffnet = failureFromSyncError(online.text, syncErrorEnvelopeOf(online));
+
+    expect(wiederGeoeffnet.klasse).toBe(online.klasse);
+    expect(wiederGeoeffnet.code).toBe(online.code);
+    expect(wiederGeoeffnet.field).toBe(online.field);
+    expect(wiederGeoeffnet.text).toBe(online.text);
+    expect(wiederGeoeffnet.context).toEqual(online.context);
+    expect(wiederGeoeffnet.remedy).toBe(online.remedy);
+    // Kein Transport dahinter: der Fehlschlag ist erinnert, nicht soeben passiert.
+    expect(wiederGeoeffnet.status).toBeNull();
+  });
+
+  it('erfindet für die blanke Zeichenkette eines älteren Bundles keinen Code', () => {
+    // Ein Gerät, das wochenlang ohne Netz war, hält genau solche Einträge — und
+    // sie sind der Grund, warum es diesen Mechanismus gibt. Ohne Umschlag ist
+    // die Zeile ein reines `detail`: Klasse *Korrigieren* (nur ein 400/422
+    // verdient ein Flag, ADR 0033), sonst nichts.
+    const failure = failureFromSyncError(RING_ALREADY_FIRST_CAUGHT, undefined);
+
+    expect(failure.klasse).toBe(Fehlerklasse.Korrigieren);
+    expect(failure.text).toBe(RING_ALREADY_FIRST_CAUGHT);
+    expect(failure.code).toBeNull();
+    expect(failure.field).toBeNull();
+    expect(failure.context).toBeNull();
+  });
+
+  it('fällt auf Korrigieren zurück, wenn ein späteres Bundle eine unbekannte Klasse hinterließ', () => {
+    // Dieselbe Haltung wie ADR 0031 gegenüber einem zurückgezogenen Vokabular:
+    // was in IndexedDB liegt, überlebt jedes Bundle — auch das, das es schrieb.
+    // Eine Klasse, die dieser Client nicht kennt, darf das Banner nicht ohne
+    // Worte dastehen lassen.
+    const failure = failureFromSyncError(RING_ALREADY_FIRST_CAUGHT, {
+      klasse: 'aus-der-zukunft' as never,
+      code: 'ring_already_first_caught',
+      field: 'ring_number',
+      detail: RING_ALREADY_FIRST_CAUGHT,
+      context: null,
+    });
+
+    expect(failure.klasse).toBe(Fehlerklasse.Korrigieren);
+    expect(failure.text).toBe(RING_ALREADY_FIRST_CAUGHT);
+    expect(failure.code).toBe('ring_already_first_caught');
   });
 });
