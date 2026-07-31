@@ -425,11 +425,20 @@
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Netznummer</mat-label>
         <input matInput type="text" inputmode="numeric" appNumberMask="integer" formControlName="net_location">
+        <!-- #443: jedes Feld, das der Schreib-Serializer zurückweisen kann, hat
+             seinen Platz für den Serversatz. Ohne ihn wäre die Markierung rot
+             und stumm. -->
+        @if (serverRejection('net_location'); as grund) {
+          <mat-error data-testid="server-error-net_location">{{ grund }}</mat-error>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Netzfach</mat-label>
         <input matInput type="text" inputmode="numeric" appNumberMask="integer" formControlName="net_height">
+        @if (serverRejection('net_height'); as grund) {
+          <mat-error data-testid="server-error-net_height">{{ grund }}</mat-error>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline" floatLabel="always">
@@ -440,6 +449,9 @@
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
+        @if (serverRejection('net_direction'); as grund) {
+          <mat-error data-testid="server-error-net_direction">{{ grund }}</mat-error>
+        }
       </mat-form-field>
     </div>
     }
@@ -454,6 +466,9 @@
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
+        @if (serverRejection('age_class'); as grund) {
+          <mat-error data-testid="server-error-age_class">{{ grund }}</mat-error>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline" floatLabel="always">
@@ -473,6 +488,9 @@
           <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                     data-testid="plausibility-sex-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
         }
+        @if (serverRejection('sex'); as grund) {
+          <mat-error data-testid="server-error-sex">{{ grund }}</mat-error>
+        }
       </mat-form-field>
     </div>
 
@@ -485,6 +503,9 @@
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
+        @if (serverRejection('fat_deposit'); as grund) {
+          <mat-error data-testid="server-error-fat_deposit">{{ grund }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Muskelklasse</mat-label>
@@ -494,6 +515,9 @@
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
+        @if (serverRejection('muscle_class'); as grund) {
+          <mat-error data-testid="server-error-muscle_class">{{ grund }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Kleingefieder Intensität</mat-label>
@@ -503,6 +527,9 @@
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
+        @if (serverRejection('small_feather_int'); as grund) {
+          <mat-error data-testid="server-error-small_feather_int">{{ grund }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Kleingefieder Fortschritt</mat-label>
@@ -512,6 +539,9 @@
             <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
           }
         </mat-select>
+        @if (serverRejection('small_feather_app'); as grund) {
+          <mat-error data-testid="server-error-small_feather_app">{{ grund }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Handschwingenmauser</mat-label>
@@ -529,6 +559,9 @@
           <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                     data-testid="plausibility-hand_wing-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
         }
+        @if (serverRejection('hand_wing'); as grund) {
+          <mat-error data-testid="server-error-hand_wing">{{ grund }}</mat-error>
+        }
       </mat-form-field>
     </div>
 
@@ -543,6 +576,9 @@
           <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                     data-testid="plausibility-tarsus-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
         }
+        @if (serverRejection('tarsus'); as grund) {
+          <mat-error data-testid="server-error-tarsus">{{ grund }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Federlänge (mm)</mat-label>
@@ -553,6 +589,9 @@
           <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                     data-testid="plausibility-feather_span-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
         }
+        @if (serverRejection('feather_span'); as grund) {
+          <mat-error data-testid="server-error-feather_span">{{ grund }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Flügellänge (mm)</mat-label>
@@ -561,6 +600,9 @@
           <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                     data-testid="plausibility-wing_span-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
         }
+        @if (serverRejection('wing_span'); as grund) {
+          <mat-error data-testid="server-error-wing_span">{{ grund }}</mat-error>
+        }
       </mat-form-field>
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Gewicht (g)</mat-label>
@@ -568,6 +610,9 @@
         @if (suffixWarningByField()['weight_gram']; as msg) {
           <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                     data-testid="plausibility-weight_gram-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
+        }
+        @if (serverRejection('weight_gram'); as grund) {
+          <mat-error data-testid="server-error-weight_gram">{{ grund }}</mat-error>
         }
       </mat-form-field>
     </div>
@@ -620,6 +665,9 @@
                   <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
                 }
               </mat-select>
+              @if (serverRejection('parasites'); as grund) {
+                <mat-error data-testid="server-error-parasites">{{ grund }}</mat-error>
+              }
             </mat-form-field>
           }
         </div>
@@ -636,6 +684,9 @@
                   <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                             data-testid="plausibility-notch_f2-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
                 }
+                @if (serverRejection('notch_f2'); as grund) {
+                  <mat-error data-testid="server-error-notch_f2">{{ grund }}</mat-error>
+                }
               </mat-form-field>
             }
           </div>
@@ -647,6 +698,9 @@
                 @if (suffixWarningByField()['inner_foot']; as msg) {
                   <mat-icon matSuffix color="warn" class="plausibility-suffix-icon"
                             data-testid="plausibility-inner_foot-icon" [title]="msg" aria-hidden="true">warning</mat-icon>
+                }
+                @if (serverRejection('inner_foot'); as grund) {
+                  <mat-error data-testid="server-error-inner_foot">{{ grund }}</mat-error>
                 }
               </mat-form-field>
             }
@@ -717,8 +771,12 @@
         }
       }
       <button mat-stroked-button type="button" tabindex="-1" (click)="onReset()">Zurücksetzen</button>
+      <!-- #443: NICHT `entryForm.invalid` — eine Feldmarkierung macht ihr Control
+           ungültig, und der Knopf darüber ist der einzige Ausweg der Klasse
+           *Korrigieren*. `saveBlocked()` zählt nur, was die Eingabe selbst
+           ungültig macht. -->
       <button mat-flat-button color="primary" type="submit"
-              [class.is-saved]="saved()" [disabled]="entryForm.invalid || loading()">
+              [class.is-saved]="saved()" [disabled]="saveBlocked()">
         {{ saved() ? 'Gespeichert ✓' : (isEditMode() ? 'Änderungen speichern' : 'Erstellen') }}
       </button>
     </div>

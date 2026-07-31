@@ -117,6 +117,40 @@ const CONTROL_FOR_SERVER_FIELD: Record<string, string> = {
   ringing_station_id: 'ringing_station',
 };
 
+/** Der Fehlerschlüssel, unter dem der Serversatz an einem Control hängt. */
+const SERVER_REJECTED = 'serverRejected';
+
+/**
+ * #443: die Controls, deren Vorlage den Serversatz auch wirklich als `mat-error`
+ * zeigt — **die einzigen, die markiert werden dürfen**.
+ *
+ * Der Schreib-Serializer kann jedes Feld zurückweisen, nicht nur die acht der
+ * Kern-Maske: eine fehlerhafte Dezimalzahl im Gewicht ist genauso ein 400 wie
+ * eine doppelte Ringnummer. Ein Control ohne `mat-error` zu markieren ergäbe ein
+ * **rotes, stummes Feld** — rot, ohne einen Satz, der sagt warum. Deshalb ist
+ * diese Liste die Bedingung: was hier nicht steht, wird nicht markiert und
+ * erscheint allein im Banner, wo der Satz auf jeden Fall steht.
+ *
+ * Nicht dabei und bewusst so: `has_brood_patch`, `has_cpl_plus` und
+ * `has_hunger_stripes` sind `mat-checkbox` und haben gar keinen Fehlerplatz, und
+ * `is_dead_recovery`/`is_non_standard` sind Fangmarker ohne eigenes Eingabefeld.
+ *
+ * Die Liste ist exportiert, weil eine Spec sie durchgeht und für **jeden**
+ * Eintrag beweist, dass der Satz danach am Feld steht — sonst driftete sie
+ * lautlos von der Vorlage weg.
+ */
+export const SERVER_REJECTION_FIELDS: readonly string[] = [
+  'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'central',
+  'ring_size', 'ring_number',
+  'net_location', 'net_height', 'net_direction',
+  'age_class', 'sex', 'fat_deposit', 'muscle_class',
+  'small_feather_int', 'small_feather_app', 'hand_wing',
+  'tarsus', 'feather_span', 'wing_span', 'weight_gram',
+  'comment', 'parasites', 'notch_f2', 'inner_foot',
+];
+
+const SERVER_REJECTION_FIELD_SET = new Set<string>(SERVER_REJECTION_FIELDS);
+
 @Component({
   selector: 'app-data-entry-form',
   standalone: true,
@@ -1789,7 +1823,14 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   }
 
   onSubmit(): void {
-    if (this.entryForm.invalid) {
+    // #443: NICHT `entryForm.invalid` — **dieselbe Frage, die der Knopf stellt**,
+    // damit die beiden nie auseinanderlaufen. Eine Feldmarkierung macht ihr
+    // Control ungültig; hörte dieses `return` darauf, wäre jede Speicherung
+    // beendet, bis genau dieses eine Feld angefasst wird — obwohl das Banner
+    // darüber „Bitte korrigieren und erneut speichern" sagt und ADR 0037 sich
+    // darauf verlässt, dass eine Abhilfe das Formular füllt und das Mitglied
+    // dann Speichern drückt.
+    if (this.invalidBeyondServerRejection()) {
       Object.values(this.entryForm.controls).forEach(control => {
         if (control.invalid) {
           control.markAsTouched();
@@ -1798,6 +1839,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       this.focusFirstInvalid();
       return;
     }
+
+    // Der Versuch geht wirklich hinaus: die Markierungen beantworteten den
+    // vorigen und gehen mit ihm — wie das Banner, das `performSave()` zurücknimmt.
+    this.clearServerRejections();
 
     // PRD #261 (#266): saving is never gated on a Plausibilitätswarnung. Every
     // trigger path — a numeric blur, a categorical selectionChange, and an Art
@@ -1926,18 +1971,74 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     if (!failure.field) {
       return;
     }
-    const control = this.entryForm.get(CONTROL_FOR_SERVER_FIELD[failure.field] ?? failure.field);
+    const name = CONTROL_FOR_SERVER_FIELD[failure.field] ?? failure.field;
+    const control = this.entryForm.get(name);
     if (!control) {
       return;
     }
-    control.setErrors({...(control.errors ?? {}), serverRejected: failure.text});
+    // Nur markieren, was auch zu sehen ist. Ein Control ohne `mat-error` (eine
+    // Checkbox, ein Fangmarker) oder ein abgeschaltetes (ein vom Projekt
+    // ausgeblendetes Optionales Feld, die Zentrale am Erstfang) würde sonst
+    // stumm rot — rot ohne Satz. Dann steht der Satz im Banner allein, was er
+    // ohnehin immer tut.
+    if (!SERVER_REJECTION_FIELD_SET.has(name) || control.disabled) {
+      return;
+    }
+    control.setErrors({...(control.errors ?? {}), [SERVER_REJECTED]: failure.text});
     // Ohne „berührt" zeigt das mat-form-field den Fehler nicht an.
     control.markAsTouched();
   }
 
+  /**
+   * #443: alle Feldmarkierungen zurücknehmen — genau so, wie eine Bearbeitung
+   * des Feldes es täte. `updateValueAndValidity` rechnet die Fehler des Controls
+   * aus seinen **Validatoren** neu; der von Hand gesetzte Serversatz ist damit
+   * weg, echte Eingabefehler bleiben stehen. `emitEvent: false`, damit keine der
+   * Autocomplete-Pipelines auf einer unveränderten Eingabe neu sucht.
+   */
+  private clearServerRejections(): void {
+    for (const control of Object.values(this.entryForm.controls)) {
+      if (control.errors?.[SERVER_REJECTED] === undefined) {
+        continue;
+      }
+      control.updateValueAndValidity({emitEvent: false});
+    }
+  }
+
+  /**
+   * #443: Ist Speichern gerade unmöglich?
+   *
+   * Eine Feldmarkierung macht das Control ungültig — sie ist ja rot. Sie darf
+   * aber **niemals den Knopf sperren**: der einzige Ausweg der Klasse
+   * *Korrigieren* ist „Bitte korrigieren und erneut speichern", und ADR 0037
+   * baut darauf, dass eine Abhilfe das Formular füllt und das Mitglied dann
+   * Speichern drückt. Ein gesperrter Knopf unter einem Banner, das zum Speichern
+   * auffordert, wäre „ein Knopf, der wortlos nichts tut" (#427).
+   *
+   * Deshalb zählt hier nur, was **die Eingabe selbst** ungültig macht. Ein
+   * abgeschaltetes Control trägt keine Fehler (Angular leert sie beim
+   * Abschalten) und fällt damit hier heraus — dieselbe Rechnung wie
+   * `entryForm.invalid`, bloß ohne den Serversatz.
+   */
+  protected saveBlocked(): boolean {
+    return this.loading() || this.invalidBeyondServerRejection();
+  }
+
+  private invalidBeyondServerRejection(): boolean {
+    if (this.entryForm.valid) {
+      return false;
+    }
+    if (this.entryForm.errors) {
+      return true;
+    }
+    return Object.values(this.entryForm.controls).some((control) =>
+      Object.keys(control.errors ?? {}).some((key) => key !== SERVER_REJECTED),
+    );
+  }
+
   /** Der Serversatz an einem Feld, für dessen `mat-error` — sonst `null`. */
   serverRejection(controlName: string): string | null {
-    const message = this.entryForm.get(controlName)?.errors?.['serverRejected'];
+    const message = this.entryForm.get(controlName)?.errors?.[SERVER_REJECTED];
     return typeof message === 'string' ? message : null;
   }
 

@@ -80,7 +80,13 @@ classification to the error rather than replacing it, so `authInterceptor` still
 error, the offline facade still branches on `status === 0` and the sync still reads
 `Retry-After`. A refused write renders `<app-failure-banner>` where the gesture happened and
 **does not time out**; a field-bound rejection additionally sets `serverRejected` on that
-control, which Angular clears by itself the moment that field is edited. A snackbar only ever
+control, which Angular clears by itself the moment that field is edited. Two rules keep that
+marking honest: it is only ever set on a control listed in `SERVER_REJECTION_FIELDS` (the
+controls whose template really renders the sentence) and never on a disabled one — otherwise
+the field would go red without a word — and it **never** blocks Speichern. The button reads
+`saveBlocked()`, not `entryForm.invalid`, and `onSubmit()` drops every `serverRejected` before
+it checks validity, because the one way out of *Korrigieren* is that very button (ADR 0037:
+a remedy fills the form and never saves). A snackbar only ever
 confirms a **success** — `npm run check:transport-strings` keeps a transport string or a raw
 status out of any message repo-wide.
 

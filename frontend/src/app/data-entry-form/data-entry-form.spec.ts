@@ -16,7 +16,7 @@ import {
 } from '@angular/material/autocomplete';
 import { EMPTY, firstValueFrom, Observable, of, Subject } from 'rxjs';
 
-import { DataEntryFormComponent } from './data-entry-form';
+import { DataEntryFormComponent, SERVER_REJECTION_FIELDS } from './data-entry-form';
 import {
   AgeClass,
   BirdStatus,
@@ -7998,6 +7998,17 @@ describe('DataEntryFormComponent', () => {
     const banner = (): HTMLElement | null =>
       fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
 
+    const saveButton = (): HTMLButtonElement =>
+      fixture.nativeElement.querySelector(
+        '.action-buttons button[type="submit"]',
+      ) as HTMLButtonElement;
+
+    const fieldError = (name: string): HTMLElement | null =>
+      fixture.nativeElement.querySelector(`[data-testid="server-error-${name}"]`);
+
+    const expectPost = () =>
+      httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+
     it('rendert den deutschen Satz des Servers — die Transportzeichenkette kommt nirgends vor', () => {
       fillValidWiederfang();
 
@@ -8162,6 +8173,164 @@ describe('DataEntryFormComponent', () => {
       httpMock
         .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
         .flush({});
+    });
+
+    // ── Der Ausweg darf nicht zufallen ────────────────────────────────────────
+    // Die Feldmarkierung macht ihr Control ungültig — sie ist ja rot. Sperrte
+    // das den Speichern-Knopf, stünde unter dem Banner „Bitte korrigieren und
+    // erneut speichern" ein toter Knopf: „ein Knopf, der wortlos nichts tut"
+    // (#427). ADR 0037 (Z. 72-76) verlangt sogar ausdrücklich das Gegenteil —
+    // eine Abhilfe wie #444s „Als Wiederfang erfassen" **füllt** das Formular
+    // und überlässt das Speichern dem Mitglied.
+
+    it('lässt Speichern nach einer Feldmarkierung bedienbar', () => {
+      fillValidWiederfang();
+
+      submitAndReject(400, ringCollisionBody);
+
+      expect(fieldError('ring_number')).not.toBeNull();
+      expect(saveButton().disabled).toBeFalse();
+    });
+
+    it('speichert erneut, wenn ein ANDERES Feld korrigiert wurde — genau der Weg, den eine Abhilfe geht', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      // Was #444s „Als Wiederfang erfassen" tut: es setzt den Status und rührt
+      // das zurückgewiesene Feld nicht an. Danach drückt das Mitglied Speichern.
+      component.entryForm.get('comment')!.setValue('Ring lag schon vor.');
+      fixture.detectChanges();
+
+      expect(saveButton().disabled).toBeFalse();
+      saveButton().click();
+      fixture.detectChanges();
+
+      expectPost().flush({});
+    });
+
+    it('speichert nach einer Feldmarkierung auch per Strg+S', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      component.entryForm.get('comment')!.setValue('Ring lag schon vor.');
+      component.onKeydown(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }));
+
+      expectPost().flush({});
+    });
+
+    it('nimmt die Feldmarkierung beim nächsten Versuch zurück — sie beantwortete den vorigen', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      component.onSubmit();
+      fixture.detectChanges();
+
+      expect(component.serverRejection('ring_number')).toBeNull();
+      expect(fieldError('ring_number')).toBeNull();
+      expectPost().flush({});
+    });
+
+    it('sperrt Speichern weiterhin, solange die Eingabe selbst unvollständig ist', () => {
+      // Kein fillValidWiederfang(): Art, Station, Beringer und Ringnummer fehlen.
+      fixture.detectChanges();
+
+      expect(saveButton().disabled).toBeTrue();
+    });
+
+    it('lässt die Feldmarkierung stehen, wenn gar nicht erst abgeschickt wird', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      // Eine echte Lücke in der Eingabe: jetzt sperrt der Knopf wieder — und
+      // zwar aus dem richtigen Grund. Der Knopf und `onSubmit()` stellen
+      // dieselbe Frage, sie können nicht auseinanderlaufen.
+      component.entryForm.get('species')!.setValue(null);
+      fixture.detectChanges();
+      expect(saveButton().disabled).toBeTrue();
+
+      component.onSubmit();
+      fixture.detectChanges();
+
+      expect(component.serverRejection('ring_number')).toBe(RING_ALREADY_FIRST_CAUGHT);
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+    });
+
+    // ── Nur markieren, was auch zu lesen ist ──────────────────────────────────
+    // Der Schreib-Serializer kann jedes Feld zurückweisen, nicht nur die acht
+    // der Kern-Maske: „eine doppelte Ringnummer und eine fehlerhafte Dezimalzahl
+    // sind beide 400" (#443). Ein markiertes Control ohne `mat-error` wäre rot
+    // und stumm.
+
+    it('zeigt den Serversatz auch an einem Messfeld', () => {
+      fillValidWiederfang();
+      const detail = 'Es sind höchstens 1 Dezimalstellen zulässig.';
+
+      // Echte DRF-Form: der Feldschlüssel unverändert daneben, der Umschlag
+      // additiv (ADR 0038 / #440).
+      submitAndReject(400, {
+        weight_gram: [detail],
+        errors: [{ field: 'weight_gram', code: 'max_decimal_places', detail }],
+      });
+
+      expect(fieldError('weight_gram')).not.toBeNull();
+      expect(fieldError('weight_gram')!.textContent).toContain(detail);
+      expect(banner()!.textContent).toContain(detail);
+    });
+
+    it('markiert kein Control, dessen Vorlage den Satz nicht zeigen kann — dann steht er im Banner allein', () => {
+      fillValidWiederfang();
+      const detail = 'Es wird ein gültiger Wahrheitswert erwartet.';
+
+      // Brutfleck ist eine mat-checkbox: sie hat keinen Platz für einen
+      // mat-error. Rot ohne Satz wäre schlimmer als gar nicht rot.
+      submitAndReject(400, {
+        has_brood_patch: [detail],
+        errors: [{ field: 'has_brood_patch', code: 'invalid', detail }],
+      });
+
+      const brutfleck = component.entryForm.get('has_brood_patch')!;
+      expect(brutfleck.hasError('serverRejected')).toBeFalse();
+      expect(brutfleck.valid).toBeTrue();
+      expect(banner()!.textContent).toContain(detail);
+      expect(saveButton().disabled).toBeFalse();
+    });
+
+    it('markiert kein abgeschaltetes Control — ein ausgeblendetes Feld ist nicht zu sehen', () => {
+      fillValidWiederfang();
+      // Erstfang schaltet die Zentrale ab und zwingt sie auf die Projekt-Zentrale.
+      component.entryForm.get('bird_status')!.setValue(BirdStatus.FirstCatch);
+      fixture.detectChanges();
+      expect(component.entryForm.get('central')!.disabled).toBeTrue();
+      const detail = 'Ein Erstfang läuft immer gegen die eigene Zentrale.';
+
+      submitAndReject(400, { errors: [{ field: 'central', code: 'invalid', detail }] });
+
+      expect(component.serverRejection('central')).toBeNull();
+      expect(banner()!.textContent).toContain(detail);
+    });
+
+    // Die Liste, die `markRejectedField()` bindet, gegen die Vorlage gehalten:
+    // für JEDEN Eintrag muss der Satz danach wirklich am Feld stehen. Ein
+    // mat-error wird nur in den DOM projiziert, wenn das mat-form-field im
+    // Fehlerzustand ist — die DOM-Zusicherung beweist also beides zugleich.
+    it('zeigt den Serversatz an jedem Control, das er markieren darf', () => {
+      fillValidWiederfang();
+      // Diesjährig, damit auch die Kleingefieder-Fortschritt-Auswahl eingeschaltet
+      // ist (sie ist nur für Alter = 3 bedienbar).
+      component.entryForm.get('age_class')!.setValue(AgeClass.ThisYear);
+      fixture.detectChanges();
+
+      for (const name of SERVER_REJECTION_FIELDS) {
+        const detail = `Der Server hat «${name}» zurückgewiesen.`;
+        submitAndReject(400, { errors: [{ field: name, code: 'invalid', detail }] });
+
+        expect(component.entryForm.get(name)!.disabled)
+          .withContext(`${name} ist abgeschaltet und damit unsichtbar`)
+          .toBeFalse();
+        expect(fieldError(name)).withContext(`kein mat-error für ${name}`).not.toBeNull();
+        expect(fieldError(name)!.textContent).withContext(name).toContain(detail);
+        expect(saveButton().disabled).withContext(`Speichern tot nach ${name}`).toBeFalse();
+      }
     });
   });
 
