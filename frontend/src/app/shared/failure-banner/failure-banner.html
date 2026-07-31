@@ -25,4 +25,10 @@
       </button>
     }
   }
+  @if (meldenAngeboten()) {
+    <button mat-stroked-button type="button" data-testid="failure-melden"
+            (click)="onFehlerMelden()">
+      Fehler melden
+    </button>
+  }
 </div>

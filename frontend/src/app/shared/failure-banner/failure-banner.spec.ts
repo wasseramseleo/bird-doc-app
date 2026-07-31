@@ -1,11 +1,13 @@
 import {ComponentFixture, TestBed, fakeAsync, tick} from '@angular/core/testing';
 import {HttpErrorResponse, provideHttpClient} from '@angular/common/http';
 import {provideHttpClientTesting} from '@angular/common/http/testing';
+import {MatDialog, MatDialogRef} from '@angular/material/dialog';
 import {provideRouter, Router} from '@angular/router';
 import {provideNoopAnimations} from '@angular/platform-browser/animations';
 import {of} from 'rxjs';
 
 import {FailureBannerComponent} from './failure-banner';
+import {FeedbackDialogComponent} from '../../feedback/feedback-dialog/feedback-dialog';
 import {AppIconErrorDirective} from '../app-icons';
 import {renderedGlyph, seamGlyph} from '../app-icons.testing';
 import {AppFailure, classifyFailure, failureFromSyncError} from '../../core/errors/app-failure';
@@ -204,6 +206,68 @@ describe('FailureBannerComponent', () => {
     erneut!.click();
 
     expect(retries).toBe(1);
+  });
+
+  // „Fehler melden" (#449, ADR 0037): der eine Ausweg der Klasse *Unbekannt* —
+  // und der eines 5xx, bei dem sich der Server verschluckt hat.
+  it('bietet bei „Unbekannt" das Melden an und öffnet den bestehenden Feedback-Dialog', () => {
+    const el = render(rejection(418, {detail: 'Ich bin eine Teekanne.'}));
+    const dialog = fixture.debugElement.injector.get(MatDialog);
+    const open = spyOn(dialog, 'open').and.returnValue({
+      afterClosed: () => of(false),
+    } as MatDialogRef<unknown>);
+
+    const melden = button(el, 'Fehler melden');
+    expect(melden).toBeDefined();
+    melden!.click();
+
+    expect(open).toHaveBeenCalled();
+    // Kein zweiter Dialog: derselbe, den auch die Navigationsleiste öffnet.
+    expect(open.calls.mostRecent().args[0]).toBe(FeedbackDialogComponent);
+    const prefill = (open.calls.mostRecent().args[1] as {data: {prefill: string}}).data.prefill;
+    expect(prefill).toContain('Endpunkt: https://app.birddoc.eu/api/birds/data-entries/');
+    expect(prefill).toContain('Status: 418');
+    expect(prefill).toContain('Bildschirm: /');
+    expect(prefill).toContain('Version: aktuell');
+    expect(prefill).not.toContain('undefined');
+  });
+
+  it('bietet bei einem 5xx beides an — noch einmal versuchen und melden', () => {
+    const el = render(rejection(503, {detail: 'Wartung'}));
+
+    expect(button(el, 'Erneut versuchen')).toBeDefined();
+    expect(button(el, 'Fehler melden')).toBeDefined();
+  });
+
+  it('bietet das Melden nicht an, wo das Mitglied selbst weiterkommt', () => {
+    // *Korrigieren*, *Neu anmelden*, *Freigeben lassen*, *App aktualisieren*
+    // und *Erneut versuchen* ohne 5xx: dort wären Berichte Nicht-Bugs.
+    const eigenhaendig = [
+      rejection(400, {ring_number: RING_ALREADY_FIRST_CAUGHT}),
+      rejection(401, {
+        detail: 'Anmeldedaten fehlen.',
+        errors: [{field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.'}],
+      }),
+      rejection(403, {
+        detail: 'Diese Aktion ist Administrator:innen der Organisation vorbehalten.',
+        errors: [
+          {
+            field: null,
+            code: 'permission_denied',
+            detail: 'Diese Aktion ist Administrator:innen der Organisation vorbehalten.',
+          },
+        ],
+      }),
+      rejection(404, {detail: 'Nicht gefunden.'}),
+      rejection(0, null),
+      failureFromSyncError(RING_ALREADY_FIRST_CAUGHT),
+    ];
+
+    for (const failure of eigenhaendig) {
+      expect(button(render(failure), 'Fehler melden'))
+        .withContext(failure.klasse)
+        .toBeUndefined();
+    }
   });
 
   it('bietet bei „Freigeben lassen" keinen der drei Knöpfe an', () => {
