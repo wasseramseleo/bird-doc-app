@@ -1,3 +1,4 @@
+import {Component} from '@angular/core';
 import {ComponentFixture, TestBed, fakeAsync, tick} from '@angular/core/testing';
 import {HttpErrorResponse, provideHttpClient} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
@@ -11,6 +12,7 @@ import {FeedbackDialogComponent} from '../../feedback/feedback-dialog/feedback-d
 import {AppIconErrorDirective} from '../app-icons';
 import {renderedGlyph, seamGlyph} from '../app-icons.testing';
 import {AppFailure, classifyFailure, failureFromSyncError} from '../../core/errors/app-failure';
+import {unsavedChangesGuard} from '../../core/guards/unsaved-changes.guard';
 import {AppUpdateService} from '../../service/app-update.service';
 import {AuthService} from '../../service/auth.service';
 import {UnsavedChangesService} from '../../service/unsaved-changes.service';
@@ -305,6 +307,281 @@ describe('FailureBannerComponent', () => {
     expect(button(el, 'Jetzt aktualisieren')).toBeUndefined();
     expect(button(el, 'Erneut versuchen')).toBeUndefined();
     expect(el.textContent).toContain('Administrator');
+  });
+});
+
+/**
+ * Die Abhilfen bei bereits vergebener Ringnummer (#444, ADR 0037/0038).
+ *
+ * Das Banner sagt schon, dass die Nummer vergeben ist. Die Frage, die der
+ * Beringer mit dem Vogel in der Hand tatsächlich stellt, beantwortet erst der
+ * **kollidierende Erstfang**: ist das derselbe Vogel — also in Wahrheit ein
+ * Wiederfang — oder hat vorige Woche jemand eine Nummer vertippt?
+ *
+ * Drei Abhilfen, und **keine** von ihnen speichert. Ein Knopf darf den
+ * Ringstatus setzen oder eine freie Nummer eintragen; drücken muss der Beringer
+ * selbst, weil „Als Wiederfang" die wissenschaftliche Aussage des Datensatzes
+ * ändert und das sichtbar, widerruflich und bewusst bleiben muss.
+ */
+describe('FailureBannerComponent — die Abhilfen bei bereits vergebener Ringnummer (#444)', () => {
+  let fixture: ComponentFixture<FailureBannerComponent>;
+  let httpMock: HttpTestingController;
+
+  /** Der Rivale aus `test_the_collision_names_the_erstfang_that_holds_the_number`. */
+  const RIVAL = {
+    id: '6f1a6a1e-0f0e-4f5a-9a3b-2f9d1c7e5b40',
+    date_time: '2026-07-28T08:15:00+02:00',
+    species: 'Teichrohrsänger',
+    staff: 'FRE',
+  };
+
+  /**
+   * Datum und Uhrzeit des Rivalen, wie sie in der Zeitzone dieses Rechners
+   * fallen — unabhängig vom Formatierungspfad des Bauteils ausgerechnet, damit
+   * die Zusicherung nicht bloß nachrechnet, was das Bauteil ohnehin tut.
+   */
+  const zeitpunkt = new Date(RIVAL.date_time);
+  const zweistellig = (zahl: number) => `${zahl}`.padStart(2, '0');
+  const DATUM = `${zweistellig(zeitpunkt.getDate())}.${zweistellig(
+    zeitpunkt.getMonth() + 1,
+  )}.${zeitpunkt.getFullYear()}`;
+  const UHRZEIT = `${zweistellig(zeitpunkt.getHours())}:${zweistellig(zeitpunkt.getMinutes())}`;
+
+  /** Die Zurückweisung mit ihrem Kontext — der Körper, den der Server schickt. */
+  const kollision = (context: unknown = {rival: RIVAL}) =>
+    rejection(400, {
+      ring_number: RING_ALREADY_FIRST_CAUGHT,
+      errors: [
+        {
+          field: 'ring_number',
+          code: 'ring_already_first_caught',
+          detail: RING_ALREADY_FIRST_CAUGHT,
+          context,
+        },
+      ],
+    });
+
+  function render(failure: AppFailure, keineFreieNummer = false): HTMLElement {
+    fixture = TestBed.createComponent(FailureBannerComponent);
+    fixture.componentRef.setInput('failure', failure);
+    fixture.componentRef.setInput('keineFreieNummer', keineFreieNummer);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  const knopf = (el: HTMLElement, testid: string): HTMLButtonElement | null =>
+    el.querySelector(`[data-testid="${testid}"]`);
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [FailureBannerComponent],
+      providers: [
+        provideRouter([{path: 'login', children: []}]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+      ],
+    }).compileComponents();
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  it('nennt den kollidierenden Erstfang mit Datum, Uhrzeit, Art und Beringer-Kürzel', () => {
+    const el = render(kollision());
+
+    const rivale = el.querySelector('[data-testid="failure-rival"]')!;
+    expect(rivale.textContent).toContain(DATUM);
+    expect(rivale.textContent).toContain(UHRZEIT);
+    expect(rivale.textContent).toContain('Teichrohrsänger');
+    expect(rivale.textContent).toContain('FRE');
+    // Nicht die rohe Zeichenkette der Leitung.
+    expect(rivale.textContent).not.toContain('2026-07-28T08:15');
+    // Der Grund des Servers steht weiterhin da.
+    expect(el.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+  });
+
+  it('öffnet den kollidierenden Erstfang aus dem Banner', () => {
+    const el = render(kollision());
+    const navigate = spyOn(TestBed.inject(Router), 'navigate');
+
+    knopf(el, 'failure-rival-oeffnen')!.click();
+
+    // Die gewöhnliche Navigation zu einem Fang — und damit dieselben
+    // Verwerfen-Regeln wie überall sonst (#407): der `unsavedChangesGuard`
+    // hängt an der Route, nicht an diesem Knopf. Keine Ausnahme, die den
+    // laufenden Eintrag still fallen ließe.
+    expect(navigate).toHaveBeenCalledWith(['/data-entry', RIVAL.id]);
+  });
+
+  it('meldet „Als Wiederfang erfassen" nach oben und speichert nichts', () => {
+    const el = render(kollision());
+    let gemeldet = 0;
+    fixture.componentInstance.alsWiederfang.subscribe(() => (gemeldet += 1));
+
+    knopf(el, 'failure-wiederfang')!.click();
+
+    expect(gemeldet).toBe(1);
+    // Der Knopf füllt das Formular. Er schickt nichts — nicht einmal eine
+    // Anfrage, geschweige denn eine Speicherung.
+    httpMock.expectNone(() => true);
+  });
+
+  it('meldet „Nächste freie Nummer übernehmen" nach oben und speichert nichts', () => {
+    const el = render(kollision());
+    let gemeldet = 0;
+    fixture.componentInstance.freieNummer.subscribe(() => (gemeldet += 1));
+
+    knopf(el, 'failure-freie-nummer')!.click();
+
+    expect(gemeldet).toBe(1);
+    // Die Nummer holt das Formular, das die Ringgröße kennt — dieses Bauteil
+    // schickt auch hier nichts.
+    httpMock.expectNone(() => true);
+  });
+
+  it('sagt es, wenn keine freie Nummer zu bekommen ist', () => {
+    // Ehrlich statt still: ein Knopf, der wortlos nichts tut, wäre schlimmer
+    // als seine Abwesenheit.
+    const el = render(kollision(), true);
+
+    expect(knopf(el, 'failure-freie-nummer')).toBeNull();
+    expect(el.querySelector('[data-testid="failure-keine-freie-nummer"]')).not.toBeNull();
+    // Die beiden übrigen Abhilfen stehen weiter da.
+    expect(knopf(el, 'failure-wiederfang')).not.toBeNull();
+    expect(knopf(el, 'failure-rival-oeffnen')).not.toBeNull();
+  });
+
+  it('degradiert ohne Kontext auf den Satz allein', () => {
+    // Ein älteres Backend, ein Bundle mitten in der Auslieferung: der Code ist
+    // da, der Rivale nicht. Dieselbe Regel wie bei einem unbekannten Code —
+    // der Satz steht, es gibt nichts anzubieten, und nichts bricht.
+    const el = render(kollision(null));
+
+    const banner = el.querySelector('[data-testid="failure-banner"]')!;
+    expect(banner.getAttribute('role')).toBe('alert');
+    expect(banner.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+    expect(banner.textContent).toContain('Bitte korrigieren und erneut speichern.');
+    expect(el.querySelector('[data-testid="failure-rival"]')).toBeNull();
+    expect(el.querySelectorAll('button').length).toBe(0);
+  });
+
+  it('bietet die Abhilfen bei einem anderen Code nicht an', () => {
+    // Der Code ist die Naht (ADR 0038): eine andere Zurückweisung desselben
+    // Feldes bekommt „Als Wiederfang erfassen" nicht.
+    const el = render(
+      rejection(400, {
+        ring_number: 'Die Ringnummer darf nur Ziffern enthalten.',
+        errors: [
+          {
+            field: 'ring_number',
+            code: 'invalid',
+            detail: 'Die Ringnummer darf nur Ziffern enthalten.',
+          },
+        ],
+      }),
+    );
+
+    expect(el.querySelectorAll('button').length).toBe(0);
+    expect(el.querySelector('[data-testid="failure-rival"]')).toBeNull();
+  });
+});
+
+/**
+ * Den Rivalen öffnen, während schon ein Fang offen steht (#444, #407).
+ *
+ * Ein zurückgewiesener **eingereihter** Eintrag (#445) trägt dasselbe Banner mit
+ * demselben Rivalen — und er steht dabei auf `/data-entry/:id`. Für den Router
+ * ist das Ziel dann dieselbe Route mit einer anderen Id: er verwendet das
+ * Bauteil wieder, lädt nichts neu und lässt den `unsavedChangesGuard` gar nicht
+ * erst laufen. Geprüft wird hier deshalb am **Ergebnis** — wo die App danach
+ * steht —, nicht daran, welcher Aufruf dorthin geführt hat.
+ */
+describe('FailureBannerComponent — den Rivalen öffnen, während ein Fang offen steht (#444)', () => {
+  const RIVAL_ID = '6f1a6a1e-0f0e-4f5a-9a3b-2f9d1c7e5b40';
+  const unsavedChanges = {confirmDiscard: jasmine.createSpy('confirmDiscard')};
+
+  /** Die Erfassungsmaske, wie sie unter beiden Routen hängt (`app.routes.ts`). */
+  @Component({selector: 'app-capture-stub', standalone: true, template: '<p>Erfassung</p>'})
+  class CaptureStubComponent {}
+
+  const kollision = () =>
+    rejection(400, {
+      ring_number: RING_ALREADY_FIRST_CAUGHT,
+      errors: [
+        {
+          field: 'ring_number',
+          code: 'ring_already_first_caught',
+          detail: RING_ALREADY_FIRST_CAUGHT,
+          context: {
+            rival: {
+              id: RIVAL_ID,
+              date_time: '2026-07-28T08:15:00+02:00',
+              species: 'Teichrohrsänger',
+              staff: 'FRE',
+            },
+          },
+        },
+      ],
+    });
+
+  beforeEach(async () => {
+    unsavedChanges.confirmDiscard.calls.reset();
+    unsavedChanges.confirmDiscard.and.returnValue(of(true));
+    await TestBed.configureTestingModule({
+      imports: [FailureBannerComponent],
+      providers: [
+        provideRouter([
+          // Wortgleich aus `app.routes.ts`, nur ohne `authGuard`.
+          {
+            path: 'data-entry',
+            component: CaptureStubComponent,
+            canDeactivate: [unsavedChangesGuard],
+          },
+          {
+            path: 'data-entry/:id',
+            component: CaptureStubComponent,
+            canDeactivate: [unsavedChangesGuard],
+          },
+        ]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+        {provide: UnsavedChangesService, useValue: unsavedChanges},
+      ],
+    }).compileComponents();
+  });
+
+  async function bannerUeberEinemOffenenFang(): Promise<HTMLButtonElement> {
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl(`/data-entry/eingereiht-1`);
+    const fixture = TestBed.createComponent(FailureBannerComponent);
+    fixture.componentRef.setInput('failure', kollision());
+    fixture.detectChanges();
+    return (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="failure-rival-oeffnen"]',
+    ) as HTMLButtonElement;
+  }
+
+  it('landet wirklich beim Rivalen', async () => {
+    const oeffnen = await bannerUeberEinemOffenenFang();
+
+    oeffnen.click();
+    // Zwei Navigationen hintereinander: erst das Verlassen, dann das Öffnen.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(TestBed.inject(Router).url).toBe(`/data-entry/${RIVAL_ID}`);
+    expect(unsavedChanges.confirmDiscard).withContext('der Wächter wurde gefragt').toHaveBeenCalled();
+  });
+
+  it('bleibt stehen, wo der Wächter das Verwerfen ablehnt', async () => {
+    unsavedChanges.confirmDiscard.and.returnValue(of(false));
+    const oeffnen = await bannerUeberEinemOffenenFang();
+
+    oeffnen.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // „Weiter bearbeiten": der Eintrag, der offen stand, steht weiter offen.
+    expect(TestBed.inject(Router).url).toBe('/data-entry/eingereiht-1');
   });
 });
 

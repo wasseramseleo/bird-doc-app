@@ -1,7 +1,9 @@
+import {formatDate} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  LOCALE_ID,
   computed,
   effect,
   inject,
@@ -18,6 +20,7 @@ import {firstValueFrom} from 'rxjs';
 
 import {AppFailure, FEHLERKLASSE_WORTE, Fehlerklasse} from '../../core/errors/app-failure';
 import {fehlerMeldenAngeboten, fehlerberichtVorlage} from '../../core/errors/fehlerbericht';
+import {kollidierenderErstfang} from '../../core/errors/ring-kollision';
 import {AppIconErrorDirective} from '../app-icons';
 import {
   FeedbackDialogComponent,
@@ -48,8 +51,15 @@ import {UnsavedChangesService} from '../../service/unsaved-changes.service';
  * stehen (#449) — die einzige Stelle, an der die Evidenz mitentscheidet, weil ein
  * 5xx dieselbe Klasse trägt wie ein Verbindungsabbruch und trotzdem ein Defekt
  * ist; die Regel steht in `fehlerMeldenAngeboten`, nicht hier.
- * Ein Code, den der Client nicht kennt, bekommt keinen eigenen Knopf (ADR 0038);
- * die ring-gebundenen Abhilfen (#444) kommen in ihrer eigenen Scheibe dazu.
+ * Ein Code, den der Client nicht kennt, bekommt keinen eigenen Knopf (ADR 0038).
+ *
+ * **Eine Abhilfe füllt das Formular und speichert nie** (#444, ADR 0037): bei
+ * einer bereits vergebenen Ringnummer nennt das Banner den kollidierenden
+ * Erstfang und bietet drei Wege an — ihn öffnen, den Fang als Wiederfang
+ * erfassen, die nächste freie Nummer übernehmen. Die beiden letzten meldet es
+ * nach oben, statt sie selbst zu tun: nur das Formular kennt seine Felder.
+ * Gedrückt wird Speichern danach vom Beringer selbst, weil „Als Wiederfang" die
+ * wissenschaftliche Aussage des Datensatzes ändert.
  *
  * **Der Ausweg der Klasse *Freigeben lassen* ist kein Knopf, sondern eine
  * Person** (#450): dort liest das Banner die Admins der eigenen Organisation und
@@ -77,6 +87,7 @@ export class FailureBannerComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly unsavedChanges = inject(UnsavedChangesService);
   private readonly dialog = inject(MatDialog);
+  private readonly locale = inject(LOCALE_ID);
 
   /** Der eingeordnete Fehlschlag — die Klasse bestimmt Worte und Knöpfe. */
   readonly failure = input.required<AppFailure>();
@@ -85,11 +96,27 @@ export class FailureBannerComponent {
   readonly titel = input<string | null>(null);
 
   /**
+   * Ob das Formular nach der nächsten freien Ringnummer gefragt hat und keine
+   * bekam (#444) — dann steht dort ein Satz statt eines Knopfes, der wortlos
+   * nichts täte.
+   */
+  readonly keineFreieNummer = input(false);
+
+  /**
    * „Erneut versuchen": der einzige Ausweg, der je nach Moment etwas anderes
    * bedeutet (hier Speichern drücken, beim Laden neu laden) — also der einzige,
    * den das Banner nach oben meldet, statt ihn selbst zu tun.
    */
   readonly retry = output<void>();
+
+  /**
+   * „Als Wiederfang erfassen" (#444) — der Ringstatus, sonst nichts. Das Banner
+   * meldet den Wunsch nach oben; setzen kann ihn nur, wer die Felder hält.
+   */
+  readonly alsWiederfang = output<void>();
+
+  /** „Nächste freie Nummer übernehmen" (#444) — dasselbe, für die Ringnummer. */
+  readonly freieNummer = output<void>();
 
   /**
    * Ob „Fehler melden" von hier aus überhaupt angeboten werden darf (#448).
@@ -111,6 +138,38 @@ export class FailureBannerComponent {
   protected readonly worte = computed(() => FEHLERKLASSE_WORTE[this.failure().klasse]);
   protected readonly titelZeile = computed(() => this.titel() ?? this.worte().titel);
   protected readonly abhilfe = computed(() => this.failure().remedy);
+
+  /**
+   * Der kollidierende Erstfang (#444) — oder `null`, wo keiner zu nennen ist.
+   *
+   * `null` ist die Degradierung: ein älteres Backend, ein Bundle mitten in der
+   * Auslieferung, ein von einem älteren Bundle geflaggter Eintrag. Dann bleibt
+   * es beim Satz allein, und es gibt **keine** der drei Abhilfen — dieselbe
+   * Regel wie bei einem unbekannten Code (ADR 0038). Ohne den Rivalen ist die
+   * Frage „derselbe Vogel oder ein alter Tippfehler?" gar nicht zu beantworten;
+   * „Als Wiederfang erfassen" blind anzubieten hieße, eine wissenschaftliche
+   * Aussage ohne jeden Beleg zum Fingerdruck zu machen.
+   */
+  protected readonly erstfang = computed(() => kollidierenderErstfang(this.failure()));
+
+  /**
+   * Der Rivale in einer Zeile: Datum · Uhrzeit · Art · Beringer-Kürzel. Was
+   * fehlt, fällt weg — erfunden wird nichts (ein gelöschter Beringer, eine Art
+   * ohne deutschen Namen).
+   */
+  protected readonly erstfangZeile = computed(() => {
+    const rivale = this.erstfang();
+    if (!rivale) {
+      return null;
+    }
+    const angaben = [
+      rivale.date_time ? formatDate(rivale.date_time, 'dd.MM.yyyy', this.locale) : null,
+      rivale.date_time ? formatDate(rivale.date_time, 'HH:mm', this.locale) : null,
+      rivale.species,
+      rivale.staff,
+    ].filter((angabe): angabe is string => !!angabe);
+    return `Belegt durch: ${angaben.join(' · ')}`;
+  });
 
   /** Die Admins der eigenen Organisation — leer, solange keine gelesen wurden. */
   private readonly admins = signal<readonly OrgAdmin[]>([]);
@@ -193,6 +252,44 @@ export class FailureBannerComponent {
     this.auth.sessionExpired();
     const next = this.router.url && this.router.url !== '/login' ? this.router.url : '/';
     void this.router.navigate(['/login'], {queryParams: {next}});
+  }
+
+  /**
+   * „Erstfang öffnen" (#444) — liegt der Fehler drüben, wird er drüben
+   * berichtigt.
+   *
+   * Die **gewöhnliche** Navigation zu einem Fang, genau die, die auch „Letzte
+   * Fänge" und „Heute" benutzen. Damit gelten die Verwerfen-Regeln aus #407
+   * unverändert: der `unsavedChangesGuard` hängt an der Route und fragt, bevor
+   * eine angefangene Erfassung verloren geht. Hier wird ausdrücklich **keine**
+   * Ausnahme erfunden — weder ein eigenes Fragen (das die Frage doppelt
+   * stellte) noch ein Vorbeigehen am Wächter (das den Eintrag still fallen
+   * ließe).
+   *
+   * Der Umweg über die leere Erfassungsmaske ist genau dafür da, dass beides
+   * gilt: steht schon ein Fang offen (`/data-entry/:id` — so kommt ein
+   * zurückgewiesener eingereihter Eintrag daher, #445), dann ist das Ziel für
+   * den Router **dieselbe** Route mit einer anderen Id. Er verwendet das
+   * Bauteil dann wieder, lädt den Eintrag nicht neu und lässt den Wächter gar
+   * nicht erst laufen — der Knopf täte dort wortlos nichts. Der Zwischenschritt
+   * ist das Verlassen, das die Route sonst verschluckt: dort fragt der Wächter,
+   * und was er ablehnt, wird auch nicht geöffnet. In der History steht er
+   * nicht (`skipLocationChange`).
+   */
+  protected async onErstfangOeffnen(): Promise<void> {
+    const rivale = this.erstfang();
+    if (!rivale) {
+      return;
+    }
+    if (this.router.url.startsWith('/data-entry/')) {
+      const verlassen = await this.router.navigateByUrl('/data-entry', {
+        skipLocationChange: true,
+      });
+      if (!verlassen) {
+        return;
+      }
+    }
+    void this.router.navigate(['/data-entry', rivale.id]);
   }
 
   /**

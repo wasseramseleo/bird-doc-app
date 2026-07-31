@@ -308,6 +308,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   readonly bannerTitel = computed(() =>
     this.saveFailure() ? null : 'Synchronisierung abgelehnt',
   );
+  // #444: das Formular hat nach der nächsten freien Ringnummer gefragt und
+  // keine bekommen. Dann steht im Banner ein Satz statt eines Knopfes, der
+  // wortlos nichts täte — und die getippte Nummer bleibt, wo sie ist.
+  readonly keineFreieNummer = signal(false);
   // What "Erneut versuchen" means for the failure currently on screen. The
   // banner only reports that it was pressed; only this form knows which errand
   // failed — a save, a Ringhistorie lookup, a delete.
@@ -831,6 +835,15 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
           this.entryForm.get('ring_number')?.setValue(res.next_number ?? '');
         });
       }
+    });
+
+    // #444: „Es gibt keine freie Nummer" gilt für die Ringgröße, für die
+    // gefragt wurde. Wählt der Beringer eine andere, ist die Antwort hinfällig
+    // — sonst bliebe der Satz stehen und mit ihm die Abhilfe verschwunden, die
+    // für die neue Größe sehr wohl eine Nummer hätte.
+    effect(() => {
+      this.ringSize();
+      this.keineFreieNummer.set(false);
     });
 
     // Issue #19: a 'ring_destroyed' record ("Ring Vernichtet") carries no bird
@@ -2005,11 +2018,89 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     this.saveFailure.set(failure);
     this.retryAction.set(retry);
     this.markRejectedField(failure);
+    // Ein neuer Fehlschlag, eine neue Frage: was beim vorigen Mal keine freie
+    // Nummer hergab, wird nicht als Antwort auf diesen ausgegeben.
+    this.keineFreieNummer.set(false);
   }
 
   /** Der Ausweg „Erneut versuchen", so wie ihn dieser Fehlschlag gemeint hat. */
   onRetryFailure(): void {
     this.retryAction()?.();
+  }
+
+  /**
+   * „Als Wiederfang erfassen" (#444, ADR 0037) — die erste der drei Abhilfen
+   * einer bereits vergebenen Ringnummer: der Vogel trägt den Ring schon, also
+   * ist das in Wahrheit ein Wiederfang.
+   *
+   * Sie setzt den **Ringstatus und sonst nichts** — insbesondere bleibt die
+   * Ringnummer stehen, denn der Ring sitzt am Vogel. Und sie **speichert
+   * nicht**: „Als Wiederfang" ändert die wissenschaftliche Aussage des
+   * Datensatzes, und ein Fehlgriff meldete sonst einen Wiederfang für einen nie
+   * zuvor gefangenen Vogel. Sichtbar, widerruflich, bewusst — drücken muss der
+   * Beringer selbst.
+   *
+   * Die Feldmarkierung an der Ringnummer bleibt ebenfalls stehen: sie hält
+   * fest, woran der Versuch scheiterte, und ist kein Hindernis — `onSubmit()`
+   * räumt sie vor der Prüfung ab (#443).
+   */
+  onAlsWiederfang(): void {
+    this.uebernehmen('bird_status', BirdStatus.ReCatch);
+  }
+
+  /**
+   * „Die nächste freie Ringnummer übernehmen" (#444) — für den anderen Fall:
+   * vorige Woche hat jemand eine Nummer vertippt, und dieser Vogel braucht
+   * einfach die nächste.
+   *
+   * Gefragt wird der **bestehende** Endpunkt, den auch der Vorschlag der Maske
+   * benutzt (#42/#22, im Zuschnitt des Projekts) — es gibt dafür keine zweite
+   * Fläche. Das ist ein **Lesen**, keine Speicherung: der Griff zum Speichern
+   * bleibt der des Beringers.
+   *
+   * Kommt keine Nummer — der Endpunkt kennt keine (`next_number: null`), es
+   * fehlt die Ringgröße, oder das Lesen selbst scheitert —, dann sagt das
+   * Banner genau das. Das Feld bleibt dabei unangetastet: die getippte Nummer
+   * ist das, was der Beringer hat, und ein Knopf, der sie wortlos wegnimmt,
+   * wäre schlimmer als keiner.
+   */
+  onFreieNummerUebernehmen(): void {
+    const size = this.entryForm.get('ring_size')?.value as RingSize | null;
+    if (!size) {
+      this.keineFreieNummer.set(true);
+      return;
+    }
+    this.dataAccess.getNextRingNumber(size, this.currentProject()?.id).subscribe({
+      next: ({ next_number }) => {
+        if (!next_number) {
+          this.keineFreieNummer.set(true);
+          return;
+        }
+        this.uebernehmen('ring_number', next_number);
+      },
+      // Ein Fehler über dem Fehler ist das schlechteste erreichbare Ergebnis
+      // (ADR 0038): das Banner bleibt, wie es ist, und sagt nur, dass es keine
+      // Nummer anzubieten hat.
+      error: () => this.keineFreieNummer.set(true),
+    });
+  }
+
+  /**
+   * Was eine Abhilfe tut, und mehr tut sie nicht: einen Wert ins Formular
+   * schreiben und ihn als ungespeichert kennzeichnen.
+   *
+   * `markAsDirty` ist hier die halbe Miete — ein programmatisch gesetzter Wert
+   * ist für Angular nicht „berührt", und ohne diese Zeile wüsste weder der
+   * `unsavedChangesGuard` (#407) noch Zurücksetzen (#24), dass hier etwas
+   * steht, das noch niemand verantwortet hat.
+   */
+  private uebernehmen(name: string, wert: unknown): void {
+    const control = this.entryForm.get(name);
+    if (!control) {
+      return;
+    }
+    control.setValue(wert);
+    control.markAsDirty();
   }
 
   /**

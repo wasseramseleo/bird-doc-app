@@ -101,7 +101,19 @@ list cannot be read (offline, an empty Organisation, or the read itself failing)
 **degrades to the class's plain way out** and never to an empty name list or a second error.
 A **CSRF-Ablehnung never gets there**: it is the same 403 with the opposite way out, so
 `csrf_failed` classifies as *Erneut versuchen* (the disambiguation from #441) and the Admin
-list is not even read. **A snackbar only ever confirms a success** (#448): every refused write
+list is not even read. **A code can bring remedies of its own** (#444): on
+`ring_already_first_caught` the banner names the colliding Erstfang out of `context.rival`
+(`core/errors/ring-kollision.ts`, a pure function like the classification itself) and offers
+three ways on — open that Erstfang, „Als Wiederfang erfassen", take the next free Ringnummer
+(the existing `GET /rings/next-number/`, no second endpoint). **None of them saves**, none
+navigates away and none discards: they fill the form and the Beringer presses Speichern
+himself, because „Als Wiederfang" changes the scientific claim of the record. Opening the
+rival is the ordinary navigation to a Fang, so the `unsavedChangesGuard` (#407) asks first —
+by way of the empty capture route, because `/data-entry/:a` → `/data-entry/:b` is one and the
+same route to the Router and would reuse the component without ever running the guard.
+Without the context — an older backend, a bundle mid-rollout — the banner degrades to the
+sentence alone and offers no remedy at all, exactly as it does for a code it does not know.
+**A snackbar only ever confirms a success** (#448): every refused write
 on the Verwaltungsbildschirme — Stationen, Beringer (Zuordnung und Seat-Verwaltung included),
 Artennormen, Projekt-Anlage/-Bearbeitung, IWM-Import, „Heute" — renders that same
 `<app-failure-banner>` where the gesture happened, held by a `SchreibFehler`

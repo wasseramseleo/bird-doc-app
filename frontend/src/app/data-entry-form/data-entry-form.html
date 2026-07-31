@@ -6,10 +6,16 @@
 
 <!-- #443 (ADR 0037): ein Banner für beide Momente — eine soeben abgelehnte
      Speicherung und ein beim Synchronisieren zurückgewiesener Eintrag (#164)
-     sehen gleich aus, damit nur eine Sache zu lernen ist. Es verfällt nicht. -->
+     sehen gleich aus, damit nur eine Sache zu lernen ist. Es verfällt nicht.
+     #444: die Abhilfen der bereits vergebenen Ringnummer füllen dieses
+     Formular — sie speichern nicht, navigieren nicht weg und verwerfen
+     nichts. -->
 @if (bannerFailure(); as failure) {
   <app-failure-banner [failure]="failure" [titel]="bannerTitel()"
-                      (retry)="onRetryFailure()"></app-failure-banner>
+                      [keineFreieNummer]="keineFreieNummer()"
+                      (retry)="onRetryFailure()"
+                      (alsWiederfang)="onAlsWiederfang()"
+                      (freieNummer)="onFreieNummerUebernehmen()"></app-failure-banner>
 }
 
 <!-- #385: ein fehlgeschlagenes GET rendert die Meldung *anstelle* des
