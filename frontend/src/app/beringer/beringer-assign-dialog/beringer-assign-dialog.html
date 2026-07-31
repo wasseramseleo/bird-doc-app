@@ -1,8 +1,8 @@
-<h2 mat-dialog-title>Beringer zuordnen</h2>
+<h2 mat-dialog-title>Beringer:in zuordnen</h2>
 <mat-dialog-content>
   <p class="assign__lead">
-    „{{ seatLabel() }}“ hat noch keinen Beringer-Eintrag. Verknüpfe einen vorhandenen Beringer oder
-    lege einen neuen an — danach ist dieses Konto ein Mitglied.
+    „{{ seatLabel() }}“ hat noch keinen Beringer-Eintrag. Verknüpfe eine:n vorhandene:n Beringer:in
+    oder lege eine:n neue:n an — danach ist dieses Konto ein Mitglied.
   </p>
 
   <mat-button-toggle-group
@@ -17,7 +17,7 @@
   @if (mode() === 'link') {
     @if (hasCandidates) {
       <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Beringer ohne Konto</mat-label>
+        <mat-label>Beringer:in ohne Konto</mat-label>
         <mat-select [formControl]="beringerId">
           @for (candidate of data.candidates; track candidate.id) {
             <mat-option [value]="candidate.id">
@@ -26,11 +26,11 @@
           }
         </mat-select>
         @if (showLinkError() && !beringerId.value) {
-          <mat-error>Bitte wähle einen Beringer.</mat-error>
+          <mat-error>Bitte wähle eine:n Beringer:in.</mat-error>
         }
       </mat-form-field>
     } @else {
-      <p class="assign__empty">Es gibt keinen Beringer ohne Konto zum Verknüpfen.</p>
+      <p class="assign__empty">Es gibt keine:n Beringer:in ohne Konto zum Verknüpfen.</p>
     }
   } @else {
     <div class="assign__create" [formGroup]="createForm">

@@ -78,7 +78,7 @@ import {
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {TotFundDialogComponent, TotFundDialogData} from './tot-fund-dialog/tot-fund-dialog';
 import {selectedOptionValidator} from '../shared/validators/selected-option.validator';
-import {getAgeClassLabel, getSexLabel} from './data-entry-labels';
+import {getAgeClassLabel, getBirdStatusLabel, getSexLabel} from './data-entry-labels';
 import {
   computePlausibilityWarnings,
   PlausibilityMeasurements,
@@ -381,6 +381,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // detail dialog via data-entry-labels.
   readonly getAgeClassLabel = getAgeClassLabel;
   readonly getSexLabel = getSexLabel;
+  // #469: der Ringstatus liegt seit diesem Issue daneben — ein Ring vernichtet
+  // in derselben Fanggeschichte trägt keinen und liest sich als Gedankenstrich.
+  readonly getBirdStatusLabel = getBirdStatusLabel;
 
   // Form Definition
   entryForm = this.fb.group({
@@ -583,12 +586,21 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       ? `⚠ Stunde gewechselt auf ${this.hourLabel(hint.suggestedDateTime)} — noch Vögel aus der letzten Runde?`
       : '';
   });
-  // The one-click revert action label „auf HH:00 zurück" — HH:00 is the previous
-  // (just-saved) hour it writes back into the time field.
+  // The one-click revert action label — HH:00 is the previous (just-saved) hour
+  // it writes back into the time field. #466 relabelled it from „auf HH:00
+  // zurück" to „bei HH:00 bleiben": the button does not jump back anywhere, it
+  // keeps the Beringer:in in the round that is still running.
   readonly hourChangeRevertLabel = computed<string>(() => {
     const hint = this.hourChangeHint();
-    return hint ? `auf ${this.hourLabel(hint.previousDateTime)} zurück` : '';
+    return hint ? `bei ${this.hourLabel(hint.previousDateTime)} bleiben` : '';
   });
+
+  // #466: the form's last focused *input* — the field the two Stundenwechsel-banner
+  // actions hand the focus back to. Written only by rememberFocusedControl, which
+  // ignores everything that carries no form control (the banner's own buttons stand
+  // inside this very form). Transient, never persisted; null until the first field
+  // is entered, which is what makes the Art field the fallback.
+  private lastFocusedControlName: string | null = null;
 
   // #155: a fresh client-generated UUID identifies this capture-create attempt
   // end-to-end, so a retried/replayed offline-outbox create is never duplicated
@@ -1287,7 +1299,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         next: created => {
           this.entryForm.get('staff')?.setValue(created);
           this.snackBar.open(
-            `Beringer "${created.full_name} (${created.handle})" wurde angelegt.`,
+            `Beringer:in "${created.full_name} (${created.handle})" wurde angelegt.`,
             undefined,
             {duration: 2000},
           );
@@ -2235,9 +2247,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     }
   }
 
-  // #340: the one-click „auf HH:00 zurück" — write the previous hour back into the
+  // #340: the one-click „bei HH:00 bleiben" — write the previous hour back into the
   // time field and dismiss the hint. Non-sticky: the next save re-reads the clock
-  // and decides afresh whether to warn again.
+  // and decides afresh whether to warn again. #466: it hands the focus back where
+  // it was, so a banner press never costs the Beringer:in her place in the form.
   revertToPreviousHour(): void {
     const hint = this.hourChangeHint();
     if (!hint) {
@@ -2245,13 +2258,43 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     }
     this.entryForm.get('date_time')?.setValue(hint.previousDateTime);
     this.hourChangeHint.set(null);
+    this.restoreFieldFocus();
   }
 
   // #357: the ✕ dismiss on the top banner — accept the new hour. Unlike the revert,
   // it only clears the hint and leaves the clock-driven time untouched. Non-sticky:
   // the next save re-reads the clock and decides afresh whether to warn again.
+  // #466: same focus hand-back as the revert — both actions are detours, not moves.
   dismissHourChangeHint(): void {
     this.hourChangeHint.set(null);
+    this.restoreFieldFocus();
+  }
+
+  // #466: der Zuhörer am Formular. Er zeichnet **ausschließlich** Elemente auf, die
+  // ein Formularsteuerelement tragen — die beiden Banner-Knöpfe stehen im selben
+  // Formular und dürfen sich nicht selbst eintragen, sonst gäbe der Knopf den Fokus
+  // an sich selbst zurück. `closest` statt `getAttribute`, weil ein fokussierter
+  // mat-checkbox das `formControlName` am Wirtselement und nicht am inneren
+  // <input> trägt.
+  rememberFocusedControl(event: FocusEvent): void {
+    const target = event.target as HTMLElement | null;
+    const holder = target?.closest?.('[formControlName]') ?? null;
+    const name = holder?.getAttribute('formControlName');
+    if (name) {
+      this.lastFocusedControlName = name;
+    }
+  }
+
+  // #466: beide Banner-Aktionen geben den Fokus dorthin zurück, wo er vor dem Klick
+  // stand — mit Rückfall auf das Art-Feld, mit dem jede Erfassung beginnt (und auf
+  // dem er direkt nach einem Speichern ohnehin steht, siehe cleanReset).
+  private restoreFieldFocus(): void {
+    const remembered = this.lastFocusedControlName;
+    if (remembered && document.querySelector(`[formControlName="${remembered}"]`)) {
+      this.focusField(remembered);
+      return;
+    }
+    this.focusField('species');
   }
 
   private transformToForm(entry: DataEntry): any {
@@ -2553,7 +2596,14 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       event.preventDefault();
       this.setByUser(controlName, matchingOption.value);
       selectComponent.close();
-      this.focusNext(controlName);
+      if (controlName === 'bird_status') {
+        // #466: die Ringstatus-Taste trägt über alles, was die App im Ring-Block
+        // schon gefüllt hat. Nur hier — die Mausauswahl läuft über
+        // MatSelect.selectionChange und bewegt den Fokus weiterhin gar nicht.
+        this.focusPastRingBlock(matchingOption.value as BirdStatus | null);
+      } else {
+        this.focusNext(controlName);
+      }
       // #362: setValue() does NOT emit MatSelect.selectionChange, so the central
       // Plausibilitätskontrolle the mouse-selection path runs (onCategoricalChange)
       // would be skipped — a keyboard-picked implausible value would only surface
@@ -2592,6 +2642,66 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       return;
     }
     setTimeout(() => this.focusField(nextControlName), 50);
+  }
+
+  // #466 (CONTEXT.md „Ring-Block"): die drei Felder, die zusammen den Ring des
+  // Fangs bezeichnen. Der Ringstatus-Sprung überspringt darin, was die App selbst
+  // vorgelegt hat — und hält spätestens am ersten Feld dahinter.
+  private static readonly RING_BLOCK_CONTROLS: readonly string[] = [
+    'central', 'ring_size', 'ring_number',
+  ];
+
+  // #466: gilt dieses Ring-Block-Feld im Moment des Tastendrucks als von der App
+  // gefüllt?
+  //   Zentrale   — immer. Beim Erstfang deaktiviert und auf die Projekt-Zentrale
+  //                gezwungen, beim Wiederfang mit AUW vorbelegt.
+  //   Ringnummer — beim Erstfang immer, beim Wiederfang nie. Bewusst *kein*
+  //                Werttest: der Ringserien-Vorschlag wird asynchron geholt und
+  //                wäre hier noch leer, der Fokus landete auf einem Feld, das sich
+  //                Sekundenbruchteile später selbst füllt.
+  //   Ringgröße  — wenn sie einen Wert trägt (die Empfohlene Ringgröße der Art).
+  //                Fehlt er, ist genau das die Stelle, an der die Beringer:in
+  //                etwas beizutragen hat.
+  private ringBlockPrefilled(controlName: string, firstCatch: boolean): boolean {
+    switch (controlName) {
+      case 'central':
+        return true;
+      case 'ring_number':
+        return firstCatch;
+      default:
+        return !!this.entryForm.get('ring_size')?.value;
+    }
+  }
+
+  // #466: der Sprung über den Ring-Block. Er wird HIER entschieden, im
+  // Tastatur-Kurzbefehl-Zweig des Ringstatus-Feldes, und **nicht** in focusNext():
+  // Enter, Tab und Pfeil-rechts müssen „genau ein Feld weiter" bedeuten, sonst sind
+  // Zentrale und Ringgröße vorwärts nicht mehr erreichbar — und die Empfohlene
+  // Ringgröße muss pro Vogel überschreibbar bleiben. Zwei Gesten, zwei Bedeutungen.
+  // Die Regel endet am Ring-Block: Alter und Geschlecht tragen ebenfalls
+  // App-Vorbelegungen, bleiben aber Haltestellen — es sind Antworten, die die
+  // Beringer:in für jeden Vogel schuldet.
+  private focusPastRingBlock(status: BirdStatus | null): void {
+    const order = this.focusOrder;
+    const currentIndex = order.indexOf('bird_status');
+    if (currentIndex < 0) {
+      return;
+    }
+    const firstCatch = status === BirdStatus.FirstCatch;
+    const target = order.slice(currentIndex + 1).find((name) => {
+      if (!this.isNavigable(name)) {
+        return false;
+      }
+      if (!DataEntryFormComponent.RING_BLOCK_CONTROLS.includes(name)) {
+        // Spätestens das erste Feld nach dem Block ist die Landestelle.
+        return true;
+      }
+      return !this.ringBlockPrefilled(name, firstCatch);
+    });
+    if (!target) {
+      return;
+    }
+    setTimeout(() => this.focusField(target), 50);
   }
 
   // #338: the backward counterpart of focusNext — walks focusOrder toward the

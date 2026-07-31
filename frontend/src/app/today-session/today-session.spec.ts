@@ -216,6 +216,52 @@ describe('TodaySessionComponent', () => {
       expect(text).toContain('nicht synchronisiert');
     });
 
+    // #469: „Heute", nicht synchronisiert. Ein Ring-vernichtet-Eintrag trägt
+    // schon in der Outbox keinen Ringstatus — das Formular lässt das Feld leer,
+    // sobald die Sonderart gewählt ist —, und die Zeile zeigt diese Abwesenheit
+    // als Gedankenstrich statt als „Wiederfang".
+    it('reads a queued Ring-vernichtet capture as a dash, not as Wiederfang', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload({bird_status: null}),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+
+      const status = fixture.nativeElement.querySelector(
+        '.session-row--queued .session-row__status',
+      ) as HTMLElement;
+      expect(status.textContent?.trim()).toBe('—');
+    });
+
+    it('names the Ringstatus of a queued capture that has one', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload({bird_status: BirdStatus.ReCatch}),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+
+      const status = fixture.nativeElement.querySelector(
+        '.session-row--queued .session-row__status',
+      ) as HTMLElement;
+      expect(status.textContent?.trim()).toBe('Wiederfang');
+    });
+
     it('flags a server-rejected queued entry with its sync error (issue #164)', async () => {
       await TestBed.inject(OutboxStoreService).add({
         id: 'outbox-uuid-1',
@@ -423,6 +469,43 @@ describe('TodaySessionComponent', () => {
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Kohlmeise');
       expect(text).toContain('synchronisiert');
+    });
+
+    // #469: „Heute", synchronisiert — derselbe Satz auf dem zweiten Zweig. Der
+    // Server hat den Ringstatus des Ring-vernichtet-Eintrags geleert; die Zeile
+    // gibt die Abwesenheit wieder, statt sie zu „Wiederfang" zu ergänzen.
+    it('reads a synced Ring-vernichtet capture as a dash, not as Wiederfang', async () => {
+      await setup();
+      fixture.detectChanges();
+      flushSyncedEntries([
+        syncedEntry({
+          species: {
+            id: 'sent',
+            common_name_de: 'Ring Vernichtet',
+            scientific_name: '',
+            special_kind: 'ring_destroyed',
+          } as never,
+          bird_status: null as never,
+        }),
+      ]);
+      fixture.detectChanges();
+
+      const status = fixture.nativeElement.querySelector(
+        '.session-row--synced .session-row__status',
+      ) as HTMLElement;
+      expect(status.textContent?.trim()).toBe('—');
+    });
+
+    it('names the Ringstatus of a synced capture that has one', async () => {
+      await setup();
+      fixture.detectChanges();
+      flushSyncedEntries([syncedEntry({bird_status: BirdStatus.ReCatch})]);
+      fixture.detectChanges();
+
+      const status = fixture.nativeElement.querySelector(
+        '.session-row--synced .session-row__status',
+      ) as HTMLElement;
+      expect(status.textContent?.trim()).toBe('Wiederfang');
     });
 
     it('opens a synced entry in the capture form on click while online', async () => {

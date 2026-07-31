@@ -82,6 +82,26 @@ def test_fang_karte_carries_the_full_capture_record(client):
     assert FANG_KARTE.kuerzel in content
 
 
+def test_fang_karte_names_the_fat_reserve_fettvorrat(client):
+    # #467: die Fang-Karte trägt dieselbe Beschriftung wie die echte App —
+    # „Fettvorrat". „Fett" ist allein die Spaltenüberschrift der IWM-Meldedatei
+    # und keine Beschriftung, die BirdDoc wählen dürfte (CONTEXT.md, dieselbe
+    # Spaltung wie CPL+/Kloake). Sonst zeigte die öffentliche Seite zwei Namen
+    # für dasselbe Feld: „Fett" oben in der Karte, „Fettvorrat" im Formular-Mock.
+    content = client.get("/").content.decode()
+    assert "<dt>Fettvorrat</dt>" in content
+    assert "<dt>Fett</dt>" not in content
+
+
+def test_og_share_image_names_the_fat_reserve_fettvorrat(client):
+    # Das OG-Bild rendert dieselbe Karte (issue #108) und muss dieselbe
+    # Beschriftung tragen — eine geteilte Vorschau ist die Karte, die ein Mensch
+    # zuerst sieht.
+    content = client.get("/og/fang-karte.svg").content.decode()
+    assert ">Fettvorrat</text>" in content
+    assert ">Fett</text>" not in content
+
+
 def test_ringserie_thread_renders_a_sequential_run_threading_the_page(client):
     # The Ringserie thread threads the page as an honest structural marker.
     content = client.get("/").content.decode()

@@ -27,7 +27,7 @@ gemacht.
     ist damit exakt der Seiten-Lead. Ein konkreter Preisbetrag bleibt bewusst
     außen vor; zitierbar ist das Modell.
     {% endcomment %}
-    {% blocktranslate trimmed asvar meta_description %}BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer ohne eigenes Konto erfassen kostenlos mit, und Organisationen der Beta-Kohorte behalten dauerhaft ihren Vorzugspreis – das ist das Preismodell, unabhängig vom späteren Betrag.{% endblocktranslate %}
+    {% blocktranslate trimmed asvar meta_description %}BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer:innen ohne eigenes Konto erfassen kostenlos mit, und Organisationen der Beta-Kohorte behalten dauerhaft ihren Vorzugspreis – das ist das Preismodell, unabhängig vom späteren Betrag.{% endblocktranslate %}
     <meta name="description" content="{{ meta_description }}">
 {% endblock %}
 
@@ -42,18 +42,18 @@ Deutsch (Apex) und Englisch (/en/), ohne sie zu verlassen — wie bei den Funnel
 {% block content %}
     <p class="eyebrow">{% translate "Preise" %}</p>
     <h1 class="features__title">{% blocktranslate trimmed %}Was kostet BirdDoc?{% endblocktranslate %}</h1>
-    <p class="features__lead">{% blocktranslate trimmed %}BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer ohne eigenes Konto erfassen kostenlos mit, und Organisationen der Beta-Kohorte behalten dauerhaft ihren Vorzugspreis – das ist das Preismodell, unabhängig vom späteren Betrag.{% endblocktranslate %}</p>
+    <p class="features__lead">{% blocktranslate trimmed %}BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer:innen ohne eigenes Konto erfassen kostenlos mit, und Organisationen der Beta-Kohorte behalten dauerhaft ihren Vorzugspreis – das ist das Preismodell, unabhängig vom späteren Betrag.{% endblocktranslate %}</p>
 
     {% include "landing/_app_german_only_note.html" %}
 
     <ul class="features__grid">
         <li class="features__item">
             <h2 class="features__name">{% translate "Pro Organisation, nie pro Kopf" %}</h2>
-            <p class="features__desc">{% blocktranslate trimmed %}Die Lizenz gilt pro Organisation, nicht pro Person. Eine Station oder ein Verein zahlt einmal für die ganze Gruppe, statt jede beringende Person einzeln zu lizenzieren – der Preis wächst nicht mit jedem zusätzlichen Beringer.{% endblocktranslate %}</p>
+            <p class="features__desc">{% blocktranslate trimmed %}Die Lizenz gilt pro Organisation, nicht pro Person. Eine Station oder ein Verein zahlt einmal für die ganze Gruppe, statt jede beringende Person einzeln zu lizenzieren – der Preis wächst nicht mit zusätzlichen Beringer:innen.{% endblocktranslate %}</p>
         </li>
         <li class="features__item">
-            <h2 class="features__name">{% translate "Beringer ohne Konto kostenlos" %}</h2>
-            <p class="features__desc">{% blocktranslate trimmed %}Beringer ohne eigenes Konto erfassen ihre Fänge kostenlos mit. Wer nur gelegentlich an der Station beringt, belegt keinen kostenpflichtigen Platz und verursacht keine zusätzlichen Kosten.{% endblocktranslate %}</p>
+            <h2 class="features__name">{% translate "Beringer:innen ohne Konto kostenlos" %}</h2>
+            <p class="features__desc">{% blocktranslate trimmed %}Beringer:innen ohne eigenes Konto erfassen ihre Fänge kostenlos mit. Wer nur gelegentlich an der Station beringt, belegt keinen kostenpflichtigen Platz und verursacht keine zusätzlichen Kosten.{% endblocktranslate %}</p>
         </li>
         <li class="features__item">
             <h2 class="features__name">{% translate "Beta-Kohorte behält den Vorzugspreis" %}</h2>

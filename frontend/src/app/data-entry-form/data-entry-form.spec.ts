@@ -739,6 +739,32 @@ describe('DataEntryFormComponent', () => {
         ...overrides,
       }) as unknown as DataEntry;
 
+    const statusCell = () =>
+      fixture.nativeElement.querySelector('td.mat-column-bird_status') as HTMLElement;
+
+    // #469: die Wiederfang-Historie ist die fünfte Aufrufstelle. Ein Ring
+    // vernichtet steht in der Geschichte derselben Ringnummer — mit dem
+    // Ringstatus, den das Backend geleert hat.
+    it('shows a bare dash and no chip for a Ring-vernichtet row in the history', () => {
+      component.recaptureHistory.set([
+        historyRow({
+          species: { common_name_de: 'Ring Vernichtet', special_kind: 'ring_destroyed' } as never,
+          bird_status: null as never,
+        }),
+      ]);
+      fixture.detectChanges();
+
+      expect(statusCell().textContent!.trim()).toBe('—');
+      expect(statusCell().querySelector('.status-chip')).toBeNull();
+    });
+
+    it('names the Ringstatus of an ordinary history row', () => {
+      component.recaptureHistory.set([historyRow({})]);
+      fixture.detectChanges();
+
+      expect(statusCell().querySelector('.status-chip')!.textContent!.trim()).toBe('Wiederfang');
+    });
+
     const contradictionFlag = () =>
       fixture.nativeElement.querySelector('.sex-contradiction') as HTMLElement | null;
 
@@ -801,7 +827,7 @@ describe('DataEntryFormComponent', () => {
         fixture.nativeElement.querySelectorAll('th[mat-header-cell]'),
       ).map((th) => (th as HTMLElement).textContent!.trim());
       expect(headers).not.toContain('Station');
-      expect(headers).toContain('Beringer');
+      expect(headers).toContain('Beringer:in');
       expect(headers).toContain('Tarsus (mm)');
       expect(headers).toContain('Federlänge (mm)');
 
@@ -842,10 +868,11 @@ describe('DataEntryFormComponent', () => {
       expect(cellText('weight_gram')).toBe('19,0');
     });
 
-    // #405 (#374 (#1) abgelöst): der Bemerkungs-Indikator ist jetzt das ⓘ selbst,
-    // das nur bei vorhandener Bemerkung rendert — der frühere Badge-Punkt auf dem
-    // immer sichtbaren Info-Button ist damit weg. Dasselbe Glyph bedeutet in
-    // beiden Tabellen wieder dasselbe: „hat Bemerkung", nicht „hier klicken".
+    // #405 (#374 (#1) abgelöst): der Indikator ist jetzt das ⓘ selbst — der frühere
+    // Badge-Punkt auf dem immer sichtbaren Info-Button ist damit weg. Dasselbe Glyph
+    // bedeutet in beiden Tabellen wieder dasselbe: seit #468 „in dieser Zeile steht
+    // mehr, als die Spalten zeigen" (Brutfleck, CPL+ oder Bemerkung), nicht „hier
+    // klicken". Diese Zeilen tragen keine Merkmale, hier entscheidet also die Bemerkung.
     it('shows the ⓘ only on a past Fang that carries a comment', () => {
       component.recaptureHistory.set([
         historyRow({ comment: 'linker Flügel verletzt' }),
@@ -874,7 +901,8 @@ describe('DataEntryFormComponent', () => {
       const icon = fixture.nativeElement.querySelector(
         '[data-testid="bemerkung-icon"]',
       ) as HTMLElement;
-      expect(icon.getAttribute('title')).toBe('linker Flügel verletzt');
+      // #468: die freie Bemerkung ist als „Bemerkung: …" gekennzeichnet.
+      expect(icon.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
       expect(icon.getAttribute('aria-label')).toContain('linker Flügel verletzt');
     });
 
@@ -3973,8 +4001,8 @@ describe('DataEntryFormComponent', () => {
   // the top of the hour and is re-read from the clock on each save-reset; when that
   // freshly-suggested hour differs from the hour of the entry just saved, a calm
   // full-width top banner (relocated from the Uhrzeit field to below the Caps-Lock
-  // warning, #357) with a one-click „auf HH:00 zurück" revert and a ✕ dismiss
-  // appears — never a modal, never sticky, never within the same hour.
+  // warning, #357) with a one-click „bei HH:00 bleiben" revert (relabelled in #466)
+  // and a ✕ dismiss appears — never a modal, never sticky, never within the same hour.
   describe('Stundenwechsel-Hinweis top banner (#340, #357)', () => {
     let httpMock: HttpTestingController;
 
@@ -4029,9 +4057,11 @@ describe('DataEntryFormComponent', () => {
       expect(hint!.previousDateTime).toBe('2026-07-04T13:00');
       expect(hint!.suggestedDateTime).toBe('2026-07-04T14:00');
 
-      // The note names the new hour; the revert names the previous hour.
+      // The note names the new hour; the revert names the previous hour — #466
+      // relabelled it „bei HH:00 bleiben": the button does not jump back, it keeps
+      // the Beringer:in in the running round.
       expect(component.hourChangeMessage()).toContain('14:00');
-      expect(component.hourChangeRevertLabel()).toBe('auf 13:00 zurück');
+      expect(component.hourChangeRevertLabel()).toBe('bei 13:00 bleiben');
 
       // Surfaced as the top banner in the DOM, and no blocking modal was opened.
       const el = fixture.nativeElement.querySelector('[data-testid="hour-change-hint"]');
@@ -4072,7 +4102,7 @@ describe('DataEntryFormComponent', () => {
       tick(900);
     }));
 
-    it('reverts the time field to the previous hour on a one-click „auf HH:00 zurück"', fakeAsync(() => {
+    it('reverts the time field to the previous hour on a one-click „bei HH:00 bleiben"', fakeAsync(() => {
       freezeClockAt('2026-07-04T14:20:00');
       fillValidWiederfang();
       component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
@@ -4185,6 +4215,101 @@ describe('DataEntryFormComponent', () => {
 
       // Caps-Lock banner precedes the hour-change banner in document order.
       expect(caps.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      tick(900);
+    }));
+
+    // #466: die Fokusrückgabe. Das Formular merkt sich sein zuletzt fokussiertes
+    // Eingabefeld; beide Banner-Aktionen geben den Fokus dorthin zurück, mit
+    // Rückfall auf das Art-Feld. Die Banner-Knöpfe stehen im selben Formular und
+    // dürfen sich nicht selbst als „zuletzt fokussiert" eintragen — sonst gäbe der
+    // Knopf den Fokus an sich selbst zurück.
+    const revertButton = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="hour-change-revert"]',
+      ) as HTMLButtonElement;
+    const dismissButton = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="hour-change-dismiss"]',
+      ) as HTMLButtonElement;
+    const field = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
+
+    function saveAcrossHourBoundary(): void {
+      freezeClockAt('2026-07-04T14:20:00');
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+      save();
+    }
+
+    it('beschriftet die Zurücksetzen-Aktion mit „bei HH:00 bleiben"', fakeAsync(() => {
+      saveAcrossHourBoundary();
+
+      expect(revertButton().textContent!.trim()).toBe('bei 13:00 bleiben');
+
+      tick(900);
+    }));
+
+    it('gibt den Fokus nach „bei HH:00 bleiben" an das Art-Feld zurück — direkt nach dem Speichern steht er dort', fakeAsync(() => {
+      saveAcrossHourBoundary();
+
+      // cleanReset() hat den Fokus auf die Art gesetzt: dort beginnt der nächste Vogel.
+      expect(document.activeElement).toBe(field('species'));
+
+      const revert = revertButton();
+      revert.focus();
+      expect(document.activeElement).toBe(revert);
+      revert.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(field('species'));
+
+      tick(900);
+    }));
+
+    it('gibt den Fokus nach dem ✕ an das Art-Feld zurück', fakeAsync(() => {
+      saveAcrossHourBoundary();
+
+      const dismiss = dismissButton();
+      dismiss.focus();
+      expect(document.activeElement).toBe(dismiss);
+      dismiss.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(field('species'));
+
+      tick(900);
+    }));
+
+    it('behält die Position mitten in der nächsten Erfassung — beide Aktionen', fakeAsync(() => {
+      saveAcrossHourBoundary();
+
+      // Die Beringer:in ist längst weiter: der Fokus steht auf der Flügellänge.
+      const wing = field('wing_span');
+      wing.focus();
+      expect(document.activeElement).toBe(wing);
+
+      const revert = revertButton();
+      revert.focus();
+      revert.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(wing);
+
+      // Dasselbe für das ✕ — ein zweiter Stundenwechsel, dieselbe Rückgabe.
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+      save();
+
+      const tarsus = field('tarsus');
+      tarsus.focus();
+      const dismiss = dismissButton();
+      dismiss.focus();
+      dismiss.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(tarsus);
 
       tick(900);
     }));
@@ -4687,7 +4812,7 @@ describe('DataEntryFormComponent', () => {
       expect(errorsIn('ringing_station')).toContain(
         'Unbekannte Station – bitte aus der Liste wählen',
       );
-      expect(errorsIn('staff')).toContain('Unbekannter Beringer – bitte aus der Liste wählen');
+      expect(errorsIn('staff')).toContain('Unbekannte:r Beringer:in – bitte aus der Liste wählen');
     });
 
     it('fires no POST while a control holds unmatched free text, keeping the typed text', () => {
@@ -7238,6 +7363,26 @@ describe('DataEntryFormComponent', () => {
       afterClosed.complete();
       expect(document.activeElement).toBe(sexEl);
     });
+
+    // #466: der Ringstatus-Zweig springt jetzt über den Ring-Block — die
+    // Plausibilitätsauswertung in genau diesem Zweig läuft davon unberührt weiter.
+    it('rechnet die Plausibilitätskontrolle auch im Ringstatus-Zweig unverändert weiter (#466)', async () => {
+      await setup();
+      component.selectedSpecies.set(zaunkoenig);
+      // Ein bereits gesetztes, unplausibles Geschlecht — still, weil es nicht über
+      // einen Kurzbefehl kam.
+      component.entryForm.get('sex')!.setValue(Sex.Male);
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      keyPick('bird_status', component.birdStatusOptions, 'w');
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('bird_status')!.value).toBe(BirdStatus.ReCatch);
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+      expect(lastDialogMessage()).toContain(sexMessage);
+
+      await drainFocusTimers();
+    });
   });
 
   // Issue #267 (PRD #261): Bearbeiten-Modus. Opening an existing capture whose
@@ -7856,6 +8001,379 @@ describe('DataEntryFormComponent', () => {
 
       expect(event.defaultPrevented).toBe(true);
       expect(document.activeElement).toBe(at('age_class'));
+    }));
+  });
+
+  // #466: der Sprung über den Ring-Block. Die Ringstatus-Taste trägt die
+  // Beringer:in an die erste Stelle des Ring-Blocks (Zentrale │ Ringgröße │
+  // Ringnummer), an der die App selbst nichts vorgelegt hat — spätestens auf das
+  // erste Feld dahinter (CONTEXT.md, „Ring-Block"). Entschieden wird der Sprung
+  // ausschließlich im Tastatur-Kurzbefehl-Zweig des Ringstatus-Feldes: Enter, Tab
+  // und Pfeil-rechts müssen weiterhin „genau ein Feld weiter" bedeuten, sonst
+  // wären Zentrale und Ringgröße vorwärts nicht mehr erreichbar. Geprüft wird
+  // ausschließlich, welches Feld den Fokus trägt.
+  describe('Sprung über den Ring-Block auf die Ringstatus-Taste (#466)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    // Eine Art MIT Empfohlener Ringgröße — ihre Auswahl legt die Ringgröße vor.
+    const kohlmeise: Species = {
+      id: 's1',
+      common_name_de: 'Kohlmeise',
+      common_name_en: 'Great Tit',
+      scientific_name: 'Parus major',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '',
+    };
+    // Eine Art OHNE Empfohlene Ringgröße (CONTEXT.md: „May be absent — e.g. for
+    // species whose sexes take different sizes") — die Ringgröße bleibt leer.
+    const seeadler: Species = {
+      ...kohlmeise,
+      id: 's2',
+      common_name_de: 'Seeadler',
+      scientific_name: 'Haliaeetus albicilla',
+      ring_size: null,
+    };
+
+    function setupProject(hidden: OptionalField[] = []): void {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ProjectService,
+            useValue: {
+              currentProject: signal<Project | null>({
+                id: 'p1',
+                title: 'Herbst',
+                description: '',
+                hidden_optional_fields: hidden,
+                projekttyp: Projekttyp.Sonstiges,
+                organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+                default_station: null,
+                scientists: [],
+                created: '',
+                updated: '',
+              } as Project),
+              setCurrent: () => {},
+              clear: () => {},
+            },
+          },
+        ],
+      });
+      fixture = TestBed.createComponent(DataEntryFormComponent);
+      component = fixture.componentInstance;
+      httpMock = TestBed.inject(HttpTestingController);
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+        .flush({ count: 0, next: null, previous: null, results: [] });
+      fixture.detectChanges();
+    }
+
+    const el = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement | null;
+
+    const stubSelect = () => ({ close: () => {} }) as unknown as MatSelect;
+    const keyEvent = (key: string) =>
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+
+    // Die Art über den echten Auswahlpfad annehmen: genau der legt die Empfohlene
+    // Ringgröße vor und trägt den Fokus weiter auf den Ringstatus.
+    function chooseSpecies(species: Species): void {
+      component.onSpeciesSelected({
+        option: { value: species },
+      } as MatAutocompleteSelectedEvent);
+      fixture.detectChanges();
+      tick(50);
+    }
+
+    // Der Kurzbefehl auf dem fokussierten Ringstatus-Feld. Wie in #362 mit einem
+    // Stub-MatSelect, damit der Test nicht an Materials eigenem Tastaturpfad hängt.
+    function pressStatusKey(key: 'e' | 'w'): void {
+      el('bird_status')!.focus();
+      component.onSelectKeydown(keyEvent(key), 'bird_status', component.birdStatusOptions, stubSelect());
+      fixture.detectChanges();
+      tick(50);
+    }
+
+    it('trägt „e" bei einer Art mit Empfohlener Ringgröße auf die Netznummer', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(kohlmeise);
+      expect(component.entryForm.get('ring_size')!.value).toBe(RingSize.V);
+
+      pressStatusKey('e');
+
+      // Zentrale (Projekt-Zentrale, erzwungen), Ringgröße (Empfohlene) und
+      // Ringnummer (Erstfang) hat die App gefüllt — die erste Stelle, an der die
+      // Beringer:in etwas beizutragen hat, ist die Netznummer.
+      expect(document.activeElement).toBe(el('net_location'));
+    }));
+
+    it('trägt „e" bei per Optionale Felder abgeschaltetem Netz-Block auf das Alter', fakeAsync(() => {
+      setupProject([OptionalField.NetzBlock]);
+      chooseSpecies(kohlmeise);
+      expect(el('net_location')).toBeNull();
+
+      pressStatusKey('e');
+
+      expect(document.activeElement).toBe(el('age_class'));
+    }));
+
+    it('hält „e" bei einer Art ohne Empfohlene Ringgröße auf der Ringgröße', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(seeadler);
+      expect(component.entryForm.get('ring_size')!.value).toBeNull();
+
+      pressStatusKey('e');
+
+      expect(document.activeElement).toBe(el('ring_size'));
+    }));
+
+    it('trägt „w" auf die Ringnummer', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(kohlmeise);
+
+      pressStatusKey('w');
+
+      // Beim Wiederfang gilt die Ringnummer nie als gefüllt — sie ist der erste
+      // Zug der Beringer:in.
+      expect(document.activeElement).toBe(el('ring_number'));
+    }));
+
+    it('hält „w" bei einer Art ohne Empfohlene Ringgröße auf der Ringgröße', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(seeadler);
+
+      pressStatusKey('w');
+
+      expect(document.activeElement).toBe(el('ring_size'));
+    }));
+
+    it('überspringt die Ringnummer beim Erstfang auch, solange der Ringserien-Vorschlag noch nicht aufgelöst ist', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(kohlmeise);
+
+      pressStatusKey('e');
+
+      // Der Vorschlag ist noch unterwegs: die Ringnummer ist im Moment des
+      // Tastendrucks leer und füllt sich erst Sekundenbruchteile später. Der
+      // Sprung darf sie trotzdem nicht als Landestelle wählen.
+      const pending = httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
+      );
+      expect(component.entryForm.get('ring_number')!.value).toBeFalsy();
+      expect(document.activeElement).toBe(el('net_location'));
+
+      pending.flush({ next_number: '0043' });
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('ring_number')!.value).toBe('0043');
+      expect(document.activeElement).toBe(el('net_location'));
+    }));
+
+    it('lässt Enter auf dem Ringstatus genau ein Feld weitergehen — die Ringgröße bleibt vorwärts erreichbar', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(kohlmeise);
+      component.entryForm.get('bird_status')!.setValue(BirdStatus.FirstCatch);
+      fixture.detectChanges();
+
+      const status = el('bird_status')!;
+      status.focus();
+      status.dispatchEvent(keyEvent('Enter'));
+      tick(50);
+
+      // Die Zentrale ist beim Erstfang deaktiviert, das nächste lebende Feld ist
+      // die Ringgröße — sie muss pro Vogel überschreibbar bleiben.
+      expect(document.activeElement).toBe(el('ring_size'));
+    }));
+
+    it('lässt Pfeil-rechts auf dem Ringstatus genau ein Feld weitergehen', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(kohlmeise);
+      component.entryForm.get('bird_status')!.setValue(BirdStatus.FirstCatch);
+      fixture.detectChanges();
+
+      const status = el('bird_status')!;
+      status.focus();
+      status.dispatchEvent(keyEvent('ArrowRight'));
+      tick(50);
+
+      expect(document.activeElement).toBe(el('ring_size'));
+    }));
+
+    it('hält die Zentrale rückwärts erreichbar (ausländischer Ring)', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(kohlmeise);
+      // Erst der Wiederfang macht die Zentrale bedienbar — ein ausländischer Ring
+      // ist die Ausnahme, für die sie überhaupt existiert.
+      component.entryForm.get('bird_status')!.setValue(BirdStatus.ReCatch);
+      fixture.detectChanges();
+      expect(component.entryForm.get('central')!.enabled).toBe(true);
+
+      const ringSize = el('ring_size')!;
+      ringSize.focus();
+      ringSize.dispatchEvent(keyEvent('ArrowLeft'));
+      tick(50);
+
+      expect(document.activeElement).toBe(el('central'));
+    }));
+
+    it('lässt Tab unangetastet — der Sprung kapert nur den Ringstatus-Kurzbefehl', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(kohlmeise);
+
+      const status = el('bird_status')!;
+      status.focus();
+      const tab = keyEvent('Tab');
+      status.dispatchEvent(tab);
+      tick(50);
+
+      // Tab bleibt die native Weitergabe des Browsers: nichts wird abgefangen und
+      // kein Feld programmatisch angesprungen.
+      expect(tab.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(status);
+    }));
+
+    it('steuert Alter und Geschlecht weiterhin an — die Regel endet am Ring-Block', fakeAsync(() => {
+      setupProject();
+
+      // Alter und Geschlecht tragen ebenfalls App-Vorbelegungen, bleiben aber
+      // Haltestellen: ihre Kurzbefehle gehen genau ein Feld weiter.
+      el('age_class')!.focus();
+      component.onSelectKeydown(keyEvent('3'), 'age_class', component.ageClassOptions, stubSelect());
+      tick(50);
+      expect(document.activeElement).toBe(el('sex'));
+
+      el('sex')!.focus();
+      component.onSelectKeydown(keyEvent('0'), 'sex', component.sexOptions, stubSelect());
+      tick(50);
+      expect(document.activeElement).toBe(el('fat_deposit'));
+    }));
+
+    it('lässt die Statuswahl per Maus den Fokus unverändert', fakeAsync(() => {
+      setupProject();
+      chooseSpecies(kohlmeise);
+
+      const statusEl = el('bird_status')!;
+      const statusSelect = fixture.debugElement.query(
+        By.css('mat-select[formControlName="bird_status"]'),
+      ).componentInstance as MatSelect;
+
+      statusEl.focus();
+      statusSelect.open();
+      fixture.detectChanges();
+      const erstfang = Array.from(
+        document.querySelectorAll('mat-option'),
+      ).find((o) => (o.textContent ?? '').includes('Erstfang')) as HTMLElement;
+      erstfang.click();
+      fixture.detectChanges();
+      tick(500);
+
+      expect(component.entryForm.get('bird_status')!.value).toBe(BirdStatus.FirstCatch);
+      expect(document.activeElement).toBe(statusEl);
+      expect(document.activeElement).not.toBe(el('net_location'));
+    }));
+  });
+
+  // #466: der Bearbeitungsmodus folgt derselben Sprungregel ohne Sonderweg.
+  describe('Sprung über den Ring-Block im Bearbeitungsmodus (#466)', () => {
+    let f: ComponentFixture<DataEntryFormComponent>;
+    let c: DataEntryFormComponent;
+
+    afterEach(() => localStorage.clear());
+
+    function savedRecatch(): DataEntry {
+      return {
+        id: '42',
+        species: {
+          id: 's1',
+          common_name_de: 'Kohlmeise',
+          scientific_name: 'Parus major',
+          ring_size: RingSize.S,
+        },
+        ring: { id: 'r1', number: '901234', size: RingSize.S },
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+        ringing_station: {
+          handle: 'STAMT',
+          name: 'Linz',
+          organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+        },
+        project: null,
+        bird_status: BirdStatus.ReCatch,
+        age_class: AgeClass.ThisYear,
+        sex: Sex.Female,
+        date_time: '2024-05-01T08:30:00Z',
+        comment: 'Wiederfang am Hauptnetz',
+        parasites: [],
+      } as unknown as DataEntry;
+    }
+
+    function setupEdit(): void {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [DataEntryFormComponent],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideNoopAnimations(),
+          {
+            provide: ActivatedRoute,
+            useValue: {
+              snapshot: { paramMap: { get: (key: string) => (key === 'id' ? '42' : null) } },
+            },
+          },
+        ],
+      });
+      f = TestBed.createComponent(DataEntryFormComponent);
+      c = f.componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedRecatch());
+      f.detectChanges();
+    }
+
+    const at = (name: string) =>
+      f.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement | null;
+
+    function pressStatusKey(key: 'e' | 'w'): void {
+      at('bird_status')!.focus();
+      c.onSelectKeydown(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+        'bird_status',
+        c.birdStatusOptions,
+        { close: () => {} } as unknown as MatSelect,
+      );
+      f.detectChanges();
+      tick(50);
+    }
+
+    it('springt beim Erstfang über den ganzen Ring-Block auf die Netznummer', fakeAsync(() => {
+      setupEdit();
+      expect(c.isEditMode()).toBe(true);
+      expect(c.entryForm.get('ring_size')!.value).toBe(RingSize.S);
+
+      pressStatusKey('e');
+
+      expect(document.activeElement).toBe(at('net_location'));
+    }));
+
+    it('hält beim Wiederfang auf der Ringnummer', fakeAsync(() => {
+      setupEdit();
+
+      pressStatusKey('w');
+
+      expect(document.activeElement).toBe(at('ring_number'));
     }));
   });
 
@@ -9718,5 +10236,75 @@ describe('DataEntryFormComponent: der kollidierende Erstfang, geöffnet am echte
     expect(component.entryForm.get('comment')!.value).toBe('Netz 3, kurz vor der Runde');
     // Und nichts davon war eine Speicherung.
     httpMock.expectNone((r) => r.method === 'POST' || r.method === 'PUT');
+  });
+});
+
+// #467: „Fett" benennt nicht, was die Beringer:in am Vogel schätzt — geschätzt
+// wird der Fettvorrat. Die Erfassungsmaske beschriftet das Feld entsprechend;
+// die IWM-Meldedatei behält ihre Spalte `Fett`, weil das das Meldestellen-Format
+// ist und keine Beschriftung, die BirdDoc wählen dürfte (CONTEXT.md, dieselbe
+// Spaltung wie CPL+/Kloake).
+describe('Fettvorrat: die Erfassungsmaske benennt, was geschätzt wird (#467)', () => {
+  const projekt = (): Project =>
+    ({
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    }) as Project;
+
+  async function renderCreateForm(): Promise<ComponentFixture<DataEntryFormComponent>> {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [DataEntryFormComponent],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+        {
+          provide: ProjectService,
+          useValue: {
+            currentProject: signal<Project | null>(projekt()),
+            setCurrent: () => {},
+            clear: () => {},
+          },
+        },
+      ],
+    }).compileComponents();
+    const f = TestBed.createComponent(DataEntryFormComponent);
+    f.detectChanges();
+    TestBed.inject(HttpTestingController)
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+      .flush({ count: 0, next: null, previous: null, results: [] });
+    f.detectChanges();
+    return f;
+  }
+
+  // Durch die gerenderte Maske gelesen, nicht durch eine Konstante — die
+  // Beschriftung ist genau das, was am Ringtisch zu sehen ist.
+  const labelOf = (f: ComponentFixture<DataEntryFormComponent>, control: string): string => {
+    const field = (f.nativeElement as HTMLElement)
+      .querySelector(`[formControlName="${control}"]`)!
+      .closest('mat-form-field')!;
+    return field.querySelector('mat-label')!.textContent!.trim();
+  };
+
+  it('beschriftet das Feld mit „Fettvorrat"', async () => {
+    const f = await renderCreateForm();
+
+    expect(labelOf(f, 'fat_deposit')).toBe('Fettvorrat');
+  });
+
+  it('lässt die Muskelklasse daneben unverändert', async () => {
+    // Ausdrücklich nicht mit umbenannt: „Muskelklasse" bleibt „Muskelklasse".
+    const f = await renderCreateForm();
+
+    expect(labelOf(f, 'muscle_class')).toBe('Muskelklasse');
   });
 });

@@ -43,8 +43,8 @@
   }
 }
 
-// #374 (#1): der Bemerkungs-Indikator bleibt gedämpft — er meldet die Bemerkung,
-// nicht einen Alarm.
+// #374 (#1): der Indikator bleibt gedämpft — er meldet, dass in der Zeile mehr
+// steht als die Spalten zeigen (#468), nicht einen Alarm.
 .bemerkung-indicator {
   color: var(--bd-ink-faint);
 }

@@ -48,7 +48,7 @@ export interface RingHistory {
 const FANG_GESICHERT =
   'Der Eintrag ist auf diesem Gerät gesichert und wird nach der Anmeldung übertragen.';
 const BERINGER_GESICHERT =
-  'Der Beringer ist auf diesem Gerät gesichert und wird nach der Anmeldung übertragen.';
+  'Der Beringer-Eintrag ist auf diesem Gerät gesichert und wird nach der Anmeldung übertragen.';
 
 /**
  * The offline-aware data-access facade (issue #159, #160, PRD #152): fronts

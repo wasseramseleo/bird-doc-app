@@ -107,6 +107,39 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
     expect(zentraleText(fixture)).toBe('—');
   });
 
+  // #469: der Detail-Dialog ist die vierte der fünf Aufrufstellen. Er holt das
+  // Wort im geteilten Beschriftungsmodul — und bei einem Ring vernichtet, dem
+  // das Backend den Ringstatus geleert hat, ist das ein Gedankenstrich.
+  describe('Ringstatus', () => {
+    const statusCell = (fixture: ComponentFixture<DataEntryDetailDialogComponent>) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('dt')) as HTMLElement[])
+        .find(dt => dt.textContent!.trim() === 'Status')!
+        .nextElementSibling as HTMLElement;
+
+    it('names the Ringstatus of an ordinary capture', async () => {
+      const fixture = await render(baseEntry());
+
+      expect(statusCell(fixture).textContent!.trim()).toBe('Wiederfang');
+    });
+
+    it('shows a bare dash and no badge for a Ring-vernichtet capture', async () => {
+      const entry = baseEntry();
+      entry.species = {
+        id: 'sent',
+        common_name_de: 'Ring Vernichtet',
+        scientific_name: '',
+        special_kind: 'ring_destroyed',
+      } as never;
+      (entry as { bird_status: BirdStatus | null }).bird_status = null;
+
+      const fixture = await render(entry);
+
+      const cell = statusCell(fixture);
+      expect(cell.textContent!.trim()).toBe('—');
+      expect(cell.querySelector('.status-badge')).toBeNull();
+    });
+  });
+
   // Parasit vocabulary (issue #406): a capture migrated off the retired „Milben"
   // code must read as Rote Milben here, not as a raw `red_mites`.
   describe('Parasit labels', () => {
@@ -133,6 +166,29 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
       const fixture = await render(entry);
 
       expect(parasitText(fixture)).toBe('Rote Milben, Zecke');
+    });
+  });
+
+  // Fettvorrat (issue #467): der Dialog trägt dieselbe Beschriftung wie die
+  // Erfassungsmaske. „Fett" ist allein die Spaltenüberschrift der IWM-Meldedatei
+  // — dieselbe Spaltung wie CPL+/Kloake (CONTEXT.md).
+  describe('Kondition labels', () => {
+    const labels = (fixture: ComponentFixture<DataEntryDetailDialogComponent>) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('dt')) as HTMLElement[]).map(dt =>
+        dt.textContent!.trim(),
+      );
+
+    it('names the fat reserve Fettvorrat, never the export column Fett', async () => {
+      const fixture = await render(baseEntry());
+
+      expect(labels(fixture)).toContain('Fettvorrat');
+      expect(labels(fixture)).not.toContain('Fett');
+    });
+
+    it('leaves Muskelklasse beside it untouched', async () => {
+      const fixture = await render(baseEntry());
+
+      expect(labels(fixture)).toContain('Muskelklasse');
     });
   });
 });

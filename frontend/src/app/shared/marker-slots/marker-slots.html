@@ -1,12 +1,15 @@
 <span class="marker-slot" data-testid="marker-slot-bemerkung">
-  <!-- #374 (#1): Bemerkungs-Indikator. Der Tooltip trägt den echten
-       Bemerkungstext — beide Fangmarker erzwingen eine Bemerkung, ein bloßes
-       "Bemerkung vorhanden" wäre genau dort redundant. -->
-  @if (entry().comment; as comment) {
+  <!-- #374 (#1) / #468: „in dieser Zeile steht mehr, als die Spalten zeigen".
+       Der Tooltip trägt das Mehr im Klartext — die Vokabeln des Fangs und die
+       freie Bemerkung, ausdrücklich als „Bemerkung: …" gekennzeichnet. Ein
+       bloßes „Bemerkung vorhanden" wäre neben den Fangmarkern redundant, die
+       eine Bemerkung ohnehin erzwingen. Screenreader-Beschriftung und Tooltip
+       tragen denselben Text. -->
+  @if (bemerkenswertes(); as mehr) {
     <mat-icon class="marker-icon bemerkung-indicator" inline
               data-testid="bemerkung-icon"
-              [title]="comment"
-              [attr.aria-label]="'Bemerkung: ' + comment"
+              [title]="mehr"
+              [attr.aria-label]="mehr"
     >info_outline</mat-icon>
   }
 </span>

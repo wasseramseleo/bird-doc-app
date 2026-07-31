@@ -54,29 +54,29 @@ async function stubApi(page: Page, rolle: 'admin' | 'mitglied'): Promise<void> {
   await page.route('**/api/birds/data-entries/**', (route) => route.fulfill({json: page0([])}));
 }
 
-test.describe('Beringer verwalten (Org-Admin)', () => {
-  test('the admin-only "Beringer verwalten" entry navigates to /beringer', async ({page}) => {
+test.describe('Beringer:innen verwalten (Org-Admin)', () => {
+  test('the admin-only "Beringer:innen verwalten" entry navigates to /beringer', async ({page}) => {
     await stubApi(page, 'admin');
     await page.goto('/');
 
     await page.locator('.user-trigger').click();
-    await page.getByRole('menuitem', {name: 'Beringer verwalten'}).click();
+    await page.getByRole('menuitem', {name: 'Beringer:innen verwalten'}).click();
 
     await expect(page).toHaveURL(/\/beringer$/);
-    await expect(page.locator('h1')).toContainText('Beringer verwalten');
+    await expect(page.locator('h1')).toContainText('Beringer:innen verwalten');
     // The list renders with the two badge states.
     await expect(page.locator('.beringer-card__badge--member')).toContainText('Mitglied');
     await expect(page.locator('.beringer-card__badge--no-account')).toContainText('Ohne Konto');
   });
 
-  test('a plain Mitglied sees no "Beringer verwalten" entry and cannot reach /beringer', async ({
+  test('a plain Mitglied sees no "Beringer:innen verwalten" entry and cannot reach /beringer', async ({
     page,
   }) => {
     await stubApi(page, 'mitglied');
     await page.goto('/');
 
     await page.locator('.user-trigger').click();
-    await expect(page.getByRole('menuitem', {name: 'Beringer verwalten'})).toHaveCount(0);
+    await expect(page.getByRole('menuitem', {name: 'Beringer:innen verwalten'})).toHaveCount(0);
 
     // A direct hit on the guarded route is bounced away to the /projekte picker
     // (no Projekt selected, so home redirects there too — #221).

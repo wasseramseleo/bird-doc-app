@@ -190,7 +190,7 @@ export class BeringerComponent implements OnInit {
     this.schreibFehler.leeren();
     this.api.createScientist(payload).subscribe({
       next: (created) => {
-        this.snackBar.open(`Beringer "${created.full_name}" wurde angelegt.`, 'Schließen', {
+        this.snackBar.open(`Beringer:in "${created.full_name}" wurde angelegt.`, 'Schließen', {
           duration: 3000,
         });
         this.load();
@@ -219,7 +219,7 @@ export class BeringerComponent implements OnInit {
     this.schreibFehler.leeren();
     this.api.updateScientist(beringer.id, payload).subscribe({
       next: (updated) => {
-        this.snackBar.open(`Beringer "${updated.full_name}" wurde aktualisiert.`, 'Schließen', {
+        this.snackBar.open(`Beringer:in "${updated.full_name}" wurde aktualisiert.`, 'Schließen', {
           duration: 3000,
         });
         this.load();
@@ -262,7 +262,7 @@ export class BeringerComponent implements OnInit {
     this.api.linkScientistToSeat(beringer.id, mitgliedschaftId).subscribe({
       next: (updated) => {
         this.snackBar.open(
-          `Beringer "${updated.full_name}" wurde mit einem Konto verknüpft.`,
+          `Beringer:in "${updated.full_name}" wurde mit einem Konto verknüpft.`,
           'Schließen',
           {duration: 3000},
         );
@@ -337,7 +337,7 @@ export class BeringerComponent implements OnInit {
     const ref = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, boolean>(
       ConfirmDialogComponent,
       {
-        data: {title: 'Beringer löschen?', message, confirmLabel: 'Löschen'},
+        data: {title: 'Beringer:in löschen?', message, confirmLabel: 'Löschen'},
         width: '480px',
       },
     );
@@ -353,7 +353,7 @@ export class BeringerComponent implements OnInit {
     this.schreibFehler.leeren();
     this.api.deleteScientist(beringer.id).subscribe({
       next: () => {
-        this.snackBar.open(`Beringer „${beringer.full_name}“ wurde gelöscht.`, 'Schließen', {
+        this.snackBar.open(`Beringer:in „${beringer.full_name}“ wurde gelöscht.`, 'Schließen', {
           duration: 3000,
         });
         this.load();

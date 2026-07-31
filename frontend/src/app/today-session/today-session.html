@@ -73,8 +73,10 @@
               —
             }
           </span>
+          <!-- #469: derselbe Gedankenstrich wie im nicht synchronisierten
+               Zweig darüber — ein Ring vernichtet hat keinen Ringstatus. -->
           <span class="session-row__status">
-            {{ entry.bird_status === BirdStatus.FirstCatch ? 'Erstfang' : 'Wiederfang' }}
+            {{ getBirdStatusLabel(entry.bird_status) }}
           </span>
           <span class="session-row__staff">{{ entry.staff.full_name }}</span>
           <span class="session-row__badge session-row__badge--synced">

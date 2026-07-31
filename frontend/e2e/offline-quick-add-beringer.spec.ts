@@ -168,9 +168,9 @@ test.describe('Offline quick-add Beringer + Kürzel-matched sync (issue #167)', 
     const staff = page.locator('input[formControlName="staff"]');
     await staff.click();
     await staff.fill('ANM');
-    await page.locator('mat-option', { hasText: 'Neuer Beringer' }).click();
+    await page.locator('mat-option', { hasText: 'Neue:r Beringer:in' }).click();
 
-    // The "Neuer Beringer" dialog: the typed Kürzel is pre-filled; add the name.
+    // The "Neue:r Beringer:in" dialog: the typed Kürzel is pre-filled; add the name.
     await page.locator('input[formControlName="first_name"]').fill('Anna');
     await page.locator('input[formControlName="last_name"]').fill('Muster');
     await page.getByRole('button', { name: 'Anlegen' }).click();

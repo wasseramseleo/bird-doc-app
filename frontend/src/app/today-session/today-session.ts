@@ -28,6 +28,7 @@ import {OutboxEntry} from '../models/outbox-entry.model';
 import {
   DataEntryDetailDialogComponent,
 } from '../data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog';
+import {getBirdStatusLabel} from '../data-entry-form/data-entry-labels';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {AppIconErrorDirective} from '../shared/app-icons';
 import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
@@ -84,7 +85,11 @@ export class TodaySessionComponent implements OnInit {
 
   readonly currentProject = this.projectService.currentProject;
   readonly isOffline = this.connectivity.isOffline;
-  readonly BirdStatus = BirdStatus;
+  // #469: beide Zweige dieses Bildschirms holen das Wort am selben Ort — der
+  // synchronisierte im Template, der nicht synchronisierte in `toQueuedRow`.
+  // Das Template braucht das Enum seither nicht mehr; es entscheidet nichts
+  // mehr über den Ringstatus, es zeigt nur noch, was die Beschriftung sagt.
+  readonly getBirdStatusLabel = getBirdStatusLabel;
 
   readonly loadingSynced = signal(false);
   readonly syncedEntries = signal<DataEntry[]>([]);
@@ -166,7 +171,10 @@ export class TodaySessionComponent implements OnInit {
       timestamp: entry.queuedAt,
       speciesLabel: display.species?.common_name_de ?? '—',
       ringLabel: ringSize && ringNumber ? `${ringSize} ${ringNumber}` : '—',
-      statusLabel: entry.payload['bird_status'] === BirdStatus.FirstCatch ? 'Erstfang' : 'Wiederfang',
+      // #469: derselbe Ort wie auf jeder anderen Fang-Oberfläche. Ein
+      // Ring-vernichtet-Eintrag trägt schon in der Outbox keinen Ringstatus —
+      // die Beschriftung macht daraus einen Gedankenstrich, keinen Wiederfang.
+      statusLabel: getBirdStatusLabel(entry.payload['bird_status'] as BirdStatus | null),
       staffLabel: display.staff?.full_name ?? '—',
       syncError: entry.syncError ?? null,
     };

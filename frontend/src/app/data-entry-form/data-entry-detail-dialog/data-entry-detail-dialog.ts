@@ -18,7 +18,7 @@ import {
   SmallFeatherIntMoult,
 } from '../../models/data-entry.model';
 import {environment} from '../../../environments/environment';
-import {getAgeClassLabel, getSexLabel} from '../data-entry-labels';
+import {getAgeClassLabel, getBirdStatusLabel, getSexLabel} from '../data-entry-labels';
 
 @Component({
   selector: 'app-data-entry-detail-dialog',
@@ -31,8 +31,11 @@ export class DataEntryDetailDialogComponent {
   readonly entry: DataEntry = inject(MAT_DIALOG_DATA);
   readonly BirdStatus = BirdStatus;
 
-  getStatusLabel(status: BirdStatus): string {
-    return status === BirdStatus.FirstCatch ? 'Erstfang' : 'Wiederfang';
+  // #469: derselbe Ort wie für Alter und Geschlecht darunter. Ein Ring
+  // vernichtet hat keinen Ringstatus — das Backend leert ihn —, und das
+  // Beschriftungsmodul macht daraus einen Gedankenstrich.
+  getStatusLabel(status: BirdStatus | null): string {
+    return getBirdStatusLabel(status);
   }
 
   // #232 (US 19): the ring's Zentrale, so a foreign recapture is recognizable in

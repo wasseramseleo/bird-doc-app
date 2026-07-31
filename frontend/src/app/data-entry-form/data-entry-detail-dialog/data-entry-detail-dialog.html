@@ -16,12 +16,19 @@
     <h4>Fang</h4>
     <dl>
       <dt>Status</dt>
+      <!-- #469: ohne Ringstatus kein Abzeichen — ein Ring vernichtet ist weder
+           Erstfang noch Wiederfang, und der blanke Gedankenstrich liest sich
+           wie die übrigen leeren Felder dieses Dialogs. -->
       <dd>
-        <span class="status-badge"
-              [class.erstfang]="entry.bird_status === BirdStatus.FirstCatch"
-              [class.wiederfang]="entry.bird_status !== BirdStatus.FirstCatch">
+        @if (entry.bird_status) {
+          <span class="status-badge"
+                [class.erstfang]="entry.bird_status === BirdStatus.FirstCatch"
+                [class.wiederfang]="entry.bird_status === BirdStatus.ReCatch">
+            {{ getStatusLabel(entry.bird_status) }}
+          </span>
+        } @else {
           {{ getStatusLabel(entry.bird_status) }}
-        </span>
+        }
       </dd>
       <dt>Datum & Uhrzeit</dt>
       <dd>{{ entry.date_time | date:'dd.MM.yyyy HH:mm' }}</dd>
@@ -29,7 +36,7 @@
       <dd data-testid="detail-zentrale">{{ getCentralLabel() }}</dd>
       <dt>Station</dt>
       <dd>{{ entry.ringing_station.name }}</dd>
-      <dt>Beringer</dt>
+      <dt>Beringer:in</dt>
       <dd>{{ entry.staff.full_name }} ({{ entry.staff.handle }})</dd>
     </dl>
   </section>
@@ -89,7 +96,7 @@
   <section>
     <h4>Kondition</h4>
     <dl>
-      <dt>Fett</dt>
+      <dt>Fettvorrat</dt>
       <dd>{{ getFatLabel(entry.fat_deposit) }}</dd>
       <dt>Muskelklasse</dt>
       <dd>{{ getMuscleLabel(entry.muscle_class) }}</dd>

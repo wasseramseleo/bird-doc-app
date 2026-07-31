@@ -88,6 +88,25 @@ describe('DataEntryListComponent', () => {
 
   // Flush the next outstanding list request and return it so callers can assert
   // on its query params (page, search) before/after flushing.
+  // Ein Ring-vernichtet-Eintrag, so wie der Server ihn liefert: Ring, Beringer,
+  // Station und Datum bleiben, jedes Vogeldatenfeld ist geleert — der
+  // Ringstatus eingeschlossen (CONTEXT.md „Ring vernichtet").
+  function sentinelRow(): DataEntry {
+    return row({
+      id: 'sentinel',
+      species: {
+        id: 'sent',
+        common_name_de: 'Ring Vernichtet',
+        special_kind: 'ring_destroyed',
+      } as never,
+      bird_status: null as never,
+      tarsus: null,
+      feather_span: null,
+      wing_span: null,
+      weight_gram: null,
+    });
+  }
+
   function flushEntries(entries: DataEntry[]) {
     const req = httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'));
     req.flush({ count: entries.length, next: null, previous: null, results: entries });
@@ -288,8 +307,10 @@ describe('DataEntryListComponent', () => {
     const sentinelRows = rows.filter((r) => r.classList.contains('entry-row--sentinel'));
     expect(sentinelRows.length).toBe(1);
 
-    // The marked row carries a discreet "vernichtet" badge.
-    expect(sentinelRows[0].textContent).toContain('vernichtet');
+    // #469: die Plakette ist gegangen — was die Zeile kenntlich macht, ist der
+    // Artname plus die gedämpfte Darstellung, und die trägt allein.
+    expect(sentinelRows[0].textContent).toContain('Ring Vernichtet');
+    expect(sentinelRows[0].querySelector('.sentinel-badge')).toBeNull();
   });
 
   // #371 (ADR 0026): the two Fangmarker render a distinct row icon in "Letzte
@@ -355,13 +376,17 @@ describe('DataEntryListComponent', () => {
   // #388: beide Fangmarker erzwingen eine Bemerkung — Slot 1 ist also immer belegt,
   // wenn Slot 2 oder 3 es ist. Ein ⓘ, das nur "Bemerkung vorhanden" sagt, wäre genau
   // dort redundant; der Tooltip trägt deshalb den echten Text.
+  // #468: die freie Bemerkung ist darin als „Bemerkung: …" gekennzeichnet — das ⓘ
+  // nennt inzwischen auch Brutfleck und CPL+, und ein Tot-Fund komponiert seinen
+  // Bemerkungstext selbst. Wie der Text zustande kommt, prüft der Spec der
+  // geteilten Komponente (`shared/marker-slots/marker-slots.spec.ts`).
   it('shows the actual Bemerkung text on the ⓘ instead of a generic hint', () => {
     flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
 
     const icon = fixture.nativeElement.querySelector(
       '[data-testid="bemerkung-icon"]',
     ) as HTMLElement;
-    expect(icon.getAttribute('title')).toBe('linker Flügel verletzt');
+    expect(icon.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
     expect(icon.getAttribute('aria-label')).toContain('linker Flügel verletzt');
   });
 
@@ -406,8 +431,9 @@ describe('DataEntryListComponent', () => {
     expect(bothSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
   });
 
-  // #388: das ⓘ wird nur gerendert, *wenn* eine Bemerkung existiert — der Badge-Punkt
-  // würde also bloß die Existenz des Icons wiederholen.
+  // #388: das ⓘ wird nur gerendert, *wenn* die Zeile mehr trägt als die Spalten zeigen
+  // — seit #468 Brutfleck, CPL+ oder Bemerkung. Der Badge-Punkt würde also bloß die
+  // Existenz des Icons wiederholen.
   it('renders the ⓘ without a badge dot', () => {
     flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
 
@@ -418,20 +444,51 @@ describe('DataEntryListComponent', () => {
     expect(row0.querySelector('[matBadge], .mat-badge')).toBeNull();
   });
 
-  // #388: eine Sonderart *ist* die Art — ihr Badge bleibt in der Art-Spalte.
-  it('keeps the "vernichtet" badge in the Art cell', () => {
+  // #469: die Plakette „vernichtet" entfällt — der Artname „Ring Vernichtet"
+  // steht direkt darüber und sagt dasselbe. Die gedämpfte Zeilendarstellung
+  // bleibt, sie trägt das Erkennen weiterhin.
+  it('drops the "vernichtet" badge and keeps the dimmed row', () => {
+    flushEntries([sentinelRow()]);
+
+    const speciesCell = fixture.nativeElement.querySelector('[data-testid="species-cell"]') as HTMLElement;
+    expect(speciesCell.textContent).toContain('Ring Vernichtet');
+    expect(speciesCell.querySelector('.sentinel-badge')).toBeNull();
+    // Die Art-Zelle trägt sonst nichts, was umbrechen könnte — keine Icons.
+    expect(speciesCell.querySelector('mat-icon')).toBeNull();
+
+    expect(fixture.nativeElement.querySelector('tr.entry-row--sentinel')).not.toBeNull();
+  });
+
+  // #469 (CONTEXT.md „Erstfang / Wiederfang"): das Paar ist nicht erschöpfend.
+  // Der Ringstatus eines Ring-vernichtet-Eintrags gehört zu den Vogeldaten, die
+  // das Backend leert — die Zelle zeigt diese Abwesenheit als blanken
+  // Gedankenstrich, wie Tarsus/Federlänge/Gewicht derselben Zeile, und nicht als
+  // Chip mit einer gelöschten Tatsache darin.
+  it('shows a bare dash instead of a Ringstatus chip on a Ring-vernichtet row', () => {
+    flushEntries([sentinelRow()]);
+
+    const statusCell = fixture.nativeElement.querySelector('[data-testid="status-cell"]') as HTMLElement;
+    expect(statusCell.textContent?.trim()).toBe('—');
+    expect(statusCell.querySelector('.status-chip')).toBeNull();
+  });
+
+  // Aves ignota ist die andere Sonderart — sie trägt volle Vogeldaten samt
+  // Ringstatus und bleibt unberührt.
+  it('keeps the Ringstatus chip on an Aves-ignota capture', () => {
     flushEntries([
       row({
-        id: 'sentinel',
-        species: { id: 'sent', common_name_de: 'Ring Vernichtet', special_kind: 'ring_destroyed' } as never,
-        comment: 'Ring vernichtet',
+        id: 'ignota',
+        species: {
+          id: 'ign',
+          common_name_de: 'Aves ignota',
+          special_kind: 'unknown_species',
+        } as never,
+        bird_status: BirdStatus.ReCatch,
       }),
     ]);
 
-    const speciesCell = fixture.nativeElement.querySelector('[data-testid="species-cell"]') as HTMLElement;
-    expect(speciesCell.querySelector('.sentinel-badge')?.textContent).toContain('vernichtet');
-    // Die Art-Zelle trägt sonst nichts, was umbrechen könnte — keine Icons.
-    expect(speciesCell.querySelector('mat-icon')).toBeNull();
+    const statusCell = fixture.nativeElement.querySelector('[data-testid="status-cell"]') as HTMLElement;
+    expect(statusCell.querySelector('.status-chip')?.textContent?.trim()).toBe('Wiederfang');
   });
 
   it('renders biometric values with one decimal place in de-AT format', () => {

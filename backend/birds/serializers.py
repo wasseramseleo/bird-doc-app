@@ -306,8 +306,8 @@ class RingingStationSerializer(serializers.ModelSerializer):
 # captures — the freeze-once-captures invariant keeps a capture history
 # attributable to a stable Beringer identity (PRD #205, issue #209).
 FROZEN_BERINGER_MESSAGE = _(
-    "Dieser Beringer hat bereits Fänge erfasst und kann daher nicht mehr von "
-    "seinem Konto getrennt oder einem anderen Konto zugeordnet werden."
+    "Diese:r Beringer:in hat bereits Fänge erfasst und kann daher nicht mehr vom "
+    "eigenen Konto getrennt oder einem anderen Konto zugeordnet werden."
 )
 
 # Shown when the seat named by ``mitgliedschaft_id`` belongs to another
@@ -316,7 +316,7 @@ CROSS_TENANT_SEAT_MESSAGE = _("Die Mitgliedschaft gehört nicht zu deiner Organi
 
 # Shown when the seat's account is already a Beringer — the OneToOne
 # ``Scientist.user`` must be free to attach.
-SEAT_ALREADY_LINKED_MESSAGE = _("Dieses Konto ist bereits mit einem Beringer verknüpft.")
+SEAT_ALREADY_LINKED_MESSAGE = _("Dieses Konto ist bereits mit eine:r Beringer:in verknüpft.")
 
 
 class ScientistSerializer(serializers.ModelSerializer):
