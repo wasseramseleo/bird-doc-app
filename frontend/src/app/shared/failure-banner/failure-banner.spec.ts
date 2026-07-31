@@ -252,11 +252,17 @@ describe('FailureBannerComponent — die Admins beim Namen (#450)', () => {
   const NUR_DIE_ROLLE =
     'Das darf nur eine Administratorin oder ein Administrator deiner Organisation.';
 
-  /** test_admin_only_403_is_unchanged_and_gains_a_field_less_entry. */
+  /**
+   * Der Antwortkörper aus `test_admin_only_403_is_unchanged_and_gains_a_field_less_entry`
+   * — Code und Satz byte-gleich zu dem, was der Server heute schickt:
+   * `admin_only` (der Domänencode aus #441), nicht DRFs generisches
+   * `permission_denied`, das seit der Disambiguierung des 403 kein Endpunkt mehr
+   * ausstellt.
+   */
   const rechteverweigerung = () =>
     rejection(403, {
       detail: ADMIN_ONLY,
-      errors: [{field: null, code: 'permission_denied', detail: ADMIN_ONLY}],
+      errors: [{field: null, code: 'admin_only', detail: ADMIN_ONLY}],
     });
 
   function render(failure: AppFailure): HTMLElement {
@@ -377,6 +383,39 @@ describe('FailureBannerComponent — die Admins beim Namen (#450)', () => {
     ).toBeTrue();
     expect(el.querySelector('[data-testid="failure-admins"]')).toBeNull();
     expect(bannerText(el)).not.toContain('Administrator');
+  });
+
+  it('malt eine verspätete Antwort nicht auf das Banner einer anderen Klasse', () => {
+    // Dasselbe Bauteil, ein zweiter Fehlschlag: `data-entry-form` ruft
+    // `showFailure()` aus fünf Botengängen, und nur das Speichern leert das
+    // Banner vorher — es geht also von einem Fehlschlag direkt in den nächsten,
+    // ohne dass die Komponente dazwischen stirbt.
+    const el = render(rechteverweigerung());
+    const laufend = adminRead();
+
+    fixture.componentRef.setInput('failure', rejection(503, {detail: 'Wartung'}));
+    fixture.detectChanges();
+
+    // Die Antwort auf die alte Frage kommt erst jetzt. Sie gehört einer Klasse,
+    // die nicht mehr da ist — und hat auf diesem Banner nichts zu suchen.
+    laufend.flush({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [{name: 'Alice Auer', handle: 'ALC'}],
+    });
+    fixture.detectChanges();
+
+    expect(bannerText(el)).not.toContain('Alice Auer');
+    expect(el.querySelector('[data-testid="failure-admins"]')).toBeNull();
+    // Und der Ausweg dieser Klasse steht noch da, statt von einer Person
+    // verdrängt zu sein, die nichts freizugeben hat.
+    expect(bannerText(el)).toContain('Bitte versuche es noch einmal.');
+    expect(
+      Array.from(el.querySelectorAll('button')).some((b) =>
+        b.textContent?.includes('Erneut versuchen'),
+      ),
+    ).toBeTrue();
   });
 
   it('liest die Liste nur, wo eine Person überhaupt etwas ausrichten kann', () => {

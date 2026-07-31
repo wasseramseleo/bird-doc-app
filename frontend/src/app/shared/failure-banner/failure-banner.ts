@@ -91,8 +91,20 @@ export class FailureBannerComponent {
    * einem gescheiterten Lesevorgang, in einer Organisation ohne nennbaren Admin.
    * Dann bleibt es beim Ausweg-Satz der Klasse — nie ein leeres „frag: ", nie ein
    * zweiter Fehler über dem ersten.
+   *
+   * **Die Klasse steht auch hier vor der Liste**, nicht nur vor dem Lesen: das
+   * Banner überlebt den Wechsel von einem Fehlschlag zum nächsten (`showFailure()`
+   * kommt aus fünf Botengängen, und nur das Speichern leert es vorher), und eine
+   * Antwort, die erst danach eintrifft, gehört einer Klasse, die nicht mehr da
+   * ist. Ohne diese Prüfung schriebe sie Namen auf ein *Erneut versuchen* — und
+   * verdrängte dort dessen eigenen Ausweg-Satz. Ein Mitglied zu einer Kollegin zu
+   * schicken, wo niemand etwas freizugeben hat, ist genau der Fehlgriff, gegen
+   * den die Disambiguierung des 403 (#441) angetreten ist.
    */
   protected readonly adminSatz = computed(() => {
+    if (this.failure().klasse !== Fehlerklasse.FreigebenLassen) {
+      return null;
+    }
     const namen = this.admins()
       .map(adminName)
       .filter((name) => name.length > 0);
