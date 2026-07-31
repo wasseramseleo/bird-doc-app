@@ -2288,10 +2288,16 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // #466: beide Banner-Aktionen geben den Fokus dorthin zurück, wo er vor dem Klick
   // stand — mit Rückfall auf das Art-Feld, mit dem jede Erfassung beginnt (und auf
   // dem er direkt nach einem Speichern ohnehin steht, siehe cleanReset).
+  // #477: der Rückfall greift, sobald das gemerkte Steuerelement den Fokus nicht
+  // mehr annehmen KANN — nicht erst, wenn es aus dem DOM verschwunden ist. Ein
+  // bloßer Existenztest ließe den Wirt eines Kontrollkästchens durchgehen, die
+  // Fokusvergabe verpuffte, und der Fokus fiele mit dem geklickten Banner-Knopf
+  // auf <body>.
   private restoreFieldFocus(): void {
     const remembered = this.lastFocusedControlName;
-    if (remembered && document.querySelector(`[formControlName="${remembered}"]`)) {
-      this.focusField(remembered);
+    const target = remembered ? this.focusTargetFor(remembered) : null;
+    if (target) {
+      target.focus();
       return;
     }
     this.focusField('species');
@@ -2623,8 +2629,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     if (!firstInvalid) {
       return;
     }
-    const el = document.querySelector(`[formControlName="${firstInvalid}"]`) as HTMLElement | null;
-    el?.focus();
+    // #477: keine zweite Kopie der Suche — der Sprung erbt dieselbe Auflösung wie
+    // jede andere Fokusvergabe, sonst wäre eine Kopie repariert und die andere nicht.
+    this.focusField(firstInvalid);
   }
 
   private focusNext(currentControlName: string): void {
@@ -2727,11 +2734,15 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // Fortschritt) and controls removed from the DOM by an @if (the net block
   // dropped by the Projekt switch, or the collapsed Ring-vernichtet fields) are
   // skipped so focus never dead-ends where the ringer cannot type.
+  //
+  // #477: „begehbar" heißt fokussierbar, nicht bloß vorhanden. Die Prüfung benutzt
+  // dieselbe Auflösung wie die Fokusvergabe — sonst wählte der Walker ein Ziel,
+  // auf dem er nicht landen kann, und der Lauf endete dort.
   private isNavigable(name: string): boolean {
     if (this.entryForm.get(name)?.disabled) {
       return false;
     }
-    return !!document.querySelector(`[formControlName="${name}"]`);
+    return !!this.focusTargetFor(name);
   }
 
   // #24: the single shared clean-reset routine. It clears the bird-specific
@@ -2838,10 +2849,32 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     }
   }
 
+  // #477: die eine Auflösung „Steuerelementname → fokussierbares Element". Die
+  // Suche über `formControlName` trifft bei einer Material-Komponente deren
+  // **Wirt**, und der ist nicht in jedem Fall fokussierbar: ein <mat-select> trägt
+  // die Tabindex selbst, ein <mat-checkbox> legt sie auf sein inneres
+  // <input type="checkbox"> und setzt am Wirt ausdrücklich `[attr.tabindex]=null`.
+  // `.focus()` auf so einem Wirt ist ein No-Op — deshalb steigt die Auflösung in
+  // den Wirt hinab, statt am Markup zu drehen: die Tabindex bleibt, wo Material
+  // sie hinlegt. Fokusvergabe, Navigierbarkeitsprüfung und der Rückfall der
+  // Banner-Rückgabe teilen sich diese eine Stelle, damit „ist ein Ziel" und „kann
+  // den Fokus annehmen" nicht auseinanderlaufen.
+  private static readonly FOCUSABLE_SELECTOR = 'input, select, textarea, button, [tabindex]';
+
+  private focusTargetFor(controlName: string): HTMLElement | null {
+    const host = document.querySelector(`[formControlName="${controlName}"]`) as HTMLElement | null;
+    if (!host) {
+      return null;
+    }
+    if (host.matches(DataEntryFormComponent.FOCUSABLE_SELECTOR)) {
+      return host;
+    }
+    return host.querySelector<HTMLElement>(DataEntryFormComponent.FOCUSABLE_SELECTOR);
+  }
+
   // Focus a field synchronously. Synchronous (unlike focusNext) so the resulting
   // blur of the previously active field is settled before a following form reset.
   private focusField(controlName: string): void {
-    const el = document.querySelector(`[formControlName="${controlName}"]`) as HTMLElement | null;
-    el?.focus();
+    this.focusTargetFor(controlName)?.focus();
   }
 }
