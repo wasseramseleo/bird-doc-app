@@ -12,6 +12,7 @@ change."
 
 from django.db import IntegrityError, transaction
 from django.utils.translation import gettext_lazy as _
+from rest_framework.fields import DateTimeField
 
 from . import error_codes
 from .models import AUW_SCHEME_CODE, DataEntry, Ring, Species, get_auw_central
@@ -26,12 +27,19 @@ class CaptureValidationError(Exception):
     the offending row. The code travels on the exception rather than being
     re-derived per caller: two serializer methods and the importer all translate
     the same violation, and only the raise site knows which rule it was.
+
+    A rule whose Abhilfe needs data hangs it on the optional ``context`` — the
+    colliding Erstfang behind ``ring_already_first_caught``. It travels for the
+    same reason the code does: only the raise site knows *which* row lost the
+    collision, and a caller re-deriving it would run a second query against a
+    world that has moved on.
     """
 
-    def __init__(self, field, message, code):
+    def __init__(self, field, message, code, context=None):
         self.field = field
         self.message = message
         self.code = code
+        self.context = context
         super().__init__(message)
 
 
@@ -76,6 +84,12 @@ FANGMARKER_FIELDS = ("is_dead_recovery", "is_non_standard")
 RING_ALREADY_FIRST_CAUGHT = _(
     "Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang."
 )
+
+# The Zeitpunkt of the colliding Erstfang is rendered by the very field the
+# capture serializer renders ``date_time`` with, so the banner shows the string a
+# GET on that capture would have handed the client anyway — Vienna wall clock,
+# ISO 8601 — and the client formats it with the code path it already has.
+_RIVAL_DATE_TIME = DateTimeField()
 
 # The maximum length of a free-text foreign Ringgröße (ADR 0019). AUW keeps its
 # short Austrian scheme codes; any other Zentrale records free text capped here.
@@ -268,14 +282,13 @@ def create_capture(
     # index, which is the backstop behind this check-then-insert.
     stored_bird_status = fields.get("bird_status", DataEntry.BirdStatus.FIRST_CATCH)
     if stored_bird_status == DataEntry.BirdStatus.FIRST_CATCH:
-        rival_erstfaenge = DataEntry.objects.filter(
-            ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH, is_cancelled=False
-        )
-        if idempotency_key is not None:
-            rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)
-        if rival_erstfaenge.exists():
+        rival = _rival_erstfang(ring, idempotency_key)
+        if rival is not None:
             raise CaptureValidationError(
-                "ring_number", RING_ALREADY_FIRST_CAUGHT, error_codes.RING_ALREADY_FIRST_CAUGHT
+                "ring_number",
+                RING_ALREADY_FIRST_CAUGHT,
+                error_codes.RING_ALREADY_FIRST_CAUGHT,
+                context=_rival_context(rival),
             )
 
     try:
@@ -319,19 +332,18 @@ def create_capture(
             if existing is not None:
                 return existing
         if stored_bird_status == DataEntry.BirdStatus.FIRST_CATCH:
-            # ``is_cancelled=False`` mirrors the pre-check and the widened index
-            # (ADR 0030): a deleted Erstfang has handed its number back, so it can
-            # never be the rival that lost us this race.
-            rival_erstfaenge = DataEntry.objects.filter(
-                ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH, is_cancelled=False
-            )
-            if idempotency_key is not None:
-                rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)
-            if rival_erstfaenge.exists():
+            # The same re-read the sequential pre-check does — same rule, same
+            # exclusions (ADR 0030's deleted Erstfang, the #155 replay) and the
+            # same context. Two offline devices recording one Erstfang is exactly
+            # the case this PRD exists for, so the loser here learns *which*
+            # Erstfang beat it just as the sequential loser does.
+            rival = _rival_erstfang(ring, idempotency_key)
+            if rival is not None:
                 raise CaptureValidationError(
                     "ring_number",
                     RING_ALREADY_FIRST_CAUGHT,
                     error_codes.RING_ALREADY_FIRST_CAUGHT,
+                    context=_rival_context(rival),
                 ) from None
         raise
 
@@ -370,3 +382,51 @@ def _validate_fangmarker(comment, is_dead_recovery, is_non_standard):
         raise CaptureValidationError(
             "comment", MARKER_COMMENT_REQUIRED, error_codes.MARKER_COMMENT_REQUIRED
         )
+
+
+def _rival_erstfang(ring, idempotency_key):
+    """The non-cancelled Erstfang holding this ring, or ``None`` (ADR 0006/0030).
+
+    At most one can exist — ``unique_erstfang_per_ring`` is the index behind this
+    read — so the row itself is fetched rather than merely counted: it *is* the
+    rejection's context. ``is_cancelled=False`` mirrors that index (a deleted
+    Erstfang handed its number back and is no rival), and a row carrying *this
+    very* idempotency_key is a replay of this capture, never a rival.
+
+    The ring is already scoped to the recording Organisation (``get_or_create_ring``,
+    ADR 0006), so the rival is necessarily one of the requester's own — the tenant
+    boundary holds here without a filter of its own (ADR 0005).
+    """
+    rivals = DataEntry.objects.filter(
+        ring=ring, bird_status=DataEntry.BirdStatus.FIRST_CATCH, is_cancelled=False
+    )
+    if idempotency_key is not None:
+        rivals = rivals.exclude(idempotency_key=idempotency_key)
+    return rivals.select_related("species", "staff").first()
+
+
+def _rival_context(rival):
+    """The colliding Erstfang, packed as the ``context`` of its rejection (ADR 0038).
+
+    „Ist das derselbe Vogel — dann ist der Eintrag in Wahrheit ein Wiederfang —
+    oder hat jemand vorige Woche eine Nummer vertippt?" Ohne den kollidierenden
+    Erstfang zu sehen, ist das nicht zu entscheiden. So the rejection names it:
+    the **Id** to open it with, plus **Zeitpunkt**, **Art** and Beringer-**Kürzel**
+    to recognise it by — and nothing else, because a rejection is not a second
+    capture endpoint.
+
+    Every value is plain JSON, so the whole envelope survives being written onto a
+    flagged ``OutboxEntry`` and read back days later with no network at all. Art
+    and Kürzel are non-null by construction (both FKs are mandatory), and the two
+    rivals with nothing ordinary to say about themselves still name themselves: a
+    Sonderart carries its own German name, and a deleted Beringer has become the
+    reserved ``GELÖSCHT`` fallback rather than nothing.
+    """
+    return {
+        "rival": {
+            "id": str(rival.id),
+            "date_time": _RIVAL_DATE_TIME.to_representation(rival.date_time),
+            "species": rival.species.common_name_de,
+            "staff": rival.staff.handle,
+        }
+    }

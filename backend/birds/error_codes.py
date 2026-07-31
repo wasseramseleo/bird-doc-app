@@ -47,7 +47,14 @@ from rest_framework.exceptions import ErrorDetail
 
 # A physical ring is applied to a bird exactly once, so at most one Erstfang may
 # reference a ring within the Organisation. Carries the richest Abhilfe of all:
-# „Als Wiederfang erfassen" or „freie Nummer übernehmen".
+# „Als Wiederfang erfassen" or „freie Nummer übernehmen" — and it is the one code
+# whose entry also carries a **``context``**: the colliding Erstfang with Id,
+# Zeitpunkt, Art und Beringer-Kürzel (``capture_service._rival_context``), because
+# „ist das derselbe Vogel oder ein Tippfehler von vorletzter Woche?" cannot be
+# decided without seeing him — and a second request to fetch him could fail on its
+# own (ADR 0038). Both raise sites carry it: the sequential Vorabprüfung and the
+# race branch. The IWM importer publishes the code but deliberately **not** the
+# context — see the row-rejection note below.
 RING_ALREADY_FIRST_CAUGHT = "ring_already_first_caught"
 
 # Under the Austrian Vogelwarte the strict 28-code choice list governs the Größe.
@@ -182,6 +189,15 @@ STATION_OTHER_ORGANISATION = "station_other_organisation"
 # „Ring" column publishes ``central_unknown``, exactly as the write path does: a
 # code names a cause, not a call site. Only the causes the importer alone can
 # have are named below.
+#
+# The **context** does not follow the code in here, deliberately. A row rejection's
+# way out is the *file*: the Admin corrects the sheet and uploads again — there is
+# no Formular to fill with „Als Wiederfang erfassen", and the row already names
+# itself by number. The other reason the context exists does not apply either: a
+# report is answered and gone, never written onto a flagged ``OutboxEntry`` to be
+# reopened days later without a network. So an imported collision stays
+# ``{row, reason, code}``, and a report of hundreds of rows does not carry
+# hundreds of Erstfänge nobody asked for.
 
 # No file came with the multipart upload.
 FILE_REQUIRED = "file_required"

@@ -82,10 +82,14 @@ def test_ring_collision_body_is_unchanged_and_carries_its_entry(
 
     It is raised out of ``create`` rather than during ``is_valid``, so DRF sends the
     bare sentence under the field key (no list around it). That form is what a
-    month-old bundle replays into — it must not move a byte."""
+    month-old bundle replays into — it must not move a byte, and it does not move
+    one even though this entry is the richest of them all: the colliding Erstfang
+    rides inside ``errors`` alone (its own contract lives in
+    ``test_error_context.py``)."""
     first = _payload(species, scientist, ringing_station, ring_number="901")
     first["bird_status"] = "e"
-    assert auth_client.post(DATA_ENTRIES_URL, first, format="json").status_code == 201
+    held = auth_client.post(DATA_ENTRIES_URL, first, format="json")
+    assert held.status_code == 201
 
     again = _payload(species, scientist, ringing_station, ring_number="901")
     again["bird_status"] = "e"
@@ -99,6 +103,14 @@ def test_ring_collision_body_is_unchanged_and_carries_its_entry(
             "field": "ring_number",
             "code": "ring_already_first_caught",
             "detail": str(RING_ALREADY_FIRST_CAUGHT),
+            "context": {
+                "rival": {
+                    "id": held.json()["id"],
+                    "date_time": held.json()["date_time"],
+                    "species": species.common_name_de,
+                    "staff": scientist.handle,
+                }
+            },
         }
     ]
 
@@ -299,7 +311,8 @@ def test_replayed_capture_rejection_reads_the_same_to_a_month_old_bundle(
     key it has never seen."""
     first = _payload(species, scientist, ringing_station, ring_number="902")
     first["bird_status"] = "e"
-    assert auth_client.post(DATA_ENTRIES_URL, first, format="json").status_code == 201
+    held = auth_client.post(DATA_ENTRIES_URL, first, format="json")
+    assert held.status_code == 201
 
     replayed = _payload(species, scientist, ringing_station, ring_number="902")
     replayed["bird_status"] = "e"
@@ -315,6 +328,14 @@ def test_replayed_capture_rejection_reads_the_same_to_a_month_old_bundle(
             "field": "ring_number",
             "code": "ring_already_first_caught",
             "detail": str(RING_ALREADY_FIRST_CAUGHT),
+            "context": {
+                "rival": {
+                    "id": held.json()["id"],
+                    "date_time": held.json()["date_time"],
+                    "species": species.common_name_de,
+                    "staff": scientist.handle,
+                }
+            },
         }
     ]
 
