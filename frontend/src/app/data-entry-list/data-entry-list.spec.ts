@@ -355,13 +355,17 @@ describe('DataEntryListComponent', () => {
   // #388: beide Fangmarker erzwingen eine Bemerkung — Slot 1 ist also immer belegt,
   // wenn Slot 2 oder 3 es ist. Ein ⓘ, das nur "Bemerkung vorhanden" sagt, wäre genau
   // dort redundant; der Tooltip trägt deshalb den echten Text.
+  // #468: die freie Bemerkung ist darin als „Bemerkung: …" gekennzeichnet — das ⓘ
+  // nennt inzwischen auch Brutfleck und CPL+, und ein Tot-Fund komponiert seinen
+  // Bemerkungstext selbst. Wie der Text zustande kommt, prüft der Spec der
+  // geteilten Komponente (`shared/marker-slots/marker-slots.spec.ts`).
   it('shows the actual Bemerkung text on the ⓘ instead of a generic hint', () => {
     flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
 
     const icon = fixture.nativeElement.querySelector(
       '[data-testid="bemerkung-icon"]',
     ) as HTMLElement;
-    expect(icon.getAttribute('title')).toBe('linker Flügel verletzt');
+    expect(icon.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
     expect(icon.getAttribute('aria-label')).toContain('linker Flügel verletzt');
   });
 
