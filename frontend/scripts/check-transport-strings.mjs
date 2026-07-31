@@ -29,19 +29,11 @@ import { fileURLToPath } from 'node:url';
 const FRONTEND_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SRC_ROOT = join(FRONTEND_ROOT, 'src');
 
-/**
- * Was noch nicht umgestellt ist — mit der Scheibe, die es abräumt.
- *
- * Bewusst eine Liste einzelner Dateien und keine Ordner: sie wird kleiner,
- * nie größer. Wer hier etwas hinzufügt, verschiebt eine Entscheidung, die
- * PRD #438 bereits getroffen hat.
- */
-const NOT_YET = new Map([
-  [
-    'src/app/service/sync.service.ts',
-    'extractServerMessage — der fünfte handgeschriebene Extraktor, eingezogen in #445',
-  ],
-]);
+// Es gibt hier **keine** Ausnahmeliste mehr. Sie stand hier, solange noch ein
+// handgeschriebener Extraktor lebte; mit `sync.service.ts::extractServerMessage`
+// ist der fünfte und letzte gefallen (#445), und die Liste ist mit ihm gegangen,
+// statt leer stehen zu bleiben. Wer eine Verletzung wieder erlauben will, muss
+// die Mechanik dafür erst zurückbauen — und das sieht man in einem Diff.
 
 /** Etwas, das nach einem Fehler heißt, nach seiner `.message` gefragt. */
 const TRANSPORT_MESSAGE =
@@ -74,7 +66,6 @@ for (const file of files) {
   // Specs dürfen den Transport benennen — sie prüfen ja gerade, dass er
   // *nicht* auf dem Bildschirm landet.
   if (rel.endsWith('.spec.ts')) continue;
-  if (NOT_YET.has(rel)) continue;
 
   const lines = readFileSync(file, 'utf8').split('\n');
   lines.forEach((line, index) => {
@@ -103,5 +94,5 @@ if (failures.length > 0) {
 
 console.log(
   `Keine Transportzeichenkette in einer Meldung: ${files.length} Dateien geprüft, ` +
-    `${NOT_YET.size} noch offen (${[...NOT_YET.keys()].join(', ')}).`,
+    `keine Ausnahme.`,
 );

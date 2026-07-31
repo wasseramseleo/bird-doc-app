@@ -1,3 +1,5 @@
+import {SyncErrorEnvelope} from '../core/errors/app-failure';
+
 /**
  * A durable, queued capture-create attempt (issue #160, PRD #152): the exact
  * payload `DataEntryFormComponent` would otherwise have POSTed to
@@ -69,5 +71,26 @@ export interface OutboxEntry {
   // its first (or a retried) sync. A flagged entry is skipped by the replay
   // until it is fixed in the normal capture form, which re-queues it clean
   // (clearing this flag) — resolving a sync error is just ordinary editing.
+  //
+  // This one line of German prose is the form every bundle can read, and it
+  // stays exactly that (issue #445): IndexedDB outlives any bundle swap, so the
+  // record's existing shape is treated the way ADR 0038 treats the wire's —
+  // additively, never replaced. The structure rides *beside* it below.
   syncError?: string | null;
+  // The whole rejection, kept on the entry (issue #445, ADR 0038): Klasse,
+  // Code, Text, Feld and Kontext — everything `AppFailure` carried at the moment
+  // the server refused it, minus what cannot outlive the request (see
+  // `SyncErrorEnvelope`).
+  //
+  // Without it a flagged entry re-opened days later could show nothing but the
+  // one line above, and could only get the rest by going back to the network —
+  // which is exactly what it does not have. With it, a rejected entry re-opened
+  // **offline** renders the same complete banner it did online, colliding
+  // Erstfang included.
+  //
+  // Absent means an entry an *older bundle* flagged, and those are the entries
+  // this mechanism exists to protect — a device offline for weeks holds exactly
+  // them. Its `syncError` then counts as a bare `detail` with **no code**; a
+  // code is never invented for it (`failureFromSyncError`).
+  syncErrorEnvelope?: SyncErrorEnvelope | null;
 }

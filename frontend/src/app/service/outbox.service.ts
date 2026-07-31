@@ -1,6 +1,7 @@
 import {computed, inject, Injectable, signal} from '@angular/core';
 import {from, Observable, tap} from 'rxjs';
 
+import {AppFailure, syncErrorEnvelopeOf} from '../core/errors/app-failure';
 import {OutboxEntry, PAYLOAD_SCHEMA_VERSION} from '../models/outbox-entry.model';
 import {OutboxStoreService} from '../core/offline/outbox-store';
 import {AuthService} from './auth.service';
@@ -160,18 +161,29 @@ export class OutboxService {
 
   /**
    * Flags a queued entry the server rejected during sync (issue #164): leaves
-   * it in the queue, untouched but for the attached `syncError` message, so the
-   * replay can skip past it and drain the rest of the queue — one bad entry
-   * never holds the queue hostage. Durable-first (persists before the reactive
+   * it in the queue, untouched but for the attached rejection, so the replay
+   * can skip past it and drain the rest of the queue — one bad entry never
+   * holds the queue hostage. Durable-first (persists before the reactive
    * signal update), mirroring `dequeue()`, so the flag survives a reload; the
    * in-memory `entries` signal is updated too so "today's session" shows the
    * flag reactively. Takes the whole `OutboxEntry` (the sync replay already
    * holds it) so it persists authoritatively even when a prior session's row
    * has not yet been folded into the in-memory snapshot.
+   *
+   * Takes the classified `AppFailure`, not a sentence (issue #445): the entry
+   * keeps the German line at `syncError` — the form every bundle can read — and
+   * the whole envelope beside it, so re-opening it days later **offline**
+   * renders the same complete banner it did online, colliding Erstfang
+   * included. Nothing here decides what a rejection *is*; that is the shared
+   * Einordnung's job (`core/errors/app-failure.ts`).
    */
-  async flag(entry: OutboxEntry, syncError: string): Promise<void> {
+  async flag(entry: OutboxEntry, failure: AppFailure): Promise<void> {
     await this.ready;
-    const flagged: OutboxEntry = {...entry, syncError};
+    const flagged: OutboxEntry = {
+      ...entry,
+      syncError: failure.text,
+      syncErrorEnvelope: syncErrorEnvelopeOf(failure),
+    };
     await this.store.add(flagged);
     this.entries.update((current) =>
       current.some((e) => e.id === entry.id)
@@ -189,9 +201,12 @@ export class OutboxService {
    * entry already visible to the current account via `findQueued()`.
    *
    * A re-save always re-queues the entry *clean*: any prior `syncError` flag
-   * (issue #164) is dropped, since fixing a server-rejected entry in the form
-   * is exactly how it is resolved — the corrected capture becomes eligible for
-   * the next sync again rather than staying skipped as flagged.
+   * (issue #164) — envelope and all (issue #445) — is dropped, since fixing a
+   * server-rejected entry in the form is exactly how it is resolved: the
+   * corrected capture becomes eligible for the next sync again rather than
+   * staying skipped as flagged, and it carries no trace of a rejection it has
+   * already answered. The entry is rebuilt field by field below rather than
+   * spread over, which is what makes that true for every field the flag adds.
    *
    * It is also re-stamped with *this* bundle's payload schema version (issue
    * #408, ADR 0033), for the same reason `enqueue()` stamps: the payload is

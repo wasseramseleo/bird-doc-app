@@ -3,6 +3,7 @@ import {HttpErrorResponse} from '@angular/common/http';
 import {Router} from '@angular/router';
 import {firstValueFrom, from, Observable, of, tap} from 'rxjs';
 
+import {appFailureOf, Fehlerklasse} from '../core/errors/app-failure';
 import {ApiService} from './api.service';
 import {AppUpdateService} from './app-update.service';
 import {AuthService} from './auth.service';
@@ -67,25 +68,35 @@ const NOTHING_TO_SYNC: SyncResult = {total: 0, synced: 0, flagged: 0};
  *   stops the replay at that entry, so the still-queued remainder is untouched
  *   and simply retried, under the same key, by the next `syncNow()` call —
  *   never duplicated server-side.
- * - **Skip-and-flag on a validation rejection (issue #164)**: a **400/422** — a
- *   refusal of the payload on its own merits (a validation change, a Station
- *   archived mid-trip, a Beringer reassigned to the Gelöschter Nutzer, or a
- *   genuine ring-uniqueness collision from a concurrent device) — is not a
- *   transient failure: retrying the same payload will only be refused again.
- *   Rather than let one bad entry hold the whole queue hostage, that entry is
- *   left in the queue, flagged with the server's own error message
+ * - **Skip-and-flag on a validation rejection (issue #164)**: the Fehlerklasse
+ *   *Korrigieren* — a refusal of the payload on its own merits (a validation
+ *   change, a Station archived mid-trip, a Beringer reassigned to the Gelöschter
+ *   Nutzer, or a genuine ring-uniqueness collision from a concurrent device) —
+ *   is not a transient failure: retrying the same payload will only be refused
+ *   again. Rather than let one bad entry hold the whole queue hostage, that
+ *   entry is left in the queue, flagged with the server's own rejection
  *   (`OutboxService.flag()`), and the replay continues with the rest. A flagged
  *   entry is skipped by later replays until it is fixed in the normal capture
  *   form (`OutboxService.update()` clears the flag) — resolving a sync error is
  *   just ordinary editing.
- * - **Flagging is earned, not assumed (issue #409, ADR 0033)**: only those two
- *   statuses flag. Every *other* refusal the server can answer — an expired
- *   session, a CSRF refusal, a rate limit, a Version so stale the endpoint has
- *   moved — is a condition of the **run**, not of the entry: the run aborts,
- *   leaving the queue completely untouched, and the next sync carries on. A
- *   Synchronisierungsfehler is the one outcome that costs a Beringer manual work
- *   per entry, so it must require positive evidence rather than be the fallback
- *   for a status we failed to recognise.
+ * - **Flagging is earned, not assumed (issue #409, ADR 0033)**: *Korrigieren*
+ *   is ADR 0033's own positive list — **400/422, never a catch-all** — and this
+ *   service no longer keeps a second copy of it (issue #445): it asks the shared
+ *   Einordnung (`core/errors/app-failure.ts`, ADR 0037) and reads the class off
+ *   the answer, so the replay path and the interactive path can never drift
+ *   apart on what counts as "the payload is the problem". Every *other* refusal
+ *   the server can answer — an expired session, a CSRF refusal, a rate limit, a
+ *   Version so stale the endpoint has moved — is a condition of the **run**, not
+ *   of the entry: the run aborts, leaving the queue completely untouched, and
+ *   the next sync carries on. A Synchronisierungsfehler is the one outcome that
+ *   costs a Beringer manual work per entry, so it must require positive evidence
+ *   rather than be the fallback for a status we failed to recognise.
+ * - **A flagged entry carries the whole rejection (issue #445, ADR 0038)**: not
+ *   one line of prose but the full envelope — Klasse, Code, Text, Feld, Kontext
+ *   — so re-opening it days later **offline** shows the same complete banner it
+ *   would have shown online, colliding Erstfang included. There is deliberately
+ *   no second request to fetch that context later: it would be a request that
+ *   can itself fail, and offline it could never happen at all.
  * - **Account-switch-safe mid-replay**: `AuthService.currentUser()` is a
  *   live, session-cookie-backed signal — it can change *during* the
  *   `await`-per-entry loop (a shared/offline device where Mitglied B logs in,
@@ -303,11 +314,12 @@ export class SyncService {
       await this.outbox.dequeue(entry.id);
       return 'synced';
     } catch (error) {
-      if (this.isValidationRejection(error)) {
+      const failure = appFailureOf(error);
+      if (failure.klasse === Fehlerklasse.Korrigieren) {
         // The payload was refused on its own merits: skip-and-flag (issue #164)
-        // — leave the entry queued, tagged with the server's own message, and
+        // — leave the entry queued, tagged with the server's own rejection, and
         // let the caller carry on with the rest of the queue.
-        await this.outbox.flag(entry, this.extractServerMessage(error));
+        await this.outbox.flag(entry, failure);
         return 'flagged';
       }
       // Anything else is about the run, not this entry (issue #409, ADR 0033):
@@ -317,25 +329,6 @@ export class SyncService {
       this.startRunRemedy(error);
       return 'interrupted';
     }
-  }
-
-  /**
-   * The **only** refusal that earns a Synchronisierungsfehler (ADR 0033): a
-   * `400`/`422`, the server judging this payload on its own merits (validation,
-   * a ring-uniqueness collision, an archived Station…), so retrying it unchanged
-   * is pointless.
-   *
-   * Deliberately a positive list, not `4xx`. Flagging is the one outcome that
-   * costs a Beringer manual work per entry — re-opening and re-saving each
-   * flagged capture by hand — so it has to be *earned* by evidence that this
-   * payload is the problem, rather than be what happens to a status we did not
-   * recognise. The honest price, accepted in ADR 0033: a genuinely bad payload
-   * answering some other 4xx retries forever instead of flagging once. Today
-   * that case is empty (409 is unreachable on this path; 404 means drift), and
-   * a retry cap would just be the catch-all again, wearing a hat.
-   */
-  private isValidationRejection(error: unknown): error is HttpErrorResponse {
-    return error instanceof HttpErrorResponse && (error.status === 400 || error.status === 422);
   }
 
   /**
@@ -411,37 +404,5 @@ export class SyncService {
       return;
     }
     this.retryNotBefore = Date.now() + seconds * 1000;
-  }
-
-  /**
-   * The human message to flag a rejected entry with, dug out of the DRF error
-   * body: a plain string, a `{detail: "…"}`, or field errors
-   * (`{ring_number: ["…"], …}`) joined into one line. Falls back to the
-   * transport-level message, and finally a generic German sentence, so a
-   * flagged entry never carries an empty explanation.
-   */
-  private extractServerMessage(error: HttpErrorResponse): string {
-    const body: unknown = error.error;
-    if (typeof body === 'string' && body.trim()) {
-      return body.trim();
-    }
-    if (body && typeof body === 'object') {
-      const detail = (body as Record<string, unknown>)['detail'];
-      if (typeof detail === 'string' && detail.trim()) {
-        return detail.trim();
-      }
-      const messages: string[] = [];
-      for (const value of Object.values(body as Record<string, unknown>)) {
-        if (Array.isArray(value)) {
-          messages.push(...value.filter((item): item is string => typeof item === 'string'));
-        } else if (typeof value === 'string' && value.trim()) {
-          messages.push(value.trim());
-        }
-      }
-      if (messages.length > 0) {
-        return messages.join(' ');
-      }
-    }
-    return error.message || 'Der Server hat den Eintrag abgelehnt.';
   }
 }

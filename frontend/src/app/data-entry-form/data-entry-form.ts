@@ -280,15 +280,21 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // saves back into the outbox (re-queue) instead of PUTting to the server.
   private readonly loadedQueuedEntry = signal<OutboxEntry | null>(null);
   readonly isQueuedEditMode = computed(() => this.loadedQueuedEntry() !== null);
-  // Issue #164: the server's rejection message when this queued entry was
+  // Issue #164: the server's rejection when this queued entry was
   // skipped-and-flagged during sync — shown as a banner so the Mitglied knows
   // exactly what to fix before re-saving (which re-queues it clean). `null`
   // for an ordinary, never-rejected queued entry. #443: lifted into the shared
   // AppFailure shape so it renders through the *same* banner an online
-  // rejection does (#445 will persist the full structure instead of a string).
+  // rejection does. #445: the entry carries the whole rejection now — Klasse,
+  // Code, Feld, Kontext beside the sentence — so this banner is complete days
+  // later with no network at all, colliding Erstfang included. An entry an
+  // older bundle flagged has only the sentence, and it stays exactly that: a
+  // bare `detail` with no invented code.
   readonly syncFailure = computed(() => {
-    const message = this.loadedQueuedEntry()?.syncError;
-    return message ? failureFromSyncError(message) : null;
+    const entry = this.loadedQueuedEntry();
+    return entry?.syncError
+      ? failureFromSyncError(entry.syncError, entry.syncErrorEnvelope)
+      : null;
   });
   // #443 (ADR 0037): the server's rejection of a save the Beringer just
   // gestured for — classified, never a transport string, and it does not time
