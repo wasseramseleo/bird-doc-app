@@ -21,9 +21,15 @@
     flex: none;
   }
 
+  // Nur der erste Knopf wird nach rechts geschoben; ein zweiter (bei einem 5xx
+  // stehen „Erneut versuchen" und „Fehler melden" nebeneinander) reiht sich mit
+  // dem gemeinsamen `gap` daneben, statt die Zeile ein zweites Mal aufzureißen.
   button {
     flex: none;
-    margin-inline-start: auto;
+
+    &:first-of-type {
+      margin-inline-start: auto;
+    }
   }
 }
 

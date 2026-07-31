@@ -1,11 +1,17 @@
 import {ChangeDetectionStrategy, Component, computed, inject, input, output} from '@angular/core';
 import {MatButtonModule} from '@angular/material/button';
+import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatIconModule} from '@angular/material/icon';
 import {Router} from '@angular/router';
 import {firstValueFrom} from 'rxjs';
 
 import {AppFailure, FEHLERKLASSE_WORTE} from '../../core/errors/app-failure';
+import {fehlerMeldenAngeboten, fehlerberichtVorlage} from '../../core/errors/fehlerbericht';
 import {AppIconErrorDirective} from '../app-icons';
+import {
+  FeedbackDialogComponent,
+  FeedbackDialogData,
+} from '../../feedback/feedback-dialog/feedback-dialog';
 import {AppUpdateService} from '../../service/app-update.service';
 import {AuthService} from '../../service/auth.service';
 import {UnsavedChangesService} from '../../service/unsaved-changes.service';
@@ -24,16 +30,19 @@ import {UnsavedChangesService} from '../../service/unsaved-changes.service';
  * aus der Fehlerklasse.
  *
  * Es trägt Titel, Grund, den Ausweg und die Abhilfe-Knöpfe. Welche Knöpfe das
- * sind, entscheidet allein die **Klasse**, nie ein Status: „Anmelden",
- * „Jetzt aktualisieren" und „Erneut versuchen" gehören zu je einer von ihnen.
+ * sind, entscheidet die **Klasse**: „Anmelden", „Jetzt aktualisieren" und
+ * „Erneut versuchen" gehören zu je einer von ihnen. Daneben kann „Fehler melden"
+ * stehen (#449) — die einzige Stelle, an der die Evidenz mitentscheidet, weil ein
+ * 5xx dieselbe Klasse trägt wie ein Verbindungsabbruch und trotzdem ein Defekt
+ * ist; die Regel steht in `fehlerMeldenAngeboten`, nicht hier.
  * Ein Code, den der Client nicht kennt, bekommt keinen eigenen Knopf (ADR 0038);
- * die ring-gebundenen Abhilfen (#444), „Fehler melden" (#449) und die
- * namentlich genannten Admins (#450) kommen in ihren eigenen Scheiben dazu.
+ * die ring-gebundenen Abhilfen (#444) und die namentlich genannten Admins (#450)
+ * kommen in ihren eigenen Scheiben dazu.
  */
 @Component({
   selector: 'app-failure-banner',
   standalone: true,
-  imports: [MatButtonModule, MatIconModule, AppIconErrorDirective],
+  imports: [MatButtonModule, MatDialogModule, MatIconModule, AppIconErrorDirective],
   templateUrl: './failure-banner.html',
   styleUrls: ['./failure-banner.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -43,6 +52,7 @@ export class FailureBannerComponent {
   private readonly appUpdate = inject(AppUpdateService);
   private readonly auth = inject(AuthService);
   private readonly unsavedChanges = inject(UnsavedChangesService);
+  private readonly dialog = inject(MatDialog);
 
   /** Der eingeordnete Fehlschlag — die Klasse bestimmt Worte und Knöpfe. */
   readonly failure = input.required<AppFailure>();
@@ -60,6 +70,14 @@ export class FailureBannerComponent {
   protected readonly worte = computed(() => FEHLERKLASSE_WORTE[this.failure().klasse]);
   protected readonly titelZeile = computed(() => this.titel() ?? this.worte().titel);
   protected readonly abhilfe = computed(() => this.failure().remedy);
+
+  /**
+   * Ob „Fehler melden" danebensteht (#449). Eigene Bedingung und kein Zweig des
+   * `abhilfe`-Schalters: bei einem 5xx steht es **neben** „Erneut versuchen",
+   * denn beides ist wahr — noch einmal drücken kann helfen, und wissen wollen
+   * wir davon trotzdem.
+   */
+  protected readonly meldenAngeboten = computed(() => fehlerMeldenAngeboten(this.failure()));
 
   /**
    * „Anmelden" — zurück zur Anmeldung, mit dem Weg hierher im Gepäck.
@@ -95,5 +113,25 @@ export class FailureBannerComponent {
     if (await firstValueFrom(this.unsavedChanges.confirmDiscard())) {
       await this.appUpdate.adopt();
     }
+  }
+
+  /**
+   * „Fehler melden" — der **bestehende** Feedback-Dialog (#81), vorbefüllt.
+   *
+   * Ein zweiter Dialog wird nicht gebaut, und `feedback_view` bleibt
+   * unangetastet: das Feld ist Freitext, die Vorbefüllung ist bloß Text. Was
+   * nur hier bekannt ist, reicht das Banner an die Vorlage weiter — der
+   * Bildschirm, auf dem es passierte, die Uhr, und ob dieses Gerät die aktuelle
+   * Version läuft.
+   */
+  protected onFehlerMelden(): void {
+    const data: FeedbackDialogData = {
+      prefill: fehlerberichtVorlage(this.failure(), {
+        bildschirm: this.router.url || null,
+        zeitpunkt: new Date(),
+        versionVeraltet: this.appUpdate.versionStale(),
+      }),
+    };
+    this.dialog.open(FeedbackDialogComponent, {width: '32rem', autoFocus: 'dialog', data});
   }
 }
