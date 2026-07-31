@@ -5,6 +5,7 @@ import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatDialogModule, MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
 
+import {AppIconErrorDirective} from '../../shared/app-icons';
 import {ApiService} from '../../service/api.service';
 import {ImportPreview, ImportResult} from '../../models/iwm-import.model';
 
@@ -24,6 +25,7 @@ type Phase = 'select' | 'preview' | 'result';
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    AppIconErrorDirective,
   ],
   templateUrl: './import-iwm-dialog.html',
   styleUrl: './import-iwm-dialog.scss',

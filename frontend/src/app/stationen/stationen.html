@@ -17,6 +17,7 @@
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (sortedStations().length === 0) {
     <div class="stationen__empty">
+      <mat-icon app-icon-empty aria-hidden="true"></mat-icon>
       <p>Es sind noch keine Stationen angelegt. Lege eine neue Station an.</p>
     </div>
   } @else {

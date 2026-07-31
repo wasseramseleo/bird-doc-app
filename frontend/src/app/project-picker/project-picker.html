@@ -16,6 +16,12 @@
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (projects().length === 0) {
     <div class="picker__empty">
+      <!-- Hier hängt später die Spot-Illustration „Empty-State" (docs/artist-brief.md,
+           B1 — „leere Projektliste"). Bis dahin bleibt das Marken-Logo stehen: es
+           ist kein Material-Icon, der Icon-Seam (#439) hat es also nicht zu
+           ersetzen, und dieser Bildschirm ist das Erste, was ein Mitglied ohne
+           Projekt sieht — ihn im Vorbeigehen umzuräumen wäre ein Redesign, das
+           dieses Ticket ausdrücklich nicht ist. -->
       <img
         src="/birddoc-logo-1930x1930.png"
         alt=""

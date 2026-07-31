@@ -24,6 +24,7 @@ import {
   ProjectStatsTotals,
   StatsRangePreset,
 } from '../../models/project-stats.model';
+import {AppIconEmptyDirective, AppIconErrorDirective} from '../../shared/app-icons';
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 import {SpeciesLineChartComponent} from './species-line-chart/species-line-chart';
 import {HourHistogramChartComponent} from './hour-histogram-chart/hour-histogram-chart';
@@ -72,6 +73,8 @@ interface RangePresetOption {
     SpeciesLineChartComponent,
     HourHistogramChartComponent,
     FaengeSparklineComponent,
+    AppIconErrorDirective,
+    AppIconEmptyDirective,
   ],
   templateUrl: './project-dashboard.html',
   styleUrl: './project-dashboard.scss',

@@ -29,6 +29,7 @@ import {
   DataEntryDetailDialogComponent,
 } from '../data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
+import {AppIconErrorDirective} from '../shared/app-icons';
 
 interface QueuedRow {
   id: string;
@@ -56,7 +57,13 @@ interface QueuedRow {
  */
 @Component({
   selector: 'app-today-session',
-  imports: [CommonModule, MatIconModule, MatButtonModule, MatProgressSpinnerModule],
+  imports: [
+    CommonModule,
+    MatIconModule,
+    MatButtonModule,
+    MatProgressSpinnerModule,
+    AppIconErrorDirective,
+  ],
   templateUrl: './today-session.html',
   styleUrl: './today-session.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

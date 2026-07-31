@@ -24,7 +24,7 @@
           <span class="session-row__staff">{{ row.staffLabel }}</span>
           @if (row.syncError) {
             <span class="session-row__badge session-row__badge--error" title="Zum Beheben öffnen">
-              <mat-icon inline="true" aria-hidden="true">error_outline</mat-icon>
+              <mat-icon inline="true" app-icon-error aria-hidden="true"></mat-icon>
               Sync-Fehler
             </span>
           } @else {

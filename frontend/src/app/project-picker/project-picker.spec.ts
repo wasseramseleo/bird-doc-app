@@ -176,6 +176,24 @@ describe('ProjectPickerComponent', () => {
   // untrue thing: "Du bist noch keinem Projekt zugeordnet."
 
   describe('empty state', () => {
+    // #439: Der Icon-Seam lässt das Marken-Logo hier bewusst stehen. Es ist kein
+    // Material-Icon, fällt also nicht unter „kein Template benennt eine Glyphe
+    // der Rolle leer-oder-kaputt", und dieser Bildschirm ist das Erste, was ein
+    // Mitglied ohne Projekt sieht. Der Tausch gegen die Spot-Illustration B1
+    // (docs/artist-brief.md) ist eine gestalterische Entscheidung mit eigenem
+    // Ticket, kein Nebeneffekt eines Prefactors.
+    it('keeps the brand logo above the empty state', () => {
+      const ctx = setup();
+      signIn('FRE', 'mitglied');
+      render(ctx, []);
+
+      const logo = ctx.fixture.nativeElement.querySelector(
+        '.picker__empty img.picker__empty-logo',
+      ) as HTMLImageElement | null;
+      expect(logo).not.toBeNull();
+      expect(logo!.getAttribute('src')).toBe('/birddoc-logo-1930x1930.png');
+    });
+
     it('names the missing Beringer as the cause for a no-Beringer Admin, not a missing Projekt-Zuordnung', () => {
       const ctx = setup();
       signIn(null, 'admin');

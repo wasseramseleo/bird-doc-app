@@ -82,5 +82,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Icon-Seam check
+        run: npm run check:icon-seam
       - name: Production build
         run: npm run build -- --configuration production

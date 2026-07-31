@@ -6,7 +6,7 @@
 
 @if (syncError(); as error) {
   <div class="sync-error-banner" role="alert" data-testid="sync-error-banner">
-    <mat-icon aria-hidden="true">error_outline</mat-icon>
+    <mat-icon app-icon-error aria-hidden="true"></mat-icon>
     <span>
       <strong>Synchronisierung abgelehnt:</strong>
       {{ error }}
@@ -27,7 +27,7 @@
      befüllt, ist hier also ohnehin leer und rendert bei length === 0 nicht. -->
 @if (loadError()) {
   <div class="load-error" role="alert" data-testid="load-error">
-    <mat-icon aria-hidden="true">error_outline</mat-icon>
+    <mat-icon app-icon-error aria-hidden="true"></mat-icon>
     <p>Der Eintrag konnte nicht geladen werden.</p>
     <button mat-stroked-button type="button" data-testid="load-error-back"
             (click)="onBackToList()">

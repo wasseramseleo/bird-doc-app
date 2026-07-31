@@ -92,6 +92,7 @@ import {
 } from '../core/plausibility/plausibility-acknowledgment';
 import {InfoDialogComponent, InfoDialogData} from '../shared/info-dialog/info-dialog';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
+import {AppIconErrorDirective} from '../shared/app-icons';
 
 // #232: the strict Austrian (AUW) ring-size codes. When the Zentrale switches
 // back from a foreign scheme to the Projekt-Zentrale, a free-text Größe that is
@@ -122,6 +123,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     MatIconModule,
     MatBadgeModule,
     MarkerSlotsComponent,
+    AppIconErrorDirective,
   ],
   providers: [provideNativeDateAdapter(), DatePipe, DecimalPipe],
   templateUrl: './data-entry-form.html',

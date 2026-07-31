@@ -24,6 +24,14 @@
 
 .beringer__empty {
   color: var(--bd-ink-muted, #5a5a5a);
+
+  // #439: das benannte App-Icon des leeren Zustands sitzt über dem Satz, in
+  // gedämpfter Tusche — der Satz selbst bleibt, wo er war.
+  mat-icon {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--bd-ink-faint, #a6a095);
+  }
 }
 
 .gap-panel {

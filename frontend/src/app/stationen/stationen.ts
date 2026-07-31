@@ -7,6 +7,7 @@ import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
+import {AppIconEmptyDirective} from '../shared/app-icons';
 import {ApiService} from '../service/api.service';
 import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
 import {StationFormDialogComponent, StationFormDialogData} from './station-form-dialog/station-form-dialog';
@@ -19,6 +20,7 @@ import {StationFormDialogComponent, StationFormDialogData} from './station-form-
     MatProgressSpinnerModule,
     MatDialogModule,
     MatSnackBarModule,
+    AppIconEmptyDirective,
   ],
   templateUrl: './stationen.html',
   styleUrl: './stationen.scss',
