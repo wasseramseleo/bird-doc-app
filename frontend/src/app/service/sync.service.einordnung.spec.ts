@@ -25,12 +25,13 @@ import {AuthUser} from '../models/auth-user.model';
  * an dem man unterwegs herumbessert, ist keiner. Das Neue steht deshalb hier.
  *
  * IndexedDB ist die echte Browser-Implementierung, wie in jeder Offline-Spec
- * dieses Repos; `settle()` (echte verstrichene Zeit) steht zwischen einem
- * Schritt, der sie anfasst, und der nächsten Zusicherung.
+ * dieses Repos; `settle()` steht zwischen einem Schritt, der sie anfasst, und
+ * der nächsten Zusicherung — und wartet auf die Ruhe des Stores selbst statt
+ * auf eine feste Frist (#464).
  */
 
 function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
+  return TestBed.inject(IndexedDbStore).whenIdle();
 }
 
 function makeEntry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {

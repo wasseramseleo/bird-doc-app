@@ -2209,7 +2209,7 @@ describe('DataEntryFormComponent', () => {
           },
           { status: 401, statusText: 'Unauthorized' },
         );
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await TestBed.inject(IndexedDbStore).whenIdle();
       f.detectChanges();
 
       expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
@@ -2521,10 +2521,11 @@ describe('DataEntryFormComponent', () => {
 
     // The queued-entry resolution writes through to the real (unpatched by
     // Zone) browser IndexedDB, so neither `fixture.whenStable()` nor a plain
-    // microtask await observes its completion — only real elapsed time does
-    // (same pattern as offline-readiness.spec.ts).
+    // microtask await observes its completion — the store says when it is quiet
+    // instead (issue #464), rather than a fixed 20 ms budget that a busy
+    // machine simply overruns.
     function settle(): Promise<void> {
-      return new Promise((resolve) => setTimeout(resolve, 20));
+      return TestBed.inject(IndexedDbStore).whenIdle();
     }
 
     it('resolves the queued entry locally (never hits the server) and pre-fills the form from the cached bundle', async () => {
@@ -9619,9 +9620,9 @@ describe('DataEntryFormComponent', () => {
       httpMock
         .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
         .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
-      // Die Rettung schreibt in das echte (nicht von Zone gepatchte) IndexedDB,
-      // das nur echte verstrichene Zeit beobachtet.
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      // Die Rettung schreibt in das echte (nicht von Zone gepatchte) IndexedDB;
+      // der Store meldet selbst, wann er damit fertig ist (#464).
+      await TestBed.inject(IndexedDbStore).whenIdle();
       fixture.detectChanges();
     }
 

@@ -19,7 +19,7 @@ import {IndexedDbStore} from '../../core/offline/indexed-db-store';
  * always starts with a real IndexedDB read (`listForAccount()`), so the CSRF
  * GET is not dispatched synchronously. */
 function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
+  return TestBed.inject(IndexedDbStore).whenIdle();
 }
 
 function meResponse() {

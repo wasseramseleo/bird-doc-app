@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { AuthService } from './auth.service';
 import { IdentityCacheService } from '../core/offline/identity-cache';
+import { IndexedDbStore } from '../core/offline/indexed-db-store';
 import { ReferenceBundleCacheService } from '../core/offline/reference-bundle-cache';
 
 describe('AuthService', () => {
@@ -181,8 +182,9 @@ describe('AuthService', () => {
     // No logout POST — the session is already gone server-side; httpMock.verify()
     // in afterEach would fail on an unexpected request.
     await Promise.resolve();
-    // Let the best-effort cache clears settle.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Let the best-effort cache clears settle (issue #464: the store reports
+    // its own quiescence — a fixed 20 ms was a race on a busy machine).
+    await TestBed.inject(IndexedDbStore).whenIdle();
 
     expect(service.currentUser()).toBeNull();
     expect(await identityCache.load()).toBeNull();

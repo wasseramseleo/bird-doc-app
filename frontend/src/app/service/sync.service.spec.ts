@@ -23,13 +23,16 @@ import {AuthUser} from '../models/auth-user.model';
  * (`outbox-store.spec.ts`, `data-access-facade.service.spec.ts`,
  * `offline-readiness.spec.ts`) already exercises it — never a hand-rolled
  * mock. Because that write/read really goes through the browser's async
- * IndexedDB machinery, `settle()` (real elapsed time, not a microtask
- * `await`) is needed between a step that touches it and the next assertion
- * — the same pattern `offline-readiness.spec.ts` documents and uses.
+ * IndexedDB machinery, `settle()` is needed between a step that touches it and
+ * the next assertion — the same pattern `offline-readiness.spec.ts` documents
+ * and uses. It awaits the store's own quiescence rather than a fixed slice of
+ * wall-clock time: the old `setTimeout(…, 20)` was a bet that the machine is
+ * not momentarily busy, and losing it is what dropped a wandering spec roughly
+ * every second full run (issue #464).
  */
 
 function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
+  return TestBed.inject(IndexedDbStore).whenIdle();
 }
 
 function makeEntry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
