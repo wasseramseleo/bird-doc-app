@@ -41,27 +41,6 @@ def _without_envelope(body):
     return {key: value for key, value in body.items() if key != "errors"}
 
 
-def _old_bundle_message(body):
-    """The message a month-old bundle digs out of a rejection body.
-
-    A faithful transcription of ``sync.service.ts::extractServerMessage`` as it
-    ships today: ``detail`` if there is one, otherwise every string value and every
-    string inside a list value, joined into one line. A bundle that knows nothing
-    of ``errors`` must read exactly what it read before — the entries are objects,
-    so this loop passes over them (ADR 0033, ADR 0038).
-    """
-    detail = body.get("detail")
-    if isinstance(detail, str) and detail.strip():
-        return detail.strip()
-    messages = []
-    for value in body.values():
-        if isinstance(value, list):
-            messages.extend(item for item in value if isinstance(item, str))
-        elif isinstance(value, str) and value.strip():
-            messages.append(value.strip())
-    return " ".join(messages)
-
-
 @pytest.mark.django_db
 def test_pflichtfeld_rejection_keeps_its_body_and_gains_required_codes(auth_client, scientist):
     """A create with no payload at all: the six German Pflichtfeld sentences arrive
@@ -309,9 +288,17 @@ def test_body_that_is_not_a_mapping_stays_byte_identical(auth_client, scientist)
 def test_replayed_capture_rejection_reads_the_same_to_a_month_old_bundle(
     auth_client, species, scientist, ringing_station
 ):
-    """The response the offline replay reads carries the envelope — and a bundle that
-    ignores it flags the entry with the very same Synchronisierungsfehler sentence
-    as before, because the entries are objects, not strings (ADR 0033)."""
+    """The response the offline replay reads carries the envelope, and the body under
+    it is byte-identical to the one a month-old bundle was written against (ADR 0033).
+
+    That the bundle *itself* is unmoved by the new sibling key is proven against the
+    real client, not a transcription of it: ``frontend/src/app/service/sync.service.spec.ts``
+    replays every rejection shape this path can produce — ``{field: [string]}``, the bare
+    ``{field: string}`` asserted just below, and ``{"detail": …}`` — each with the envelope
+    bolted on, and asserts the identical ``syncError``. It has to run there, because
+    ``sync.service.ts::extractServerMessage`` is the one extractor that enumerates *all*
+    body keys rather than named ones, so only the TypeScript can say what it does with a
+    key it has never seen."""
     first = _payload(species, scientist, ringing_station, ring_number="902")
     first["bird_status"] = "e"
     assert auth_client.post(DATA_ENTRIES_URL, first, format="json").status_code == 201
@@ -323,10 +310,15 @@ def test_replayed_capture_rejection_reads_the_same_to_a_month_old_bundle(
 
     assert response.status_code == 400
     body = response.json()
-    assert body["errors"][0]["field"] == "ring_number"
     assert _without_envelope(body) == {"ring_number": str(RING_ALREADY_FIRST_CAUGHT)}
-    assert _old_bundle_message(body) == str(RING_ALREADY_FIRST_CAUGHT)
-    assert _old_bundle_message(body) == _old_bundle_message(_without_envelope(body))
+    # The exact body the frontend spec replays into the real client.
+    assert body["errors"] == [
+        {
+            "field": "ring_number",
+            "code": "invalid",
+            "detail": str(RING_ALREADY_FIRST_CAUGHT),
+        }
+    ]
 
 
 @pytest.mark.django_db
