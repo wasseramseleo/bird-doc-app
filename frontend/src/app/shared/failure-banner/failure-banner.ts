@@ -91,6 +91,23 @@ export class FailureBannerComponent {
    */
   readonly retry = output<void>();
 
+  /**
+   * Ob „Fehler melden" von hier aus überhaupt angeboten werden darf (#448).
+   *
+   * Fast überall ja — die Vorgabe. Genau eine Stelle setzt es auf `false`: der
+   * **Feedback-Dialog selbst**. Er ist der Meldeweg, also endet der Knopf dort
+   * im Kreis: der Mailversand antwortet 503, das Banner im Dialog böte „Fehler
+   * melden" an, das stapelte einen zweiten Feedback-Dialog über den ersten,
+   * dessen Absenden auf denselben toten Endpunkt liefe — Banner, Knopf, Dialog,
+   * ohne Ende. Ein Fehler über den Fehler ist das schlechteste erreichbare
+   * Ergebnis (ADR 0038); die Nachricht steht im Feld und wartet auf „Erneut
+   * versuchen", nicht auf einen zweiten Dialog.
+   *
+   * Es entscheidet **nicht**, ob gemeldet werden *sollte* — das bleibt
+   * `fehlerMeldenAngeboten` — sondern nur, ob es von hier aus möglich ist.
+   */
+  readonly meldenMoeglich = input(true);
+
   protected readonly worte = computed(() => FEHLERKLASSE_WORTE[this.failure().klasse]);
   protected readonly titelZeile = computed(() => this.titel() ?? this.worte().titel);
   protected readonly abhilfe = computed(() => this.failure().remedy);
@@ -153,8 +170,13 @@ export class FailureBannerComponent {
    * `abhilfe`-Schalters: bei einem 5xx steht es **neben** „Erneut versuchen",
    * denn beides ist wahr — noch einmal drücken kann helfen, und wissen wollen
    * wir davon trotzdem.
+   *
+   * `meldenMoeglich` steht davor: wo der Meldeweg selbst der gescheiterte ist,
+   * gibt es nichts anzubieten.
    */
-  protected readonly meldenAngeboten = computed(() => fehlerMeldenAngeboten(this.failure()));
+  protected readonly meldenAngeboten = computed(
+    () => this.meldenMoeglich() && fehlerMeldenAngeboten(this.failure()),
+  );
 
   /**
    * „Anmelden" — zurück zur Anmeldung, mit dem Weg hierher im Gepäck.

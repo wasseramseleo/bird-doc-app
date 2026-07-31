@@ -88,7 +88,9 @@ the field would go red without a word — and it **never** blocks Speichern. The
 it checks validity, because the one way out of *Korrigieren* is that very button (ADR 0037:
 a remedy fills the form and never saves). A rejection met during a **replay** is the same
 thing and asks the same mapping: `SyncService` flags an entry on the Fehlerklasse
-*Korrigieren* (ADR 0033's 400/422 positive list, kept in one place now) and writes the whole
+*Korrigieren* (ADR 0033's 400/422 positive list, kept in one place now — plus the **409**,
+which #448 put on the same side of that line: a conflict the server named itself is a
+condition of the request, never of the run, and no repetition resolves it) and writes the whole
 `AppFailure` onto it — the sentence at `OutboxEntry.syncError`, the structure beside it at
 `syncErrorEnvelope` — so a rejected entry re-opened days later renders the same complete
 banner with no network at all. **The way out of *Freigeben lassen* is a person, not
@@ -104,7 +106,13 @@ on the Verwaltungsbildschirme — Stationen, Beringer (Zuordnung und Seat-Verwal
 Artennormen, Projekt-Anlage/-Bearbeitung, IWM-Import, „Heute" — renders that same
 `<app-failure-banner>` where the gesture happened, held by a `SchreibFehler`
 (`core/errors/schreib-fehler.ts`) that pairs the classified failure with what „Erneut
-versuchen" means *there*. Two repo-wide guards keep that true with no exceptions left:
+versuchen" means *there*. „There" is a **boundary**, not just an address: on a component the
+failure dies with the screen for free, but the two root services that hold one
+(`ProjectActionsService`, `DataEntryRefreshService`) outlive every screen and must say so —
+the first clears on `NavigationEnd` and drops a response that arrives after the switch, the
+second clears on every list load. Otherwise a refusal earned on `/projekte` reappears over an
+unrelated Projekt, with an „Erneut versuchen" that re-sends the abandoned write.
+Two repo-wide guards keep the snackbar rule true with no exceptions left:
 `npm run check:transport-strings` keeps a transport string or a raw status out of any message,
 and `npm run check:erfolgsmeldungen` keeps a failure out of any snackbar — its message must
 stand in the source, must carry no failure wording, and must not sit in an `error` branch.

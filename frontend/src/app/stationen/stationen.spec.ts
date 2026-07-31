@@ -247,6 +247,21 @@ describe('StationenComponent', () => {
       expect(banner.textContent).toContain('kann nicht gelöscht werden');
       expect(snack).not.toHaveBeenCalled();
       // A blocked delete does not reload the list — nothing changed.
+
+      // …und das Banner widerspricht seinem eigenen Satz nicht (#448): der 409
+      // ist eine Zurückweisung des Vorgangs, kein Defekt. Vorher stand über
+      // „Archiviere die Station stattdessen" die Überschrift „Unerwarteter
+      // Fehler", darunter „Das liegt an uns, nicht an deiner Eingabe." und
+      // daneben ein „Fehler melden" für ein Feature, das genau wie entworfen
+      // arbeitet.
+      expect(banner.textContent).not.toContain('Unerwarteter Fehler');
+      expect(banner.textContent).not.toContain('Das liegt an uns');
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[data-testid="failure-melden"]'),
+      ).toBeNull();
+      // Der andere Weg steht im Satz des Servers und als Knopf an der Station
+      // selbst — die code-gebundene Abhilfe im Banner ist ADR 0038s Sache (#444).
+      expect(banner.textContent).toContain('Archiviere die Station stattdessen');
     });
 
     it('renders the server sentence of a refused create in the banner, not in a snackbar', () => {

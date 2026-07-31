@@ -1,3 +1,4 @@
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -83,10 +84,20 @@ function page0<T>(results: T[]) {
   return { count: results.length, next: null, previous: null, results };
 }
 
+/**
+ * Ein Bildschirm ohne Inhalt: die Wechsel-Tests brauchen zwei auflösbare Routen,
+ * damit `router.url` wirklich wandert (#448).
+ */
+@Component({template: ''})
+class BildschirmStub {}
+
 function setup() {
   TestBed.configureTestingModule({
     providers: [
-      provideRouter([]),
+      provideRouter([
+        {path: '', component: BildschirmStub},
+        {path: 'projekte', component: BildschirmStub},
+      ]),
       provideHttpClient(),
       provideHttpClientTesting(),
       provideNoopAnimations(),
@@ -456,6 +467,67 @@ describe('ProjectActionsService', () => {
       ctx.service.create();
 
       ctx.httpMock.expectNone((r) => r.url.endsWith('/projects/') && r.method === 'POST');
+    });
+  });
+
+  /**
+   * #448 (ADR 0037): „dort, wo die Geste stattfand" ist auch eine **Grenze**.
+   * Dieser Dienst lebt in der Wurzel und überlebt jeden Bildschirmwechsel, der
+   * Fehlschlag darf das nicht: Picker und Projekt-Dashboard rendern dasselbe
+   * Banner, also stünde eine auf `/projekte` abgelehnte Schreibung sonst gleich
+   * darauf über einem fremden Projekt — mit einem „Erneut versuchen", das dort
+   * den aufgegebenen Botengang noch einmal abschickt.
+   */
+  describe('Der Fehlschlag geht mit dem Bildschirm', () => {
+    const ABGELEHNT = 'Ein Projekt mit diesem Titel besteht in deiner Organisation bereits.';
+
+    it('räumt das Banner beim Bildschirmwechsel ab, statt es mitzunehmen', async () => {
+      const ctx = setup();
+      await ctx.router.navigateByUrl('/projekte');
+      stubDialog(ctx.dialog, editResult());
+
+      ctx.service.edit(makeProject({ id: 'p3' }));
+      ctx.httpMock
+        .expectOne((r) => r.url.endsWith('/projects/p3/'))
+        .flush({ title: [ABGELEHNT] }, { status: 400, statusText: 'Bad Request' });
+      expect(ctx.service.schreibFehler.failure()).withContext('auf dem Picker').not.toBeNull();
+
+      await ctx.router.navigateByUrl('/');
+
+      expect(ctx.service.schreibFehler.failure()).toBeNull();
+      // Und „Erneut versuchen" schickt nichts mehr los, was auf dem verlassenen
+      // Bildschirm gemeint war.
+      ctx.service.schreibFehler.erneut();
+      ctx.httpMock.expectNone((r) => r.url.endsWith('/projects/p3/'));
+    });
+
+    it('zeigt eine Antwort nicht mehr, die erst nach dem Wechsel eintrifft', async () => {
+      const ctx = setup();
+      await ctx.router.navigateByUrl('/projekte');
+      stubDialog(ctx.dialog, editResult());
+
+      ctx.service.edit(makeProject({ id: 'p3' }));
+      const req = ctx.httpMock.expectOne((r) => r.url.endsWith('/projects/p3/'));
+      await ctx.router.navigateByUrl('/');
+      req.flush({ title: [ABGELEHNT] }, { status: 400, statusText: 'Bad Request' });
+
+      expect(ctx.service.schreibFehler.failure()).toBeNull();
+    });
+
+    it('zeigt den Fehlschlag weiterhin, solange der auslösende Bildschirm steht', async () => {
+      const ctx = setup();
+      await ctx.router.navigateByUrl('/projekte');
+      stubDialog(ctx.dialog, editResult());
+
+      ctx.service.edit(makeProject({ id: 'p3' }));
+      ctx.httpMock
+        .expectOne((r) => r.url.endsWith('/projects/p3/'))
+        .flush({ title: [ABGELEHNT] }, { status: 400, statusText: 'Bad Request' });
+
+      expect(ctx.service.schreibFehler.failure()?.text).toContain(ABGELEHNT);
+      // …und „Erneut versuchen" meint hier weiterhin genau diesen Botengang.
+      ctx.service.schreibFehler.erneut();
+      ctx.httpMock.expectOne((r) => r.url.endsWith('/projects/p3/')).flush(makeProject({ id: 'p3' }));
     });
   });
 });

@@ -113,7 +113,13 @@ export class FeedbackDialogComponent implements AfterViewInit {
       },
       error: (err: unknown) => {
         this.submitting.set(false);
-        this.schreibFehler.zeige(appFailureOf(err), () => this.send(message));
+        // „Erneut versuchen" geht durch `submit()` und liest das Feld **neu**
+        // (#448). Anderswo ist die mitgegebene Nutzlast die Geste — der Dialog
+        // ist längst zu, nichts kann sich mehr ändern. Hier bleibt er offen und
+        // das Feld bearbeitbar; genau dafür steht das Banner überhaupt im
+        // Dialog. Ein mitgeschlepptes `message` schickte still den alten Text
+        // und verwürfe die Ergänzung, die das Mitglied gerade getippt hat.
+        this.schreibFehler.zeige(appFailureOf(err), () => this.submit());
       },
     });
   }

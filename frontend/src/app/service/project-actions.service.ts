@@ -1,11 +1,13 @@
-import {Injectable, inject, signal} from '@angular/core';
-import {Router} from '@angular/router';
+import {DestroyRef, Injectable, inject, signal} from '@angular/core';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
+import {NavigationEnd, Router} from '@angular/router';
 import {MatDialog} from '@angular/material/dialog';
 import {MatSnackBar} from '@angular/material/snack-bar';
+import {filter} from 'rxjs/operators';
 
 import {ApiService} from './api.service';
 import {AuthService} from './auth.service';
-import {Fehlerklasse, appFailureOf, localFailure} from '../core/errors/app-failure';
+import {AppFailure, Fehlerklasse, appFailureOf, localFailure} from '../core/errors/app-failure';
 import {SchreibFehler} from '../core/errors/schreib-fehler';
 import {ProjectService} from './project.service';
 import {Project} from '../models/project.model';
@@ -51,6 +53,18 @@ function parseFilenameFromContentDisposition(header: string | null): string | nu
  * daraus dasselbe `<app-failure-banner>`: die Zurückweisung landet dort, wo
  * gedrückt wurde, und verfällt nicht. Die Snackbar behält genau eine Aufgabe —
  * zu bestätigen, dass etwas gelungen ist.
+ *
+ * **„Dort, wo gedrückt wurde" ist auch eine Grenze, nicht nur eine Adresse.**
+ * Dieser Dienst lebt in der Wurzel und überlebt damit jeden Bildschirmwechsel —
+ * der Fehlschlag darf das nicht. Ein abgelehntes „Neues Projekt" auf `/projekte`
+ * stünde sonst gleich darauf über dem Dashboard eines fremden Projekts, und
+ * „Erneut versuchen" schickte dort das aufgegebene Anlegen noch einmal los.
+ * Deshalb zwei Regeln, und beide sind dieselbe: der Fehlschlag geht mit dem
+ * Bildschirm. Eine abgeschlossene Navigation leert das Banner (`NavigationEnd`
+ * im Konstruktor), und eine Antwort, die erst nach dem Wechsel eintrifft, wird
+ * gar nicht erst gezeigt (`zeigeAufAusloesendemBildschirm`). Genau das meint
+ * `SchreibFehler` mit „verschwindet mit ihm" — die Bildschirme haben es als Feld
+ * gratis, dieser Dienst muss es aussprechen.
  */
 @Injectable({providedIn: 'root'})
 export class ProjectActionsService {
@@ -60,6 +74,7 @@ export class ProjectActionsService {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   // Reference data the create/edit dialogs need. Loaded on demand by a consumer
   // (the picker) via loadReferenceData(); kept here so the dialogs have a single
@@ -70,6 +85,41 @@ export class ProjectActionsService {
 
   /** Die zurückgewiesene Schreibung, die der auslösende Bildschirm zeigt (#448). */
   readonly schreibFehler = new SchreibFehler();
+
+  constructor() {
+    // Der Bildschirm ist gewechselt: was auf dem vorigen zurückgewiesen wurde,
+    // geht mit ihm (#448). Ohne das trüge der Wurzeldienst das Banner des
+    // Pickers auf das Projekt-Dashboard hinüber — über ein Projekt, mit dem die
+    // Geste nichts zu tun hatte, und mit einem „Erneut versuchen", das dort das
+    // aufgegebene Anlegen erneut abschickte.
+    this.router.events
+      .pipe(
+        filter((ereignis): ereignis is NavigationEnd => ereignis instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => this.schreibFehler.leeren());
+  }
+
+  /**
+   * Den Fehlschlag zeigen — aber nur, wenn der Bildschirm, auf dem gedrückt
+   * wurde, noch da ist.
+   *
+   * Die Navigation räumt bereits ab, was schon im Banner steht; das hier deckt
+   * die andere Hälfte derselben Regel ab: eine Antwort, die **während** des
+   * Wechsels unterwegs war und erst danach eintrifft. Sie gehört einem
+   * Bildschirm, den niemand mehr ansieht — sie auf dem nächsten zu zeigen, wäre
+   * dieselbe Verwechslung, nur eine Sekunde später.
+   */
+  private zeigeAufAusloesendemBildschirm(
+    ausgeloestAuf: string,
+    failure: AppFailure,
+    erneut: () => void,
+  ): void {
+    if (this.router.url !== ausgeloestAuf) {
+      return;
+    }
+    this.schreibFehler.zeige(failure, erneut);
+  }
 
   loadReferenceData(): void {
     this.api.getScientists().subscribe({next: (res) => this.scientists.set(res.results)});
@@ -117,6 +167,7 @@ export class ProjectActionsService {
 
   private postProject(result: ProjectCreateDialogResult): void {
     this.schreibFehler.leeren();
+    const ausgeloestAuf = this.router.url;
     this.api
       .createProject({
         title: result.title,
@@ -144,7 +195,9 @@ export class ProjectActionsService {
           this.router.navigateByUrl('/');
         },
         error: (err: unknown) =>
-          this.schreibFehler.zeige(appFailureOf(err), () => this.postProject(result)),
+          this.zeigeAufAusloesendemBildschirm(ausgeloestAuf, appFailureOf(err), () =>
+            this.postProject(result),
+          ),
       });
   }
 
@@ -167,6 +220,7 @@ export class ProjectActionsService {
 
   private patchProject(project: Project, result: ProjectEditDialogResult): void {
     this.schreibFehler.leeren();
+    const ausgeloestAuf = this.router.url;
     this.api
       .updateProject(project.id, {
         title: result.title,
@@ -194,12 +248,15 @@ export class ProjectActionsService {
           }
         },
         error: (err: unknown) =>
-          this.schreibFehler.zeige(appFailureOf(err), () => this.patchProject(project, result)),
+          this.zeigeAufAusloesendemBildschirm(ausgeloestAuf, appFailureOf(err), () =>
+            this.patchProject(project, result),
+          ),
       });
   }
 
   exportIwm(project: Project): void {
     this.schreibFehler.leeren();
+    const ausgeloestAuf = this.router.url;
     this.api.exportIwm(project.id).subscribe({
       next: (response) => {
         const blob = response.body;
@@ -207,7 +264,8 @@ export class ProjectActionsService {
           // Eine 200er-Antwort ohne Körper: nichts, was das Mitglied tun
           // könnte, also *Unbekannt* — die Klasse, die nie die Eingabe
           // beschuldigt und „Fehler melden" anbietet (ADR 0037).
-          this.schreibFehler.zeige(
+          this.zeigeAufAusloesendemBildschirm(
+            ausgeloestAuf,
             localFailure(Fehlerklasse.Unbekannt, 'Der IWM-Export kam ohne Inhalt zurück.'),
             () => this.exportIwm(project),
           );
@@ -226,7 +284,9 @@ export class ProjectActionsService {
         URL.revokeObjectURL(url);
       },
       error: (err: unknown) =>
-        this.schreibFehler.zeige(appFailureOf(err), () => this.exportIwm(project)),
+        this.zeigeAufAusloesendemBildschirm(ausgeloestAuf, appFailureOf(err), () =>
+          this.exportIwm(project),
+        ),
     });
   }
 }

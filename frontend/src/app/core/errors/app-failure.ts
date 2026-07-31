@@ -23,7 +23,7 @@ import {HttpErrorResponse} from '@angular/common/http';
  * Überschriften stehen in `FEHLERKLASSE_WORTE`.
  */
 export const Fehlerklasse = {
-  /** Hier und jetzt berichtigen. Evidenz: 400/422 — ADR 0033s Positivliste. */
+  /** Hier und jetzt berichtigen. Evidenz: 400/422 — ADR 0033s Positivliste — und 409. */
   Korrigieren: 'korrigieren',
   /** Warten oder nochmal drücken. Evidenz: Verbindungsabbruch, 5xx, 429. */
   ErneutVersuchen: 'erneut-versuchen',
@@ -267,6 +267,28 @@ function classifyByEvidence(status: number, entries: ServerErrorEntry[]): Fehler
   switch (status) {
     case 400:
     case 422:
+    // Ein **409** ist derselbe Fall wie ein 400, nur über den Zustand statt über
+    // die Eingabe: der Server hat den Vorgang selbst zurückgewiesen, den Grund
+    // auf Deutsch genannt und einen stabilen Code mitgeschickt — eine Station
+    // mit Fängen (`station_has_captures`, ADR 0011), ein Beringer mit Konto
+    // (`beringer_has_account`), ein erreichtes Seat-Limit
+    // (`seat_limit_reached`, ADR 0005). Jeder dieser Sätze nennt den anderen
+    // Weg: archivieren statt löschen, erst das Konto entfernen, erst einen Sitz
+    // frei machen.
+    //
+    // *Unbekannt* — die Klasse, in die er ohne diesen Zweig fiele — behauptete
+    // darüber „Unerwarteter Fehler", „Das liegt an uns, nicht an deiner
+    // Eingabe." und böte „Fehler melden" an: ein Bugreport über ein Feature,
+    // das genau wie entworfen funktioniert, über einem Satz, der allen dreien
+    // widerspricht.
+    //
+    // Es ist außerdem dieselbe Seite von ADR 0033s Trennlinie wie 400/422 — eine
+    // Bedingung des *Vorgangs*, keine des Laufs. Der Replay hielte einen 409
+    // sonst für ein Laufproblem und bräche die Warteschlange in jedem Anlauf
+    // aufs Neue ab, obwohl keine Wiederholung einen Konflikt auflöst. Heute
+    // erzeugt kein Endpunkt des Fangpfads einen 409, dort ändert sich also
+    // nichts; käme je einer, wäre Flaggen die richtige Antwort.
+    case 409:
       return Fehlerklasse.Korrigieren;
     case 401:
       return Fehlerklasse.NeuAnmelden;
