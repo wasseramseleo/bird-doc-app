@@ -1,6 +1,12 @@
 <h2 mat-dialog-title>Feedback / Fehler melden</h2>
 <form [formGroup]="form" (ngSubmit)="submit()">
   <mat-dialog-content>
+    <!-- #448 (ADR 0037): der Fehlschlag bleibt im Dialog, über der Nachricht,
+         die noch im Feld steht. -->
+    @if (schreibFehler.failure(); as failure) {
+      <app-failure-banner [failure]="failure"
+                          (retry)="schreibFehler.erneut()"></app-failure-banner>
+    }
     <p class="feedback-dialog__intro">
       Etwas funktioniert nicht oder du hast einen Verbesserungsvorschlag?
       Schreib uns – deine Nachricht geht direkt an das BirdDoc-Team.

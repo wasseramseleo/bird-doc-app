@@ -1,3 +1,4 @@
+import {HttpErrorResponse} from '@angular/common/http';
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {MAT_DIALOG_DATA, MatDialogRef} from '@angular/material/dialog';
 import {MatSnackBar} from '@angular/material/snack-bar';
@@ -59,14 +60,47 @@ describe('FeedbackDialogComponent', () => {
     expect(snackBar.open).toHaveBeenCalled();
   });
 
-  it('keeps the dialog open and warns the user when sending fails', () => {
-    api.sendFeedback.and.returnValue(throwError(() => new Error('network')));
+  // #448 (ADR 0037): das Absenden ist eine ausgelöste Schreibung. Der
+  // Fehlschlag bleibt im Dialog stehen, statt als Snackbar hinter ihm
+  // wegzublinken — die Nachricht steht ja noch im Feld und will abgeschickt
+  // werden.
+  it('keeps the dialog open and renders the failure in the banner when sending fails', () => {
+    api.sendFeedback.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 503,
+            statusText: 'Service Unavailable',
+            error: {detail: 'Der Mailversand ist gerade nicht erreichbar.'},
+          }),
+      ),
+    );
     component.form.controls.message.setValue('Etwas ist kaputt.');
 
     component.submit();
+    fixture.detectChanges();
 
     expect(dialogRef.close).not.toHaveBeenCalled();
-    expect(snackBar.open).toHaveBeenCalled();
+    expect(snackBar.open).not.toHaveBeenCalled();
+    const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+    expect(banner.textContent).toContain('Der Mailversand ist gerade nicht erreichbar.');
+  });
+
+  it('sends again on „Erneut versuchen"', () => {
+    api.sendFeedback.and.returnValue(
+      throwError(() => new HttpErrorResponse({status: 503, statusText: 'Service Unavailable'})),
+    );
+    component.form.controls.message.setValue('Etwas ist kaputt.');
+    component.submit();
+    fixture.detectChanges();
+
+    api.sendFeedback.and.returnValue(of(undefined));
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('[data-testid="failure-erneut"]')!
+      .click();
+
+    expect(api.sendFeedback).toHaveBeenCalledTimes(2);
+    expect(dialogRef.close).toHaveBeenCalledWith(true);
   });
 });
 

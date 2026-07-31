@@ -12,6 +12,14 @@
     }
   </header>
 
+  <!-- #448 (ADR 0037): die ausgelöste Schreibung. Anlegen, Bearbeiten und Export
+       wohnen im ProjectActionsService, ihre Geste aber hier — also zeigt dieser
+       Bildschirm den Fehlschlag, und er verfällt nicht. -->
+  @if (actions.schreibFehler.failure(); as failure) {
+    <app-failure-banner [failure]="failure"
+                        (retry)="actions.schreibFehler.erneut()"></app-failure-banner>
+  }
+
   <!-- #446 (ADR 0037): der kaputte Zustand steht *an der Stelle* des Pickers und
        zuerst. Sonst rendert der Leerzustand darunter eine seiner vier Diagnosen
        (#415) — eine Aussage über Beringer und Rolle, die nach einem

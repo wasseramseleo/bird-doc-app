@@ -14,6 +14,13 @@
     </button>
   </header>
 
+  <!-- #448 (ADR 0037): die ausgelöste Schreibung — Speichern und Zurücksetzen.
+       Das Banner sitzt über der Liste, die bedienbar bleibt, und verfällt nicht. -->
+  @if (schreibFehler.failure(); as failure) {
+    <app-failure-banner [failure]="failure"
+                        (retry)="schreibFehler.erneut()"></app-failure-banner>
+  }
+
   <!-- #446 (ADR 0037): der kaputte Zustand steht *an der Stelle* der Liste und
        zuerst — sonst sähe er wieder aus wie der leere. -->
   @if (loadFailure(); as failure) {

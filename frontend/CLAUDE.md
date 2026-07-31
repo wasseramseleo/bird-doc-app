@@ -99,9 +99,16 @@ list cannot be read (offline, an empty Organisation, or the read itself failing)
 **degrades to the class's plain way out** and never to an empty name list or a second error.
 A **CSRF-Ablehnung never gets there**: it is the same 403 with the opposite way out, so
 `csrf_failed` classifies as *Erneut versuchen* (the disambiguation from #441) and the Admin
-list is not even read. A snackbar only ever
-confirms a **success** — `npm run check:transport-strings` keeps a transport string or a raw
-status out of any message repo-wide, with no exceptions left.
+list is not even read. **A snackbar only ever confirms a success** (#448): every refused write
+on the Verwaltungsbildschirme — Stationen, Beringer (Zuordnung und Seat-Verwaltung included),
+Artennormen, Projekt-Anlage/-Bearbeitung, IWM-Import, „Heute" — renders that same
+`<app-failure-banner>` where the gesture happened, held by a `SchreibFehler`
+(`core/errors/schreib-fehler.ts`) that pairs the classified failure with what „Erneut
+versuchen" means *there*. Two repo-wide guards keep that true with no exceptions left:
+`npm run check:transport-strings` keeps a transport string or a raw status out of any message,
+and `npm run check:erfolgsmeldungen` keeps a failure out of any snackbar — its message must
+stand in the source, must carry no failure wording, and must not sit in an `error` branch.
+Both run in `npm test` and in CI.
 
 **Data flow:**
 1. Autocomplete fields (species, ringing station, scientist) use RxJS `valueChanges` → `debounceTime(300)` → `switchMap` to the API

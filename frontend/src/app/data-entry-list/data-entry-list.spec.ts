@@ -1,4 +1,5 @@
 import { LOCALE_ID, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
@@ -16,6 +17,7 @@ import { renderedGlyph, seamGlyph } from '../shared/app-icons.testing';
 
 registerLocaleData(localeDeAt);
 import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
+import { appFailureOf } from '../core/errors/app-failure';
 import { ProjectService } from '../service/project.service';
 import { Project, Projekttyp } from '../models/project.model';
 import { BirdStatus, DataEntry } from '../models/data-entry.model';
@@ -189,6 +191,47 @@ describe('DataEntryListComponent', () => {
 
       expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
       expect(fixture.nativeElement.querySelectorAll('tr.entry-row').length).toBe(1);
+    });
+  });
+
+  // #448 (ADR 0037): das gescheiterte „Rückgängig" fällt, nachdem „Löschen"
+  // längst hierher navigiert und die Erfassungsmaske zerstört hat — ein Banner
+  // dort sähe niemand. Es kommt über denselben Rückkanal wie das Nachladen und
+  // landet hier, wo das Snackbar stand und gedrückt wurde.
+  describe('Schreib-Banner des gescheiterten „Rückgängig" (#448)', () => {
+    it('renders the failure the restore handed over, in place and without a timeout', () => {
+      flushEntries([row({ id: 'bleibt' })]);
+
+      TestBed.inject(DataEntryRefreshService).schreibFehler.zeige(
+        appFailureOf(
+          new HttpErrorResponse({
+            status: 404,
+            statusText: 'Not Found',
+            error: { detail: 'Dieser Fang ist endgültig gelöscht.' },
+          }),
+        ),
+        () => {},
+      );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent).toContain('Dieser Fang ist endgültig gelöscht.');
+      // Die Liste selbst steht unversehrt daneben — das Banner ersetzt nichts.
+      expect(fixture.nativeElement.querySelectorAll('tr.entry-row').length).toBe(1);
+    });
+
+    it('clears the banner when the list loads again', () => {
+      flushEntries([row({ id: 'bleibt' })]);
+      const refresh = TestBed.inject(DataEntryRefreshService);
+      refresh.schreibFehler.zeige(appFailureOf(new Error('kaputt')), () => {});
+      fixture.detectChanges();
+
+      refresh.request();
+      fixture.detectChanges();
+      flushEntries([row({ id: 'bleibt' })]);
+
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
     });
   });
 

@@ -1,4 +1,12 @@
 <section class="dashboard">
+  <!-- #448 (ADR 0037): die ausgelöste Schreibung. Bearbeiten und IWM-Export
+       wohnen im ProjectActionsService, ihre Geste aber hier — also zeigt dieser
+       Bildschirm den Fehlschlag, und er verfällt nicht. -->
+  @if (actions.schreibFehler.failure(); as failure) {
+    <app-failure-banner [failure]="failure"
+                        (retry)="actions.schreibFehler.erneut()"></app-failure-banner>
+  }
+
   <header class="dashboard__header">
     <div class="dashboard__identity">
       <h1>{{ project().title }}</h1>

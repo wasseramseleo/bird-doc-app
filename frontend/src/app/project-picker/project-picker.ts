@@ -5,6 +5,7 @@ import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {LoadFailureComponent} from '../shared/load-failure/load-failure';
 import {AppFailure, appFailureOf} from '../core/errors/app-failure';
 import {ProjectService} from '../service/project.service';
@@ -47,6 +48,7 @@ export type PickerEmptyCase =
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    FailureBannerComponent,
     LoadFailureComponent,
   ],
   templateUrl: './project-picker.html',
@@ -55,7 +57,9 @@ export type PickerEmptyCase =
 })
 export class ProjectPickerComponent implements OnInit {
   private readonly projectService = inject(ProjectService);
-  private readonly actions = inject(ProjectActionsService);
+  // protected, weil das Template den Schreib-Fehlschlag des Dienstes rendert
+  // (#448): die Geste passiert hier, die Arbeit dort.
+  protected readonly actions = inject(ProjectActionsService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 

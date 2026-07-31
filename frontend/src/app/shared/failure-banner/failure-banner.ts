@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {MatButtonModule} from '@angular/material/button';
-import {MatDialog, MatDialogModule} from '@angular/material/dialog';
+import {MatDialog} from '@angular/material/dialog';
 import {MatIconModule} from '@angular/material/icon';
 import {Router} from '@angular/router';
 import {firstValueFrom} from 'rxjs';
@@ -59,7 +59,12 @@ import {UnsavedChangesService} from '../../service/unsaved-changes.service';
 @Component({
   selector: 'app-failure-banner',
   standalone: true,
-  imports: [MatButtonModule, MatDialogModule, MatIconModule, AppIconErrorDirective],
+  // Bewusst **ohne** `MatDialogModule`: das Template benutzt keine
+  // Dialog-Direktive, und `MatDialog` ist `providedIn: 'root'`. Das Modul führt
+  // aber `providers: [MatDialog]` mit sich — importiert, pflanzte es jedem
+  // Bildschirm, der dieses Banner einbindet (#448: sechs davon), eine eigene
+  // MatDialog-Instanz in den Injektor und verdeckte damit die des Bildschirms.
+  imports: [MatButtonModule, MatIconModule, AppIconErrorDirective],
   templateUrl: './failure-banner.html',
   styleUrls: ['./failure-banner.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

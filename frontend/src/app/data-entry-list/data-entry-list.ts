@@ -18,6 +18,7 @@ import {DataEntryRefreshService} from '../service/data-entry-refresh.service';
 import {ProjectService} from '../service/project.service';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {AppIconEmptyDirective} from '../shared/app-icons';
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {LoadFailureComponent} from '../shared/load-failure/load-failure';
 import {AppFailure, appFailureOf} from '../core/errors/app-failure';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
@@ -40,6 +41,7 @@ import {
     MatProgressSpinnerModule,
     MarkerSlotsComponent,
     AppIconEmptyDirective,
+    FailureBannerComponent,
     LoadFailureComponent,
   ],
   templateUrl: './data-entry-list.html',
@@ -49,7 +51,9 @@ import {
 export class DataEntryListComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly projectService = inject(ProjectService);
-  private readonly entryRefresh = inject(DataEntryRefreshService);
+  // protected, weil das Template den Fehlschlag des gescheiterten „Rückgängig"
+  // aus diesem Rückkanal rendert (#448).
+  protected readonly entryRefresh = inject(DataEntryRefreshService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
@@ -182,6 +186,9 @@ export class DataEntryListComponent implements OnInit {
     }
     this.loading.set(true);
     this.loadFailure.set(null);
+    // Ein neuer Ladevorgang beantwortet die Frage, die das Banner offen ließ:
+    // was der Server wirklich hält, steht gleich da (#448).
+    this.entryRefresh.schreibFehler.leeren();
     this.api
       .getDataEntries({
         projectId: project.id,

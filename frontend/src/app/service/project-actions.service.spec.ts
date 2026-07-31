@@ -5,6 +5,8 @@ import { provideRouter, Router } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
+
+import { Fehlerklasse } from '../core/errors/app-failure';
 import { of } from 'rxjs';
 
 import { ProjectActionsService } from './project-actions.service';
@@ -147,17 +149,40 @@ describe('ProjectActionsService', () => {
       expect(anchors[0].download).toBe('IWM_Donau-Auen.xlsx');
     });
 
-    it('shows a German error snackbar when the IWM export fails', () => {
+    // #448 (ADR 0037): Projekt-Anlage, -Bearbeitung und der Export wohnen in
+    // diesem Dienst, ihre Geste aber auf einem Bildschirm — deshalb hält er den
+    // eingeordneten Fehlschlag und der Bildschirm zeigt ihn im Banner. Eine
+    // Snackbar bestätigt hier nur noch Gelungenes.
+    it('carries the classified failure instead of a snackbar when the IWM export fails', () => {
       const { service, httpMock, snackBar } = setup();
       const open = spyOn(snackBar, 'open');
 
       service.exportIwm(makeProject({ id: 'p7' }));
       httpMock
         .expectOne((r) => r.url.endsWith('/projects/p7/export-iwm/'))
+        .flush(new Blob(['{}']), { status: 503, statusText: 'Service Unavailable' });
+
+      expect(open).not.toHaveBeenCalled();
+      expect(service.schreibFehler.failure()?.klasse).toBe(Fehlerklasse.ErneutVersuchen);
+      // Ein Blob-Körper trägt keinen lesbaren Satz — dann steht der Ersatzsatz
+      // der Klasse da, nie ein Rohstatus und nie die Transportzeichenkette.
+      expect(service.schreibFehler.failure()?.text).toBe('Der Server war gerade nicht erreichbar.');
+    });
+
+    it('repeats the export on „Erneut versuchen" and clears the banner on success', () => {
+      const { service, httpMock } = setup();
+      const anchors = captureAnchors();
+
+      service.exportIwm(makeProject({ id: 'p7', title: 'Donau-Auen' }));
+      httpMock
+        .expectOne((r) => r.url.endsWith('/projects/p7/export-iwm/'))
         .error(new ProgressEvent('error'));
 
-      expect(open).toHaveBeenCalled();
-      expect(open.calls.mostRecent().args[0] as string).toContain('IWM-Export fehlgeschlagen');
+      service.schreibFehler.erneut();
+      httpMock.expectOne((r) => r.url.endsWith('/projects/p7/export-iwm/')).flush(new Blob(['x']));
+
+      expect(anchors[0].download).toBe('IWM_Donau-Auen.xlsx');
+      expect(service.schreibFehler.failure()).toBeNull();
     });
   });
 
@@ -265,7 +290,7 @@ describe('ProjectActionsService', () => {
       expect(setCurrent).not.toHaveBeenCalled();
     });
 
-    it('shows a German error snackbar when the update fails', () => {
+    it('carries the server sentence of a refused update instead of a snackbar', () => {
       const { service, httpMock, snackBar, dialog } = setup();
       const open = spyOn(snackBar, 'open');
       stubDialog(dialog, editResult());
@@ -273,9 +298,16 @@ describe('ProjectActionsService', () => {
       service.edit(makeProject({ id: 'p3' }));
       httpMock
         .expectOne((r) => r.url.endsWith('/projects/p3/'))
-        .error(new ProgressEvent('error'));
+        .flush(
+          { title: ['Ein Projekt mit diesem Titel besteht in deiner Organisation bereits.'] },
+          { status: 400, statusText: 'Bad Request' },
+        );
 
-      expect(open.calls.mostRecent().args[0] as string).toContain('nicht aktualisiert');
+      expect(open).not.toHaveBeenCalled();
+      expect(service.schreibFehler.failure()?.text).toContain(
+        'Ein Projekt mit diesem Titel besteht in deiner Organisation bereits.',
+      );
+      expect(service.schreibFehler.failure()?.klasse).toBe(Fehlerklasse.Korrigieren);
     });
 
     it('does nothing when the edit dialog is dismissed', () => {
@@ -377,7 +409,7 @@ describe('ProjectActionsService', () => {
       });
     });
 
-    it('warns and opens no dialog when there is no active Organisation to create under', () => {
+    it('opens no dialog and names a person when there is no active Organisation to create under', () => {
       const ctx = setup();
       signIn(ctx, null);
       loadRefs(ctx);
@@ -387,10 +419,14 @@ describe('ProjectActionsService', () => {
       ctx.service.create();
 
       expect(open).not.toHaveBeenCalled();
-      expect(snack.calls.mostRecent().args[0] as string).toContain('keine Organisation');
+      expect(snack).not.toHaveBeenCalled();
+      // Keine aktive Organisation ist ADR 0037s Evidenz für *Freigeben lassen* —
+      // der Ausweg ist eine Person, nicht ein erneuter Versuch.
+      expect(ctx.service.schreibFehler.failure()?.klasse).toBe(Fehlerklasse.FreigebenLassen);
+      expect(ctx.service.schreibFehler.failure()?.text).toContain('keine Organisation aktiv');
     });
 
-    it('shows a German error snackbar when the create fails', () => {
+    it('carries the server sentence of a refused create instead of a snackbar', () => {
       const ctx = setup();
       signIn(ctx, makeOrg());
       loadRefs(ctx);
@@ -400,9 +436,15 @@ describe('ProjectActionsService', () => {
       ctx.service.create();
       ctx.httpMock
         .expectOne((r) => r.url.endsWith('/projects/') && r.method === 'POST')
-        .error(new ProgressEvent('error'));
+        .flush(
+          { title: ['Ein Projekt mit diesem Titel besteht in deiner Organisation bereits.'] },
+          { status: 400, statusText: 'Bad Request' },
+        );
 
-      expect(snack.calls.mostRecent().args[0] as string).toContain('nicht erstellt');
+      expect(snack).not.toHaveBeenCalled();
+      expect(ctx.service.schreibFehler.failure()?.text).toContain(
+        'Ein Projekt mit diesem Titel besteht in deiner Organisation bereits.',
+      );
     });
 
     it('does nothing when the create dialog is dismissed', () => {

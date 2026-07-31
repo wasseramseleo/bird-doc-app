@@ -15,6 +15,9 @@ import {MatInputModule} from '@angular/material/input';
 import {MatSnackBar} from '@angular/material/snack-bar';
 
 import {ApiService} from '../../service/api.service';
+import {FailureBannerComponent} from '../../shared/failure-banner/failure-banner';
+import {SchreibFehler} from '../../core/errors/schreib-fehler';
+import {appFailureOf} from '../../core/errors/app-failure';
 
 /**
  * What „Fehler melden" hands the dialog (issue #449, ADR 0037): the technical
@@ -38,6 +41,7 @@ export interface FeedbackDialogData {
     MatButtonModule,
     MatFormFieldModule,
     MatInputModule,
+    FailureBannerComponent,
   ],
   templateUrl: './feedback-dialog.html',
   styleUrl: './feedback-dialog.scss',
@@ -55,6 +59,11 @@ export class FeedbackDialogComponent implements AfterViewInit {
 
   private readonly messageField =
     viewChild.required<ElementRef<HTMLTextAreaElement>>('messageField');
+
+  // #448 (ADR 0037): ein gescheitertes Absenden bleibt im Dialog stehen. Die
+  // Nachricht steht noch im Feld und will abgeschickt werden — eine Snackbar
+  // hinter dem Dialog wäre nach sechs Sekunden weg, der Text aber noch da.
+  readonly schreibFehler = new SchreibFehler();
 
   // Disables the submit button and guards against a double-send while the
   // request is in flight.
@@ -91,19 +100,20 @@ export class FeedbackDialogComponent implements AfterViewInit {
       return;
     }
 
+    this.send(message);
+  }
+
+  private send(message: string): void {
+    this.schreibFehler.leeren();
     this.submitting.set(true);
     this.api.sendFeedback(message).subscribe({
       next: () => {
         this.snackBar.open('Danke für dein Feedback!', 'OK', {duration: 4000});
         this.dialogRef.close(true);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.submitting.set(false);
-        this.snackBar.open(
-          'Senden fehlgeschlagen. Bitte versuche es später erneut.',
-          'OK',
-          {duration: 6000},
-        );
+        this.schreibFehler.zeige(appFailureOf(err), () => this.send(message));
       },
     });
   }

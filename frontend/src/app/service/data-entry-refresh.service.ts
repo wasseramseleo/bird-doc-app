@@ -1,5 +1,7 @@
 import {Injectable, signal} from '@angular/core';
 
+import {SchreibFehler} from '../core/errors/schreib-fehler';
+
 /**
  * #392 (ADR 0030): der Rückkanal vom „Rückgängig" des Lösch-Snackbars zur
  * „Letzte Fänge"-Liste.
@@ -16,6 +18,12 @@ import {Injectable, signal} from '@angular/core';
  * unterscheidbares Ereignis, auch zwei kurz hintereinander. Die Liste hält den
  * zuletzt gesehenen Stand und lädt nur bei einer echten Änderung nach — ihr
  * erster Effect-Lauf ist damit kein zweiter Ladevorgang.
+ *
+ * #448 (ADR 0037): **derselbe Rückkanal trägt auch den Fehlschlag.** Scheitert
+ * das Restore, gilt genau dieselbe Geografie wie beim Erfolg — die
+ * Erfassungsmaske ist längst zerstört, ein Banner dort sähe niemand, und die
+ * Geste fand am Snackbar über der Liste statt. Es war die letzte
+ * Fehlschlag-Snackbar der SPA; sie geht denselben Weg wie das Nachladen.
  */
 @Injectable({providedIn: 'root'})
 export class DataEntryRefreshService {
@@ -23,6 +31,12 @@ export class DataEntryRefreshService {
 
   /** Steigt bei jedem `request()`. Nur der Wechsel zählt, nie der Wert selbst. */
   readonly token = this._token.asReadonly();
+
+  /**
+   * Der gescheiterte Wiederherstellungsversuch, den die Liste als Banner zeigt
+   * (#448). Sie leert ihn, sobald sie wieder lädt.
+   */
+  readonly schreibFehler = new SchreibFehler();
 
   /** Meldet, dass die serverseitigen Fänge sich geändert haben. */
   request(): void {

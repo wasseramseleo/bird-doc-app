@@ -23,6 +23,7 @@ import { FaengeSparklineComponent } from './faenge-sparkline/faenge-sparkline';
 import { Project, Projekttyp } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
 import { ProjectActionsService } from '../../service/project-actions.service';
+import { SchreibFehler } from '../../core/errors/schreib-fehler';
 
 // The recency chip and the Ruhige-Phase note (issue #295) are relative to "now".
 // Pin it so every populated payload has a deterministic „vor N Tagen": with the
@@ -105,11 +106,13 @@ function setup(project: Project, now: Date = DEFAULT_NOW) {
   // The dashboard delegates Bearbeiten/Export to the shared ProjectActionsService
   // (issue #222); the real one wires MatDialog/Router/HTTP, so stub it. Tests that
   // assert delegation read the spy; the rest just need it to not blow up.
-  const actions = jasmine.createSpyObj<ProjectActionsService>('ProjectActionsService', [
-    'edit',
-    'exportIwm',
-    'loadReferenceData',
-  ]);
+  // #448: der Schreib-Fehlschlag ist kein Methoden-Spy, sondern Zustand, den
+  // das Template liest — der Stub trägt deshalb einen echten `SchreibFehler`.
+  const actions = jasmine.createSpyObj<ProjectActionsService>(
+    'ProjectActionsService',
+    ['edit', 'exportIwm', 'loadReferenceData'],
+    {schreibFehler: new SchreibFehler()},
+  );
   TestBed.configureTestingModule({
     imports: [ProjectDashboardComponent],
     providers: [

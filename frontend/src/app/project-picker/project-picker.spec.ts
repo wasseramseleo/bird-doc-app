@@ -3,12 +3,15 @@ import { Router, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { of } from 'rxjs';
 
 import { ProjectPickerComponent } from './project-picker';
 import { ProjectService } from '../service/project.service';
 import { ProjectActionsService } from '../service/project-actions.service';
 import { AuthService } from '../service/auth.service';
-import { OrganizationRolle } from '../models/auth-user.model';
+import { AuthUser, OrganizationRolle } from '../models/auth-user.model';
 import { Project, Projekttyp } from '../models/project.model';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
@@ -55,13 +58,17 @@ function setup() {
  * "Mitglieder ohne Beringer-Eintrag" panel keys on — and `rolle` is the
  * per-Organisation Rolle, `null` when no Organisation is active.
  */
-function signIn(handle: string | null, rolle: OrganizationRolle): void {
+function signIn(
+  handle: string | null,
+  rolle: OrganizationRolle,
+  organization: AuthUser['organization'] = null,
+): void {
   TestBed.inject(AuthService).currentUser.set({
     username: 'fre',
     handle,
     isStaff: false,
     rolle,
-    organization: null,
+    organization,
   });
 }
 
@@ -370,6 +377,49 @@ describe('ProjectPickerComponent', () => {
       expect(createButton(ctx))
         .withContext('gating is not an empty-state-only concern')
         .toBeNull();
+    });
+  });
+
+  // #448 (ADR 0037): eine abgelehnte Projekt-Anlage landet dort, wo gedrückt
+  // wurde — auf dem Picker. Die Geste wohnt im ProjectActionsService, also hält
+  // der den Fehlschlag; gezeigt wird er hier, und er verfällt nicht.
+  describe('Schreib-Banner', () => {
+    it('renders a refused Projekt-Anlage in the banner, not in a snackbar', () => {
+      const ctx = setup();
+      signIn('FRE', 'admin', { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' });
+      render(ctx, []);
+      const snack = spyOn(ctx.fixture.debugElement.injector.get(MatSnackBar), 'open');
+      // Der Dienst öffnet den Dialog über den Wurzel-Injektor, also wird der
+      // dortige MatDialog gestubbt — er löst mit dem ausgefüllten Formular auf.
+      spyOn(TestBed.inject(MatDialog), 'open').and.returnValue({
+        afterClosed: () =>
+          of({
+            title: 'Schilfgürtel Linz',
+            description: '',
+            scientistIds: [],
+            projekttyp: Projekttyp.Sonstiges,
+            hiddenOptionalFields: [],
+            defaultStationHandle: null,
+            saisonStartMonth: null,
+            saisonEndMonth: null,
+            wochengrenzeWeekday: 0,
+            wochengrenzeTime: '00:00',
+          }),
+      } as never);
+
+      createButton(ctx)!.click();
+      ctx.httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/projects/'))
+        .flush(
+          { title: ['Ein Projekt mit diesem Titel besteht in deiner Organisation bereits.'] },
+          { status: 400, statusText: 'Bad Request' },
+        );
+      ctx.fixture.detectChanges();
+
+      const banner = ctx.fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent).toContain('Ein Projekt mit diesem Titel besteht');
+      expect(snack).not.toHaveBeenCalled();
     });
   });
 });
