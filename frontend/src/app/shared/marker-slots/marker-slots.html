@@ -1,16 +1,24 @@
 <span class="marker-slot" data-testid="marker-slot-bemerkung">
-  <!-- #374 (#1) / #468: „in dieser Zeile steht mehr, als die Spalten zeigen".
-       Der Tooltip trägt das Mehr im Klartext — die Vokabeln des Fangs und die
-       freie Bemerkung, ausdrücklich als „Bemerkung: …" gekennzeichnet. Ein
-       bloßes „Bemerkung vorhanden" wäre neben den Fangmarkern redundant, die
-       eine Bemerkung ohnehin erzwingen. Screenreader-Beschriftung und Tooltip
-       tragen denselben Text. -->
+  <!-- #374 (#1) / #468: das Detail-Zeichen — „in dieser Zeile steht mehr, als die
+       Spalten zeigen". Der Tooltip trägt das Mehr im Klartext — die Vokabeln des
+       Fangs und die freie Bemerkung, ausdrücklich als „Bemerkung: …"
+       gekennzeichnet. Ein bloßes „Bemerkung vorhanden" wäre neben den
+       Fangmarkern redundant, die eine Bemerkung ohnehin erzwingen.
+       Screenreader-Beschriftung und Tooltip tragen denselben Text.
+
+       #478 (ADR 0042): ein echter Knopf, der den Detail-Dialog öffnet — in jeder
+       Fang-Tabelle, immer. Was beim Antippen passiert, trägt `aria-haspopup` und
+       *nicht* ein Präfix im zugänglichen Namen: eine Liste mit 50 Zeilen soll
+       nicht 50× dieselbe Vorrede vorlesen. Das `title` bleibt nativ — matTooltip
+       kommt im ganzen Projekt null mal vor. -->
   @if (bemerkenswertes(); as mehr) {
-    <mat-icon class="marker-icon bemerkung-indicator" inline
-              data-testid="bemerkung-icon"
-              [title]="mehr"
-              [attr.aria-label]="mehr"
-    >info_outline</mat-icon>
+    <button type="button" class="detail-zeichen"
+            data-testid="detail-zeichen"
+            aria-haspopup="dialog"
+            [title]="mehr"
+            [attr.aria-label]="mehr"
+            (click)="oeffneDetails($event)"
+    ><mat-icon class="marker-icon" inline>info_outline</mat-icon></button>
   }
 </span>
 <span class="marker-slot" data-testid="marker-slot-tot-fund">

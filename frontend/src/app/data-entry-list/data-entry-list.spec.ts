@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -363,7 +363,7 @@ describe('DataEntryListComponent', () => {
     const markerCell = row0.querySelector('[data-testid="marker-cell"]') as HTMLElement;
     const speciesCell = row0.querySelector('[data-testid="species-cell"]') as HTMLElement;
 
-    for (const testid of ['bemerkung-icon', 'tot-fund-icon', 'non-standard-icon']) {
+    for (const testid of ['detail-zeichen', 'tot-fund-icon', 'non-standard-icon']) {
       expect(markerCell.querySelector(`[data-testid="${testid}"]`))
         .withContext(`${testid} sitzt in der Marker-Spalte`)
         .not.toBeNull();
@@ -384,7 +384,7 @@ describe('DataEntryListComponent', () => {
     flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
 
     const icon = fixture.nativeElement.querySelector(
-      '[data-testid="bemerkung-icon"]',
+      '[data-testid="detail-zeichen"]',
     ) as HTMLElement;
     expect(icon.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
     expect(icon.getAttribute('aria-label')).toContain('linker Flügel verletzt');
@@ -426,7 +426,7 @@ describe('DataEntryListComponent', () => {
 
     // Beide Fangmarker plus ⓘ sind gleichzeitig belegbar (ADR 0026).
     const bothSlots = rows[2].querySelectorAll('[data-testid="marker-cell"] .marker-slot');
-    expect(bothSlots[0].querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+    expect(bothSlots[0].querySelector('[data-testid="detail-zeichen"]')).not.toBeNull();
     expect(bothSlots[1].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
     expect(bothSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
   });
@@ -438,7 +438,7 @@ describe('DataEntryListComponent', () => {
     flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
 
     const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
-    expect(row0.querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+    expect(row0.querySelector('[data-testid="detail-zeichen"]')).not.toBeNull();
     // Nirgends in der Zeile — weder im alten Platz in der Art-Zelle noch im Slot.
     expect(row0.querySelector('.mat-badge-content')).toBeNull();
     expect(row0.querySelector('[matBadge], .mat-badge')).toBeNull();
@@ -647,10 +647,10 @@ describe('DataEntryListComponent', () => {
 
     const rows = Array.from(fixture.nativeElement.querySelectorAll('tr.entry-row')) as HTMLElement[];
     expect(rows.length).toBe(2);
-    expect(rows[0].querySelector('.bemerkung-indicator'))
+    expect(rows[0].querySelector('.detail-zeichen'))
       .withContext('row with a comment carries the indicator')
       .not.toBeNull();
-    expect(rows[1].querySelector('.bemerkung-indicator'))
+    expect(rows[1].querySelector('.detail-zeichen'))
       .withContext('row without a comment carries no indicator')
       .toBeNull();
   });
@@ -658,6 +658,57 @@ describe('DataEntryListComponent', () => {
   it('does not mark any row when no capture carries a comment', () => {
     flushEntries([row({ comment: null }), row({ comment: '' })]);
 
-    expect(fixture.nativeElement.querySelector('.bemerkung-indicator')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.detail-zeichen')).toBeNull();
+  });
+
+  // #478 (ADR 0042): das Detail-Zeichen verspricht „in dieser Zeile steht mehr,
+  // als die Spalten zeigen — antippen". Eingelöst wird das Versprechen allein vom
+  // Detail-Dialog: er führt *jedes* Merkmal, auch eines, das das Projekt über die
+  // Optionalen Felder abgeschaltet hat (ADR 0035). Der Zeilenklick dieser Tabelle
+  // führt dagegen in die Bearbeitungsmaske, die genau dieses Kästchen ausblendet
+  // — das Detail-Zeichen muss seinen Klick deshalb schlucken.
+  //
+  // Der eigentliche Regressionstest dieses Issues, und er liegt auf Tabellenebene:
+  // ob ein Klick zur Zeile aufsteigt, ist eine Eigenschaft der Komposition und auf
+  // der geteilten Komponente nicht beweisbar. Genau deshalb blieb die Verdrahtung
+  // ungetestet, während die Komponente gut abgedeckt war.
+  it('opens the Detail-Dialog on the Detail-Zeichen without navigating away', () => {
+    const navigate = spyOn(TestBed.inject(Router), 'navigate');
+    const entry = row({ id: 'noted', comment: 'linker Flügel verletzt' });
+    flushEntries([entry]);
+
+    const zeichen = fixture.nativeElement.querySelector(
+      '[data-testid="detail-zeichen"]',
+    ) as HTMLButtonElement;
+    // Ein natives `title` kennt auf dem Tablet keinen Hover — der Tap ist der
+    // einzige Weg, also ist das Zeichen ein Knopf und sagt das auch an.
+    expect(zeichen.tagName).toBe('BUTTON');
+    expect(zeichen.type).toBe('button');
+    expect(zeichen.getAttribute('aria-haspopup')).toBe('dialog');
+
+    zeichen.click();
+    fixture.detectChanges();
+
+    // Die Bearbeitungsmaske bleibt zu: sie blendet ein abgeschaltetes Merkmal
+    // aus, mit dem das ⓘ gerade geworben hat.
+    expect(navigate).not.toHaveBeenCalled();
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    const config = dialog.open.calls.mostRecent().args[1] as { data: DataEntry };
+    expect(config.data).toBe(entry);
+  });
+
+  // #478 (ADR 0042): der gewöhnliche Zeilenklick dieser Tabelle bleibt der direkte
+  // Weg in die Bearbeitungsmaske — die Regel, von der die Wiederfang-Historie
+  // benannt abweicht. Dass sie unverändert bleibt, ist die andere Hälfte dieses
+  // Issues und war bis hierher durch keinen Test gedeckt.
+  it('navigates to the capture form on an ordinary row click', () => {
+    const navigate = spyOn(TestBed.inject(Router), 'navigate');
+    flushEntries([row({ id: 'e42', comment: 'linker Flügel verletzt' })]);
+
+    (fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(navigate).toHaveBeenCalledWith(['/data-entry', 'e42']);
+    expect(dialog.open).not.toHaveBeenCalled();
   });
 });

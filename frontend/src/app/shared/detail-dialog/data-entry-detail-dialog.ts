@@ -18,8 +18,23 @@ import {
   SmallFeatherIntMoult,
 } from '../../models/data-entry.model';
 import {environment} from '../../../environments/environment';
-import {getAgeClassLabel, getBirdStatusLabel, getSexLabel} from '../data-entry-labels';
+import {
+  getAgeClassLabel,
+  getBirdStatusLabel,
+  getSexLabel,
+} from '../../data-entry-form/data-entry-labels';
 
+/**
+ * #478 (ADR 0042): der **Detail-Dialog** — der vollständige, schreibgeschützte
+ * Datensatz eines Fangs. Er zeigt *jedes* Merkmal, auch eines, das das Projekt
+ * über die Optionalen Felder abgeschaltet hat (ADR 0035), und ist damit das
+ * Einzige, was das Versprechen des Detail-Zeichens in jedem Projekt einlöst.
+ *
+ * Er liegt in `shared/`, weil er nie dem Erfassungsformular gehörte: „Letzte
+ * Fänge", die Wiederfang-Historie und „Heute" (offline) führen alle hierher.
+ * Geöffnet wird er ausschließlich über den `DetailDialogOpener` daneben — der
+ * kennt als Einziger die Dialog-Konfiguration.
+ */
 @Component({
   selector: 'app-data-entry-detail-dialog',
   imports: [CommonModule, MatDialogModule, MatButtonModule, MatIconModule, DatePipe],

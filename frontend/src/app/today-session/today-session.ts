@@ -25,9 +25,7 @@ import {resolveQueuedEntryDisplay} from '../core/offline/queued-entry-display';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {OfflineBundle} from '../models/offline-bundle.model';
 import {OutboxEntry} from '../models/outbox-entry.model';
-import {
-  DataEntryDetailDialogComponent,
-} from '../data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog';
+import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
 import {getBirdStatusLabel} from '../data-entry-form/data-entry-labels';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {AppIconErrorDirective} from '../shared/app-icons';
@@ -81,6 +79,7 @@ export class TodaySessionComponent implements OnInit {
   private readonly referenceCache = inject(ReferenceBundleCacheService);
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
+  private readonly detailDialog = inject(DetailDialogOpener);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly currentProject = this.projectService.currentProject;
@@ -190,13 +189,12 @@ export class TodaySessionComponent implements OnInit {
   // A synced entry is always read-only offline (no offline edits to server
   // rows — PRD #152's append-only design): opening it offline shows the
   // ordinary read-only detail dialog instead of the editable form.
+  //
+  // #478 (ADR 0042): das ist eine **Degradation des Defaults**, keine dritte
+  // Regel — online navigiert diese Zeile wie überall in die Bearbeitungsmaske.
   openSynced(entry: DataEntry): void {
     if (this.isOffline()) {
-      this.dialog.open(DataEntryDetailDialogComponent, {
-        data: entry,
-        width: '640px',
-        maxHeight: '90vh',
-      });
+      this.detailDialog.open(entry);
       return;
     }
     this.router.navigate(['/data-entry', entry.id]);
