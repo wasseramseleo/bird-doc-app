@@ -1,0 +1,32 @@
+// Übernommen aus dem bisherigen `.sync-error-banner` des Erfassungsformulars
+// (#164): dieselbe Optik, jetzt an einer Stelle — ein Banner *über* dem
+// bedienbaren Formular, kein Leerzustand an dessen Stelle (das ist `.load-error`).
+:host {
+  display: block;
+}
+
+.failure-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 1rem;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background-color: var(--bd-error-bg, rgba(179, 38, 30, 0.08));
+  border: 1px solid var(--bd-error, #b3261e);
+  color: var(--bd-error, #b3261e);
+  font-size: 0.85rem;
+
+  mat-icon {
+    flex: none;
+  }
+
+  button {
+    flex: none;
+    margin-inline-start: auto;
+  }
+}
+
+.failure-banner__text {
+  min-width: 0;
+}

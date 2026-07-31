@@ -1568,6 +1568,9 @@ describe('DataEntryFormComponent', () => {
       expect(has('[formControlName="bird_status"]')).toBe(false);
     });
 
+    // #443: die Meldung bleibt sichtbar — sie steht jetzt im Banner statt in
+    // einer Snackbar, die nach fünf Sekunden weg ist. Der Punkt des Issues
+    // („nie stumm wirkungslos") ist unverändert, die Oberfläche ist es nicht.
     it('meldet sichtbar, wenn die Sonderart gar nicht aufzulösen ist — nie stumm wirkungslos', () => {
       const snackBar = (component as unknown as { snackBar: MatSnackBar }).snackBar;
       const openSpy = spyOn(snackBar, 'open').and.callThrough();
@@ -1575,10 +1578,13 @@ describe('DataEntryFormComponent', () => {
       answerSpeciesLookup([...firstPage]);
 
       component.onDestroyedRing();
+      fixture.detectChanges();
 
       expect(dialogMock.open).not.toHaveBeenCalled();
-      expect(openSpy).toHaveBeenCalled();
-      expect(openSpy.calls.mostRecent().args[0] as string).toContain('Ring vernichtet');
+      expect(openSpy).not.toHaveBeenCalled();
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent as string).toContain('Ring vernichtet');
       expect(component.isRingDestroyed()).toBe(false);
     });
   });
@@ -2588,7 +2594,9 @@ describe('DataEntryFormComponent', () => {
       f.detectChanges();
 
       const el = f.nativeElement as HTMLElement;
-      const banner = el.querySelector('[data-testid="sync-error-banner"]');
+      // #443: dasselbe Banner, jetzt das gemeinsame Bauteil — die Überschrift
+      // des Moments bleibt „Synchronisierung abgelehnt".
+      const banner = el.querySelector('[data-testid="failure-banner"]');
       expect(banner).not.toBeNull();
       expect(banner!.textContent).toContain('Synchronisierung abgelehnt');
       expect(renderedGlyph(banner!.querySelector('mat-icon'))).toBeTruthy();
@@ -7754,6 +7762,34 @@ describe('DataEntryFormComponent', () => {
       expect(openSpy).toHaveBeenCalled();
     });
 
+    // #443 (ADR 0037): ein gescheitertes Löschen ist eine ausgelöste Schreibung
+    // — es sagt im Banner, warum, und verfällt nicht.
+    it('renders a failed delete in the banner instead of a snackbar', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      const openSpy = spyOn(snackBarOf(fixture), 'open').and.callThrough();
+
+      btn('delete-entry-button')!.click();
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(
+          {
+            detail: 'Anmeldedaten fehlen.',
+            errors: [{ field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.' }],
+          },
+          { status: 403, statusText: 'error' },
+        );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent as string).toContain('Anmeldedaten fehlen.');
+      // Die Klasse, nicht der Status: eine tote Sitzung kommt als 403 an und
+      // bekommt trotzdem „Anmelden", nicht „frag eine Administratorin".
+      expect(banner.querySelector('[data-testid="failure-anmelden"]')).not.toBeNull();
+      expect(openSpy).not.toHaveBeenCalled();
+    });
+
     it('deletes nothing when the modal is cancelled', async () => {
       await setupForm();
       dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
@@ -7904,6 +7940,231 @@ describe('DataEntryFormComponent', () => {
       expect(btn('delete-entry-button')!.disabled).toBe(false);
     });
   });
+
+  // #443 (ADR 0037/0038): die abgelehnte Speicherung. Bisher quittierte eine
+  // bereits vergebene Ringnummer mit „Fehler beim Speichern: Http failure
+  // response for …: 400 OK" in einer Snackbar, die nach drei Sekunden weg war —
+  // während der Server längst einen präzisen deutschen Satz geliefert hatte.
+  describe('die abgelehnte Speicherung: Banner und Feldmarkierung (#443)', () => {
+    let httpMock: HttpTestingController;
+    let snackBar: jasmine.Spy;
+
+    const RING_ALREADY_FIRST_CAUGHT =
+      'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+    const ADMIN_ONLY =
+      'Diese Aktion ist Administrator:innen der Organisation vorbehalten. ' +
+      'Bitte wende dich an eine Administratorin oder einen Administrator.';
+
+    // Der Antwortkörper, mit dem dieses PRD anfing — echt, so wie ihn
+    // `backend/birds/tests/test_error_envelope.py` gegen die laufende API
+    // zusichert (test_ring_collision_body_is_unchanged_and_carries_its_entry).
+    const ringCollisionBody = {
+      ring_number: RING_ALREADY_FIRST_CAUGHT,
+      errors: [{ field: 'ring_number', code: 'invalid', detail: RING_ALREADY_FIRST_CAUGHT }],
+    };
+
+    // Die Instanzen der Komponente, nicht die der Wurzel: `MatSnackBarModule`
+    // und `MatDialogModule` führen beide einen eigenen Provider, den der
+    // Standalone-Injektor der Komponente hält — ein `TestBed.inject(...)`-Spion
+    // wäre ein anderer Dienst und die Zusicherung damit wertlos.
+    const snackBarOf = (): MatSnackBar =>
+      (component as unknown as { snackBar: MatSnackBar }).snackBar;
+    const dialogOf = (): MatDialog => (component as unknown as { dialog: MatDialog }).dialog;
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+      snackBar = spyOn(snackBarOf(), 'open').and.callThrough();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    function submitAndReject(status: number, body: Record<string, unknown>): void {
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush(body, { status, statusText: 'error' });
+      fixture.detectChanges();
+    }
+
+    const banner = (): HTMLElement | null =>
+      fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+
+    it('rendert den deutschen Satz des Servers — die Transportzeichenkette kommt nirgends vor', () => {
+      fillValidWiederfang();
+
+      submitAndReject(400, ringCollisionBody);
+
+      expect(banner()).not.toBeNull();
+      expect(banner()!.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+      expect(banner()!.textContent).not.toContain('Http failure response');
+      expect(banner()!.textContent).not.toContain('400');
+      expect(fixture.nativeElement.textContent).not.toContain('Fehler beim Speichern');
+    });
+
+    it('öffnet keine Snackbar mehr — eine flüchtige Meldung bestätigt nur noch Gelungenes', () => {
+      fillValidWiederfang();
+
+      submitAndReject(400, ringCollisionBody);
+
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('markiert zusätzlich das zurückgewiesene Feld mit dem Satz des Servers', () => {
+      fillValidWiederfang();
+
+      submitAndReject(400, ringCollisionBody);
+
+      const ringNumber = component.entryForm.get('ring_number')!;
+      expect(ringNumber.hasError('serverRejected')).toBeTrue();
+      expect(component.serverRejection('ring_number')).toBe(RING_ALREADY_FIRST_CAUGHT);
+      // Und sie steht auch am Feld, nicht nur im Zustand.
+      const markierung = fixture.nativeElement.querySelector(
+        '[data-testid="server-error-ring_number"]',
+      ) as HTMLElement | null;
+      expect(markierung).not.toBeNull();
+      expect(markierung!.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+    });
+
+    it('rendert bei einer Zurückweisung ohne einzelnes Feld nur das Banner', () => {
+      fillValidWiederfang();
+
+      // Eine Rechteverweigerung trifft den Datensatz als Ganzes — es gibt kein
+      // Feld, das rot werden könnte (test_admin_only_403_…).
+      submitAndReject(403, {
+        detail: ADMIN_ONLY,
+        errors: [{ field: null, code: 'permission_denied', detail: ADMIN_ONLY }],
+      });
+
+      expect(banner()!.textContent).toContain(ADMIN_ONLY);
+      expect(component.entryForm.get('ring_number')!.hasError('serverRejected')).toBeFalse();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="server-error-ring_number"]'),
+      ).toBeNull();
+    });
+
+    it('löscht die Feldmarkierung, sobald genau dieses Feld bearbeitet wird', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      component.entryForm.get('ring_number')!.setValue('901235');
+      fixture.detectChanges();
+
+      expect(component.serverRejection('ring_number')).toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="server-error-ring_number"]'),
+      ).toBeNull();
+    });
+
+    it('lässt die Feldmarkierung stehen, wenn ein anderes Feld bearbeitet wird', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      component.entryForm.get('comment')!.setValue('Ein anderer Gedanke');
+      fixture.detectChanges();
+
+      expect(component.serverRejection('ring_number')).toBe(RING_ALREADY_FIRST_CAUGHT);
+    });
+
+    it('bleibt stehen, bis es behandelt ist — es verfällt nicht', fakeAsync(() => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      // Weit jenseits jeder Snackbar-Dauer: der Beringer hat beide Hände am Vogel.
+      tick(60_000);
+      fixture.detectChanges();
+
+      expect(banner()).not.toBeNull();
+      expect(banner()!.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+    }));
+
+    it('nimmt das Banner zurück, sobald die Speicherung gelingt', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+      expect(banner()).not.toBeNull();
+
+      component.entryForm.get('ring_number')!.setValue('901235');
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      fixture.detectChanges();
+
+      expect(banner()).toBeNull();
+    });
+
+    // AC: „Kein Fehlschlag öffnet auf der Erfassungsmaske noch eine Snackbar."
+    // Die drei übrigen Fehlschläge dieses Bildschirms wandern mit — bis auf
+    // einen, der nach dem Wegnavigieren fällt (siehe Kommentar in `offerUndo`).
+    it('zeigt auch eine gescheiterte Beringer-Schnellanlage im Banner statt in einer Snackbar', () => {
+      spyOn(dialogOf(), 'open').and.returnValue({
+        afterClosed: () => of({ handle: 'NEU', first_name: 'Nina', last_name: 'Mayr' }),
+      } as never);
+
+      component.onCreateBeringer('NEU');
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'))
+        .flush(
+          {
+            handle: ['Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.'],
+            errors: [
+              {
+                field: 'handle',
+                code: 'unique',
+                detail: 'Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.',
+              },
+            ],
+          },
+          { status: 400, statusText: 'error' },
+        );
+      fixture.detectChanges();
+
+      expect(banner()!.textContent).toContain('Dieses Kürzel ist bereits vergeben');
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('zeigt eine gescheiterte Ringhistorie im Banner statt in einer Snackbar', () => {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+
+      component.fetchRingHistory();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.includes('/birds/data-entries/'))
+        .flush({ detail: 'Serverfehler' }, { status: 500, statusText: 'error' });
+      fixture.detectChanges();
+
+      expect(banner()).not.toBeNull();
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('drückt auf „Erneut versuchen" die Speicherung erneut', () => {
+      fillValidWiederfang();
+      // Eine vorübergehende Störung: die Klasse *Erneut versuchen* bietet den Knopf.
+      submitAndReject(503, { detail: 'Wartung' });
+
+      const erneut = banner()!.querySelector(
+        '[data-testid="failure-erneut"]',
+      ) as HTMLButtonElement;
+      expect(erneut).not.toBeNull();
+      erneut.click();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+    });
+  });
+
 });
 
 // #407 (ADR 0032): the capture form is the only place a half-entered Wiederfang

@@ -93,12 +93,29 @@ import {
 import {InfoDialogComponent, InfoDialogData} from '../shared/info-dialog/info-dialog';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
 import {AppIconErrorDirective} from '../shared/app-icons';
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
+import {
+  AppFailure,
+  appFailureOf,
+  failureFromSyncError,
+  Fehlerklasse,
+  localFailure,
+} from '../core/errors/app-failure';
 
 // #232: the strict Austrian (AUW) ring-size codes. When the Zentrale switches
 // back from a foreign scheme to the Projekt-Zentrale, a free-text Größe that is
 // not one of these is cleared so the restored dropdown never carries an unlisted
 // value.
 const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
+
+// #443: welcher Control zu welchem Feldnamen des Servers gehört. Die Schreibform
+// ist flach (`species_id`), das Formular hält die Objekte (`species`) — siehe
+// `transformFromForm()`. Alles Übrige heißt in beiden Welten gleich.
+const CONTROL_FOR_SERVER_FIELD: Record<string, string> = {
+  species_id: 'species',
+  staff_id: 'staff',
+  ringing_station_id: 'ringing_station',
+};
 
 @Component({
   selector: 'app-data-entry-form',
@@ -124,6 +141,7 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     MatBadgeModule,
     MarkerSlotsComponent,
     AppIconErrorDirective,
+    FailureBannerComponent,
   ],
   providers: [provideNativeDateAdapter(), DatePipe, DecimalPipe],
   templateUrl: './data-entry-form.html',
@@ -230,8 +248,29 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // Issue #164: the server's rejection message when this queued entry was
   // skipped-and-flagged during sync — shown as a banner so the Mitglied knows
   // exactly what to fix before re-saving (which re-queues it clean). `null`
-  // for an ordinary, never-rejected queued entry.
-  readonly syncError = computed(() => this.loadedQueuedEntry()?.syncError ?? null);
+  // for an ordinary, never-rejected queued entry. #443: lifted into the shared
+  // AppFailure shape so it renders through the *same* banner an online
+  // rejection does (#445 will persist the full structure instead of a string).
+  readonly syncFailure = computed(() => {
+    const message = this.loadedQueuedEntry()?.syncError;
+    return message ? failureFromSyncError(message) : null;
+  });
+  // #443 (ADR 0037): the server's rejection of a save the Beringer just
+  // gestured for — classified, never a transport string, and it does not time
+  // out. Cleared when the next attempt starts and when one succeeds.
+  private readonly saveFailure = signal<AppFailure | null>(null);
+  // One banner, two moments. A fresh rejection wins over an older
+  // Synchronisierungsfehler: it is the answer to the button just pressed.
+  readonly bannerFailure = computed(() => this.saveFailure() ?? this.syncFailure());
+  // Only the *heading* knows the moment (ADR 0037): a rejection met during a
+  // replay says so, an online one gets its class's own title.
+  readonly bannerTitel = computed(() =>
+    this.saveFailure() ? null : 'Synchronisierung abgelehnt',
+  );
+  // What "Erneut versuchen" means for the failure currently on screen. The
+  // banner only reports that it was pressed; only this form knows which errand
+  // failed — a save, a Ringhistorie lookup, a delete.
+  private readonly retryAction = signal<(() => void) | null>(null);
   // The queued entry's payload resolved to display-ready form values (issue
   // #163), kept alongside `loadedQueuedEntry` so Zurücksetzen can restore it
   // without re-reading the reference cache.
@@ -1172,8 +1211,11 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
           );
           this.focusNext('staff');
         },
-        error: () => {
-          this.snackBar.open('Beringer konnte nicht angelegt werden.', 'Schließen', {duration: 3000});
+        error: (err: unknown) => {
+          // #443: eine ausgelöste Schreibung, die scheitert, landet im Banner
+          // und bleibt dort — nicht in einer Snackbar, die vor der Antwort auf
+          // die Frage „warum?" wieder weg ist.
+          this.showFailure(appFailureOf(err), () => this.onCreateBeringer(handle));
         },
       });
     });
@@ -1186,10 +1228,14 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     if (!ringDestroyed) {
       // #427: ein Knopf, der wortlos nichts tut, ist genau der Defekt hier.
       // Lässt sich die Sonderart nicht auflösen, sagt der Klick das sichtbar.
-      this.snackBar.open(
-        'Die Sonderart „Ring vernichtet" ist gerade nicht verfügbar — bitte die Seite neu laden.',
-        'Schließen',
-        {duration: 5000},
+      // #443: sichtbar heißt bleibend, und die Klasse ist *Unbekannt* — die
+      // Referenzdaten fehlen, das liegt nie an der Eingabe.
+      this.showFailure(
+        localFailure(
+          Fehlerklasse.Unbekannt,
+          'Die Sonderart „Ring vernichtet" ist gerade nicht verfügbar — bitte die Seite neu laden.',
+        ),
+        () => this.onDestroyedRing(),
       );
       return;
     }
@@ -1467,9 +1513,14 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         }
         this.loading.set(false);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.loading.set(false);
-        this.snackBar.open('Fehler beim Laden der Ringhistorie.', 'Schließen', {duration: 3000});
+        // #443: auch ein gescheitertes Laden verfällt nicht mehr nach drei
+        // Sekunden — die Ringhistorie einfach leer zu lassen ist genau der
+        // „kaputt sieht aus wie leer"-Defekt, den dieses PRD abräumt. „Erneut
+        // versuchen" wiederholt die Suche. (#446 stellt den Ladefehler später
+        // an Ort und Stelle, sobald es dafür ein Bauteil gibt.)
+        this.showFailure(appFailureOf(err), () => this.fetchRingHistory());
       }
     });
   }
@@ -1584,11 +1635,11 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
           this.router.navigateByUrl('/data-entries');
           this.offerUndo(id);
         },
-        error: (err) => {
+        error: (err: unknown) => {
           console.error('Error deleting data entry', err);
-          this.snackBar.open('Eintrag konnte nicht gelöscht werden.', 'Schließen', {
-            duration: 3000,
-          });
+          // #443: das Löschen ist eine ausgelöste Schreibung — scheitert sie,
+          // sagt das Banner warum, und der Eintrag steht unversehrt da.
+          this.showFailure(appFailureOf(err), () => this.onDeleteEntry());
         },
       });
     });
@@ -1615,6 +1666,12 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
           },
           error: (err) => {
             console.error('Error restoring data entry', err);
+            // #443: die **einzige** verbliebene Fehlschlag-Snackbar dieses
+            // Bildschirms, und sie kann hier nicht anders: das „Rückgängig"
+            // fällt, nachdem „Löschen" längst zur Fangliste navigiert und diese
+            // Komponente zerstört hat — ein Banner an dieser Stelle sähe
+            // niemand. Sie gehört auf die Liste, und damit zu #448 („keine
+            // Fehlschlag-Snackbar bleibt übrig", SPA-weit).
             this.snackBar.open('Eintrag konnte nicht wiederhergestellt werden.', 'Schließen', {
               duration: 3000,
             });
@@ -1753,6 +1810,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
 
   private performSave(): void {
     this.loading.set(true);
+    // #443: der neue Versuch beantwortet den alten — das Banner des letzten
+    // Fehlschlags geht, bevor dieser hier eine Antwort hat.
+    this.saveFailure.set(null);
     const rawValue = this.entryForm.getRawValue();
 
     // #155: only reuse the idempotency key across a resubmit when it replays the
@@ -1815,16 +1875,70 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         setTimeout(() => this.saved.set(false), 900);
         this.cleanReset();
       },
-      error: (err) => {
+      error: (err: unknown) => {
         console.error('Error saving data entry', err);
         if (!this.isEditMode()) {
           this.lastFailedSubmission = JSON.stringify(rawValue);
         }
-        this.snackBar.open(`Fehler beim Speichern: ${err.message}`, 'Schließen');
+        // #443 (ADR 0037): die Zurückweisung landet dort, wo die Geste
+        // stattfand, und verfällt nicht — statt in einer Snackbar, die nach
+        // drei Sekunden weg ist, während der Beringer beide Hände am Vogel hat.
+        // Die Klasse kommt aus der gemeinsamen Einordnung; hier wird nie ein
+        // Status gelesen und nie eine Meldung selbst gebaut.
+        this.showFailure(appFailureOf(err), () => this.onSubmit());
         this.loading.set(false);
       },
       complete: () => this.loading.set(false)
     });
+  }
+
+  /**
+   * #443 (ADR 0037): einen Fehlschlag zeigen — im Banner, und wo er an einem
+   * Feld hängt, zusätzlich an diesem Feld.
+   *
+   * `retry` ist, was „Erneut versuchen" in *diesem* Moment bedeutet. Das Banner
+   * weiß das nicht und soll es nicht wissen: es meldet nur den Wunsch nach oben.
+   */
+  private showFailure(failure: AppFailure, retry: () => void): void {
+    this.saveFailure.set(failure);
+    this.retryAction.set(retry);
+    this.markRejectedField(failure);
+  }
+
+  /** Der Ausweg „Erneut versuchen", so wie ihn dieser Fehlschlag gemeint hat. */
+  onRetryFailure(): void {
+    this.retryAction()?.();
+  }
+
+  /**
+   * Die Feldmarkierung: der Serversatz wird als Fehler auf genau dem
+   * zurückgewiesenen Control gesetzt und macht es rot. Eine Zurückweisung ohne
+   * einzelnes Feld (Erstfang gegen die falsche Zentrale, eine
+   * Rechteverweigerung) markiert nichts — sie rendert nur das Banner.
+   *
+   * **Gelöscht wird sie, sobald genau dieses Feld bearbeitet wird**, und das
+   * ganz von selbst: eine Wertänderung lässt Angular die Fehler des Controls aus
+   * seinen Validatoren neu rechnen, und der von Hand gesetzte ist damit weg.
+   * Ein *anderes* Feld zu bearbeiten rührt dieses Control nicht an — genau die
+   * Trennung, die #443 verlangt.
+   */
+  private markRejectedField(failure: AppFailure): void {
+    if (!failure.field) {
+      return;
+    }
+    const control = this.entryForm.get(CONTROL_FOR_SERVER_FIELD[failure.field] ?? failure.field);
+    if (!control) {
+      return;
+    }
+    control.setErrors({...(control.errors ?? {}), serverRejected: failure.text});
+    // Ohne „berührt" zeigt das mat-form-field den Fehler nicht an.
+    control.markAsTouched();
+  }
+
+  /** Der Serversatz an einem Feld, für dessen `mat-error` — sonst `null`. */
+  serverRejection(controlName: string): string | null {
+    const message = this.entryForm.get(controlName)?.errors?.['serverRejected'];
+    return typeof message === 'string' ? message : null;
   }
 
   private getInitialDateTime(): string {

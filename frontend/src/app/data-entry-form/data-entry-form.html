@@ -4,15 +4,12 @@
   </div>
 }
 
-@if (syncError(); as error) {
-  <div class="sync-error-banner" role="alert" data-testid="sync-error-banner">
-    <mat-icon app-icon-error aria-hidden="true"></mat-icon>
-    <span>
-      <strong>Synchronisierung abgelehnt:</strong>
-      {{ error }}
-      Bitte korrigieren und erneut speichern.
-    </span>
-  </div>
+<!-- #443 (ADR 0037): ein Banner für beide Momente — eine soeben abgelehnte
+     Speicherung und ein beim Synchronisieren zurückgewiesener Eintrag (#164)
+     sehen gleich aus, damit nur eine Sache zu lernen ist. Es verfällt nicht. -->
+@if (bannerFailure(); as failure) {
+  <app-failure-banner [failure]="failure" [titel]="bannerTitel()"
+                      (retry)="onRetryFailure()"></app-failure-banner>
 }
 
 <!-- #385: ein fehlgeschlagenes GET rendert die Meldung *anstelle* des
@@ -240,7 +237,11 @@
             <mat-option [value]="option">{{ option.name }}</mat-option>
           }
         </mat-autocomplete>
-        @if (entryForm.controls.ringing_station.hasError('required')) {
+        <!-- #443: der Serversatz steht am zurückgewiesenen Feld selbst — als
+             erster Zweig, damit immer genau eine Meldung dasteht. -->
+        @if (serverRejection('ringing_station'); as grund) {
+          <mat-error data-testid="server-error-ringing_station">{{ grund }}</mat-error>
+        } @else if (entryForm.controls.ringing_station.hasError('required')) {
           <mat-error>Station ist erforderlich.</mat-error>
         } @else if (entryForm.controls.ringing_station.hasError('unmatchedOption')) {
           <mat-error>Unbekannte Station – bitte aus der Liste wählen</mat-error>
@@ -269,7 +270,9 @@
             </mat-option>
           }
         </mat-autocomplete>
-        @if (entryForm.controls.staff.hasError('required')) {
+        @if (serverRejection('staff'); as grund) {
+          <mat-error data-testid="server-error-staff">{{ grund }}</mat-error>
+        } @else if (entryForm.controls.staff.hasError('required')) {
           <mat-error>Beringer ist erforderlich.</mat-error>
         } @else if (entryForm.controls.staff.hasError('unmatchedOption')) {
           <mat-error>Unbekannter Beringer – bitte aus der Liste wählen</mat-error>
@@ -279,7 +282,11 @@
       <mat-form-field appearance="outline" floatLabel="always">
         <mat-label>Datum und Uhrzeit</mat-label>
         <input matInput type="datetime-local" formControlName="date_time">
-        <mat-error>Datum und Uhrzeit ist erforderlich.</mat-error>
+        @if (serverRejection('date_time'); as grund) {
+          <mat-error data-testid="server-error-date_time">{{ grund }}</mat-error>
+        } @else {
+          <mat-error>Datum und Uhrzeit ist erforderlich.</mat-error>
+        }
       </mat-form-field>
     </div>
 
@@ -300,7 +307,9 @@
             <mat-option [value]="option">{{ option.common_name_de }} ({{ option.scientific_name }})</mat-option>
           }
         </mat-autocomplete>
-        @if (entryForm.controls.species.hasError('required')) {
+        @if (serverRejection('species'); as grund) {
+          <mat-error data-testid="server-error-species">{{ grund }}</mat-error>
+        } @else if (entryForm.controls.species.hasError('required')) {
           <mat-error>Art ist erforderlich.</mat-error>
         } @else if (entryForm.controls.species.hasError('unmatchedOption')) {
           <mat-error>Unbekannte Art – bitte aus der Liste wählen</mat-error>
@@ -315,7 +324,11 @@
               <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
             }
           </mat-select>
-          <mat-error>Status ist erforderlich.</mat-error>
+          @if (serverRejection('bird_status'); as grund) {
+            <mat-error data-testid="server-error-bird_status">{{ grund }}</mat-error>
+          } @else {
+            <mat-error>Status ist erforderlich.</mat-error>
+          }
         </mat-form-field>
       }
 
@@ -332,7 +345,9 @@
             <mat-option [value]="option">{{ option.name }} ({{ option.scheme_code }}) – {{ option.country }}</mat-option>
           }
         </mat-autocomplete>
-        @if (entryForm.controls.central.hasError('unmatchedOption')) {
+        @if (serverRejection('central'); as grund) {
+          <mat-error data-testid="server-error-central">{{ grund }}</mat-error>
+        } @else if (entryForm.controls.central.hasError('unmatchedOption')) {
           <mat-error>Unbekannte Zentrale – bitte aus der Liste wählen</mat-error>
         }
       </mat-form-field>
@@ -343,7 +358,11 @@
         <mat-form-field appearance="outline" floatLabel="always" class="ring-size-field">
           <mat-label>Ringgröße</mat-label>
           <input matInput formControlName="ring_size" data-testid="ring-size-freetext">
-          <mat-error>Ringgröße ist erforderlich.</mat-error>
+          @if (serverRejection('ring_size'); as grund) {
+            <mat-error data-testid="server-error-ring_size">{{ grund }}</mat-error>
+          } @else {
+            <mat-error>Ringgröße ist erforderlich.</mat-error>
+          }
         </mat-form-field>
       } @else {
         <mat-form-field appearance="outline" floatLabel="always" class="ring-size-field">
@@ -356,7 +375,11 @@
               <mat-option [value]="option.value">{{ option.viewValue }}</mat-option>
             }
           </mat-select>
-          <mat-error>Ringgröße ist erforderlich.</mat-error>
+          @if (serverRejection('ring_size'); as grund) {
+            <mat-error data-testid="server-error-ring_size">{{ grund }}</mat-error>
+          } @else {
+            <mat-error>Ringgröße ist erforderlich.</mat-error>
+          }
         </mat-form-field>
       }
 
@@ -382,7 +405,9 @@
             </svg>
           </button>
         }
-        @if (entryForm.controls.ring_number.hasError('required')) {
+        @if (serverRejection('ring_number'); as grund) {
+          <mat-error data-testid="server-error-ring_number">{{ grund }}</mat-error>
+        } @else if (entryForm.controls.ring_number.hasError('required')) {
           <mat-error>Ringnummer ist erforderlich.</mat-error>
         } @else if (entryForm.controls.ring_number.hasError('pattern')) {
           <mat-error>Nur Ziffern erlaubt.</mat-error>
@@ -559,7 +584,9 @@
         } @else if (isDeadRecovery()) {
           <mat-hint>Pflichtfeld für Tot-Fund — die Todesumstände sind in der Bemerkung festgehalten.</mat-hint>
         }
-        @if (entryForm.controls.comment.hasError('required')) {
+        @if (serverRejection('comment'); as grund) {
+          <mat-error data-testid="server-error-comment">{{ grund }}</mat-error>
+        } @else if (entryForm.controls.comment.hasError('required')) {
           @if (isUnknownSpecies()) {
             <mat-error>Für „Aves ignota“ ist eine Bemerkung erforderlich.</mat-error>
           } @else {
