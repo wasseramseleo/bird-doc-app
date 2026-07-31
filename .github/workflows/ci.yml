@@ -84,5 +84,7 @@ jobs:
         run: npm ci
       - name: Icon-Seam check
         run: npm run check:icon-seam
+      - name: Transportzeichenketten-Check
+        run: npm run check:transport-strings
       - name: Production build
         run: npm run build -- --configuration production

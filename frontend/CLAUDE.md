@@ -65,6 +65,30 @@ Single-page Angular 21 app for bird-ringing field data entry, behind a session-a
 - `src/app/models/` — TypeScript interfaces and enums mirroring backend models
 - `src/app/core/directives/select-on-tab.ts` — selects the active autocomplete option on Tab keypress
 - `src/app/shared/directives/focus-next.ts` — advances focus to the next form field on Enter/selection
+- `src/app/core/errors/app-failure.ts` — the Einordnung: every failure classified into one of six Fehlerklassen
+- `src/app/shared/failure-banner/failure-banner.ts` — the surface a refused write lands on
+
+**Die Einordnung — how a failure is handled (ADR 0037/0038, PRD #438).** A component
+never reads an HTTP status and never builds a message out of one; it calls
+`appFailureOf(error)` and gets an `AppFailure` carrying its **Fehlerklasse** (Korrigieren ·
+Erneut versuchen · Neu anmelden · Freigeben lassen · App aktualisieren · Unbekannt), the
+server's German sentence, the rejected field, the code and the class's one way out. The
+classification is a **pure function** (`classifyFailure`, the `plausibility.ts` model),
+unit-tested against real DRF bodies. `failureInterceptor` is registered **outermost**
+(`app.config.ts`, `HTTP_INTERCEPTORS_IN_ORDER` — the order is contract) and **attaches** the
+classification to the error rather than replacing it, so `authInterceptor` still sees the raw
+error, the offline facade still branches on `status === 0` and the sync still reads
+`Retry-After`. A refused write renders `<app-failure-banner>` where the gesture happened and
+**does not time out**; a field-bound rejection additionally sets `serverRejected` on that
+control, which Angular clears by itself the moment that field is edited. Two rules keep that
+marking honest: it is only ever set on a control listed in `SERVER_REJECTION_FIELDS` (the
+controls whose template really renders the sentence) and never on a disabled one — otherwise
+the field would go red without a word — and it **never** blocks Speichern. The button reads
+`saveBlocked()`, not `entryForm.invalid`, and `onSubmit()` drops every `serverRejected` before
+it checks validity, because the one way out of *Korrigieren* is that very button (ADR 0037:
+a remedy fills the form and never saves). A snackbar only ever
+confirms a **success** — `npm run check:transport-strings` keeps a transport string or a raw
+status out of any message repo-wide.
 
 **Data flow:**
 1. Autocomplete fields (species, ringing station, scientist) use RxJS `valueChanges` → `debounceTime(300)` → `switchMap` to the API

@@ -233,7 +233,9 @@ test.describe('Offline sync rejection — skip-and-flag + in-form fix-up (issue 
     // Opening the flagged entry surfaces the rejection in the normal form...
     await flaggedRow.click();
     await expect(page).toHaveURL(/\/data-entry\/[0-9a-f-]+$/);
-    await expect(page.locator('[data-testid="sync-error-banner"]')).toContainText(COLLISION_MESSAGE);
+    // #443: dasselbe Banner, jetzt das gemeinsame Bauteil (`app-failure-banner`)
+    // — online wie beim Replay.
+    await expect(page.locator('[data-testid="failure-banner"]')).toContainText(COLLISION_MESSAGE);
     await expect(page.locator('input[formControlName="ring_number"]')).toHaveValue(REJECTED_RING);
 
     // ...and fixing the ring number re-queues it clean (no PUT — it was never on

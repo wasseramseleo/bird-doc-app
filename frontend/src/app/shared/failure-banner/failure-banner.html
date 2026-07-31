@@ -1,0 +1,28 @@
+<div class="failure-banner" role="alert" data-testid="failure-banner">
+  <mat-icon app-icon-error aria-hidden="true"></mat-icon>
+  <span class="failure-banner__text">
+    <strong>{{ titelZeile() }}:</strong>
+    {{ failure().text }}
+    {{ worte().ausweg }}
+  </span>
+  @switch (abhilfe()) {
+    @case ('neu-anmelden') {
+      <button mat-stroked-button type="button" data-testid="failure-anmelden"
+              (click)="onAnmelden()">
+        Anmelden
+      </button>
+    }
+    @case ('app-aktualisieren') {
+      <button mat-stroked-button type="button" data-testid="failure-aktualisieren"
+              (click)="onAktualisieren()">
+        Jetzt aktualisieren
+      </button>
+    }
+    @case ('erneut-versuchen') {
+      <button mat-stroked-button type="button" data-testid="failure-erneut"
+              (click)="retry.emit()">
+        Erneut versuchen
+      </button>
+    }
+  }
+</div>

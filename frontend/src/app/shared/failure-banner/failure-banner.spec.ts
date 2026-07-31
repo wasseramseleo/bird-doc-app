@@ -1,0 +1,195 @@
+import {ComponentFixture, TestBed, fakeAsync, tick} from '@angular/core/testing';
+import {HttpErrorResponse} from '@angular/common/http';
+import {provideRouter, Router} from '@angular/router';
+import {provideNoopAnimations} from '@angular/platform-browser/animations';
+import {of} from 'rxjs';
+
+import {FailureBannerComponent} from './failure-banner';
+import {AppIconErrorDirective} from '../app-icons';
+import {renderedGlyph, seamGlyph} from '../app-icons.testing';
+import {AppFailure, classifyFailure, failureFromSyncError} from '../../core/errors/app-failure';
+import {AppUpdateService} from '../../service/app-update.service';
+import {UnsavedChangesService} from '../../service/unsaved-changes.service';
+
+const RING_ALREADY_FIRST_CAUGHT =
+  'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+
+function rejection(status: number, body: unknown): AppFailure {
+  return classifyFailure(
+    new HttpErrorResponse({
+      status,
+      statusText: 'error',
+      url: 'https://app.birddoc.eu/api/birds/data-entries/',
+      error: body,
+    }),
+  );
+}
+
+describe('FailureBannerComponent', () => {
+  let fixture: ComponentFixture<FailureBannerComponent>;
+
+  function render(failure: AppFailure, titel?: string): HTMLElement {
+    fixture = TestBed.createComponent(FailureBannerComponent);
+    fixture.componentRef.setInput('failure', failure);
+    if (titel !== undefined) {
+      fixture.componentRef.setInput('titel', titel);
+    }
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  const button = (el: HTMLElement, label: string): HTMLButtonElement | undefined =>
+    Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes(label));
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [FailureBannerComponent],
+      providers: [provideRouter([{path: 'login', children: []}]), provideNoopAnimations()],
+    }).compileComponents();
+  });
+
+  it('nennt den Titel der Klasse, den Grund des Servers und den Ausweg', () => {
+    const el = render(
+      rejection(400, {
+        ring_number: RING_ALREADY_FIRST_CAUGHT,
+        errors: [{field: 'ring_number', code: 'invalid', detail: RING_ALREADY_FIRST_CAUGHT}],
+      }),
+    );
+
+    const banner = el.querySelector('[data-testid="failure-banner"]')!;
+    expect(banner.getAttribute('role')).toBe('alert');
+    expect(banner.textContent).toContain('Speichern abgelehnt');
+    expect(banner.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+    expect(banner.textContent).toContain('Bitte korrigieren und erneut speichern.');
+    // Die Transportzeichenkette, mit der dieses PRD anfing, steht nirgends.
+    expect(banner.textContent).not.toContain('Http failure response');
+  });
+
+  it('zeichnet das App-Icon des kaputten Zustands, nicht eine benannte Glyphe', () => {
+    const el = render(rejection(400, {detail: 'abgelehnt'}));
+
+    expect(renderedGlyph(el.querySelector('mat-icon'))).toBeTruthy();
+    expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+  });
+
+  it('nimmt den Titel des Moments entgegen — dasselbe Bauteil online wie beim Replay', () => {
+    const el = render(
+      failureFromSyncError(RING_ALREADY_FIRST_CAUGHT),
+      'Synchronisierung abgelehnt',
+    );
+
+    const banner = el.querySelector('[data-testid="failure-banner"]')!;
+    expect(banner.textContent).toContain('Synchronisierung abgelehnt');
+    expect(banner.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+    expect(banner.textContent).toContain('Bitte korrigieren und erneut speichern.');
+  });
+
+  it('bietet beim Korrigieren keinen Knopf an — das Formular ist der Ausweg', () => {
+    const el = render(
+      rejection(400, {
+        ring_number: RING_ALREADY_FIRST_CAUGHT,
+        // Ein Code, den dieser Client (noch) nicht kennt: er bekommt seinen
+        // Satz und **keine** Abhilfe (ADR 0038) — „Als Wiederfang erfassen"
+        // gehört #444, nicht einem geratenen Textvergleich.
+        errors: [
+          {
+            field: 'ring_number',
+            code: 'ring_already_first_caught',
+            detail: RING_ALREADY_FIRST_CAUGHT,
+          },
+        ],
+      }),
+    );
+
+    expect(el.querySelectorAll('button').length).toBe(0);
+  });
+
+  it('bietet bei „Neu anmelden" die Anmeldung an und führt hin', () => {
+    const el = render(
+      rejection(403, {
+        detail: 'Anmeldedaten fehlen.',
+        errors: [{field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.'}],
+      }),
+    );
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+
+    const anmelden = button(el, 'Anmelden');
+    expect(anmelden).toBeDefined();
+    anmelden!.click();
+
+    expect(navigate).toHaveBeenCalledWith(['/login'], jasmine.anything());
+  });
+
+  it('bietet bei „App aktualisieren" die Aktualisierung an und stößt sie an', fakeAsync(() => {
+    const appUpdate = TestBed.inject(AppUpdateService);
+    const checkForUpdate = spyOn(appUpdate, 'checkForUpdate').and.resolveTo();
+    const adopt = spyOn(appUpdate, 'adopt').and.resolveTo();
+    // Eine wartende Version, sonst gibt es nichts zu übernehmen (ADR 0032).
+    spyOn(appUpdate, 'versionWaiting').and.returnValue(true);
+    spyOn(TestBed.inject(UnsavedChangesService), 'confirmDiscard').and.returnValue(of(true));
+
+    const el = render(rejection(404, {detail: 'Nicht gefunden.'}));
+
+    const aktualisieren = button(el, 'Jetzt aktualisieren');
+    expect(aktualisieren).toBeDefined();
+    aktualisieren!.click();
+    tick();
+
+    expect(checkForUpdate).toHaveBeenCalled();
+    expect(adopt).toHaveBeenCalled();
+  }));
+
+  it('lädt bei „App aktualisieren" nichts neu, wenn keine Version wartet', fakeAsync(() => {
+    const appUpdate = TestBed.inject(AppUpdateService);
+    spyOn(appUpdate, 'checkForUpdate').and.resolveTo();
+    const adopt = spyOn(appUpdate, 'adopt').and.resolveTo();
+    spyOn(appUpdate, 'versionWaiting').and.returnValue(false);
+    const confirmDiscard = spyOn(
+      TestBed.inject(UnsavedChangesService),
+      'confirmDiscard',
+    ).and.returnValue(of(true));
+
+    const el = render(rejection(404, {detail: 'Nicht gefunden.'}));
+    button(el, 'Jetzt aktualisieren')!.click();
+    tick();
+
+    // Weder nach dem Verwerfen gefragt noch neu geladen: es gäbe nichts zu
+    // übernehmen, und ein Reload mitten in einer Erfassung ist Datenverlust.
+    expect(confirmDiscard).not.toHaveBeenCalled();
+    expect(adopt).not.toHaveBeenCalled();
+  }));
+
+  it('bietet bei „Erneut versuchen" den erneuten Versuch an und meldet ihn nach oben', () => {
+    const el = render(rejection(503, {detail: 'Wartung'}));
+    let retries = 0;
+    fixture.componentInstance.retry.subscribe(() => (retries += 1));
+
+    const erneut = button(el, 'Erneut versuchen');
+    expect(erneut).toBeDefined();
+    erneut!.click();
+
+    expect(retries).toBe(1);
+  });
+
+  it('bietet bei „Freigeben lassen" keinen der drei Knöpfe an', () => {
+    // Die namentlich genannten Admins sind #450; hier steht der Ausweg als Satz.
+    const el = render(
+      rejection(403, {
+        detail: 'Diese Aktion ist Administrator:innen der Organisation vorbehalten.',
+        errors: [
+          {
+            field: null,
+            code: 'permission_denied',
+            detail: 'Diese Aktion ist Administrator:innen der Organisation vorbehalten.',
+          },
+        ],
+      }),
+    );
+
+    expect(button(el, 'Anmelden')).toBeUndefined();
+    expect(button(el, 'Jetzt aktualisieren')).toBeUndefined();
+    expect(button(el, 'Erneut versuchen')).toBeUndefined();
+    expect(el.textContent).toContain('Administrator');
+  });
+});
