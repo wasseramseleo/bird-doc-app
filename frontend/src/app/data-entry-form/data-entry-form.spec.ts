@@ -8009,6 +8009,34 @@ describe('DataEntryFormComponent', () => {
       expect(document.activeElement).toBe(el('parasites'));
     }));
 
+    // Enter ist die Haupt-Vorwärtstaste der Maske. Sie muss aus einem Kästchen
+    // genauso weiterführen wie Pfeil-rechts — sonst ist die Zeile für die Taste,
+    // mit der die Beringer:in tatsächlich arbeitet, weiterhin eine Sackgasse.
+    const pressEnter = (): KeyboardEvent => {
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      (document.activeElement as HTMLElement).dispatchEvent(event);
+      tick(50);
+      return event;
+    };
+
+    it('führt Enter von Brutfleck weiter auf das innere <input> von CPL+', fakeAsync(() => {
+      checkbox('has_brood_patch').focus();
+
+      const event = pressEnter();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(checkbox('has_cpl_plus'));
+    }));
+
+    it('führt Enter von Hungerstreifen aus der Zeile hinaus nach Parasit', fakeAsync(() => {
+      checkbox('has_hunger_stripes').focus();
+
+      const event = pressEnter();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('parasites'));
+    }));
+
     it('führt den Rückwärtslauf von Parasit durch die Zeile hindurch bis zur Bemerkung', fakeAsync(() => {
       el('parasites').focus();
 

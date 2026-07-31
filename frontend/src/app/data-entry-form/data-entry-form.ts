@@ -2270,16 +2270,28 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     this.restoreFieldFocus();
   }
 
+  // #477: die eine Auflösung „Ereignisziel → Steuerelement" — die Gegenrichtung zu
+  // focusTargetFor. Sie steigt mit `closest` vom Ziel zum Wirt auf, weil eine
+  // Material-Komponente das `formControlName` am Wirt trägt und nicht an dem
+  // inneren Element, das den Fokus tatsächlich hält: ein fokussierter mat-checkbox
+  // meldet sein <input type="checkbox">, das den Namen nicht kennt. Jeder Zuhörer
+  // (Fokus merken, Pfeilnavigation, Enter) fragt hier, damit nicht eine Kopie
+  // aufsteigt und die nächste am inneren Element hängen bleibt.
+  private static controlHostOf(target: EventTarget | null): HTMLElement | null {
+    const element = target as HTMLElement | null;
+    return (element?.closest?.('[formControlName]') as HTMLElement | null) ?? null;
+  }
+
+  private static controlNameOf(target: EventTarget | null): string | null {
+    return DataEntryFormComponent.controlHostOf(target)?.getAttribute('formControlName') ?? null;
+  }
+
   // #466: der Zuhörer am Formular. Er zeichnet **ausschließlich** Elemente auf, die
   // ein Formularsteuerelement tragen — die beiden Banner-Knöpfe stehen im selben
   // Formular und dürfen sich nicht selbst eintragen, sonst gäbe der Knopf den Fokus
-  // an sich selbst zurück. `closest` statt `getAttribute`, weil ein fokussierter
-  // mat-checkbox das `formControlName` am Wirtselement und nicht am inneren
-  // <input> trägt.
+  // an sich selbst zurück.
   rememberFocusedControl(event: FocusEvent): void {
-    const target = event.target as HTMLElement | null;
-    const holder = target?.closest?.('[formControlName]') ?? null;
-    const name = holder?.getAttribute('formControlName');
+    const name = DataEntryFormComponent.controlNameOf(event.target);
     if (name) {
       this.lastFocusedControlName = name;
     }
@@ -2456,12 +2468,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     if (!target) {
       return;
     }
-    const field = target.closest('[formControlName]') as HTMLElement | null;
-    if (!field) {
-      return;
-    }
-    const controlName = field.getAttribute('formControlName');
-    if (!controlName) {
+    const field = DataEntryFormComponent.controlHostOf(target);
+    const controlName = DataEntryFormComponent.controlNameOf(target);
+    if (!field || !controlName) {
       return;
     }
     // An open autocomplete/select panel owns the arrows for option navigation.
@@ -2548,7 +2557,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     // Otherwise Enter must never submit the form.
     event.preventDefault();
 
-    const controlName = target.getAttribute('formControlName');
+    // #477: über controlHostOf aufsteigen statt am Ereignisziel abzulesen. Bei
+    // einem fokussierten mat-checkbox ist das Ziel das innere <input>, das den
+    // Namen nicht trägt — der Name bliebe null, focusNext liefe nie an, und weil
+    // das preventDefault oben schon gelaufen ist, verschluckte Enter den
+    // Tastendruck ersatzlos: die Zeile wäre für die Haupt-Vorwärtstaste der Maske
+    // weiterhin eine Sackgasse.
+    const controlName = DataEntryFormComponent.controlNameOf(target);
 
     // In a Wiederfang, Enter in the Ringnummer field runs the ring-history
     // lookup (and prefill) instead of advancing — the Beringer's first move.
