@@ -1737,29 +1737,34 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     this.snackBar
       .open('Eintrag wurde gelöscht.', 'Rückgängig', {duration: 10000})
       .onAction()
-      .subscribe(() => {
-        this.apiService.restoreDataEntry(id).subscribe({
-          next: () => {
-            // Die Liste, auf die das Löschen navigiert hat, steht längst — sie
-            // lädt nur beim Betreten und beim Projektwechsel. Ohne dieses Signal
-            // meldet das Snackbar einen Erfolg, den der Bildschirm widerlegt.
-            this.entryRefresh.request();
-            this.snackBar.open('Eintrag wurde wiederhergestellt.', undefined, {duration: 3000});
-          },
-          error: (err) => {
-            console.error('Error restoring data entry', err);
-            // #443: die **einzige** verbliebene Fehlschlag-Snackbar dieses
-            // Bildschirms, und sie kann hier nicht anders: das „Rückgängig"
-            // fällt, nachdem „Löschen" längst zur Fangliste navigiert und diese
-            // Komponente zerstört hat — ein Banner an dieser Stelle sähe
-            // niemand. Sie gehört auf die Liste, und damit zu #448 („keine
-            // Fehlschlag-Snackbar bleibt übrig", SPA-weit).
-            this.snackBar.open('Eintrag konnte nicht wiederhergestellt werden.', 'Schließen', {
-              duration: 3000,
-            });
-          },
-        });
-      });
+      .subscribe(() => this.restoreEntry(id));
+  }
+
+  /**
+   * Das „Rückgängig" selbst — bewusst **nach** der Navigation lauffähig: es
+   * benutzt nur Wurzel-Dienste, keine Signale dieser Komponente.
+   */
+  private restoreEntry(id: string): void {
+    this.entryRefresh.schreibFehler.leeren();
+    this.apiService.restoreDataEntry(id).subscribe({
+      next: () => {
+        // Die Liste, auf die das Löschen navigiert hat, steht längst — sie
+        // lädt nur beim Betreten und beim Projektwechsel. Ohne dieses Signal
+        // meldet das Snackbar einen Erfolg, den der Bildschirm widerlegt.
+        this.entryRefresh.request();
+        this.snackBar.open('Eintrag wurde wiederhergestellt.', undefined, {duration: 3000});
+      },
+      error: (err: unknown) => {
+        console.error('Error restoring data entry', err);
+        // #448: die letzte Fehlschlag-Snackbar der SPA, und sie konnte an
+        // dieser Stelle nicht anders: das „Rückgängig" fällt, nachdem
+        // „Löschen" längst zur Fangliste navigiert und diese Komponente
+        // zerstört hat — ein Banner hier sähe niemand. Also nimmt der
+        // Fehlschlag denselben Rückkanal wie das Nachladen und landet dort,
+        // wo das Snackbar stand und gedrückt wurde.
+        this.entryRefresh.schreibFehler.zeige(appFailureOf(err), () => this.restoreEntry(id));
+      },
+    });
   }
 
   // PRD #245: recompute the inline Plausibilitätswarnungen from the current form

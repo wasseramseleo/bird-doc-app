@@ -7,6 +7,7 @@ import {
   Fehlerklasse,
   syncErrorEnvelopeOf,
 } from './app-failure';
+import {fehlerMeldenAngeboten} from './fehlerbericht';
 
 /**
  * Die Einordnung als reine Funktion (ADR 0037), gefüttert mit **echten**
@@ -27,6 +28,12 @@ const ADMIN_ONLY =
 const SEAT_LIMIT =
   'Das Seat-Limit deiner Organisation ist erreicht. Entferne ein Mitglied oder ' +
   'eine offene Einladung, um eine Person einzuladen.';
+const STATION_HAS_CAPTURES =
+  'Diese Station kann nicht gelöscht werden, weil ihr Fänge zugeordnet sind. ' +
+  'Archiviere die Station stattdessen.';
+const BERINGER_HAS_ACCOUNT =
+  'Dieser Beringer ist mit einem Konto verknüpft (Mitglied) und kann hier nicht ' +
+  'gelöscht werden. Entferne zuerst das Konto in der Mitgliederverwaltung.';
 
 /** Was der Browser dem Client reicht: ein `HttpErrorResponse` um den Körper. */
 function rejection(status: number, body: unknown, headers?: Record<string, string>): HttpErrorResponse {
@@ -89,12 +96,45 @@ describe('classifyFailure — Korrigieren (ADR 0037)', () => {
     expect(failure.code).toBe('required');
   });
 
-  it('gilt für genau 400 und 422 — ADR 0033s Positivliste, unverändert', () => {
+  it('gilt für genau 400, 409 und 422 — ADR 0033s Positivliste plus den Konflikt', () => {
     const korrigieren = [400, 401, 403, 404, 409, 418, 422, 429, 500, 502, 503, 0].filter(
       (status) => classifyFailure(rejection(status, {detail: 'x'})).klasse === Fehlerklasse.Korrigieren,
     );
 
-    expect(korrigieren).toEqual([400, 422]);
+    expect(korrigieren).toEqual([400, 409, 422]);
+  });
+
+  /**
+   * Der 409 (#448): der Server hat den Vorgang selbst zurückgewiesen, auf Deutsch
+   * begründet und mit einem stabilen Code versehen. Ohne eigene Evidenzzeile
+   * fiele er auf *Unbekannt* — und behauptete damit über einem Satz, der genau
+   * sagt, was zu tun ist, „Unerwarteter Fehler", „Das liegt an uns, nicht an
+   * deiner Eingabe." und böte „Fehler melden" an: ein Bugreport über ein Feature,
+   * das funktioniert. Alle drei Körper stammen aus `backend/birds/views.py`.
+   */
+  it('ordnet die drei echten 409-Zurückweisungen ein, ohne die App zu beschuldigen', () => {
+    const konflikte = [
+      {code: 'station_has_captures', detail: STATION_HAS_CAPTURES},
+      {code: 'beringer_has_account', detail: BERINGER_HAS_ACCOUNT},
+      {code: 'seat_limit_reached', detail: SEAT_LIMIT},
+    ];
+
+    for (const {code, detail} of konflikte) {
+      const failure = classifyFailure(
+        rejection(409, {detail, errors: [{field: null, code, detail}]}),
+      );
+
+      expect(failure.klasse).withContext(code).toBe(Fehlerklasse.Korrigieren);
+      // Der Satz des Servers steht, sein Code reist mit — und die Worte der
+      // Klasse widersprechen ihm nicht mehr.
+      expect(failure.text).withContext(code).toBe(detail);
+      expect(failure.code).withContext(code).toBe(code);
+      expect(failure.remedy).withContext(code).not.toBe('fehler-melden');
+      expect(fehlerMeldenAngeboten(failure)).withContext(code).toBeFalse();
+      expect(FEHLERKLASSE_WORTE[failure.klasse].ausweg)
+        .withContext(code)
+        .not.toContain('Das liegt an uns');
+    }
   });
 });
 
@@ -199,9 +239,10 @@ describe('classifyFailure — die übrigen fünf Klassen (ADR 0037)', () => {
 describe('classifyFailure — was passiert, wenn der Client den Fall nicht kennt', () => {
   it('degradiert einen unbekannten Code auf seinen Satz, behält ihn aber', () => {
     // test_seat_limit_409_is_unchanged_and_carries_its_own_code: ein Code, den
-    // dieser Client nicht kennt, auf einem Status, der in keiner Evidenzliste
-    // steht. Er bekommt keine eigene Abhilfe — aber den Satz, nie einen
-    // Rohstatus und nie nichts.
+    // dieser Client nicht kennt. Er bekommt **keine eigene Abhilfe** — die hängt
+    // am Code und kommt mit #444 (ADR 0038) — aber den Satz, nie einen
+    // Rohstatus und nie nichts. Die *Klasse* kennt der Client sehr wohl: ein 409
+    // ist eine Bedingung des Vorgangs (#448).
     const failure = classifyFailure(
       rejection(409, {
         detail: SEAT_LIMIT,
@@ -209,10 +250,21 @@ describe('classifyFailure — was passiert, wenn der Client den Fall nicht kennt
       }),
     );
 
-    expect(failure.klasse).toBe(Fehlerklasse.Unbekannt);
+    expect(failure.klasse).toBe(Fehlerklasse.Korrigieren);
     expect(failure.text).toBe(SEAT_LIMIT);
     expect(failure.code).toBe('seat_limit_reached');
     expect(failure.context).toBeNull();
+  });
+
+  it('lässt einen Status ohne jede Evidenzzeile auf Unbekannt fallen', () => {
+    // Ein 418 erzeugt hier niemand — und genau darum steht er hier: was in
+    // keiner Evidenzliste steht, ist *Unbekannt* und beschuldigt nie die
+    // Eingabe. Der Satz des Körpers bleibt trotzdem stehen.
+    const failure = classifyFailure(rejection(418, {detail: 'Ich bin eine Teekanne.'}));
+
+    expect(failure.klasse).toBe(Fehlerklasse.Unbekannt);
+    expect(failure.remedy).toBe('fehler-melden');
+    expect(failure.text).toBe('Ich bin eine Teekanne.');
   });
 
   it('holt aus einem Körper ganz ohne `errors` weiterhin eine brauchbare Meldung', () => {
@@ -264,7 +316,8 @@ describe('AppFailure — der eine Ausweg je Klasse (ADR 0037)', () => {
     expect(classifyFailure(rejection(403, {detail: 'x'})).remedy).toBe('freigeben-lassen');
     expect(classifyFailure(rejection(404, {detail: 'x'})).remedy).toBe('app-aktualisieren');
     expect(classifyFailure(rejection(503, {detail: 'x'})).remedy).toBe('erneut-versuchen');
-    expect(classifyFailure(rejection(409, {detail: 'x'})).remedy).toBe('fehler-melden');
+    expect(classifyFailure(rejection(409, {detail: 'x'})).remedy).toBe('korrigieren');
+    expect(classifyFailure(rejection(418, {detail: 'x'})).remedy).toBe('fehler-melden');
   });
 });
 

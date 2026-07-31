@@ -25,6 +25,14 @@
     </div>
   </header>
 
+  <!-- #448 (ADR 0037): das gescheiterte „Rückgängig" des Lösch-Snackbars. Es
+       fällt, nachdem „Löschen" längst hierher navigiert hat — also steht es
+       hier, über der unversehrten Liste, und verfällt nicht. -->
+  @if (entryRefresh.schreibFehler.failure(); as failure) {
+    <app-failure-banner [failure]="failure"
+                        (retry)="entryRefresh.schreibFehler.erneut()"></app-failure-banner>
+  }
+
   <mat-form-field appearance="outline" class="entry-list__search">
     <mat-label>Art oder Ringnummer suchen</mat-label>
     <mat-icon matPrefix>search</mat-icon>

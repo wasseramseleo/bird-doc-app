@@ -30,6 +30,17 @@ function flushGaps(seats: Mitgliedschaft[] = []) {
     .flush(page0(seats));
 }
 
+// The write tests assert on the *rendered* screen, so both init loads have to
+// have run and been answered before a gesture.
+function renderScreen(fixture: ComponentFixture<BeringerComponent>, beringer: Beringer[] = []) {
+  fixture.detectChanges();
+  httpMock
+    .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+    .flush(page0(beringer));
+  flushGaps();
+  fixture.detectChanges();
+}
+
 function makeBeringer(overrides: Partial<Beringer> = {}): Beringer {
   return {
     id: '1',
@@ -320,24 +331,77 @@ describe('BeringerComponent', () => {
     httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
   });
 
-  it('surfaces the German duplicate-Kürzel 400 message and does not reload', () => {
-    const {fixture, component} = setup();
-    const snack = spyOnSnackBar(fixture);
-    const payload = {first_name: 'Nora', last_name: 'Neu', handle: 'FRE'};
-    spyOnDialog(fixture, payload);
+  // #448 (ADR 0037): die drei handgeschriebenen Extraktoren dieses Bildschirms
+  // (`saveErrorMessage`, `linkErrorMessage`, `deleteErrorMessage`) sind weg — der
+  // Serversatz kommt aus derselben Einordnung wie überall, und er steht im
+  // Banner statt in einer Snackbar, die nach fünf Sekunden geht.
+  describe('Schreib-Banner', () => {
+    it('surfaces the German duplicate-Kürzel 400 message in the banner and does not reload', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      renderScreen(fixture);
+      const payload = {first_name: 'Nora', last_name: 'Neu', handle: 'FRE'};
+      spyOnDialog(fixture, payload);
 
-    component.openEditDialog(makeBeringer({id: '42', handle: 'NNE'}));
+      component.openEditDialog(makeBeringer({id: '42', handle: 'NNE'}));
 
-    httpMock
-      .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/42/'))
-      .flush(
-        {handle: ['Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.']},
-        {status: 400, statusText: 'Bad Request'},
-      );
+      httpMock
+        .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/42/'))
+        .flush(
+          {handle: ['Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.']},
+          {status: 400, statusText: 'Bad Request'},
+        );
+      fixture.detectChanges();
 
-    expect(snack).toHaveBeenCalled();
-    expect(snack.calls.mostRecent().args[0] as string).toContain('Kürzel');
-    // A rejected save does not reload the list — nothing changed, so no GET.
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Dieses Kürzel ist bereits vergeben');
+      expect(snack).not.toHaveBeenCalled();
+      // A rejected save does not reload the list — nothing changed, so no GET.
+    });
+
+    it('surfaces a refused link (the mitgliedschaft_id 400) in the banner', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      renderScreen(fixture);
+      spyOnDialog(fixture, 'seat-1');
+
+      component.openLinkDialog(makeBeringer({id: '7', is_member: false}));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+        .flush(page0([makeSeat({id: 'seat-1', handle: null})]));
+      httpMock
+        .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/7/'))
+        .flush(
+          {mitgliedschaft_id: ['Dieses Konto ist bereits mit einem Beringer verknüpft.']},
+          {status: 400, statusText: 'Bad Request'},
+        );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('bereits mit einem Beringer verknüpft');
+      expect(snack).not.toHaveBeenCalled();
+    });
+
+    // Ein Lesevorgang, der an einer Geste hängt und keinen Inhalt hat, den er
+    // ersetzen könnte: der Picker öffnet gar nicht erst. Er landet deshalb dort,
+    // wo gedrückt wurde — genauso wie die Ringhistorie im Erfassungsformular.
+    it('surfaces a failed seat read behind „Konto verknüpfen" in the banner', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      renderScreen(fixture);
+      const dialogSpy = spyOnDialog(fixture, undefined);
+
+      component.openLinkDialog(makeBeringer({id: '7', is_member: false}));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+        .flush({detail: 'Die Konten konnten nicht gelesen werden.'}, {status: 503, statusText: 'Service Unavailable'});
+      fixture.detectChanges();
+
+      expect(dialogSpy).not.toHaveBeenCalled();
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Die Konten konnten nicht gelesen werden.');
+      expect(snack).not.toHaveBeenCalled();
+    });
   });
 
   // --- Link / unlink a Beringer to a seat (PRD #205, issue #209) -------------

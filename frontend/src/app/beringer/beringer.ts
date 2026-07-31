@@ -1,5 +1,4 @@
 import {ChangeDetectionStrategy, Component, OnInit, computed, inject, signal} from '@angular/core';
-import {HttpErrorResponse} from '@angular/common/http';
 import {switchMap} from 'rxjs/operators';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
@@ -8,8 +7,10 @@ import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
 import {AppIconEmptyDirective} from '../shared/app-icons';
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {LoadFailureComponent} from '../shared/load-failure/load-failure';
 import {AppFailure, appFailureOf} from '../core/errors/app-failure';
+import {SchreibFehler} from '../core/errors/schreib-fehler';
 import {ApiService} from '../service/api.service';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
@@ -41,6 +42,7 @@ import {
     MatDialogModule,
     MatSnackBarModule,
     AppIconEmptyDirective,
+    FailureBannerComponent,
     LoadFailureComponent,
   ],
   templateUrl: './beringer.html',
@@ -57,6 +59,10 @@ export class BeringerComponent implements OnInit {
   // Stelle, statt drei Sekunden zu toasten und eine leere Liste stehen zu
   // lassen — die sah aus wie eine Organisation ganz ohne Beringer.
   readonly loadFailure = signal<AppFailure | null>(null);
+  // #448 (ADR 0037): eine zurückgewiesene Schreibung landet im Banner, dort wo
+  // die Geste stattfand — Zuordnung und Seat-Verwaltung eingeschlossen. Eine
+  // Snackbar bestätigt hier nur noch, dass etwas *gelungen* ist.
+  readonly schreibFehler = new SchreibFehler();
   private readonly beringer = signal<Beringer[]>([]);
 
   // "Mitglieder ohne Beringer-Eintrag": the Organisation's seats that have no
@@ -126,25 +132,27 @@ export class BeringerComponent implements OnInit {
 
   // verknüpfen: a single attach PATCH on the chosen existing Beringer.
   private assignExistingBeringer(seat: Mitgliedschaft, beringerId: string): void {
+    this.schreibFehler.leeren();
     this.api.linkScientistToSeat(beringerId, seat.id).subscribe({
       next: (updated) => this.onAssigned(updated),
-      error: (err: HttpErrorResponse) =>
-        this.snackBar.open(this.linkErrorMessage(err, 'zugeordnet'), 'Schließen', {duration: 5000}),
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () =>
+          this.assignExistingBeringer(seat, beringerId),
+        ),
     });
   }
 
   // neu anlegen: create → attach, two calls in order (open POST, then the Admin
   // PATCH {mitgliedschaft_id} that links the fresh Beringer to the seat).
   private assignNewBeringer(seat: Mitgliedschaft, payload: ScientistCreatePayload): void {
+    this.schreibFehler.leeren();
     this.api
       .createScientist(payload)
       .pipe(switchMap((created) => this.api.linkScientistToSeat(created.id, seat.id)))
       .subscribe({
         next: (updated) => this.onAssigned(updated),
-        error: (err: HttpErrorResponse) =>
-          this.snackBar.open(this.saveErrorMessage(err, 'zugeordnet'), 'Schließen', {
-            duration: 5000,
-          }),
+        error: (err: unknown) =>
+          this.schreibFehler.zeige(appFailureOf(err), () => this.assignNewBeringer(seat, payload)),
       });
   }
 
@@ -174,16 +182,21 @@ export class BeringerComponent implements OnInit {
       if (!result) {
         return;
       }
-      this.api.createScientist(result).subscribe({
-        next: (created) => {
-          this.snackBar.open(`Beringer "${created.full_name}" wurde angelegt.`, 'Schließen', {
-            duration: 3000,
-          });
-          this.load();
-        },
-        error: (err: HttpErrorResponse) =>
-          this.snackBar.open(this.saveErrorMessage(err, 'angelegt'), 'Schließen', {duration: 5000}),
-      });
+      this.createBeringer(result);
+    });
+  }
+
+  private createBeringer(payload: ScientistCreatePayload): void {
+    this.schreibFehler.leeren();
+    this.api.createScientist(payload).subscribe({
+      next: (created) => {
+        this.snackBar.open(`Beringer "${created.full_name}" wurde angelegt.`, 'Schließen', {
+          duration: 3000,
+        });
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.createBeringer(payload)),
     });
   }
 
@@ -198,18 +211,21 @@ export class BeringerComponent implements OnInit {
       if (!result) {
         return;
       }
-      this.api.updateScientist(beringer.id, result).subscribe({
-        next: (updated) => {
-          this.snackBar.open(`Beringer "${updated.full_name}" wurde aktualisiert.`, 'Schließen', {
-            duration: 3000,
-          });
-          this.load();
-        },
-        error: (err: HttpErrorResponse) =>
-          this.snackBar.open(this.saveErrorMessage(err, 'aktualisiert'), 'Schließen', {
-            duration: 5000,
-          }),
-      });
+      this.updateBeringer(beringer, result);
+    });
+  }
+
+  private updateBeringer(beringer: Beringer, payload: ScientistCreatePayload): void {
+    this.schreibFehler.leeren();
+    this.api.updateScientist(beringer.id, payload).subscribe({
+      next: (updated) => {
+        this.snackBar.open(`Beringer "${updated.full_name}" wurde aktualisiert.`, 'Schließen', {
+          duration: 3000,
+        });
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.updateBeringer(beringer, payload)),
     });
   }
 
@@ -217,6 +233,7 @@ export class BeringerComponent implements OnInit {
   // offers only *eligible* seats — same-org accounts that are not yet a Beringer,
   // derived from /mitgliedschaften/ as those whose handle is null (PRD #205).
   openLinkDialog(beringer: Beringer): void {
+    this.schreibFehler.leeren();
     this.api.getAllMitgliedschaften().subscribe({
       next: (seats) => {
         const eligible = seats.filter((seat) => seat.handle === null);
@@ -228,24 +245,33 @@ export class BeringerComponent implements OnInit {
           if (!mitgliedschaftId) {
             return;
           }
-          this.api.linkScientistToSeat(beringer.id, mitgliedschaftId).subscribe({
-            next: (updated) => {
-              this.snackBar.open(
-                `Beringer "${updated.full_name}" wurde mit einem Konto verknüpft.`,
-                'Schließen',
-                {duration: 3000},
-              );
-              this.load();
-            },
-            error: (err: HttpErrorResponse) =>
-              this.snackBar.open(this.linkErrorMessage(err, 'verknüpft'), 'Schließen', {
-                duration: 5000,
-              }),
-          });
+          this.linkToSeat(beringer, mitgliedschaftId);
         });
       },
-      error: () =>
-        this.snackBar.open('Konten konnten nicht geladen werden.', 'Schließen', {duration: 3000}),
+      // Ein Lesevorgang, der an einer Geste hängt: ohne die Konten öffnet der
+      // Picker gar nicht, es gibt also keinen Inhalt, den ein In-Place-Zustand
+      // ersetzen könnte (#446). Gemeldet wird deshalb dort, wo gedrückt wurde —
+      // wie die Ringhistorie im Erfassungsformular seit #443.
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.openLinkDialog(beringer)),
+    });
+  }
+
+  private linkToSeat(beringer: Beringer, mitgliedschaftId: string): void {
+    this.schreibFehler.leeren();
+    this.api.linkScientistToSeat(beringer.id, mitgliedschaftId).subscribe({
+      next: (updated) => {
+        this.snackBar.open(
+          `Beringer "${updated.full_name}" wurde mit einem Konto verknüpft.`,
+          'Schließen',
+          {duration: 3000},
+        );
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () =>
+          this.linkToSeat(beringer, mitgliedschaftId),
+        ),
     });
   }
 
@@ -271,20 +297,23 @@ export class BeringerComponent implements OnInit {
       if (!confirmed) {
         return;
       }
-      this.api.unlinkScientist(beringer.id).subscribe({
-        next: (updated) => {
-          this.snackBar.open(
-            `Konto-Verknüpfung von "${updated.full_name}" wurde aufgehoben.`,
-            'Schließen',
-            {duration: 3000},
-          );
-          this.load();
-        },
-        error: (err: HttpErrorResponse) =>
-          this.snackBar.open(this.linkErrorMessage(err, 'aufgehoben'), 'Schließen', {
-            duration: 5000,
-          }),
-      });
+      this.unlink(beringer);
+    });
+  }
+
+  private unlink(beringer: Beringer): void {
+    this.schreibFehler.leeren();
+    this.api.unlinkScientist(beringer.id).subscribe({
+      next: (updated) => {
+        this.snackBar.open(
+          `Konto-Verknüpfung von "${updated.full_name}" wurde aufgehoben.`,
+          'Schließen',
+          {duration: 3000},
+        );
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.unlink(beringer)),
     });
   }
 
@@ -316,16 +345,21 @@ export class BeringerComponent implements OnInit {
       if (!confirmed) {
         return;
       }
-      this.api.deleteScientist(beringer.id).subscribe({
-        next: () => {
-          this.snackBar.open(`Beringer „${beringer.full_name}“ wurde gelöscht.`, 'Schließen', {
-            duration: 3000,
-          });
-          this.load();
-        },
-        error: (err: HttpErrorResponse) =>
-          this.snackBar.open(this.deleteErrorMessage(err), 'Schließen', {duration: 5000}),
-      });
+      this.deleteBeringer(beringer);
+    });
+  }
+
+  private deleteBeringer(beringer: Beringer): void {
+    this.schreibFehler.leeren();
+    this.api.deleteScientist(beringer.id).subscribe({
+      next: () => {
+        this.snackBar.open(`Beringer „${beringer.full_name}“ wurde gelöscht.`, 'Schließen', {
+          duration: 3000,
+        });
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.deleteBeringer(beringer)),
     });
   }
 
@@ -334,30 +368,12 @@ export class BeringerComponent implements OnInit {
     return count === 1 ? '1 Fang' : `${count} Fänge`;
   }
 
-  // Surface the server's German refusal (e.g. the 409 for a still-linked Mitglied)
-  // rather than a generic failure.
-  private deleteErrorMessage(err: HttpErrorResponse): string {
-    const body = err.error as {detail?: string} | undefined;
-    return body?.detail ?? 'Beringer konnte nicht gelöscht werden.';
-  }
-
-  // Surface the server's German validation message — most importantly the
-  // duplicate-Kürzel 400 on the globally-unique handle — rather than a generic
-  // failure, so the Admin can disambiguate two people (issue #207).
-  private saveErrorMessage(err: HttpErrorResponse, verb: string): string {
-    const body = err.error as {handle?: string[]; detail?: string} | undefined;
-    const serverMessage = body?.handle?.[0] ?? body?.detail;
-    return serverMessage ?? `Beringer konnte nicht ${verb} werden.`;
-  }
-
-  // The link/unlink 400s land on the write-only `mitgliedschaft_id` field (the
-  // freeze-once-captures, cross-tenant and seat-taken refusals), so surface that
-  // German message when present; fall back to `detail` or a generic phrase.
-  private linkErrorMessage(err: HttpErrorResponse, verb: string): string {
-    const body = err.error as {mitgliedschaft_id?: string[]; detail?: string} | undefined;
-    const serverMessage = body?.mitgliedschaft_id?.[0] ?? body?.detail;
-    return serverMessage ?? `Konto konnte nicht ${verb} werden.`;
-  }
+  // #448: die drei handgeschriebenen Extraktoren dieses Bildschirms
+  // (`deleteErrorMessage`, `saveErrorMessage`, `linkErrorMessage`) sind weg. Sie
+  // gruben je eigenhändig `detail`, `handle[0]` oder `mitgliedschaft_id[0]` aus
+  // dem Körper — dieselbe Arbeit dreimal, jede mit ihrem eigenen Ersatzsatz und
+  // jede blind für jeden anderen Feldfehler. Der Serversatz kommt jetzt aus
+  // `appFailureOf(err).text`, der den `errors`-Umschlag liest (ADR 0038).
 
   // protected, weil „Erneut laden" aus dem In-Place-Fehlerzustand genau hierher
   // zurückkommt (#446).

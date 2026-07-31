@@ -1,5 +1,4 @@
 import {ChangeDetectionStrategy, Component, OnInit, computed, inject, signal} from '@angular/core';
-import {HttpErrorResponse} from '@angular/common/http';
 
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
@@ -8,8 +7,10 @@ import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
 import {AppIconEmptyDirective} from '../shared/app-icons';
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {LoadFailureComponent} from '../shared/load-failure/load-failure';
 import {AppFailure, appFailureOf} from '../core/errors/app-failure';
+import {SchreibFehler} from '../core/errors/schreib-fehler';
 import {ApiService} from '../service/api.service';
 import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
 import {StationFormDialogComponent, StationFormDialogData} from './station-form-dialog/station-form-dialog';
@@ -23,6 +24,7 @@ import {StationFormDialogComponent, StationFormDialogData} from './station-form-
     MatDialogModule,
     MatSnackBarModule,
     AppIconEmptyDirective,
+    FailureBannerComponent,
     LoadFailureComponent,
   ],
   templateUrl: './stationen.html',
@@ -40,6 +42,10 @@ export class StationenComponent implements OnInit {
   // danach stand dieselbe leere Liste da wie bei einer Organisation ohne
   // Station, und die beiden waren nicht zu unterscheiden.
   readonly loadFailure = signal<AppFailure | null>(null);
+  // #448 (ADR 0037): eine zurückgewiesene Schreibung landet im Banner, dort wo
+  // die Geste stattfand — und bleibt dort. Eine Snackbar bestätigt hier nur
+  // noch, dass etwas *gelungen* ist.
+  readonly schreibFehler = new SchreibFehler();
   private readonly stations = signal<RingingStation[]>([]);
 
   // Active Stationen first, then archived; alphabetical within each group so the
@@ -69,15 +75,19 @@ export class StationenComponent implements OnInit {
       if (!result) {
         return;
       }
-      this.api.createRingingStation(result).subscribe({
-        next: (station) => {
-          this.snackBar.open(`Station "${station.name}" wurde angelegt.`, 'Schließen', {duration: 3000});
-          this.load();
-        },
-        error: () => {
-          this.snackBar.open('Station konnte nicht angelegt werden.', 'Schließen', {duration: 3000});
-        },
-      });
+      this.createStation(result);
+    });
+  }
+
+  private createStation(payload: RingingStationCreatePayload): void {
+    this.schreibFehler.leeren();
+    this.api.createRingingStation(payload).subscribe({
+      next: (station) => {
+        this.snackBar.open(`Station "${station.name}" wurde angelegt.`, 'Schließen', {duration: 3000});
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.createStation(payload)),
     });
   }
 
@@ -91,59 +101,61 @@ export class StationenComponent implements OnInit {
       if (!result) {
         return;
       }
-      this.api.updateRingingStation(station.handle, result).subscribe({
-        next: (updated) => {
-          this.snackBar.open(`Station "${updated.name}" wurde aktualisiert.`, 'Schließen', {duration: 3000});
-          this.load();
-        },
-        error: () => {
-          this.snackBar.open('Station konnte nicht aktualisiert werden.', 'Schließen', {duration: 3000});
-        },
-      });
+      this.updateStation(station, result);
+    });
+  }
+
+  private updateStation(station: RingingStation, payload: RingingStationCreatePayload): void {
+    this.schreibFehler.leeren();
+    this.api.updateRingingStation(station.handle, payload).subscribe({
+      next: (updated) => {
+        this.snackBar.open(`Station "${updated.name}" wurde aktualisiert.`, 'Schließen', {duration: 3000});
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.updateStation(station, payload)),
     });
   }
 
   archive(station: RingingStation): void {
-    this.setActive(station, false, `Station "${station.name}" wurde archiviert.`);
+    this.schreibFehler.leeren();
+    this.api.setRingingStationActive(station.handle, false).subscribe({
+      next: () => {
+        this.snackBar.open(`Station "${station.name}" wurde archiviert.`, 'Schließen', {duration: 3000});
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.archive(station)),
+    });
   }
 
   unarchive(station: RingingStation): void {
-    this.setActive(station, true, `Station "${station.name}" ist wieder aktiv.`);
-  }
-
-  private setActive(station: RingingStation, isActive: boolean, message: string): void {
-    this.api.setRingingStationActive(station.handle, isActive).subscribe({
+    this.schreibFehler.leeren();
+    this.api.setRingingStationActive(station.handle, true).subscribe({
       next: () => {
-        this.snackBar.open(message, 'Schließen', {duration: 3000});
+        this.snackBar.open(`Station "${station.name}" ist wieder aktiv.`, 'Schließen', {duration: 3000});
         this.load();
       },
-      error: () => {
-        this.snackBar.open('Der Status konnte nicht geändert werden.', 'Schließen', {duration: 3000});
-      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.unarchive(station)),
     });
   }
 
   remove(station: RingingStation): void {
+    this.schreibFehler.leeren();
     this.api.deleteRingingStation(station.handle).subscribe({
       next: () => {
         this.snackBar.open(`Station "${station.name}" wurde gelöscht.`, 'Schließen', {duration: 3000});
         this.load();
       },
-      error: (err: HttpErrorResponse) => {
-        // A Station that owns Fänge cannot be hard-deleted (backend 409); surface
-        // the German refusal and offer archiving as the path forward (ADR 0011).
-        if (err.status === 409) {
-          const detail =
-            (err.error && (err.error as {detail?: string}).detail) ??
-            'Diese Station kann nicht gelöscht werden. Archiviere sie stattdessen.';
-          this.snackBar
-            .open(detail, 'Archivieren', {duration: 8000})
-            .onAction()
-            .subscribe(() => this.archive(station));
-        } else {
-          this.snackBar.open('Station konnte nicht gelöscht werden.', 'Schließen', {duration: 3000});
-        }
-      },
+      // #448: der handgeschriebene Extraktor für den 409 („die Station trägt
+      // Fänge", ADR 0011) ist weg — der Serversatz kommt jetzt aus derselben
+      // Einordnung wie überall sonst, und er steht im Banner statt in einer
+      // Snackbar, die nach acht Sekunden geht. Die „Archivieren"-Aktion der
+      // Snackbar geht mit: sie steht als Knopf an der Station selbst, und der
+      // Serversatz nennt sie beim Namen.
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.remove(station)),
     });
   }
 

@@ -88,7 +88,9 @@ the field would go red without a word — and it **never** blocks Speichern. The
 it checks validity, because the one way out of *Korrigieren* is that very button (ADR 0037:
 a remedy fills the form and never saves). A rejection met during a **replay** is the same
 thing and asks the same mapping: `SyncService` flags an entry on the Fehlerklasse
-*Korrigieren* (ADR 0033's 400/422 positive list, kept in one place now) and writes the whole
+*Korrigieren* (ADR 0033's 400/422 positive list, kept in one place now — plus the **409**,
+which #448 put on the same side of that line: a conflict the server named itself is a
+condition of the request, never of the run, and no repetition resolves it) and writes the whole
 `AppFailure` onto it — the sentence at `OutboxEntry.syncError`, the structure beside it at
 `syncErrorEnvelope` — so a rejected entry re-opened days later renders the same complete
 banner with no network at all. **The way out of *Freigeben lassen* is a person, not
@@ -111,9 +113,22 @@ by way of the empty capture route, because `/data-entry/:a` → `/data-entry/:b`
 same route to the Router and would reuse the component without ever running the guard.
 Without the context — an older backend, a bundle mid-rollout — the banner degrades to the
 sentence alone and offers no remedy at all, exactly as it does for a code it does not know.
-A snackbar only ever
-confirms a **success** — `npm run check:transport-strings` keeps a transport string or a raw
-status out of any message repo-wide, with no exceptions left.
+**A snackbar only ever confirms a success** (#448): every refused write
+on the Verwaltungsbildschirme — Stationen, Beringer (Zuordnung und Seat-Verwaltung included),
+Artennormen, Projekt-Anlage/-Bearbeitung, IWM-Import, „Heute" — renders that same
+`<app-failure-banner>` where the gesture happened, held by a `SchreibFehler`
+(`core/errors/schreib-fehler.ts`) that pairs the classified failure with what „Erneut
+versuchen" means *there*. „There" is a **boundary**, not just an address: on a component the
+failure dies with the screen for free, but the two root services that hold one
+(`ProjectActionsService`, `DataEntryRefreshService`) outlive every screen and must say so —
+the first clears on `NavigationEnd` and drops a response that arrives after the switch, the
+second clears on every list load. Otherwise a refusal earned on `/projekte` reappears over an
+unrelated Projekt, with an „Erneut versuchen" that re-sends the abandoned write.
+Two repo-wide guards keep the snackbar rule true with no exceptions left:
+`npm run check:transport-strings` keeps a transport string or a raw status out of any message,
+and `npm run check:erfolgsmeldungen` keeps a failure out of any snackbar — its message must
+stand in the source, must carry no failure wording, and must not sit in an `error` branch.
+Both run in `npm test` and in CI.
 
 **Data flow:**
 1. Autocomplete fields (species, ringing station, scientist) use RxJS `valueChanges` → `debounceTime(300)` → `switchMap` to the API

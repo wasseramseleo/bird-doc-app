@@ -44,11 +44,21 @@ function setup() {
 // Material services resolve through the component's own injector, so spy on the
 // instance the component actually holds (not TestBed.inject, which can differ).
 function spyOnSnackBar(fixture: ComponentFixture<StationenComponent>) {
-  // onAction never emits here (EMPTY), so the snackbar's "Archivieren" action
-  // isn't auto-triggered during a delete-refusal test.
+  // Every remaining snackbar here is an Erfolgsmeldung (#448) and none carries an
+  // action; `onAction` is stubbed with EMPTY only so the returned ref is complete.
   return spyOn(fixture.debugElement.injector.get(MatSnackBar), 'open').and.returnValue({
     onAction: () => EMPTY,
   } as never);
+}
+
+// The write tests assert on the *rendered* screen, so the list has to be on it
+// first: ngOnInit's load has to have run and been answered before a gesture.
+function renderList(fixture: ComponentFixture<StationenComponent>, stations: RingingStation[] = []) {
+  fixture.detectChanges();
+  httpMock
+    .expectOne((r) => r.method === 'GET' && r.url.endsWith('/ringing-stations/'))
+    .flush(page0(stations));
+  fixture.detectChanges();
 }
 
 function spyOnDialog(fixture: ComponentFixture<StationenComponent>, afterClosed: unknown) {
@@ -212,22 +222,110 @@ describe('StationenComponent', () => {
     expect(snack).toHaveBeenCalled();
   });
 
-  it('surfaces the German refusal when a delete is blocked by Fänge (409)', () => {
-    const {fixture, component} = setup();
-    const snack = spyOnSnackBar(fixture);
+  // #448 (ADR 0037): eine zurückgewiesene Schreibung landet im Banner, dort wo
+  // die Geste stattfand — und verfällt nicht. Bis hierher toastete sie drei
+  // Sekunden, und der Org-Admin bekam für eine abgelehnte Station nicht denselben
+  // brauchbaren Grund wie der Beringer für einen abgelehnten Fang.
+  describe('Schreib-Banner', () => {
+    it('surfaces the German refusal in the banner when a delete is blocked by Fänge (409)', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      renderList(fixture, [makeStation({handle: 'tw-1'})]);
 
-    component.remove(makeStation({handle: 'tw-1'}));
+      component.remove(makeStation({handle: 'tw-1'}));
 
-    httpMock
-      .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/ringing-stations/tw-1/'))
-      .flush(
-        {detail: 'Diese Station kann nicht gelöscht werden, weil ihr Fänge zugeordnet sind. Archiviere die Station stattdessen.'},
-        {status: 409, statusText: 'Conflict'},
-      );
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/ringing-stations/tw-1/'))
+        .flush(
+          {detail: 'Diese Station kann nicht gelöscht werden, weil ihr Fänge zugeordnet sind. Archiviere die Station stattdessen.'},
+          {status: 409, statusText: 'Conflict'},
+        );
+      fixture.detectChanges();
 
-    expect(snack).toHaveBeenCalled();
-    expect(snack.calls.mostRecent().args[0] as string).toContain('kann nicht gelöscht werden');
-    // A blocked delete does not reload the list — nothing changed.
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent).toContain('kann nicht gelöscht werden');
+      expect(snack).not.toHaveBeenCalled();
+      // A blocked delete does not reload the list — nothing changed.
+
+      // …und das Banner widerspricht seinem eigenen Satz nicht (#448): der 409
+      // ist eine Zurückweisung des Vorgangs, kein Defekt. Vorher stand über
+      // „Archiviere die Station stattdessen" die Überschrift „Unerwarteter
+      // Fehler", darunter „Das liegt an uns, nicht an deiner Eingabe." und
+      // daneben ein „Fehler melden" für ein Feature, das genau wie entworfen
+      // arbeitet.
+      expect(banner.textContent).not.toContain('Unerwarteter Fehler');
+      expect(banner.textContent).not.toContain('Das liegt an uns');
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[data-testid="failure-melden"]'),
+      ).toBeNull();
+      // Der andere Weg steht im Satz des Servers und als Knopf an der Station
+      // selbst — die code-gebundene Abhilfe im Banner ist ADR 0038s Sache (#444).
+      expect(banner.textContent).toContain('Archiviere die Station stattdessen');
+    });
+
+    it('renders the server sentence of a refused create in the banner, not in a snackbar', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      const payload = {
+        name: 'Neue Stelle',
+        place_code: 'AT-N',
+        country: '',
+        region: '',
+        latitude: '47.0',
+        longitude: '15.4',
+      };
+      renderList(fixture);
+      spyOnDialog(fixture, payload);
+
+      component.openCreateDialog();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/ringing-stations/'))
+        .flush(
+          {
+            place_code: ['Dieses Ortskürzel ist in deiner Organisation bereits vergeben.'],
+            errors: [
+              {
+                field: 'place_code',
+                code: 'unique',
+                detail: 'Dieses Ortskürzel ist in deiner Organisation bereits vergeben.',
+              },
+            ],
+          },
+          {status: 400, statusText: 'Bad Request'},
+        );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Ortskürzel ist in deiner Organisation bereits vergeben');
+      expect(banner.textContent).toContain('Speichern abgelehnt');
+      expect(snack).not.toHaveBeenCalled();
+    });
+
+    it('repeats the refused write on „Erneut versuchen" and clears the banner on success', () => {
+      const {fixture, component} = setup();
+      spyOnSnackBar(fixture);
+      renderList(fixture, [makeStation({handle: 'tw-1', name: 'Teichwiese'})]);
+
+      component.archive(makeStation({handle: 'tw-1', name: 'Teichwiese'}));
+      httpMock
+        .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/ringing-stations/tw-1/'))
+        .flush({detail: 'Die Datenbank antwortet gerade nicht.'}, {status: 503, statusText: 'Service Unavailable'});
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="failure-erneut"]')!
+        .click();
+      httpMock
+        .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/ringing-stations/tw-1/'))
+        .flush({});
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/ringing-stations/'))
+        .flush(page0([]));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
   });
 
   it('creates a Station from the dialog result via POST and reloads', () => {

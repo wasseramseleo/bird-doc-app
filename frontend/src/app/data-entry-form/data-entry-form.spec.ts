@@ -8120,11 +8120,18 @@ describe('DataEntryFormComponent', () => {
       expect(refresh.token()).toBeGreaterThan(before);
     });
 
-    it('does not ask the list to reload when the restore failed', async () => {
+    // #448: der Fehlschlag des „Rückgängig" war die letzte Fehlschlag-Snackbar
+    // der SPA — und sie konnte hier nicht anders, weil „Löschen" längst zur
+    // Fangliste navigiert und diese Maske zerstört hat. Sie geht denselben Weg
+    // wie das Nachladen: über den Rückkanal auf die Liste, wo das Snackbar
+    // steht und die Geste stattfand.
+    it('does not ask the list to reload when the restore failed, and hands it the failure instead of a snackbar', async () => {
       await setupForm();
       dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
       const action = new Subject<void>();
-      spyOn(snackBarOf(fixture), 'open').and.returnValue({ onAction: () => action } as never);
+      const openSpy = spyOn(snackBarOf(fixture), 'open').and.returnValue({
+        onAction: () => action,
+      } as never);
       spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
       const refresh = TestBed.inject(DataEntryRefreshService);
       const before = refresh.token();
@@ -8135,12 +8142,21 @@ describe('DataEntryFormComponent', () => {
         .flush(null, { status: 204, statusText: 'No Content' });
 
       action.next();
+      const openCallsBefore = openSpy.calls.count();
       httpMock
         .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/42/restore/'))
-        .flush({ detail: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+        .flush(
+          { detail: 'Dieser Fang ist endgültig gelöscht.' },
+          { status: 404, statusText: 'Not Found' },
+        );
 
       // Nichts kam zurück, also gibt es auch nichts nachzuladen.
       expect(refresh.token()).toBe(before);
+      // Und kein Toast: der Fehlschlag reist auf den Rückkanal.
+      expect(openSpy.calls.count()).toBe(openCallsBefore);
+      expect(refresh.schreibFehler.failure()?.text).toContain(
+        'Dieser Fang ist endgültig gelöscht.',
+      );
     });
 
     it('leaves the entry deleted when the undo window closes unused', async () => {

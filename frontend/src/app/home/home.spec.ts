@@ -7,6 +7,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { HomeComponent } from './home';
 import { ProjectService } from '../service/project.service';
 import { ProjectActionsService } from '../service/project-actions.service';
+import { SchreibFehler } from '../core/errors/schreib-fehler';
 import { Project, Projekttyp } from '../models/project.model';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
@@ -28,11 +29,13 @@ function setup() {
   // The edit dialog's Wissenschaftler options come from reference data the shared
   // ProjectActionsService loads; Home triggers that load for the current Projekt
   // (issue #222). Stub the service so no real dialog/HTTP wiring is exercised.
-  const actions = jasmine.createSpyObj<ProjectActionsService>('ProjectActionsService', [
-    'loadReferenceData',
-    'edit',
-    'exportIwm',
-  ]);
+  // #448: der Schreib-Fehlschlag ist kein Methoden-Spy, sondern Zustand, den
+  // das Template liest — der Stub trägt deshalb einen echten `SchreibFehler`.
+  const actions = jasmine.createSpyObj<ProjectActionsService>(
+    'ProjectActionsService',
+    ['loadReferenceData', 'edit', 'exportIwm'],
+    {schreibFehler: new SchreibFehler()},
+  );
   TestBed.configureTestingModule({
     imports: [HomeComponent],
     providers: [

@@ -241,6 +241,22 @@ describe('FailureBannerComponent', () => {
     expect(button(el, 'Fehler melden')).toBeDefined();
   });
 
+  // #448: „Fehler melden" führt in den Feedback-Dialog. Rendert **der** dieses
+  // Banner, weil sein eigenes Absenden gescheitert ist, stapelte der Knopf einen
+  // zweiten Dialog über den ersten, dessen Absenden auf denselben toten Endpunkt
+  // liefe — ein Fehler über den Fehler (ADR 0038). Dann sagt der Aufrufer, dass
+  // von hier aus nicht zu melden ist; der Ausweg, der trägt, bleibt stehen.
+  it('bietet das Melden nicht an, wo der Meldeweg selbst der gescheiterte ist', () => {
+    fixture = TestBed.createComponent(FailureBannerComponent);
+    fixture.componentRef.setInput('failure', rejection(503, {detail: 'Wartung'}));
+    fixture.componentRef.setInput('meldenMoeglich', false);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(button(el, 'Fehler melden')).toBeUndefined();
+    expect(button(el, 'Erneut versuchen')).toBeDefined();
+  });
+
   it('bietet das Melden nicht an, wo das Mitglied selbst weiterkommt', () => {
     // *Korrigieren*, *Neu anmelden*, *Freigeben lassen*, *App aktualisieren*
     // und *Erneut versuchen* ohne 5xx: dort wären Berichte Nicht-Bugs.

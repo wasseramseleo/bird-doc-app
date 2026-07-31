@@ -417,6 +417,78 @@ describe('ArtennormenComponent', () => {
     flushLoad([makeNorm({species_id: 'sp-2', species_name: 'Zaunkönig'})]);
   });
 
+  // #448 (ADR 0037): der handgeschriebene Extraktor dieses Bildschirms
+  // (`errorMessage`) ist weg, und eine zurückgewiesene Speicherung landet im
+  // Banner statt in einer Snackbar — dieselbe Oberfläche, die ein abgelehnter
+  // Fang bekommt.
+  describe('Schreib-Banner', () => {
+    it('renders the server sentence of a refused save in the banner, not in a snackbar', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      fixture.detectChanges();
+      flushLoad([makeNorm({species_id: 'sp-1', species_name: 'Amsel'})]);
+      fixture.detectChanges();
+
+      const payload = {species_id: 'sp-1', weight_mean: '12.0'} as SpeciesNormOverridePayload;
+      spyOnDialog(fixture, dialogResult(payload));
+      component.openAddDialog();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/species-norm-overrides/'))
+        .flush(
+          {
+            weight_mean: ['Das Mittelgewicht muss größer als 0 sein.'],
+            errors: [
+              {
+                field: 'weight_mean',
+                code: 'min_value',
+                detail: 'Das Mittelgewicht muss größer als 0 sein.',
+              },
+            ],
+          },
+          {status: 400, statusText: 'Bad Request'},
+        );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Das Mittelgewicht muss größer als 0 sein.');
+      expect(banner.textContent).toContain('Speichern abgelehnt');
+      expect(snack).not.toHaveBeenCalled();
+    });
+
+    it('renders a refused reset in the banner and does not reload', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      fixture.detectChanges();
+      flushLoad([makeNorm({species_id: 'sp-2', species_name: 'Zaunkönig'})]);
+      fixture.detectChanges();
+
+      spyOnDialog(fixture, true);
+      component.openResetDialog({
+        species_id: 'sp-2',
+        species_name: 'Zaunkönig',
+        is_override: true,
+        override_id: 'ov-2',
+        norm: makeNorm({species_id: 'sp-2', species_name: 'Zaunkönig'}),
+      });
+
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/species-norm-overrides/ov-2/'))
+        .flush(
+          {detail: 'Das darf nur eine Administratorin deiner Organisation.'},
+          {status: 403, statusText: 'Forbidden'},
+        );
+      fixture.detectChanges();
+      // Die Klasse *Freigeben lassen* liest die Admins der eigenen Organisation
+      // (#450); ohne Antwort bleibt es beim Ausweg-Satz der Klasse.
+      httpMock.match((r) => r.method === 'GET' && r.url.endsWith('/org-admins/'));
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Das darf nur eine Administratorin deiner Organisation.');
+      expect(snack).not.toHaveBeenCalled();
+    });
+  });
+
   it('does not reset when the confirmation is cancelled', () => {
     const {fixture, component} = setup();
     const dialogSpy = spyOnDialog(fixture, false); // cancel
