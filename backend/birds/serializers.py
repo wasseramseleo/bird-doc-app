@@ -15,6 +15,7 @@ from .capture_service import (
     normalize_ring_size,
 )
 from .error_codes import CodedMessage
+from .errors import ContextualValidationError
 from .models import (
     Central,
     DataEntry,
@@ -892,7 +893,13 @@ class DataEntrySerializer(serializers.ModelSerializer):
         try:
             return create_capture(**validated_data)
         except CaptureValidationError as exc:
-            raise serializers.ValidationError({exc.field: exc.message}, code=exc.code) from exc
+            # ``ContextualValidationError`` rather than DRF's own so a rule whose
+            # Abhilfe needs data — the colliding Erstfang behind
+            # ``ring_already_first_caught`` — carries it into the ``errors``
+            # entry (ADR 0038). With no context it behaves identically.
+            raise ContextualValidationError(
+                {exc.field: exc.message}, code=exc.code, context=exc.context
+            ) from exc
 
     def update(self, instance, validated_data):
         # #155: the idempotency key identifies the create attempt, not the
@@ -917,7 +924,9 @@ class DataEntrySerializer(serializers.ModelSerializer):
 
                 return updated_instance
         except CaptureValidationError as exc:
-            raise serializers.ValidationError({exc.field: exc.message}, code=exc.code) from exc
+            raise ContextualValidationError(
+                {exc.field: exc.message}, code=exc.code, context=exc.context
+            ) from exc
 
 
 class SpeciesListSerializer(serializers.ModelSerializer):

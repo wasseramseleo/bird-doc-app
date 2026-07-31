@@ -55,6 +55,15 @@ shared capture service raises publish *its* code, carried across on
 same rule, and the importer's own refusals carry the ``iwm_row_*`` codes. The
 ``warnings`` list stays uncoded — a Projekt-Methode divergence blocks nothing and
 is not a rejection.
+
+What the row error deliberately does **not** carry is the rejection's ``context``
+— the colliding Erstfang that ``ring_already_first_caught`` hands the capture form
+(``CaptureValidationError.context``). A row's way out is the *file*: the Admin
+corrects the sheet and uploads again, so there is no Formular for „Als Wiederfang
+erfassen" to fill, and the row already names itself by number. Nor is a report
+ever persisted the way a flagged ``OutboxEntry`` is, which is the other reason the
+context travels at all. A report of hundreds of rows therefore stays
+``{row, reason, code}`` rather than dragging hundreds of Erstfänge behind it.
 """
 
 import re

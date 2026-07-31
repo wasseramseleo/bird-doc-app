@@ -156,7 +156,10 @@ def test_ring_already_first_caught_names_its_own_rule(
     auth_client, species, scientist, ringing_station
 ):
     """The rejection the whole PRD started from stops arriving as a bare
-    ``invalid``: the client can now offer „Als Wiederfang" off the code alone."""
+    ``invalid``: the client can now offer „Als Wiederfang" off the code alone.
+
+    This is the one code whose entry also carries a ``context`` — the colliding
+    Erstfang (``test_error_context.py``); the code itself is what is asserted here."""
     first = _payload(species, scientist, ringing_station, ring_number="901")
     first["bird_status"] = "e"
     assert auth_client.post(DATA_ENTRIES_URL, first, format="json").status_code == 201
@@ -170,13 +173,11 @@ def test_ring_already_first_caught_names_its_own_rule(
     assert _without_envelope(body) == {
         "ring_number": "Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang."
     }
-    assert body["errors"] == [
-        {
-            "field": "ring_number",
-            "code": "ring_already_first_caught",
-            "detail": ("Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang."),
-        }
-    ]
+    assert _codes(body) == ["ring_already_first_caught"]
+    assert body["errors"][0]["field"] == "ring_number"
+    assert body["errors"][0]["detail"] == (
+        "Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang."
+    )
 
 
 @pytest.mark.django_db
