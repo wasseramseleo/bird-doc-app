@@ -46,5 +46,6 @@ Alle Entscheidungen dieses Verzeichnisses, aufsteigend nach Nummer.
 - [0039](0039-dauerhaft-nur-was-sonst-nirgends-existiert.md) — Dauerhaft ist nur, was sonst nirgends existiert — deshalb rettet ein 401 den Erstfang
 - [0040](0040-die-oberflaeche-schreibt-beringer-in.md) — Die Oberfläche schreibt Beringer:in — vier Schreibweisen, jede mit ihrem Geltungsbereich
 - [0041](0041-charting-library-chartjs-direct.md) — Visualisation charting: Chart.js used directly, no Angular wrapper
+- [0042](0042-detail-zeichen-fuehrt-zum-detail-dialog.md) — Das Detail-Zeichen führt zum Detail-Dialog, der Zeilenklick führt zum Bearbeiten
 
-**Nächste freie Nummer: 0042**
+**Nächste freie Nummer: 0043**
