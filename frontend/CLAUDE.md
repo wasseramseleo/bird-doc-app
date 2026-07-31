@@ -86,7 +86,15 @@ controls whose template really renders the sentence) and never on a disabled one
 the field would go red without a word — and it **never** blocks Speichern. The button reads
 `saveBlocked()`, not `entryForm.invalid`, and `onSubmit()` drops every `serverRejected` before
 it checks validity, because the one way out of *Korrigieren* is that very button (ADR 0037:
-a remedy fills the form and never saves). A snackbar only ever
+a remedy fills the form and never saves). **The way out of *Freigeben lassen* is a person, not
+a button** (#450): the banner reads `GET /birds/org-admins/` — the Admins of the requester's
+own Organisation, Name und Kürzel — and names them („Freigeben kann das Alice Auer (ALC) oder
+…"), because „wende dich an eine:n Admin" is a shrug in an Organisation of twenty. Where that
+list cannot be read (offline, an empty Organisation, or the read itself failing) the banner
+**degrades to the class's plain way out** and never to an empty name list or a second error.
+A **CSRF-Ablehnung never gets there**: it is the same 403 with the opposite way out, so
+`csrf_failed` classifies as *Erneut versuchen* (the disambiguation from #441) and the Admin
+list is not even read. A snackbar only ever
 confirms a **success** — `npm run check:transport-strings` keeps a transport string or a raw
 status out of any message repo-wide.
 

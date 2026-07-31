@@ -172,18 +172,29 @@ export function localFailure(klasse: Fehlerklasse, text: string): AppFailure {
 }
 
 /**
- * Die Einordnung selbst. Der Status ist die Evidenz — mit einer Ausnahme, die
- * genau der Grund ist, warum er nicht die Einordnung *ist*: eine abgelaufene
- * oder fehlende Sitzung kommt bei DRFs `SessionAuthentication` als **403** an
- * (es gibt keinen `WWW-Authenticate`-Header, also degradiert DRF 401 auf 403),
- * und wäre nach dem Status allein „Freigeben lassen" — also die Aufforderung,
- * eine Administratorin um etwas zu bitten, das nur eine erneute Anmeldung
- * behebt. DRFs eigener Code `not_authenticated` trennt die beiden; er reist seit
- * dem globalen Fehler-Handler (#440) gratis auf jeder Antwort mit.
+ * Die Einordnung selbst. Der Status ist die Evidenz — mit **zwei** Ausnahmen, und
+ * beide sind genau der Grund, warum er nicht die Einordnung *ist*. Sie tragen
+ * denselben Status 403 und drei gegensätzliche Auswege:
+ *
+ * 1. Eine abgelaufene oder fehlende Sitzung kommt bei DRFs
+ *    `SessionAuthentication` als **403** an (es gibt keinen
+ *    `WWW-Authenticate`-Header, also degradiert DRF 401 auf 403). Nach dem Status
+ *    allein wäre das „Freigeben lassen" — die Aufforderung, eine Administratorin
+ *    um etwas zu bitten, das nur eine erneute Anmeldung behebt.
+ * 2. Eine **CSRF-Ablehnung** ist derselbe 403 wie eine Rechteverweigerung, und
+ *    nochmal drücken ist die ganze Abhilfe. Ein Mitglied hier zu einer Kollegin
+ *    zu schicken, obwohl sich die Sache von selbst erledigt, ist genau der
+ *    Fehlgriff, den die Disambiguierung des 403 verhindern soll (#441, ADR 0037).
+ *
+ * DRFs eigener `not_authenticated` und der Domänencode `csrf_failed` trennen die
+ * Fälle; beide reisen seit dem globalen Fehler-Handler (#440) gratis mit.
  */
 function classifyByEvidence(status: number, entries: ServerErrorEntry[]): Fehlerklasse {
   if (entries.some((entry) => entry.code === 'not_authenticated')) {
     return Fehlerklasse.NeuAnmelden;
+  }
+  if (entries.some((entry) => entry.code === 'csrf_failed')) {
+    return Fehlerklasse.ErneutVersuchen;
   }
   switch (status) {
     case 400:

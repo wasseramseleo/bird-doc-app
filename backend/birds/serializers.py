@@ -978,3 +978,44 @@ class MitgliedschaftSerializer(serializers.ModelSerializer):
     def get_handle(self, obj):
         scientist = getattr(obj.user, "scientist", None)
         return scientist.handle if scientist is not None else None
+
+
+class OrgAdminSerializer(serializers.ModelSerializer):
+    """An Admin of the requester's own Organisation, as „Freigeben lassen" names
+    them (issue #450, ADR 0037).
+
+    A projection of the same Mitgliedschaft the Admin-only
+    ``MitgliedschaftSerializer`` renders, cut down to the two things a refused
+    Mitglied needs in order to ask a **person** rather than a role: **Name und
+    Kürzel**. Deliberately no email, no username, no Rolle, no id — these are new
+    personal data on the wire (PRD #438), so the projection carries what
+    „Freigeben lassen" actually needs and nothing beyond it. Note that the account
+    identifies itself by its email (ADR 0008: ``username`` *is* the email for a
+    public account), which is precisely why ``username`` is not among the fields.
+
+    Both values may be missing, and neither is invented: an account that is not
+    (yet) a Beringer has **no** Kürzel (``null``, mirroring
+    ``MitgliedschaftSerializer.handle``), and an account nobody ever gave a name
+    to has an empty one. The client decides what to do with an Admin it cannot
+    name — the banner simply drops them rather than rendering an empty „frag: ".
+    """
+
+    name = serializers.SerializerMethodField()
+    handle = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Mitgliedschaft
+        fields = ["name", "handle"]
+
+    def get_name(self, obj):
+        # The Beringer's own name wins, exactly as it does everywhere a Beringer
+        # is displayed; ``Scientist.full_name`` already falls back to the account's
+        # name. An account without a Beringer has only the latter.
+        scientist = getattr(obj.user, "scientist", None)
+        if scientist is not None:
+            return scientist.full_name
+        return obj.user.get_full_name()
+
+    def get_handle(self, obj):
+        scientist = getattr(obj.user, "scientist", None)
+        return scientist.handle if scientist is not None else None

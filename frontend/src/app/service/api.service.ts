@@ -13,6 +13,7 @@ import {Central} from '../models/central.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
+import {OrgAdmin} from '../models/org-admin.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {ImportPreview, ImportResult} from '../models/iwm-import.model';
@@ -234,6 +235,16 @@ export class ApiService {
         ),
         reduce((acc, res) => acc.concat(res.results), [] as Mitgliedschaft[]),
       );
+  }
+
+  // Die Admins der eigenen Organisation, lesbar für jedes Mitglied dieser
+  // Organisation (#450, ADR 0037). Damit „Freigeben lassen" eine **Person**
+  // nennen kann statt „wende dich an eine:n Admin" zu zucken. Strikt die eigene
+  // Organisation (ADR 0005); ohne aktive Organisation kommt eine leere Seite,
+  // kein 403. Nur Name und Kürzel reisen mit — deshalb ist es nicht
+  // `/mitgliedschaften/`, das Admin-only ist und die E-Mail führt.
+  getOrgAdmins(): Observable<PaginatedApiResponse<OrgAdmin>> {
+    return this.http.get<PaginatedApiResponse<OrgAdmin>>(`${this.apiUrl}/org-admins/`);
   }
 
   // Link a no-account Beringer to a seat, promoting it to a Mitglied — addressed

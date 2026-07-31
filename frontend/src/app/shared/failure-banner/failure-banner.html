@@ -3,7 +3,11 @@
   <span class="failure-banner__text">
     <strong>{{ titelZeile() }}:</strong>
     {{ failure().text }}
-    {{ worte().ausweg }}
+    @if (adminSatz(); as satz) {
+      <span data-testid="failure-admins">{{ satz }}</span>
+    } @else {
+      {{ worte().ausweg }}
+    }
   </span>
   @switch (abhilfe()) {
     @case ('neu-anmelden') {
