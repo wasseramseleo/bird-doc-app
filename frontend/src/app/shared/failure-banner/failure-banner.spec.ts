@@ -1,5 +1,6 @@
 import {ComponentFixture, TestBed, fakeAsync, tick} from '@angular/core/testing';
-import {HttpErrorResponse} from '@angular/common/http';
+import {HttpErrorResponse, provideHttpClient} from '@angular/common/http';
+import {provideHttpClientTesting} from '@angular/common/http/testing';
 import {provideRouter, Router} from '@angular/router';
 import {provideNoopAnimations} from '@angular/platform-browser/animations';
 import {of} from 'rxjs';
@@ -9,6 +10,7 @@ import {AppIconErrorDirective} from '../app-icons';
 import {renderedGlyph, seamGlyph} from '../app-icons.testing';
 import {AppFailure, classifyFailure, failureFromSyncError} from '../../core/errors/app-failure';
 import {AppUpdateService} from '../../service/app-update.service';
+import {AuthService} from '../../service/auth.service';
 import {UnsavedChangesService} from '../../service/unsaved-changes.service';
 
 const RING_ALREADY_FIRST_CAUGHT =
@@ -44,7 +46,12 @@ describe('FailureBannerComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [FailureBannerComponent],
-      providers: [provideRouter([{path: 'login', children: []}]), provideNoopAnimations()],
+      providers: [
+        provideRouter([{path: 'login', children: []}]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+      ],
     }).compileComponents();
   });
 
@@ -119,6 +126,33 @@ describe('FailureBannerComponent', () => {
     anmelden!.click();
 
     expect(navigate).toHaveBeenCalledWith(['/login'], jasmine.anything());
+  });
+
+  // #447 (ADR 0039): der `authInterceptor` hält bei einem dauerhaften
+  // Schreibvorgang seine 401-Arbeit zurück, damit der Fang noch unter seinem
+  // Konto in die Outbox kommt. Die Sitzung steht dann noch — und der
+  // `guestGuard` würde das Mitglied von `/login` postwendend zurückwerfen. Der
+  // Knopf beendet sie deshalb selbst: er ist die Aufforderung, angenommen.
+  it('beendet die Sitzung, bevor es zur Anmeldung führt', () => {
+    const auth = TestBed.inject(AuthService);
+    auth.currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+    const el = render(
+      rejection(401, {
+        detail: 'Anmeldedaten fehlen.',
+        errors: [{field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.'}],
+      }),
+    );
+    spyOn(TestBed.inject(Router), 'navigate');
+
+    button(el, 'Anmelden')!.click();
+
+    expect(auth.currentUser()).toBeNull();
   });
 
   it('bietet bei „App aktualisieren" die Aktualisierung an und stößt sie an', fakeAsync(() => {

@@ -1,6 +1,6 @@
 import {inject, Injectable} from '@angular/core';
 import {HttpErrorResponse} from '@angular/common/http';
-import {catchError, from, map, Observable, of, switchMap, tap, throwError} from 'rxjs';
+import {catchError, defer, from, map, Observable, of, switchMap, tap, throwError} from 'rxjs';
 
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
 import {Central} from '../models/central.model';
@@ -15,6 +15,9 @@ import {SpecialKind, Species} from '../models/species.model';
 import {ApiService} from './api.service';
 import {OutboxService} from './outbox.service';
 import {PendingBeringerService} from './pending-beringer.service';
+import {appFailureOf, attachAppFailure, Fehlerklasse} from '../core/errors/app-failure';
+import {attachDurablyQueued, durableWrite} from '../core/offline/durable-write';
+import {sessionExpiryAtTheGesture} from '../core/errors/session-expiry';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {
   CachedReferenceBundle,
@@ -38,6 +41,16 @@ export interface RingHistory {
 }
 
 /**
+ * Was das Mitglied erfährt, wenn eine abgelaufene Sitzung einen dauerhaften
+ * Schreibvorgang zurückgewiesen hat (#447, ADR 0039). Der Ausweg („Bitte melde
+ * dich erneut an.") kommt aus der Fehlerklasse und steht im Banner dahinter.
+ */
+const FANG_GESICHERT =
+  'Der Eintrag ist auf diesem Gerät gesichert und wird nach der Anmeldung übertragen.';
+const BERINGER_GESICHERT =
+  'Der Beringer ist auf diesem Gerät gesichert und wird nach der Anmeldung übertragen.';
+
+/**
  * The offline-aware data-access facade (issue #159, #160, PRD #152): fronts
  * the capture-form's reads — species/Station/Beringer/Projekt pickers and
  * the ring next-number suggestion — and the capture create, behind an
@@ -48,8 +61,19 @@ export interface RingHistory {
  * `AuthService.bootstrap()` already treats as "no connectivity", issue #156)
  * falls back to the IndexedDB reference-bundle cache (issue #158) for reads,
  * or the durable offline outbox (issue #160) for the capture create; any
- * other error (e.g. a 401, handled globally by the auth interceptor)
- * propagates unchanged.
+ * other error propagates unchanged.
+ *
+ * Mit einer Ausnahme, und sie ist eine Regel (#447, ADR 0039): **eine
+ * abgelaufene Sitzung rettet, was sonst nirgends existiert.** Ein Fang-Create
+ * und eine Beringer-Schnellanlage werden auf einen 401 hin genauso eingereiht
+ * wie auf einen Verbindungsabbruch — erst danach kommt die Aufforderung zur
+ * erneuten Anmeldung ({@link withDurableFallback}). Jeder Lesevorgang und jeder
+ * andere Schreibvorgang scheitert an einem 401 unverändert laut.
+ *
+ * Der Fang-**Edit** steht dazu hier ({@link updateDataEntry}), obwohl er nichts
+ * einreiht und nichts zwischenspeichert: nur so ist ADR 0039s Tabelle an einer
+ * Naht abzulesen. Er scheitert laut — und meldet das dort, wo die Geste
+ * stattfand, statt das Formular mitsamt der Korrektur wegzureißen.
  */
 @Injectable({providedIn: 'root'})
 export class DataAccessFacadeService {
@@ -136,10 +160,18 @@ export class DataAccessFacadeService {
    * error. On sync the queued Beringer is created before its dependent captures
    * and matched by Kürzel if one already exists server-side (see `SyncService`).
    * Any other error (e.g. a 400) propagates unchanged, like every other read.
+   *
+   * Eine abgelaufene Sitzung reiht ihn genauso ein (#447, ADR 0039): der
+   * Beringer ist an einer Station ohne Empfang angelegt worden und existiert
+   * sonst nirgends — dieselbe Begründung wie beim Fang. Anders als dort bleibt
+   * es beim Fehlschlag: die Schnellanlage steht mitten in einer Erfassung, und
+   * das Mitglied erfährt an dieser Stelle, dass es sich neu anmelden muss.
    */
   createScientist(payload: ScientistCreatePayload): Observable<Scientist> {
-    return this.withOfflineFallback(this.api.createScientist(payload), () =>
-      this.pendingBeringer.enqueue(payload),
+    return this.withDurableFallback(
+      this.api.createScientist(payload, durableWrite()),
+      () => this.pendingBeringer.enqueue(payload),
+      BERINGER_GESICHERT,
     );
   }
 
@@ -289,11 +321,37 @@ export class DataAccessFacadeService {
    */
   createDataEntry(payload: Partial<DataEntry>): Observable<DataEntry | null> {
     const stamped = {...payload, schema_version: PAYLOAD_SCHEMA_VERSION} as Partial<DataEntry>;
-    return this.withOfflineFallback(this.api.createDataEntry(stamped), () =>
-      this.outbox
-        .enqueue(payload as Record<string, unknown> & {idempotency_key?: string | null})
-        .pipe(map(() => null)),
+    return this.withDurableFallback(
+      this.api.createDataEntry(stamped, durableWrite()),
+      () =>
+        this.outbox
+          .enqueue(payload as Record<string, unknown> & {idempotency_key?: string | null})
+          .pipe(map(() => null)),
+      FANG_GESICHERT,
     );
+  }
+
+  /**
+   * Der Fang-**Edit** (#447, ADR 0039): die andere Hälfte der Tabelle, und sie
+   * steht hier, damit die Regel an *einer* Naht abzulesen ist statt über die
+   * Bildschirme verteilt.
+   *
+   * Er **scheitert laut**, und zwar unverändert: kein Offline-Rückfall, kein
+   * Einreihen, kein `withDurableFallback`. Was er ändert, hält der Server
+   * bereits — das Original bleibt unversehrt, und ein zurückgespielter Edit
+   * bräuchte eine Konfliktbehandlung, die der Create-Pfad nie gebraucht hat.
+   *
+   * Eines ist trotzdem anders als bei einer Station oder einem Projekt, und die
+   * Markierung sagt genau das: die Korrektur steht im Formular und **sonst
+   * nirgends**. Der globale Sprung zur Anmeldung nähme sie mit — die Navigation
+   * weckt den `unsavedChangesGuard` (#407), und „Verwerfen" ist genau die
+   * Antwort, die das Mitglied nie geben wollte. Also wird der Fehlschlag dort
+   * gemeldet, wo die Geste stattfand (ADR 0037): im Banner am Formular, mit
+   * „Anmelden" als Ausweg. Wer ihn drückt, verlässt die Erfassung willentlich
+   * und wird gefragt; wer ihn nicht drückt, hat seine Korrektur noch.
+   */
+  updateDataEntry(id: string, payload: Partial<DataEntry>): Observable<DataEntry> {
+    return this.api.updateDataEntry(id, payload, sessionExpiryAtTheGesture());
   }
 
   /**
@@ -341,11 +399,61 @@ export class DataAccessFacadeService {
   }
 
   /**
+   * Die Dauerhaftigkeit (#447, ADR 0039): wie {@link withOfflineFallback}, und
+   * **zusätzlich rettet eine abgelaufene Sitzung den Inhalt**, statt ihn zu
+   * vernichten.
+   *
+   * Nur für die beiden Schreibvorgänge, deren Inhalt sonst nirgends existiert —
+   * den Fang-Create und die Beringer-Schnellanlage. Ein Fang-Edit ({@link
+   * updateDataEntry}) läuft daran vorbei, eine Station, ein Projekt und eine
+   * Artennorm gehen gar nicht erst durch diese Fassade; alle vier scheitern
+   * weiterhin laut, und das Original bleibt unversehrt.
+   *
+   * Die Reihenfolge ist die ganze Sache: **erst ist der Inhalt sicher, dann
+   * kommt die Aufforderung zur erneuten Anmeldung.** Der `authInterceptor` hält
+   * seinen Sprung zur Anmeldung deshalb zurück
+   * (`SESSION_EXPIRY_AT_THE_GESTURE`, die {@link durableWrite} mitträgt) — sonst
+   * wäre das angemeldete Konto gelöscht, bevor die Outbox unter ihm einreihen
+   * kann, und der Fang mit ihm. Abgemeldet wird erst, wenn das Mitglied
+   * „Anmelden" im Banner drückt; bis dahin reiht sich auch der nächste Fang noch
+   * ein, aus dem stehengebliebenen Referenz-Bündel (#158). Der
+   * Zwischenspeicher der Identität ist davon ausgenommen und geht sofort — das
+   * geteilte Tablet darf das Mitglied nicht überdauern (#156).
+   *
+   * Die Klasse entscheidet, nicht der Status (ADR 0037): *Neu anmelden* deckt
+   * den 401 ab und ebenso DRFs auf 403 degradierten `not_authenticated`.
+   */
+  private withDurableFallback<T>(
+    online$: Observable<T>,
+    durable$: () => Observable<T>,
+    gesichert: string,
+  ): Observable<T> {
+    return this.withOfflineFallback(online$, durable$).pipe(
+      catchError((error: unknown) => {
+        if (appFailureOf(error).klasse !== Fehlerklasse.NeuAnmelden) {
+          return throwError(() => error);
+        }
+        return defer(durable$).pipe(
+          map(() => true),
+          catchError((queueError: unknown) => {
+            // Die Rettung selbst kann scheitern (IndexedDB blockiert, kein
+            // angemeldetes Konto mehr). Dann bleibt es beim blanken
+            // Sitzungsfehler — ohne das Versprechen, der Eintrag sei gesichert.
+            console.error('Failed to durably queue the write a dead session refused', queueError);
+            return of(false);
+          }),
+          switchMap((queued) => throwError(() => sessionExpiredFailure(error, queued, gesichert))),
+        );
+      }),
+    );
+  }
+
+  /**
    * Attempts the real server request first — the online path is byte-for-byte
    * `ApiService`'s behaviour. Only a connectivity failure
    * (`HttpErrorResponse.status === 0`) routes to `offline$`; any other error
-   * (e.g. a 401, already handled globally by the auth interceptor) propagates
-   * unchanged.
+   * (e.g. a 400) propagates unchanged — an expired session is the one
+   * exception, and it lives in {@link withDurableFallback}.
    */
   private withOfflineFallback<T>(
     online$: Observable<T>,
@@ -413,6 +521,24 @@ export class DataAccessFacadeService {
       }),
     );
   }
+}
+
+/**
+ * Der Fehlschlag, wie das Mitglied ihn zu sehen bekommt: die Sitzung ist
+ * abgelaufen — und der Inhalt ist trotzdem sicher.
+ *
+ * Additiv wie überall (ADR 0038): derselbe Fehler reist weiter, mit einer neuen
+ * Einordnung und der Markierung, dass sein Inhalt eingereiht ist. Die Klasse
+ * bleibt *Neu anmelden*, also trägt das Banner den Knopf „Anmelden" — die
+ * Anmeldung ist aus der Meldung heraus erreichbar. Ist die Rettung selbst
+ * gescheitert, wird nichts versprochen: der Fehler geht, wie er kam.
+ */
+function sessionExpiredFailure(error: unknown, queued: boolean, gesichert: string): unknown {
+  if (!queued) {
+    return error;
+  }
+  const failure = appFailureOf(error);
+  return attachDurablyQueued(attachAppFailure(error, {...failure, text: gesichert}));
 }
 
 function toPage<T>(results: T[]): PaginatedApiResponse<T> {

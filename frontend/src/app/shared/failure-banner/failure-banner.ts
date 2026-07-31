@@ -7,6 +7,7 @@ import {firstValueFrom} from 'rxjs';
 import {AppFailure, FEHLERKLASSE_WORTE} from '../../core/errors/app-failure';
 import {AppIconErrorDirective} from '../app-icons';
 import {AppUpdateService} from '../../service/app-update.service';
+import {AuthService} from '../../service/auth.service';
 import {UnsavedChangesService} from '../../service/unsaved-changes.service';
 
 /**
@@ -40,6 +41,7 @@ import {UnsavedChangesService} from '../../service/unsaved-changes.service';
 export class FailureBannerComponent {
   private readonly router = inject(Router);
   private readonly appUpdate = inject(AppUpdateService);
+  private readonly auth = inject(AuthService);
   private readonly unsavedChanges = inject(UnsavedChangesService);
 
   /** Der eingeordnete Fehlschlag — die Klasse bestimmt Worte und Knöpfe. */
@@ -59,8 +61,19 @@ export class FailureBannerComponent {
   protected readonly titelZeile = computed(() => this.titel() ?? this.worte().titel);
   protected readonly abhilfe = computed(() => this.failure().remedy);
 
-  /** „Anmelden" — zurück zur Anmeldung, mit dem Weg hierher im Gepäck. */
+  /**
+   * „Anmelden" — zurück zur Anmeldung, mit dem Weg hierher im Gepäck.
+   *
+   * Beendet zuerst die Sitzung am Gerät. Das ist keine Dopplung des
+   * `authInterceptor`: bei einem dauerhaften Schreibvorgang (#447, ADR 0039)
+   * hält der seine 401-Arbeit bewusst zurück, damit der Fang noch unter seinem
+   * Konto in die Outbox kommt — die Sitzung steht dann noch, und der
+   * `guestGuard` würde das Mitglied von `/login` postwendend zurückwerfen.
+   * Dieser Knopf **ist** die angenommene Aufforderung, also beendet er sie.
+   * Wo der Interceptor sie längst beendet hat, ändert der Aufruf nichts.
+   */
   protected onAnmelden(): void {
+    this.auth.sessionExpired();
     const next = this.router.url && this.router.url !== '/login' ? this.router.url : '/';
     void this.router.navigate(['/login'], {queryParams: {next}});
   }
