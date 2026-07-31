@@ -118,7 +118,7 @@ STATION_HAS_CAPTURES_MESSAGE = (
 # which detaches the Beringer, and only then can the (now no-account) Beringer be
 # deleted here.
 LINKED_BERINGER_DELETE_MESSAGE = (
-    "Dieser Beringer ist mit einem Konto verknüpft (Mitglied) und kann hier nicht "
+    "Diese:r Beringer:in ist mit einem Konto verknüpft (Mitglied) und kann hier nicht "
     "gelöscht werden. Entferne zuerst das Konto in der Mitgliederverwaltung."
 )
 

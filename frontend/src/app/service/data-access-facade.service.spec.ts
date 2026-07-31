@@ -1159,7 +1159,7 @@ describe('DataAccessFacadeService', () => {
 
       const failure = appFailureOf(caught);
       expect(failure.klasse).toBe(Fehlerklasse.NeuAnmelden);
-      expect(failure.text).toContain('Der Beringer ist auf diesem Gerät gesichert');
+      expect(failure.text).toContain('Der Beringer-Eintrag ist auf diesem Gerät gesichert');
       expect(isDurablyQueued(caught)).toBeTrue();
       expect(connectivity.isOffline()).toBeFalse();
     });

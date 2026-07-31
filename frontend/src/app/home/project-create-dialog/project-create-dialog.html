@@ -17,7 +17,7 @@
     </p>
 
     <mat-form-field appearance="outline" class="full-width">
-      <mat-label>Wissenschaftler:innen</mat-label>
+      <mat-label>Beringer:innen</mat-label>
       <mat-select multiple formControlName="scientistIds">
         @for (s of data.scientists; track s.id) {
           <mat-option [value]="s.id">{{ s.full_name || s.handle }}</mat-option>

@@ -87,7 +87,7 @@ test.describe('Mitglieder ohne Beringer-Eintrag (gap panel)', () => {
     await expect(gapCard).toContainText('gapuser');
 
     // Open the assignment dialog and verknüpfen the existing no-account Beringer.
-    await gapCard.getByRole('button', {name: 'Beringer zuordnen'}).click();
+    await gapCard.getByRole('button', {name: 'Beringer:in zuordnen'}).click();
     const dialog = page.locator('mat-dialog-container');
     await dialog.locator('mat-select').click();
     await page.getByRole('option', {name: /Frei Beringer/}).click();

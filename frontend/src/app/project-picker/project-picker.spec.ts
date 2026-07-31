@@ -270,7 +270,7 @@ describe('ProjectPickerComponent', () => {
         .not.toContain('Du bist noch keinem Projekt zugeordnet');
     });
 
-    it('points a no-Beringer Admin at "Beringer verwalten" as their own remedy', () => {
+    it('points a no-Beringer Admin at "Beringer:innen verwalten" as their own remedy', () => {
       const ctx = setup();
       signIn(null, 'admin');
       render(ctx, []);
@@ -280,7 +280,7 @@ describe('ProjectPickerComponent', () => {
       ) as HTMLAnchorElement | null;
 
       expect(remedy).withContext('link to the Beringer verwalten surface').toBeTruthy();
-      expect(remedy!.textContent).toContain('Beringer verwalten');
+      expect(remedy!.textContent).toContain('Beringer:innen verwalten');
     });
 
     it('names the missing Beringer for a no-Beringer Mitglied and tells them an Admin must assign one', () => {

@@ -252,7 +252,7 @@ describe('ProjectCreateDialogComponent', () => {
       'Titel',
       'Beschreibung',
       'Organisation',
-      'Wissenschaftler:innen',
+      'Beringer:innen',
       'Projekttyp',
       'Standard-Station',
       'Saison-Start',

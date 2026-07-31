@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-16 18:09+0200\n"
+"POT-Creation-Date: 2026-07-31 17:23+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -325,6 +325,48 @@ msgstr ""
 msgid "Lockpfeife"
 msgstr ""
 
+msgid "Brutfleck"
+msgstr ""
+
+msgid "CPL+"
+msgstr ""
+
+msgid "Hungerstreifen"
+msgstr ""
+
+msgid "Parasit"
+msgstr ""
+
+msgid "Kerbe F2"
+msgstr ""
+
+msgid "Innenfuß"
+msgstr ""
+
+msgid "Netz-Block (Netznr., Netzfach, Flugrichtung)"
+msgstr ""
+
+msgid "Montag"
+msgstr ""
+
+msgid "Dienstag"
+msgstr ""
+
+msgid "Mittwoch"
+msgstr ""
+
+msgid "Donnerstag"
+msgstr ""
+
+msgid "Freitag"
+msgstr ""
+
+msgid "Samstag"
+msgstr ""
+
+msgid "Sonntag"
+msgstr ""
+
 msgid "IWM"
 msgstr ""
 
@@ -349,10 +391,7 @@ msgstr ""
 msgid "Standard-Station"
 msgstr ""
 
-msgid "Optionale Felder anzeigen"
-msgstr ""
-
-msgid "Netzfelder anzeigen"
+msgid "Ausgeblendete optionale Felder"
 msgstr ""
 
 msgid "Projekttyp"
@@ -362,6 +401,12 @@ msgid "Saison-Startmonat"
 msgstr ""
 
 msgid "Saison-Endmonat"
+msgstr ""
+
+msgid "Wochengrenze (Wochentag)"
+msgstr ""
+
+msgid "Wochengrenze (Uhrzeit)"
 msgstr ""
 
 msgid "Umstand"
@@ -535,18 +580,6 @@ msgstr ""
 msgid "Handschwinge"
 msgstr ""
 
-msgid "Parasit"
-msgstr ""
-
-msgid "Hungerstreifen"
-msgstr ""
-
-msgid "Brutfleck"
-msgstr ""
-
-msgid "CPL+"
-msgstr ""
-
 msgid "Tot-Fund"
 msgstr ""
 
@@ -622,6 +655,24 @@ msgstr ""
 msgid "bei dj. Großgefiedermauser möglich"
 msgstr ""
 
+msgid "Payload"
+msgstr ""
+
+msgid "Payload-Schema-Version"
+msgstr ""
+
+msgid "Eingereicht von"
+msgstr ""
+
+msgid "Erstellt"
+msgstr ""
+
+msgid "Nicht migrierbarer Payload"
+msgstr ""
+
+msgid "Nicht migrierbare Payloads"
+msgstr ""
+
 msgid "Ein Name ist erforderlich."
 msgstr ""
 
@@ -635,14 +686,14 @@ msgid "Ein Längengrad ist erforderlich."
 msgstr ""
 
 msgid ""
-"Dieser Beringer hat bereits Fänge erfasst und kann daher nicht mehr von "
-"seinem Konto getrennt oder einem anderen Konto zugeordnet werden."
+"Diese:r Beringer:in hat bereits Fänge erfasst und kann daher nicht mehr vom "
+"eigenen Konto getrennt oder einem anderen Konto zugeordnet werden."
 msgstr ""
 
 msgid "Die Mitgliedschaft gehört nicht zu deiner Organisation."
 msgstr ""
 
-msgid "Dieses Konto ist bereits mit einem Beringer verknüpft."
+msgid "Dieses Konto ist bereits mit eine:r Beringer:in verknüpft."
 msgstr ""
 
 msgid "Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel."
@@ -675,7 +726,7 @@ msgstr "Organisation / body"
 msgid "Funktion / Rolle"
 msgstr "Role / position"
 
-msgid "Ungefähre Anzahl Beringer"
+msgid "Ungefähre Anzahl Beringer:innen"
 msgstr "Approximate number of ringers"
 
 msgid "An diese Adresse melden wir uns, um ein Gespräch zu vereinbaren."
@@ -687,7 +738,7 @@ msgstr "The central body you're enquiring for (e.g. a ringing centre)."
 msgid "Deine Funktion in der Organisation (z. B. wissenschaftliche Leitung)."
 msgstr "Your role in the organisation (e.g. scientific lead)."
 
-msgid "Für wie viele Beringer sprichst du ungefähr? (optional)"
+msgid "Für wie viele Beringer:innen sprichst du ungefähr? (optional)"
 msgstr "Roughly how many ringers do you speak for? (optional)"
 
 msgid "Worum geht es? Erzähl uns kurz von eurem Vorhaben (optional)."
@@ -926,7 +977,7 @@ msgstr ""
 msgid "Für wen ist BirdDoc?"
 msgstr "Who is BirdDoc for?"
 
-msgid "Für Beringer"
+msgid "Für Beringer:innen"
 msgstr "For ringers"
 
 msgid ""
@@ -936,7 +987,7 @@ msgstr ""
 "You ring birds yourself and want to leave paper and Excel behind? BirdDoc "
 "turns your captures into one clean capture card."
 
-msgid "Für Beringer ansehen"
+msgid "Für Beringer:innen ansehen"
 msgstr "See it for ringers"
 
 msgid ""
@@ -1176,7 +1227,7 @@ msgid "Preise – das Preismodell von BirdDoc: pro Organisation, nie pro Kopf"
 msgstr "Pricing – BirdDoc's pricing model: per organisation, never per head"
 
 msgid ""
-"BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer ohne "
+"BirdDoc wird pro Organisation lizenziert, nie pro Kopf: Beringer:innen ohne "
 "eigenes Konto erfassen kostenlos mit, und Organisationen der Beta-Kohorte "
 "behalten dauerhaft ihren Vorzugspreis – das ist das Preismodell, unabhängig "
 "vom späteren Betrag."
@@ -1195,18 +1246,18 @@ msgstr "Per organisation, never per head"
 msgid ""
 "Die Lizenz gilt pro Organisation, nicht pro Person. Eine Station oder ein "
 "Verein zahlt einmal für die ganze Gruppe, statt jede beringende Person "
-"einzeln zu lizenzieren – der Preis wächst nicht mit jedem zusätzlichen "
-"Beringer."
+"einzeln zu lizenzieren – der Preis wächst nicht mit zusätzlichen "
+"Beringer:innen."
 msgstr ""
 "The licence applies per organisation, not per person. A station or an "
 "association pays once for the whole group instead of licensing each ringing "
 "person individually – the price does not grow with every additional ringer."
 
-msgid "Beringer ohne Konto kostenlos"
+msgid "Beringer:innen ohne Konto kostenlos"
 msgstr "Ringers without an account are free"
 
 msgid ""
-"Beringer ohne eigenes Konto erfassen ihre Fänge kostenlos mit. Wer nur "
+"Beringer:innen ohne eigenes Konto erfassen ihre Fänge kostenlos mit. Wer nur "
 "gelegentlich an der Station beringt, belegt keinen kostenpflichtigen Platz "
 "und verursacht keine zusätzlichen Kosten."
 msgstr ""

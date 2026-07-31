@@ -538,28 +538,28 @@ describe('NavBar', () => {
       .toBeFalse();
   });
 
-  it('shows "Beringer verwalten" in the user menu for an org admin, linking to /beringer', () => {
+  it('shows "Beringer:innen verwalten" in the user menu for an org admin, linking to /beringer', () => {
     const ctx = setup();
     signIn(ctx, false, 'admin');
     activate(ctx, makeProject());
 
     const items = openUserMenu(ctx);
-    const beringerItem = items.find((i) => (i.textContent ?? '').includes('Beringer verwalten')) as
-      | HTMLAnchorElement
-      | undefined;
+    const beringerItem = items.find((i) =>
+      (i.textContent ?? '').includes('Beringer:innen verwalten'),
+    ) as HTMLAnchorElement | undefined;
 
-    expect(beringerItem).withContext('Beringer verwalten present for admin').toBeTruthy();
+    expect(beringerItem).withContext('Beringer:innen verwalten present for admin').toBeTruthy();
     expect(beringerItem!.getAttribute('href')).toBe('/beringer');
   });
 
-  it('never shows "Beringer verwalten" for a plain Mitglied', () => {
+  it('never shows "Beringer:innen verwalten" for a plain Mitglied', () => {
     const ctx = setup();
     signIn(ctx, false, 'mitglied');
     activate(ctx, makeProject());
 
     const labels = openUserMenu(ctx).map((i) => i.textContent ?? '');
-    expect(labels.some((t) => t.includes('Beringer verwalten')))
-      .withContext('no Beringer verwalten for Mitglied')
+    expect(labels.some((t) => t.includes('Beringer:innen verwalten')))
+      .withContext('no Beringer:innen verwalten for Mitglied')
       .toBeFalse();
   });
 

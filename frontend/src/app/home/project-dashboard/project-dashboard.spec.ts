@@ -666,7 +666,7 @@ describe('ProjectDashboardComponent', () => {
     // The three-part strip: Organisation · Standard-Station · Beringer-Anzahl.
     expect(text).toContain('IWM Linz');
     expect(text).toContain('Station Nordufer');
-    expect(text).toContain('2 Beringer');
+    expect(text).toContain('2 Beringer:innen');
 
     // The demoted card no longer spells out the full Projektdaten details on the
     // dashboard (Beschreibung, per-Beringer names): the KPI row is the first
@@ -700,7 +700,7 @@ describe('ProjectDashboardComponent', () => {
     const meta: HTMLElement = fixture.nativeElement.querySelector('.dashboard__meta');
     const text = (meta.textContent ?? '').replace(/\s+/g, ' ').trim();
     expect(text).toContain('Keine Standard-Station');
-    expect(text).toContain('0 Beringer');
+    expect(text).toContain('0 Beringer:innen');
     httpMock.verify();
   });
 
@@ -802,7 +802,7 @@ describe('ProjectDashboardComponent', () => {
     httpMock.expectOne((r) => r.url.endsWith('/projects/p1/stats/')).flush(makeStats());
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.dashboard__meta').textContent).toContain(
-      '1 Beringer',
+      '1 Beringer:in',
     );
 
     // A successful edit upserts + setCurrents the updated Projekt in ProjectService;
@@ -824,7 +824,7 @@ describe('ProjectDashboardComponent', () => {
     fixture.detectChanges();
 
     const meta: string = fixture.nativeElement.querySelector('.dashboard__meta').textContent;
-    expect(meta).toContain('2 Beringer');
+    expect(meta).toContain('2 Beringer:innen');
     expect(meta).toContain('Station Neu');
     expect(meta).not.toContain('1 Beringer');
     httpMock.verify();

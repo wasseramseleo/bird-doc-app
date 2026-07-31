@@ -91,7 +91,7 @@ def test_home_fork_band_renders_both_audience_columns_in_the_dom(client):
     # tab/toggle. The org column links down to the Für-Organisationen section.
     content = client.get("/").content.decode()
     assert content.count("fork__col") >= 2
-    assert "Für Beringer" in content
+    assert "Für Beringer:innen" in content
     assert "Für Organisationen &amp; Vogelwarten" in content
     assert "#organisationen" in content
 

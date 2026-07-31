@@ -214,9 +214,9 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     {% endcomment %}
     <div class="fork" aria-label="{% translate 'Für wen ist BirdDoc?' %}">
         <section class="fork__col">
-            <h2 class="fork__title">{% translate "Für Beringer" %}</h2>
+            <h2 class="fork__title">{% translate "Für Beringer:innen" %}</h2>
             <p>{% blocktranslate trimmed %}Du beringst selbst und willst Papier und Excel hinter dir lassen? BirdDoc bringt deine Fänge in eine saubere Fang-Karte.{% endblocktranslate %}</p>
-            <p><a class="fork__more" href="#fuer-beringer">{% translate "Für Beringer ansehen" %}</a></p>
+            <p><a class="fork__more" href="#fuer-beringer">{% translate "Für Beringer:innen ansehen" %}</a></p>
         </section>
         <section class="fork__col">
             <h2 class="fork__title">{% translate "Für Organisationen &amp; Vogelwarten" %}</h2>
@@ -236,7 +236,7 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
     form. The relief block carries the `funktionen` anchor.
     {% endcomment %}
     <section class="audience" id="fuer-beringer" aria-labelledby="audience-beringer-title">
-        <p class="eyebrow">{% translate "Für Beringer" %}</p>
+        <p class="eyebrow">{% translate "Für Beringer:innen" %}</p>
         <h2 id="audience-beringer-title" class="audience__title">{% translate "Vom Zettel zur Fang-Karte" %}</h2>
         <p class="audience__pain">{% blocktranslate trimmed %}Heute notierst du jeden Fang am Ringtisch auf Papier und überträgst ihn später mühsam in Excel. Das ist fehleranfällig, doppelt erfasst und schwer zu durchsuchen.{% endblocktranslate %}</p>
 
@@ -294,7 +294,7 @@ surface; the toggle switches between German (apex, no prefix) and English (/en/)
                     <span class="formular__value">{{ fang_formular.station }}</span>
                 </p>
                 <p class="formular__field">
-                    <span class="formular__label">Beringer</span>
+                    <span class="formular__label">Beringer:in</span>
                     <span class="formular__value">{{ fang_formular.beringer_first }} {{ fang_formular.beringer_last }} ({{ fang_formular.kuerzel }})</span>
                 </p>
                 <p class="formular__field">

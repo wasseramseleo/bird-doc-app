@@ -1299,7 +1299,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         next: created => {
           this.entryForm.get('staff')?.setValue(created);
           this.snackBar.open(
-            `Beringer "${created.full_name} (${created.handle})" wurde angelegt.`,
+            `Beringer:in "${created.full_name} (${created.handle})" wurde angelegt.`,
             undefined,
             {duration: 2000},
           );
