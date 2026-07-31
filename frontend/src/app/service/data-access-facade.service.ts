@@ -17,6 +17,7 @@ import {OutboxService} from './outbox.service';
 import {PendingBeringerService} from './pending-beringer.service';
 import {appFailureOf, attachAppFailure, Fehlerklasse} from '../core/errors/app-failure';
 import {attachDurablyQueued, durableWrite} from '../core/offline/durable-write';
+import {sessionExpiryAtTheGesture} from '../core/errors/session-expiry';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {
   CachedReferenceBundle,
@@ -68,6 +69,11 @@ const BERINGER_GESICHERT =
  * wie auf einen Verbindungsabbruch — erst danach kommt die Aufforderung zur
  * erneuten Anmeldung ({@link withDurableFallback}). Jeder Lesevorgang und jeder
  * andere Schreibvorgang scheitert an einem 401 unverändert laut.
+ *
+ * Der Fang-**Edit** steht dazu hier ({@link updateDataEntry}), obwohl er nichts
+ * einreiht und nichts zwischenspeichert: nur so ist ADR 0039s Tabelle an einer
+ * Naht abzulesen. Er scheitert laut — und meldet das dort, wo die Geste
+ * stattfand, statt das Formular mitsamt der Korrektur wegzureißen.
  */
 @Injectable({providedIn: 'root'})
 export class DataAccessFacadeService {
@@ -326,6 +332,29 @@ export class DataAccessFacadeService {
   }
 
   /**
+   * Der Fang-**Edit** (#447, ADR 0039): die andere Hälfte der Tabelle, und sie
+   * steht hier, damit die Regel an *einer* Naht abzulesen ist statt über die
+   * Bildschirme verteilt.
+   *
+   * Er **scheitert laut**, und zwar unverändert: kein Offline-Rückfall, kein
+   * Einreihen, kein `withDurableFallback`. Was er ändert, hält der Server
+   * bereits — das Original bleibt unversehrt, und ein zurückgespielter Edit
+   * bräuchte eine Konfliktbehandlung, die der Create-Pfad nie gebraucht hat.
+   *
+   * Eines ist trotzdem anders als bei einer Station oder einem Projekt, und die
+   * Markierung sagt genau das: die Korrektur steht im Formular und **sonst
+   * nirgends**. Der globale Sprung zur Anmeldung nähme sie mit — die Navigation
+   * weckt den `unsavedChangesGuard` (#407), und „Verwerfen" ist genau die
+   * Antwort, die das Mitglied nie geben wollte. Also wird der Fehlschlag dort
+   * gemeldet, wo die Geste stattfand (ADR 0037): im Banner am Formular, mit
+   * „Anmelden" als Ausweg. Wer ihn drückt, verlässt die Erfassung willentlich
+   * und wird gefragt; wer ihn nicht drückt, hat seine Korrektur noch.
+   */
+  updateDataEntry(id: string, payload: Partial<DataEntry>): Observable<DataEntry> {
+    return this.api.updateDataEntry(id, payload, sessionExpiryAtTheGesture());
+  }
+
+  /**
    * A ring's recapture history for the Wiederfang "Bisherige Fänge" panel
    * (issue #168). Online it is the server's authoritative list — passed
    * through byte-for-byte, flagged complete. Only a connectivity failure
@@ -375,18 +404,21 @@ export class DataAccessFacadeService {
    * vernichten.
    *
    * Nur für die beiden Schreibvorgänge, deren Inhalt sonst nirgends existiert —
-   * den Fang-Create und die Beringer-Schnellanlage. Ein Fang-Edit, eine Station,
-   * ein Projekt und eine Artennorm gehen nicht durch diese Fassade und scheitern
-   * damit weiterhin laut: das Original ist unversehrt, die Korrektur steht noch
-   * im Formular.
+   * den Fang-Create und die Beringer-Schnellanlage. Ein Fang-Edit ({@link
+   * updateDataEntry}) läuft daran vorbei, eine Station, ein Projekt und eine
+   * Artennorm gehen gar nicht erst durch diese Fassade; alle vier scheitern
+   * weiterhin laut, und das Original bleibt unversehrt.
    *
    * Die Reihenfolge ist die ganze Sache: **erst ist der Inhalt sicher, dann
    * kommt die Aufforderung zur erneuten Anmeldung.** Der `authInterceptor` hält
-   * bei einem so markierten Schreibvorgang seine 401-Arbeit deshalb zurück
-   * (`DURABLE_WRITE`) — sonst wäre das angemeldete Konto gelöscht, bevor die
-   * Outbox unter ihm einreihen kann, und der Fang mit ihm. Abgemeldet wird erst,
-   * wenn das Mitglied „Anmelden" im Banner drückt; bis dahin reiht sich auch der
-   * nächste Fang noch ein.
+   * seinen Sprung zur Anmeldung deshalb zurück
+   * (`SESSION_EXPIRY_AT_THE_GESTURE`, die {@link durableWrite} mitträgt) — sonst
+   * wäre das angemeldete Konto gelöscht, bevor die Outbox unter ihm einreihen
+   * kann, und der Fang mit ihm. Abgemeldet wird erst, wenn das Mitglied
+   * „Anmelden" im Banner drückt; bis dahin reiht sich auch der nächste Fang noch
+   * ein, aus dem stehengebliebenen Referenz-Bündel (#158). Der
+   * Zwischenspeicher der Identität ist davon ausgenommen und geht sofort — das
+   * geteilte Tablet darf das Mitglied nicht überdauern (#156).
    *
    * Die Klasse entscheidet, nicht der Status (ADR 0037): *Neu anmelden* deckt
    * den 401 ab und ebenso DRFs auf 403 degradierten `not_authenticated`.

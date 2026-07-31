@@ -1,5 +1,7 @@
 import {HttpContext, HttpContextToken} from '@angular/common/http';
 
+import {sessionExpiryAtTheGesture} from '../errors/session-expiry';
+
 /**
  * Die Dauerhaftigkeit (ADR 0039, PRD #438): **ein Schreibvorgang, dessen Inhalt
  * sonst nirgends existiert, muss dauerhaft sein; ein Schreibvorgang, der nur
@@ -20,18 +22,29 @@ import {HttpContext, HttpContextToken} from '@angular/common/http';
  * Die Markierung an der Anfrage: „der Inhalt dieser Anfrage existiert sonst
  * nirgends".
  *
- * Der `authInterceptor` liest sie und **hält seine 401-Arbeit zurück** — kein
- * Leeren der Sitzung, kein Sprung zur Anmeldung —, damit die Fassade den Fang
- * erst in die Outbox retten kann. Ohne das käme die Aufforderung zur erneuten
- * Anmeldung *vor* der Rettung, und die Rettung selbst käme zu spät: die Outbox
- * reiht unter dem angemeldeten Konto ein (Mandantengrenze aus #160), und das
- * wäre dann schon gelöscht.
+ * Sie sagt allein, **was die Fassade tut**: `withDurableFallback` reiht den
+ * Inhalt bei der Klasse *Neu anmelden* in die Outbox ein, statt ihn zu
+ * verlieren. Der `authInterceptor` liest sie nicht — er liest
+ * {@link SESSION_EXPIRY_AT_THE_GESTURE}, die ein dauerhafter Schreibvorgang
+ * ({@link durableWrite}) ebenfalls trägt. Die beiden auseinanderzuhalten ist
+ * der Punkt: der Fang-Edit hält den Sprung zur Anmeldung genauso zurück —
+ * seine Korrektur steht im Formular und sonst nirgends —, wird aber niemals
+ * eingereiht.
+ *
+ * Der zurückgehaltene Sprung ist für den Fang-Create keine Höflichkeit, sondern
+ * die Bedingung der Rettung: die Outbox reiht unter dem angemeldeten Konto ein
+ * (Mandantengrenze aus #160), und das wäre sonst gelöscht, bevor sie dazu
+ * kommt — der Fang mit ihm.
  */
 export const DURABLE_WRITE = new HttpContextToken<boolean>(() => false);
 
-/** Der Kontext, mit dem ein dauerhafter Schreibvorgang hinausgeht. */
+/**
+ * Der Kontext, mit dem ein dauerhafter Schreibvorgang hinausgeht: eingereiht
+ * wird er von der Fassade, und die Aufforderung zur erneuten Anmeldung wartet
+ * so lange an der Geste.
+ */
 export function durableWrite(): HttpContext {
-  return new HttpContext().set(DURABLE_WRITE, true);
+  return sessionExpiryAtTheGesture().set(DURABLE_WRITE, true);
 }
 
 /**

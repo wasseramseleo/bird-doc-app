@@ -1,9 +1,10 @@
-import { LOCALE_ID, Provider, signal } from '@angular/core';
+import { Component, LOCALE_ID, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
 import { ActivatedRoute, provideRouter, Router } from '@angular/router';
-import { provideHttpClient } from '@angular/common/http';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
@@ -52,6 +53,8 @@ import { InfoDialogComponent } from '../shared/info-dialog/info-dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../shared/confirm-dialog/confirm-dialog';
 import { ConnectivityService } from '../core/offline/connectivity';
 import { unsavedChangesGuard } from '../core/guards/unsaved-changes.guard';
+import { HTTP_INTERCEPTORS_IN_ORDER } from '../app.config';
+import { ApiService } from '../service/api.service';
 
 registerLocaleData(localeDeAt);
 
@@ -2072,11 +2075,19 @@ describe('DataEntryFormComponent', () => {
     });
 
     // #447 (ADR 0039): eine Bearbeitung ändert nur, was der Server bereits hält
-    // — sie scheitert deshalb weiterhin **laut**. Das Original ist unversehrt,
-    // die Korrektur steht noch im Formular und wird nach der Anmeldung erneut
-    // abgeschickt. Eingereiht wird sie nie: ein zurückgespielter Edit bräuchte
-    // eine Konfliktbehandlung, die der Create-Pfad nie gebraucht hat.
-    it('reiht eine Bearbeitung bei abgelaufener Sitzung nicht ein — die Korrektur steht noch im Formular (#447)', async () => {
+    // — sie scheitert deshalb weiterhin **laut**, und eingereiht wird sie nie:
+    // ein zurückgespielter Edit bräuchte eine Konfliktbehandlung, die der
+    // Create-Pfad nie gebraucht hat. Geprüft wird hier genau das — das leere
+    // Outbox-Fach und das Banner an der Geste.
+    //
+    // Dass die Korrektur den Fehlschlag **überlebt**, kann dieser Aufbau nicht
+    // zeigen: `setupEditMode` meldet `provideHttpClient()` ohne Interceptor an
+    // und `provideRouter([])` ohne Route, also läuft weder der `authInterceptor`
+    // noch der `unsavedChangesGuard`, und niemand könnte das Formular hier
+    // überhaupt wegnehmen. Diese Behauptung steht deshalb am Ende der Datei, an
+    // der echten Kette („der Fang-Edit bei abgelaufener Sitzung, an der echten
+    // Kette"), mitsamt der Gegenprobe, die sie scheitern lässt.
+    it('reiht eine Bearbeitung bei abgelaufener Sitzung nicht ein und meldet sie am Formular (#447)', async () => {
       const { f, httpMock } = await setupEditMode('42');
       TestBed.inject(AuthService).currentUser.set({
         username: 'fre',
@@ -8759,5 +8770,296 @@ describe('DataEntryFormComponent unsaved changes reach the CanDeactivate guard (
     const { asked, left } = await leaveTheForm();
     expect(asked).withContext('a destroyed form has no input to protect').toBeFalse();
     expect(left).toBeTrue();
+  });
+});
+
+/** Die Anmeldung, wohin der `authInterceptor` springt — mehr braucht es nicht. */
+@Component({ selector: 'app-login-stub', standalone: true, template: '<p>Anmeldung</p>' })
+class LoginStubComponent {}
+
+// #447 (ADR 0037): der Fang-Edit **scheitert laut** — aber laut heißt nicht „das
+// Formular verschwindet". Vor diesem Schnitt tat der `authInterceptor` seine
+// 401-Arbeit global und als erster: `currentUser` weg, beide Zwischenspeicher
+// weg, Sprung zur Anmeldung — alles, bevor die Komponente den Fehler überhaupt
+// sah. Die Navigation weckte den `unsavedChangesGuard` (#407) über einer
+// Korrektur, die im Formular und sonst nirgends steht: „Verwerfen" vernichtete
+// sie, „Weiter bearbeiten" ließ das Mitglied auf einem Formular ohne Sitzung
+// sitzen, dessen jedes weitere Speichern wieder mit 401 endet.
+//
+// Die Specs weiter oben können das nicht sehen: sie melden `provideHttpClient()`
+// ohne Interceptor an und `provideRouter([])` ohne Route, also läuft weder der
+// Interceptor noch der Guard, und ihre Behauptung „die Korrektur steht noch im
+// Formular" kann nicht scheitern. Dieser Block hängt beides ein — die echte
+// Kette aus `app.config.ts` und die echte `canDeactivate`-Route aus
+// `app.routes.ts` — und die **Gegenprobe** am Ende zeigt an genau diesem Aufbau,
+// dass er scheitern kann.
+describe('DataEntryFormComponent: der Fang-Edit bei abgelaufener Sitzung, an der echten Kette (#447, ADR 0037)', () => {
+  let harness: RouterTestingHarness;
+  let component: DataEntryFormComponent;
+  let httpMock: HttpTestingController;
+
+  // Wie im Guard-Block: zwei Dialoge, absichtlich getrennt. Der Guard fragt über
+  // den Wurzel-Injektor, das Formular über seinen eigenen — so kann ein
+  // Tot-Fund-Popup nie als „der Guard hat gefragt" durchgehen.
+  const guardDialog = { open: jasmine.createSpy('guardDialog.open') };
+  const formDialog = { open: jasmine.createSpy('formDialog.open') };
+
+  const MITGLIED = {
+    username: 'fre',
+    handle: 'FRE',
+    isStaff: false,
+    rolle: 'mitglied' as const,
+    organization: null,
+  };
+
+  const NOT_AUTHENTICATED = {
+    detail: 'Anmeldedaten fehlen.',
+    errors: [{ field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.' }],
+  };
+
+  const project = {
+    id: 'p1',
+    title: 'Herbst',
+    description: '',
+    projekttyp: Projekttyp.Sonstiges,
+    organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+    default_station: null,
+    scientists: [],
+    created: '',
+    updated: '',
+  } as Project;
+
+  function savedEntry(): DataEntry {
+    return {
+      id: '42',
+      species: {
+        id: 's1',
+        common_name_de: 'Kohlmeise',
+        scientific_name: 'Parus major',
+        ring_size: RingSize.S,
+      },
+      ring: { id: 'r1', number: '901234', size: RingSize.S },
+      staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+      ringing_station: {
+        handle: 'STAMT',
+        name: 'Linz, Botanischer Garten',
+        organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      },
+      project: null,
+      net_location: 3,
+      net_height: 2,
+      net_direction: null,
+      feather_span: 54,
+      wing_span: 73,
+      tarsus: 19,
+      notch_f2: null,
+      inner_foot: null,
+      weight_gram: 18,
+      bird_status: BirdStatus.ReCatch,
+      fat_deposit: null,
+      muscle_class: null,
+      age_class: AgeClass.ThisYear,
+      sex: Sex.Female,
+      small_feather_int: null,
+      small_feather_app: null,
+      hand_wing: null,
+      date_time: '2024-05-01T08:30:00Z',
+      created: '2024-05-01T08:30:00Z',
+      updated: '2024-05-01T08:30:00Z',
+      comment: 'Wiederfang am Hauptnetz',
+      parasites: [],
+      has_hunger_stripes: false,
+      has_brood_patch: false,
+      has_cpl_plus: false,
+    } as unknown as DataEntry;
+  }
+
+  /** Das echte IndexedDB und die echte Navigation beobachten nur echte Zeit. */
+  const settle = (ms = 20) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /**
+   * Beantwortet jede offene Ladeanfrage — welche genau beim Öffnen anfallen
+   * (Sonderart-Lookup, der Eintrag selbst), ist nicht Gegenstand dieses Blocks.
+   */
+  function answerLoads(): void {
+    for (const req of httpMock.match(() => true)) {
+      if (req.request.url.endsWith('/birds/data-entries/42/')) {
+        req.flush(savedEntry());
+      } else {
+        req.flush({ count: 0, next: null, previous: null, results: [] });
+      }
+    }
+  }
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    guardDialog.open.calls.reset();
+    formDialog.open.calls.reset();
+    // „Verwerfen" — die schlimmstmögliche Antwort, und genau die, die #447
+    // beschreibt. Wird der Guard je gefragt, ist die Korrektur weg, und diese
+    // Specs sehen es.
+    guardDialog.open.and.returnValue({ afterClosed: () => of(true) });
+    formDialog.open.and.returnValue({ afterClosed: () => of(undefined) });
+    await TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          // Wortgleich aus `app.routes.ts`, nur ohne `authGuard`: der prüft die
+          // Sitzung, die dieser Test gerade absichtlich sterben lässt.
+          {
+            path: 'data-entry/:id',
+            component: DataEntryFormComponent,
+            canDeactivate: [unsavedChangesGuard],
+          },
+          { path: 'login', component: LoginStubComponent },
+          { path: '', component: LoginStubComponent },
+        ]),
+        // Die echte Kette, in der vertraglichen Reihenfolge aus `app.config.ts`.
+        provideHttpClient(withInterceptors(HTTP_INTERCEPTORS_IN_ORDER)),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+        { provide: LOCALE_ID, useValue: 'de-AT' },
+        {
+          provide: ProjectService,
+          useValue: {
+            currentProject: signal<Project | null>(project),
+            setCurrent: () => {},
+            clear: () => {},
+          },
+        },
+        { provide: MatDialog, useValue: guardDialog },
+      ],
+    })
+      .overrideComponent(DataEntryFormComponent, {
+        add: { providers: [{ provide: MatDialog, useValue: formDialog }] },
+      })
+      .compileComponents();
+
+    httpMock = TestBed.inject(HttpTestingController);
+    TestBed.inject(AuthService).currentUser.set(MITGLIED);
+    await TestBed.inject(OutboxService).ready;
+
+    harness = await RouterTestingHarness.create();
+    component = await harness.navigateByUrl('/data-entry/42', DataEntryFormComponent);
+    answerLoads();
+    await settle();
+    answerLoads();
+    harness.detectChanges();
+  });
+
+  afterEach(async () => {
+    const db = TestBed.inject(IndexedDbStore);
+    const queued = await db.getAll<{ id: string }>('outbox');
+    await Promise.all(queued.map((entry) => db.delete('outbox', entry.id)));
+    await TestBed.inject(ReferenceBundleCacheService).clear();
+  });
+
+  /** Die Korrektur, die das Mitglied gerade getippt hat — und sonst nirgends steht. */
+  function typeTheCorrection(): void {
+    component.entryForm.get('comment')!.setValue('Korrektur am Hauptnetz');
+    component.entryForm.get('comment')!.markAsDirty();
+    expect(component.entryForm.dirty).withContext('eine Korrektur in Arbeit').toBeTrue();
+  }
+
+  /** Ob der `unsavedChangesGuard` über die Korrektur gefragt hat. */
+  const askedToDiscard = (): boolean =>
+    guardDialog.open.calls.all().some((call) => call.args[0] === ConfirmDialogComponent);
+
+  const banner = (): HTMLElement | null =>
+    (harness.fixture.nativeElement as HTMLElement).querySelector('[data-testid="failure-banner"]');
+
+  it('bleibt am Formular stehen: kein Sprung zur Anmeldung, keine Frage nach dem Verwerfen', async () => {
+    typeTheCorrection();
+
+    component.onSubmit();
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+    await settle();
+    harness.detectChanges();
+
+    expect(TestBed.inject(Router).url).toBe('/data-entry/42');
+    expect(askedToDiscard()).withContext('der Guard hat nichts zu fragen').toBeFalse();
+    expect(component.entryForm.get('comment')!.value).toBe('Korrektur am Hauptnetz');
+    expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+    expect(
+      (harness.fixture.nativeElement as HTMLElement).querySelector('form'),
+    ).withContext('das Formular steht noch da').not.toBeNull();
+  });
+
+  // Der zweite Teil des Fehlschlags: die Sitzung am Gerät bleibt bis zum Knopf
+  // stehen. Wäre `currentUser` schon leer, verschwände die Navigationsleiste
+  // unter dem Mitglied, `OutboxService.pendingEntries()` fiele leer (es filtert
+  // auf `currentUser()`), und der nächste Fang ginge nirgendwohin.
+  it('reißt die Sitzung am Gerät nicht weg, während die Korrektur noch dasteht', async () => {
+    const cache = TestBed.inject(ReferenceBundleCacheService);
+    await cache.save({
+      bundle: {
+        identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+        species: [],
+        ringing_stations: [],
+        scientists: [],
+        projects: [],
+        centrals: [],
+        last_consumed_ring_numbers: [],
+      } as unknown as OfflineBundle,
+      refreshedAt: '2026-06-01T09:00:00.000Z',
+    });
+    typeTheCorrection();
+
+    component.onSubmit();
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+    await settle();
+
+    expect(TestBed.inject(AuthService).currentUser()).not.toBeNull();
+    expect(await cache.load()).withContext('das Bündel, aus dem weiter erfasst wird').not.toBeNull();
+  });
+
+  it('sagt am Formular, was los ist — mit der Anmeldung im Griff und ohne ein Versprechen, das keiner halten kann', async () => {
+    typeTheCorrection();
+
+    component.onSubmit();
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+    await settle();
+    harness.detectChanges();
+
+    expect(banner()).not.toBeNull();
+    expect(banner()!.textContent).toContain('Sitzung abgelaufen');
+    // Der Edit wird nie eingereiht — also verspricht ihm auch niemand etwas.
+    expect(banner()!.textContent).not.toContain('gesichert');
+    expect(
+      (harness.fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="failure-anmelden"]',
+      ),
+    ).not.toBeNull();
+    expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
+  });
+
+  // Die Gegenprobe. Derselbe Aufbau, aber der Weg von vor #447: `ApiService`
+  // ohne die Markierung, wie `data-entry-form.ts` den Edit bis hierher
+  // abschickte. Dann tut der Interceptor genau das, was das Issue meldet — und
+  // diese Specs sehen es. Ohne sie wäre oben nicht zu erkennen, ob Interceptor
+  // und Guard überhaupt in der Kette hängen.
+  it('Gegenprobe: ohne die Markierung springt derselbe 401 zur Anmeldung und der Guard verwirft die Korrektur', async () => {
+    typeTheCorrection();
+
+    TestBed.inject(ApiService)
+      .updateDataEntry('42', { comment: 'Korrektur am Hauptnetz' } as never)
+      .subscribe({ error: () => undefined });
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+    await settle(60);
+    harness.detectChanges();
+
+    expect(TestBed.inject(Router).url).toContain('/login');
+    expect(askedToDiscard()).withContext('genau die Frage, die #447 meldet').toBeTrue();
+    expect(TestBed.inject(AuthService).currentUser()).toBeNull();
+    expect(
+      (harness.fixture.nativeElement as HTMLElement).querySelector('form'),
+    ).withContext('das Formular ist weg — und die Korrektur mit ihm').toBeNull();
   });
 });

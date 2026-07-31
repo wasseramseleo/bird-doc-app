@@ -1882,13 +1882,18 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     // enqueues on a genuine connectivity failure); a queued edit writes
     // straight back into the outbox via `OutboxService.update()` — it was
     // never on the server to begin with, so there is nothing to PUT. An edit
-    // of an already-*synced* record always targets the server, so it stays on
-    // `apiService` unchanged (offline edits of synced entries are out of
-    // scope for PRD #152 — see its "Out of Scope" section).
+    // of an already-*synced* record always targets the server: es gibt keinen
+    // Offline-Rückfall dafür (offline edits of synced entries are out of scope
+    // for PRD #152 — see its "Out of Scope" section) und keinen Rückfall auf
+    // eine abgelaufene Sitzung (#447, ADR 0039 — ein Edit ändert nur, was der
+    // Server bereits hält). Es geht trotzdem über die Fassade, weil dort die
+    // Tabelle steht und weil der Edit die eine Markierung braucht, die er sehr
+    // wohl verdient: sein 401 wird am Formular gemeldet, nicht mit einem Sprung
+    // zur Anmeldung, der die Korrektur mitnähme.
     const saveOperation: Observable<unknown> = this.isQueuedEditMode()
       ? this.outbox.update(this.entryId()!, formValue as Record<string, unknown>)
       : this.isEditMode()
-        ? this.apiService.updateDataEntry(this.entryId()!, formValue)
+        ? this.dataAccess.updateDataEntry(this.entryId()!, formValue)
         : this.dataAccess.createDataEntry(formValue);
 
     saveOperation.subscribe({

@@ -81,6 +81,22 @@ Systems; der Fang ist einwandfrei.
 - Ein Capture-**Edit**, der auf einen 401 läuft, scheitert weiterhin laut. Das Original
   bleibt unversehrt, die Korrektur steht noch im Formular — sie muss nach der Anmeldung
   erneut abgeschickt werden.
+- **Der globale Redirect lernt genau eine Ausnahme**, und sie ist enger als die
+  Dauerhaftigkeit: *dieser Fehlschlag wird an der Geste gemeldet*
+  (`SESSION_EXPIRY_AT_THE_GESTURE`, ADR 0037). Wer sie trägt, bekommt kein
+  `currentUser.set(null)` und keinen Sprung nach `/login` — sonst käme beides *vor* der
+  Rettung (Create) beziehungsweise *statt* des Banners (Edit), wo die Navigation den
+  `unsavedChangesGuard` über eine Korrektur fragen ließe, die sonst nirgends steht.
+  Getragen wird sie von den beiden dauerhaften Schreibvorgängen **und** vom Capture-Edit;
+  Station, Projekt und Artennorm tragen sie nicht. Abgemeldet wird am Knopf „Anmelden" im
+  Banner (`AuthService.sessionExpired()`).
+- **Der Zwischenspeicher der Identität ist von dieser Ausnahme ausgenommen** und wird bei
+  jedem 401 sofort geleert (#156/#158). Sonst überdauerte er auf dem geteilten Tablet ein
+  Mitglied, das die Runde beendet und den Deckel zuklappt, ohne „Anmelden" gedrückt zu
+  haben — der nächste Kaltstart ohne Empfang meldete den Vorigen wieder an, samt seiner
+  Warteschlange. Die Rettung braucht ihn nicht: die Outbox reiht unter
+  `AuthService.currentUser()` ein, dem Signal im Speicher. Das **Referenz-Bündel** bleibt
+  dagegen stehen — aus ihm erfasst das Mitglied weiter, bis es sich neu anmeldet.
 - Eine offline oder bei toter Sitzung angelegte Station bleibt verloren. Bewusst.
 - Die Regel gibt der nächsten Funktion eine Antwort, ohne die Diskussion neu zu führen:
   existiert der Inhalt sonst nirgends?

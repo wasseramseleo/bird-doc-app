@@ -62,16 +62,23 @@ export class ApiService {
     return this.http.get<DataEntry>(`${this.apiUrl}/data-entries/${id}/`);
   }
 
-  // `context` trägt die Markierung des dauerhaften Schreibvorgangs (#447,
-  // ADR 0039), die `DataAccessFacadeService` setzt und der `authInterceptor`
-  // liest. Ohne Angabe — der Replay des Sync — geht die Anfrage unverändert
-  // hinaus und ein 401 wird behandelt wie eh und je.
+  // `context` trägt die Markierungen aus #447 (ADR 0037/0039), die
+  // `DataAccessFacadeService` setzt und der `authInterceptor` liest. Ohne
+  // Angabe — der Replay des Sync — geht die Anfrage unverändert hinaus und ein
+  // 401 wird behandelt wie eh und je.
   createDataEntry(dataEntry: Partial<DataEntry>, context?: HttpContext): Observable<DataEntry> {
     return this.http.post<DataEntry>(`${this.apiUrl}/data-entries/`, dataEntry, {context});
   }
 
-  updateDataEntry(id: string, dataEntry: Partial<DataEntry>): Observable<DataEntry> {
-    return this.http.put<DataEntry>(`${this.apiUrl}/data-entries/${id}/`, dataEntry);
+  // `context`: siehe `createDataEntry`. Der Fang-Edit ist **nicht** dauerhaft —
+  // er trägt nur die Markierung, dass sein 401 an der Geste gemeldet wird
+  // (#447), damit die Korrektur im Formular stehen bleibt.
+  updateDataEntry(
+    id: string,
+    dataEntry: Partial<DataEntry>,
+    context?: HttpContext,
+  ): Observable<DataEntry> {
+    return this.http.put<DataEntry>(`${this.apiUrl}/data-entries/${id}/`, dataEntry, {context});
   }
 
   // #392 (ADR 0030): „Eintrag löschen". Der Server behält die Zeile hinter einem

@@ -4,6 +4,7 @@ import {HttpTestingController, provideHttpClientTesting} from '@angular/common/h
 import {firstValueFrom} from 'rxjs';
 
 import {DURABLE_WRITE} from './durable-write';
+import {SESSION_EXPIRY_AT_THE_GESTURE} from '../errors/session-expiry';
 import {IndexedDbStore} from './indexed-db-store';
 import {OutboxStoreService} from './outbox-store';
 import {PendingBeringerStoreService} from './pending-beringer-store';
@@ -74,6 +75,7 @@ describe('die Dauerhaftigkeit (#447, ADR 0039)', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
       expect(req.request.context.get(DURABLE_WRITE)).toBeTrue();
+      expect(req.request.context.get(SESSION_EXPIRY_AT_THE_GESTURE)).toBeTrue();
       req.flush(NOT_AUTHENTICATED, {status: 401, statusText: 'Unauthorized'});
 
       await expectAsync(create).toBeRejected();
@@ -90,6 +92,7 @@ describe('die Dauerhaftigkeit (#447, ADR 0039)', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'),
       );
       expect(req.request.context.get(DURABLE_WRITE)).toBeTrue();
+      expect(req.request.context.get(SESSION_EXPIRY_AT_THE_GESTURE)).toBeTrue();
       req.flush(NOT_AUTHENTICATED, {status: 401, statusText: 'Unauthorized'});
 
       await expectAsync(create).toBeRejected();
@@ -98,14 +101,34 @@ describe('die Dauerhaftigkeit (#447, ADR 0039)', () => {
   });
 
   describe('scheitert laut — jederzeit in Ruhe erneut einzugeben', () => {
-    it('reiht einen Fang-Edit nicht ein: das Original ist unversehrt, die Korrektur steht noch im Formular', async () => {
-      const update = firstValueFrom(api.updateDataEntry('42', {comment: 'Korrektur'} as never));
+    it('reiht einen Fang-Edit nicht ein: das Original ist unversehrt', async () => {
+      const update = firstValueFrom(facade.updateDataEntry('42', {comment: 'Korrektur'} as never));
       update.catch(() => undefined);
 
       const req = httpMock.expectOne(
         (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
       );
       expect(req.request.context.get(DURABLE_WRITE)).toBeFalse();
+      req.flush(NOT_AUTHENTICATED, {status: 401, statusText: 'Unauthorized'});
+
+      await expectAsync(update).toBeRejected();
+      await expectNothingQueued();
+    });
+
+    // Der eine Unterschied zu Station, Projekt und Artennorm — und er ist kein
+    // Einreihen: die Korrektur steht im Formular und sonst nirgends, also wird
+    // der Fehlschlag dort gemeldet, wo die Geste stattfand (ADR 0037), statt
+    // das Formular mit einem Sprung zur Anmeldung wegzunehmen. Was das an der
+    // Leitung bedeutet, prüft `auth.interceptor.spec.ts`; was es am Formular
+    // bedeutet, `data-entry-form.spec.ts`.
+    it('markiert den Fang-Edit trotzdem: sein 401 wird am Formular gemeldet, nicht mit einem Sprung zur Anmeldung', async () => {
+      const update = firstValueFrom(facade.updateDataEntry('42', {comment: 'Korrektur'} as never));
+      update.catch(() => undefined);
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'),
+      );
+      expect(req.request.context.get(SESSION_EXPIRY_AT_THE_GESTURE)).toBeTrue();
       req.flush(NOT_AUTHENTICATED, {status: 401, statusText: 'Unauthorized'});
 
       await expectAsync(update).toBeRejected();
@@ -120,6 +143,7 @@ describe('die Dauerhaftigkeit (#447, ADR 0039)', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/ringing-stations/'),
       );
       expect(req.request.context.get(DURABLE_WRITE)).toBeFalse();
+      expect(req.request.context.get(SESSION_EXPIRY_AT_THE_GESTURE)).toBeFalse();
       req.flush(NOT_AUTHENTICATED, {status: 401, statusText: 'Unauthorized'});
 
       await expectAsync(create).toBeRejected();
@@ -136,6 +160,7 @@ describe('die Dauerhaftigkeit (#447, ADR 0039)', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/projects/'),
       );
       expect(req.request.context.get(DURABLE_WRITE)).toBeFalse();
+      expect(req.request.context.get(SESSION_EXPIRY_AT_THE_GESTURE)).toBeFalse();
       req.flush(NOT_AUTHENTICATED, {status: 401, statusText: 'Unauthorized'});
 
       await expectAsync(create).toBeRejected();
@@ -152,6 +177,7 @@ describe('die Dauerhaftigkeit (#447, ADR 0039)', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/species-norm-overrides/'),
       );
       expect(req.request.context.get(DURABLE_WRITE)).toBeFalse();
+      expect(req.request.context.get(SESSION_EXPIRY_AT_THE_GESTURE)).toBeFalse();
       req.flush(NOT_AUTHENTICATED, {status: 401, statusText: 'Unauthorized'});
 
       await expectAsync(save).toBeRejected();
@@ -169,6 +195,7 @@ describe('die Dauerhaftigkeit (#447, ADR 0039)', () => {
         (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
       );
       expect(req.request.context.get(DURABLE_WRITE)).toBeFalse();
+      expect(req.request.context.get(SESSION_EXPIRY_AT_THE_GESTURE)).toBeFalse();
       req.flush(NOT_AUTHENTICATED, {status: 401, statusText: 'Unauthorized'});
 
       await expectAsync(replay).toBeRejected();

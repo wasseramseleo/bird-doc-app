@@ -4,7 +4,7 @@ import {Router} from '@angular/router';
 import {catchError, throwError} from 'rxjs';
 import {AuthService} from '../../service/auth.service';
 import {getCookie} from '../util/cookie';
-import {DURABLE_WRITE} from '../offline/durable-write';
+import {SESSION_EXPIRY_AT_THE_GESTURE} from '../errors/session-expiry';
 import {IdentityCacheService} from '../offline/identity-cache';
 import {ReferenceBundleCacheService} from '../offline/reference-bundle-cache';
 
@@ -45,37 +45,49 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(cloned).pipe(
     catchError((err: unknown) => {
-      // #447 (ADR 0039): bei einem dauerhaften Schreibvorgang — einem Fang-Create
-      // oder einer Beringer-Schnellanlage, deren Inhalt sonst nirgends existiert
-      // — wartet die 401-Arbeit hier. Sie käme sonst *vor* der Rettung: die
-      // Outbox reiht unter dem angemeldeten Konto ein (Mandantengrenze aus
-      // #160), und das wäre zwei Zeilen tiefer schon gelöscht — der Fang mit
-      // ihm, obwohl der Vogel längst wieder in der Luft ist. Die Fassade
-      // (`withDurableFallback`) rettet ihn und meldet danach den Fehlschlag;
-      // abgemeldet wird, wenn das Mitglied „Anmelden" im Banner drückt.
-      //
-      // Bis dahin hält der Klient die Sitzung für gültig, obwohl sie es nicht
-      // mehr ist — bewusst: nur so kennt die Outbox noch das Konto, unter dem
-      // der nächste Fang einzureihen ist. Jede andere Antwort des Servers, auch
-      // jeder Ladevorgang, räumt sie unverändert hier auf.
-      if (
-        err instanceof HttpErrorResponse &&
-        err.status === 401 &&
-        !isAuthRequest(req.url) &&
-        !req.context.get(DURABLE_WRITE)
-      ) {
-        authService.currentUser.set(null);
+      if (err instanceof HttpErrorResponse && err.status === 401 && !isAuthRequest(req.url)) {
         // A confirmed "not authenticated" here is the same signal bootstrap()
-        // treats as logout/expiry (issue #156): clear the cached identity too,
-        // so a later offline boot can't resurrect the expired session. Also
-        // clear the org-scoped reference-bundle cache (issue #158) — a shared
-        // device left signed out here must not leave the next Mitglied's
-        // offline boot inheriting this Organisation's cached reference data.
-        // Best effort — an IndexedDB failure here must not block the redirect.
+        // treats as logout/expiry (issue #156): clear the cached identity, so a
+        // later offline boot can't resurrect the expired session. Best effort —
+        // an IndexedDB failure here must not block the redirect.
+        //
+        // Dies geschieht **immer**, auch bei einem Schreibvorgang, der seinen
+        // Fehlschlag selbst meldet (#447): das Mitglied darf die Runde
+        // zuendebringen, aber der Deckel des geteilten Tablets fällt irgendwann
+        // zu, ohne dass jemand „Anmelden" gedrückt hätte. Läge die Identität
+        // dann noch im Zwischenspeicher, meldete der nächste Kaltstart ohne
+        // Empfang (`AuthService.bootstrap()`, `status === 0`) den Vorigen wieder
+        // an — samt seiner Warteschlange. Die Rettung stört das nicht: die
+        // Outbox reiht unter `currentUser()` ein, dem Signal im Speicher.
         identityCache.clear().catch(() => undefined);
-        referenceBundleCache.clear().catch(() => undefined);
-        const next = router.url && router.url !== '/login' ? router.url : '/';
-        router.navigate(['/login'], {queryParams: {next}});
+
+        // #447 (ADR 0037): meldet der Schreibvorgang seinen Fehlschlag selbst —
+        // im Banner dort, wo die Geste stattfand —, dann hält der globale Teil
+        // hier zurück. Er käme sonst zuvor: beim Fang-Create *vor* der Rettung
+        // (die Outbox reiht unter dem angemeldeten Konto ein, Mandantengrenze
+        // aus #160, und das wäre eine Zeile tiefer schon gelöscht — der Fang
+        // mit ihm), und beim Fang-Edit *statt* des Banners, indem er das
+        // Formular unter den Händen wegnimmt und den `unsavedChangesGuard`
+        // (#407) über eine Korrektur fragen lässt, die sonst nirgends steht.
+        //
+        // Bis das Mitglied „Anmelden" drückt, hält der Klient die Sitzung für
+        // gültig, obwohl sie es nicht mehr ist — bewusst: nur so kennt die
+        // Outbox noch das Konto, unter dem der nächste Fang einzureihen ist,
+        // und nur so bleibt das Referenz-Bündel (#158) da, aus dem die
+        // Erfassung weiterläuft. Der Knopf im Banner ruft
+        // `AuthService.sessionExpired()`, das beides nachholt. Jede andere
+        // Antwort des Servers, auch jeder Ladevorgang, räumt unverändert hier
+        // auf.
+        if (!req.context.get(SESSION_EXPIRY_AT_THE_GESTURE)) {
+          authService.currentUser.set(null);
+          // Also clear the org-scoped reference-bundle cache (issue #158) — a
+          // shared device left signed out here must not leave the next
+          // Mitglied's offline boot inheriting this Organisation's cached
+          // reference data.
+          referenceBundleCache.clear().catch(() => undefined);
+          const next = router.url && router.url !== '/login' ? router.url : '/';
+          router.navigate(['/login'], {queryParams: {next}});
+        }
       }
       return throwError(() => err);
     }),
