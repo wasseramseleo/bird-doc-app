@@ -97,7 +97,7 @@ def test_ring_collision_body_is_unchanged_and_carries_its_entry(
     assert body["errors"] == [
         {
             "field": "ring_number",
-            "code": "invalid",
+            "code": "ring_already_first_caught",
             "detail": str(RING_ALREADY_FIRST_CAUGHT),
         }
     ]
@@ -116,9 +116,7 @@ def test_admin_only_403_is_unchanged_and_gains_a_field_less_entry(
     assert response.status_code == 403
     body = response.json()
     assert _without_envelope(body) == {"detail": ADMIN_ONLY_MESSAGE}
-    assert body["errors"] == [
-        {"field": None, "code": "permission_denied", "detail": ADMIN_ONLY_MESSAGE}
-    ]
+    assert body["errors"] == [{"field": None, "code": "admin_only", "detail": ADMIN_ONLY_MESSAGE}]
 
 
 @pytest.mark.django_db
@@ -315,7 +313,7 @@ def test_replayed_capture_rejection_reads_the_same_to_a_month_old_bundle(
     assert body["errors"] == [
         {
             "field": "ring_number",
-            "code": "invalid",
+            "code": "ring_already_first_caught",
             "detail": str(RING_ALREADY_FIRST_CAUGHT),
         }
     ]

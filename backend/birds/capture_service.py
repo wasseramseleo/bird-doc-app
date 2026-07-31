@@ -13,20 +13,25 @@ change."
 from django.db import IntegrityError, transaction
 from django.utils.translation import gettext_lazy as _
 
+from . import error_codes
 from .models import AUW_SCHEME_CODE, DataEntry, Ring, Species, get_auw_central
 
 
 class CaptureValidationError(Exception):
     """A resolved capture violates a creation invariant.
 
-    Carries the offending ``field`` and a human, German ``message`` so a DRF
-    caller can re-raise it as a field error (HTTP 400) and the IWM importer can
-    report it against the offending row.
+    Carries the offending ``field``, a human, German ``message`` and the rule's
+    Domänencode (``birds.error_codes``, ADR 0038) so a DRF caller can re-raise it
+    as a coded field error (HTTP 400) and the IWM importer can report it against
+    the offending row. The code travels on the exception rather than being
+    re-derived per caller: two serializer methods and the importer all translate
+    the same violation, and only the raise site knows which rule it was.
     """
 
-    def __init__(self, field, message):
+    def __init__(self, field, message, code):
         self.field = field
         self.message = message
+        self.code = code
         super().__init__(message)
 
 
@@ -105,11 +110,15 @@ def normalize_ring_size(size, central):
     """
     if central is not None and central.scheme_code == AUW_SCHEME_CODE:
         if size not in Ring.RingSizes.values:
-            raise CaptureValidationError("ring_size", INVALID_AUSTRIAN_RING_SIZE)
+            raise CaptureValidationError(
+                "ring_size", INVALID_AUSTRIAN_RING_SIZE, error_codes.RING_SIZE_INVALID_AUSTRIAN
+            )
         return size
     normalized = (size or "").strip().upper()[:FOREIGN_RING_SIZE_MAX_LENGTH]
     if not normalized:
-        raise CaptureValidationError("ring_size", FOREIGN_RING_SIZE_REQUIRED)
+        raise CaptureValidationError(
+            "ring_size", FOREIGN_RING_SIZE_REQUIRED, error_codes.RING_SIZE_REQUIRED_FOREIGN
+        )
     return normalized
 
 
@@ -215,7 +224,11 @@ def create_capture(
     requested_bird_status = bird_data.get("bird_status", DataEntry.BirdStatus.FIRST_CATCH)
     is_erstfang = requested_bird_status == DataEntry.BirdStatus.FIRST_CATCH
     if (is_erstfang or is_ring_destroyed) and central != projekt_zentrale:
-        raise CaptureValidationError("central", STATUS_REQUIRES_PROJEKT_ZENTRALE)
+        raise CaptureValidationError(
+            "central",
+            STATUS_REQUIRES_PROJEKT_ZENTRALE,
+            error_codes.STATUS_REQUIRES_PROJEKT_ZENTRALE,
+        )
 
     # Conditional Ringgröße validation keyed to the resolved Zentrale: strict
     # Austrian choices under AUW, free text (trimmed/uppercased/capped/non-empty)
@@ -261,7 +274,9 @@ def create_capture(
         if idempotency_key is not None:
             rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)
         if rival_erstfaenge.exists():
-            raise CaptureValidationError("ring_number", RING_ALREADY_FIRST_CAUGHT)
+            raise CaptureValidationError(
+                "ring_number", RING_ALREADY_FIRST_CAUGHT, error_codes.RING_ALREADY_FIRST_CAUGHT
+            )
 
     try:
         with transaction.atomic():
@@ -313,7 +328,11 @@ def create_capture(
             if idempotency_key is not None:
                 rival_erstfaenge = rival_erstfaenge.exclude(idempotency_key=idempotency_key)
             if rival_erstfaenge.exists():
-                raise CaptureValidationError("ring_number", RING_ALREADY_FIRST_CAUGHT) from None
+                raise CaptureValidationError(
+                    "ring_number",
+                    RING_ALREADY_FIRST_CAUGHT,
+                    error_codes.RING_ALREADY_FIRST_CAUGHT,
+                ) from None
         raise
 
 
@@ -335,7 +354,9 @@ def _validate_aves_ignota(species, comment):
     refused before anything is written."""
     if species is not None and species.special_kind == Species.SpecialKind.UNKNOWN_SPECIES:
         if not (comment and comment.strip()):
-            raise CaptureValidationError("comment", AVES_IGNOTA_COMMENT_REQUIRED)
+            raise CaptureValidationError(
+                "comment", AVES_IGNOTA_COMMENT_REQUIRED, error_codes.AVES_IGNOTA_COMMENT_REQUIRED
+            )
 
 
 def _validate_fangmarker(comment, is_dead_recovery, is_non_standard):
@@ -346,4 +367,6 @@ def _validate_fangmarker(comment, is_dead_recovery, is_non_standard):
     written. The caller forces the markers off for a Ring-vernichtet capture, so
     this never fires there."""
     if (is_dead_recovery or is_non_standard) and not (comment and comment.strip()):
-        raise CaptureValidationError("comment", MARKER_COMMENT_REQUIRED)
+        raise CaptureValidationError(
+            "comment", MARKER_COMMENT_REQUIRED, error_codes.MARKER_COMMENT_REQUIRED
+        )
