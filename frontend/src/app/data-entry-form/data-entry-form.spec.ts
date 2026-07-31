@@ -739,6 +739,32 @@ describe('DataEntryFormComponent', () => {
         ...overrides,
       }) as unknown as DataEntry;
 
+    const statusCell = () =>
+      fixture.nativeElement.querySelector('td.mat-column-bird_status') as HTMLElement;
+
+    // #469: die Wiederfang-Historie ist die fünfte Aufrufstelle. Ein Ring
+    // vernichtet steht in der Geschichte derselben Ringnummer — mit dem
+    // Ringstatus, den das Backend geleert hat.
+    it('shows a bare dash and no chip for a Ring-vernichtet row in the history', () => {
+      component.recaptureHistory.set([
+        historyRow({
+          species: { common_name_de: 'Ring Vernichtet', special_kind: 'ring_destroyed' } as never,
+          bird_status: null as never,
+        }),
+      ]);
+      fixture.detectChanges();
+
+      expect(statusCell().textContent!.trim()).toBe('—');
+      expect(statusCell().querySelector('.status-chip')).toBeNull();
+    });
+
+    it('names the Ringstatus of an ordinary history row', () => {
+      component.recaptureHistory.set([historyRow({})]);
+      fixture.detectChanges();
+
+      expect(statusCell().querySelector('.status-chip')!.textContent!.trim()).toBe('Wiederfang');
+    });
+
     const contradictionFlag = () =>
       fixture.nativeElement.querySelector('.sex-contradiction') as HTMLElement | null;
 

@@ -107,6 +107,39 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
     expect(zentraleText(fixture)).toBe('—');
   });
 
+  // #469: der Detail-Dialog ist die vierte der fünf Aufrufstellen. Er holt das
+  // Wort im geteilten Beschriftungsmodul — und bei einem Ring vernichtet, dem
+  // das Backend den Ringstatus geleert hat, ist das ein Gedankenstrich.
+  describe('Ringstatus', () => {
+    const statusCell = (fixture: ComponentFixture<DataEntryDetailDialogComponent>) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('dt')) as HTMLElement[])
+        .find(dt => dt.textContent!.trim() === 'Status')!
+        .nextElementSibling as HTMLElement;
+
+    it('names the Ringstatus of an ordinary capture', async () => {
+      const fixture = await render(baseEntry());
+
+      expect(statusCell(fixture).textContent!.trim()).toBe('Wiederfang');
+    });
+
+    it('shows a bare dash and no badge for a Ring-vernichtet capture', async () => {
+      const entry = baseEntry();
+      entry.species = {
+        id: 'sent',
+        common_name_de: 'Ring Vernichtet',
+        scientific_name: '',
+        special_kind: 'ring_destroyed',
+      } as never;
+      (entry as { bird_status: BirdStatus | null }).bird_status = null;
+
+      const fixture = await render(entry);
+
+      const cell = statusCell(fixture);
+      expect(cell.textContent!.trim()).toBe('—');
+      expect(cell.querySelector('.status-badge')).toBeNull();
+    });
+  });
+
   // Parasit vocabulary (issue #406): a capture migrated off the retired „Milben"
   // code must read as Rote Milben here, not as a raw `red_mites`.
   describe('Parasit labels', () => {

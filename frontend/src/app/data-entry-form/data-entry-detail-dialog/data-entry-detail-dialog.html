@@ -16,12 +16,19 @@
     <h4>Fang</h4>
     <dl>
       <dt>Status</dt>
+      <!-- #469: ohne Ringstatus kein Abzeichen — ein Ring vernichtet ist weder
+           Erstfang noch Wiederfang, und der blanke Gedankenstrich liest sich
+           wie die übrigen leeren Felder dieses Dialogs. -->
       <dd>
-        <span class="status-badge"
-              [class.erstfang]="entry.bird_status === BirdStatus.FirstCatch"
-              [class.wiederfang]="entry.bird_status !== BirdStatus.FirstCatch">
+        @if (entry.bird_status) {
+          <span class="status-badge"
+                [class.erstfang]="entry.bird_status === BirdStatus.FirstCatch"
+                [class.wiederfang]="entry.bird_status === BirdStatus.ReCatch">
+            {{ getStatusLabel(entry.bird_status) }}
+          </span>
+        } @else {
           {{ getStatusLabel(entry.bird_status) }}
-        </span>
+        }
       </dd>
       <dt>Datum & Uhrzeit</dt>
       <dd>{{ entry.date_time | date:'dd.MM.yyyy HH:mm' }}</dd>
