@@ -883,10 +883,10 @@ describe('DataEntryFormComponent', () => {
       const rows = Array.from(
         fixture.nativeElement.querySelectorAll('tr.history-entry'),
       ) as HTMLElement[];
-      expect(rows[0].querySelector('[data-testid="bemerkung-icon"]'))
+      expect(rows[0].querySelector('[data-testid="detail-zeichen"]'))
         .withContext('Fang mit Bemerkung trägt das ⓘ')
         .not.toBeNull();
-      expect(rows[1].querySelector('[data-testid="bemerkung-icon"]'))
+      expect(rows[1].querySelector('[data-testid="detail-zeichen"]'))
         .withContext('Fang ohne Bemerkung trägt kein ⓘ')
         .toBeNull();
     });
@@ -899,7 +899,7 @@ describe('DataEntryFormComponent', () => {
       fixture.detectChanges();
 
       const icon = fixture.nativeElement.querySelector(
-        '[data-testid="bemerkung-icon"]',
+        '[data-testid="detail-zeichen"]',
       ) as HTMLElement;
       // #468: die freie Bemerkung ist als „Bemerkung: …" gekennzeichnet.
       expect(icon.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
@@ -914,7 +914,7 @@ describe('DataEntryFormComponent', () => {
       fixture.detectChanges();
 
       const row = fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
-      expect(row.querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+      expect(row.querySelector('[data-testid="detail-zeichen"]')).not.toBeNull();
       expect(row.querySelector('.mat-badge-content')).toBeNull();
       expect(row.querySelector('[matBadge], .mat-badge')).toBeNull();
     });
@@ -936,7 +936,7 @@ describe('DataEntryFormComponent', () => {
       const markerCell = row.querySelector('[data-testid="marker-cell"]') as HTMLElement;
       const speciesCell = row.querySelector('td.mat-column-species') as HTMLElement;
 
-      for (const testid of ['bemerkung-icon', 'tot-fund-icon', 'non-standard-icon']) {
+      for (const testid of ['detail-zeichen', 'tot-fund-icon', 'non-standard-icon']) {
         expect(markerCell.querySelector(`[data-testid="${testid}"]`))
           .withContext(`${testid} sitzt in der Marker-Spalte`)
           .not.toBeNull();
@@ -1013,7 +1013,7 @@ describe('DataEntryFormComponent', () => {
 
       // Beide Fangmarker plus ⓘ sind gleichzeitig belegbar (ADR 0026).
       const bothSlots = rows[2].querySelectorAll('[data-testid="marker-cell"] .marker-slot');
-      expect(bothSlots[0].querySelector('[data-testid="bemerkung-icon"]')).not.toBeNull();
+      expect(bothSlots[0].querySelector('[data-testid="detail-zeichen"]')).not.toBeNull();
       expect(bothSlots[1].querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
       expect(bothSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
     });
@@ -1022,10 +1022,11 @@ describe('DataEntryFormComponent', () => {
     // „Letzte Fänge". Sie darf aber *nicht* navigieren: der Beringer ist mitten
     // in einer Erfassung und würde den laufenden Fang verlieren.
     it('opens the detail dialog on a row click without navigating away', () => {
-      // MatDialogModule bringt MatDialog als eigenen Provider mit, den die
-      // standalone-Komponente in ihrem Node-Injector auflöst — TestBed.inject()
-      // liefert eine *andere* Instanz. Der Spy muss auf der Instanz sitzen, die
-      // die Komponente tatsächlich benutzt.
+      // #478: der Dialog läuft seit ADR 0042 über den geteilten Öffner, und der
+      // sitzt im Root-Injector. Die Komponente hat `MatDialogModule` deshalb
+      // nicht mehr im `imports`-Array — sonst hätte sie zwei verschiedene
+      // MatDialog-Instanzen —, und dieser Node-Lookup fällt auf dieselbe
+      // Root-Instanz durch, die der Öffner benutzt.
       const open = spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
       const router = TestBed.inject(Router);
       const navigate = spyOn(router, 'navigate');
@@ -1045,6 +1046,40 @@ describe('DataEntryFormComponent', () => {
       // Die laufende Erfassung bleibt stehen — kein Routenwechsel.
       expect(navigate).not.toHaveBeenCalled();
       expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    // #478 (ADR 0042): das Detail-Zeichen ist ein Knopf und führt in *jeder*
+    // Fang-Tabelle zum Detail-Dialog. Hier fallen Tabellen-Aktion und Ziel des
+    // Zeichens zusammen — es gibt zwei Wege zum selben Dialog, und das ist die
+    // Vorhersage der Regel, nicht ihr Bruch. Der Knopf muss seinen Klick
+    // trotzdem schlucken, sonst trägt die Zeile ihn ein zweites Mal und ein
+    // einziger Tipp öffnet den Dialog doppelt.
+    //
+    // Auch dieser Pin liegt auf Tabellenebene: „genau einmal" ist eine Aussage
+    // über die Komposition, nicht über die geteilte Komponente.
+    it('opens the detail dialog exactly once on the Detail-Zeichen', () => {
+      const open = spyOn(TestBed.inject(MatDialog), 'open');
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate');
+
+      const entry = historyRow({ comment: 'linker Flügel verletzt' });
+      component.recaptureHistory.set([entry]);
+      fixture.detectChanges();
+
+      const zeichen = fixture.nativeElement.querySelector(
+        '[data-testid="detail-zeichen"]',
+      ) as HTMLButtonElement;
+      expect(zeichen.tagName).toBe('BUTTON');
+      expect(zeichen.type).toBe('button');
+      expect(zeichen.getAttribute('aria-haspopup')).toBe('dialog');
+
+      zeichen.click();
+      fixture.detectChanges();
+
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(navigate).not.toHaveBeenCalled();
+      const config = open.calls.mostRecent().args[1] as { data: DataEntry };
+      expect(config.data).toBe(entry);
     });
 
     // #405: die Anzahl erscheint als hochgestellter Badge, nicht in Klammern.

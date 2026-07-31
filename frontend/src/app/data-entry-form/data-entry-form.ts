@@ -26,7 +26,13 @@ import {MatNativeDateModule} from '@angular/material/core';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {provideNativeDateAdapter} from '@angular/material/core';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
-import {MatDialog, MatDialogModule} from '@angular/material/dialog';
+// #478 (ADR 0042): `MatDialogModule` ist hier weg. Das Template benutzt keine
+// einzige seiner Direktiven, es brachte aber `MatDialog` als eigenen Provider im
+// Node-Injector mit — und seit der Detail-Dialog über den geteilten Öffner
+// (Root-Injector) läuft, hätte dieselbe Komponente zwei verschiedene
+// `MatDialog`-Instanzen benutzt. `MatDialog` ist `providedIn: 'root'` und
+// braucht das Modul nicht.
+import {MatDialog} from '@angular/material/dialog';
 import {MatIconModule} from '@angular/material/icon';
 import {MatBadgeModule} from '@angular/material/badge';
 
@@ -70,7 +76,7 @@ import {AUW_SCHEME_CODE, Central, PROJEKT_ZENTRALE} from '../models/central.mode
 import {SelectOnTabDirective} from '../core/directives/select-on-tab';
 import {NumberMaskDirective} from '../shared/directives/number-mask';
 import {MatTableModule} from '@angular/material/table';
-import {DataEntryDetailDialogComponent} from './data-entry-detail-dialog/data-entry-detail-dialog';
+import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
 import {
   BeringerCreateDialogComponent,
   BeringerCreateDialogResult,
@@ -171,7 +177,6 @@ const SERVER_REJECTION_FIELD_SET = new Set<string>(SERVER_REJECTION_FIELDS);
     MatCheckboxModule,
     MatSnackBarModule,
     MatTableModule,
-    MatDialogModule,
     MatIconModule,
     MatBadgeModule,
     MarkerSlotsComponent,
@@ -213,6 +218,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   private readonly datePipe = inject(DatePipe);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly detailDialog = inject(DetailDialogOpener);
   private readonly entryRefresh = inject(DataEntryRefreshService);
   private readonly connectivity = inject(ConnectivityService);
   private readonly elementRef = inject(ElementRef<HTMLElement>);
@@ -1635,12 +1641,13 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   }
 
 
+  // #405 / #478 (ADR 0042): der Zeilenklick der Wiederfang-Historie ist die
+  // benannte Abweichung von „der Zeilenklick öffnet den Fang zum Bearbeiten" —
+  // der Beringer steht mitten in einer Erfassung und würde den laufenden Fang
+  // verlieren. Dass hier zwei Wege zum Dialog führen (die Zeile und das
+  // Detail-Zeichen), ist die Vorhersage der Regel, nicht ihr Bruch.
   openDetailDialog(entry: DataEntry): void {
-    this.dialog.open(DataEntryDetailDialogComponent, {
-      data: entry,
-      width: '640px',
-      maxHeight: '90vh',
-    });
+    this.detailDialog.open(entry);
   }
 
   // #24: the Zurücksetzen button. An empty/pristine form resets straight away; a

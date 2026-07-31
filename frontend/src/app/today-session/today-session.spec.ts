@@ -24,7 +24,7 @@ import {IndexedDbStore} from '../core/offline/indexed-db-store';
 import {OutboxService} from '../service/outbox.service';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
-import {DataEntryDetailDialogComponent} from '../data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog';
+import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
 import {ConfirmDialogComponent} from '../shared/confirm-dialog/confirm-dialog';
 
 registerLocaleData(localeDeAt);
@@ -117,9 +117,11 @@ describe('TodaySessionComponent', () => {
   let component: TodaySessionComponent;
   let httpMock: HttpTestingController;
   let dialog: jasmine.SpyObj<MatDialog>;
+  let detailDialog: jasmine.SpyObj<DetailDialogOpener>;
 
   async function setup(project: Project | null = PROJECT): Promise<void> {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
+    detailDialog = jasmine.createSpyObj('DetailDialogOpener', ['open']);
 
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
@@ -139,6 +141,7 @@ describe('TodaySessionComponent', () => {
           },
         },
         {provide: MatDialog, useValue: dialog},
+        {provide: DetailDialogOpener, useValue: detailDialog},
       ],
     }).compileComponents();
 
@@ -544,17 +547,16 @@ describe('TodaySessionComponent', () => {
       fixture.detectChanges();
 
       TestBed.inject(ConnectivityService).markOffline();
-      dialog.open.and.returnValue({afterClosed: () => of(undefined)} as never);
       const router = TestBed.inject(Router);
       const navigateSpy = spyOn(router, 'navigate').and.resolveTo(true);
 
       (fixture.nativeElement.querySelector('.session-row--synced') as HTMLElement).click();
 
       expect(navigateSpy).not.toHaveBeenCalled();
-      expect(dialog.open).toHaveBeenCalledWith(
-        DataEntryDetailDialogComponent,
-        jasmine.objectContaining({data: entry}),
-      );
+      // #478 (ADR 0042): welche Komponente der Detail-Dialog ist, weiß seit
+      // diesem Issue nur noch der geteilte Öffner. „Heute" sagt bloß, *dass* es
+      // dieser Fang ist — die Konfiguration daneben ist nicht mehr ihre Sache.
+      expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
     });
   });
 });
