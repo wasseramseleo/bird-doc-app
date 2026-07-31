@@ -874,7 +874,8 @@ describe('DataEntryFormComponent', () => {
       const icon = fixture.nativeElement.querySelector(
         '[data-testid="bemerkung-icon"]',
       ) as HTMLElement;
-      expect(icon.getAttribute('title')).toBe('linker Flügel verletzt');
+      // #468: die freie Bemerkung ist als „Bemerkung: …" gekennzeichnet.
+      expect(icon.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
       expect(icon.getAttribute('aria-label')).toContain('linker Flügel verletzt');
     });
 
