@@ -1992,7 +1992,7 @@ describe('DataEntryFormComponent', () => {
       f.detectChanges();
 
       expect(f.componentInstance.loading()).toBe(false);
-      expect(f.componentInstance.loadError()).toBe(true);
+      expect(f.componentInstance.loadFailure()).not.toBeNull();
 
       const el = f.nativeElement as HTMLElement;
       expect(el.querySelector('[data-testid="load-error"]')).toBeTruthy();
@@ -2044,8 +2044,71 @@ describe('DataEntryFormComponent', () => {
       f.detectChanges();
 
       expect(f.componentInstance.loading()).toBe(false);
-      expect(f.componentInstance.loadError()).toBe(true);
+      expect(f.componentInstance.loadFailure()).not.toBeNull();
       expect((f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')).toBeTruthy();
+    });
+
+    // #446 (ADR 0037): derselbe Zustand, jetzt das gemeinsame Bauteil aller
+    // sechs Bildschirme. Die Worte kommen aus der Fehlerklasse, „Zur Liste"
+    // bleibt daneben stehen — und „Erneut laden" kommt dazu: bis hierher war
+    // der Ausweg aus einem gescheiterten Laden nur, den Bildschirm zu verlassen
+    // und erneut anzusteuern.
+    it('names what could not be loaded, carries the server sentence and renders no banner (#446)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(
+          { detail: 'Die Datenbank antwortet gerade nicht.' },
+          { status: 500, statusText: 'Server Error' },
+        );
+      f.detectChanges();
+
+      const zustand = (f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')!;
+      expect(zustand.textContent).toContain('Der Eintrag konnte nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      // Ein Laden bekommt kein Banner (ADR 0037, Moment-Achse) — das Banner
+      // sitzt über einem bedienbaren Formular, und hier ist keines.
+      expect((f.nativeElement as HTMLElement).querySelector('[data-testid="failure-banner"]'))
+        .toBeNull();
+    });
+
+    it('keeps "Zur Liste" beside "Erneut laden" in the failed-load state (#446)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+      f.detectChanges();
+
+      const zustand = (f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')!;
+      expect(zustand.querySelector('[data-testid="load-error-back"]')).toBeTruthy();
+      expect(zustand.querySelector('[data-testid="load-error-reload"]')).toBeTruthy();
+    });
+
+    it('reloads the entry on „Erneut laden" and renders the form on success (#446)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+      f.detectChanges();
+
+      (f.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      expect(f.componentInstance.loadFailure()).toBeNull();
+      expect((f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')).toBeNull();
+      expect((f.nativeElement as HTMLElement).querySelector('form')).toBeTruthy();
+      expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
     });
 
     it('saves an edit via PUT, then returns to the list without clearing the form', async () => {

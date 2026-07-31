@@ -170,6 +170,64 @@ describe('ProjectPickerComponent', () => {
     expect(create).toHaveBeenCalled();
   });
 
+  // #446 (ADR 0037): bis hierher toastete ein gescheitertes Laden drei Sekunden
+  // und ließ danach den Leerzustand stehen — der Bildschirm behauptete also
+  // „du bist noch keinem Projekt zugeordnet" oder „dein Konto hat noch keinen
+  // Beringer", obwohl er in Wahrheit nichts wusste. Diese Diagnose ist genau
+  // die, die #415 richtiggestellt hat; sie darf nicht über einen Ladefehler
+  // zurückkommen.
+  describe('In-Place-Ladefehler', () => {
+    /** ngOnInit, mit einem gescheiterten Projekt-GET statt einer Liste. */
+    function renderFailure(ctx: ReturnType<typeof setup>): void {
+      ctx.fixture.detectChanges();
+      ctx.httpMock
+        .expectOne((r) => r.url.endsWith('/projects/'))
+        .flush(
+          {detail: 'Die Datenbank antwortet gerade nicht.'},
+          {status: 500, statusText: 'Server Error'},
+        );
+      ctx.httpMock.expectOne((r) => r.url.endsWith('/scientists/')).flush(page0([]));
+      ctx.fixture.detectChanges();
+    }
+
+    it('renders the in-place error state instead of an empty picker when the load fails', () => {
+      const ctx = setup();
+      signIn('FRE', 'mitglied');
+      renderFailure(ctx);
+
+      const zustand = ctx.fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Projekte konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      // Keine der vier Diagnosen des Leerzustands (#415) darf hier stehen — der
+      // Bildschirm weiß nicht, ob es Projekte gibt.
+      expect(emptyText(ctx)).toBe('');
+      expect(ctx.fixture.nativeElement.textContent).not.toContain(
+        'Du bist noch keinem Projekt zugeordnet',
+      );
+      expect(ctx.fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+      // Ein Laden bekommt kein Banner (ADR 0037, Moment-Achse).
+      expect(ctx.fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads on „Erneut laden" and recovers on success', () => {
+      const ctx = setup();
+      signIn('FRE', 'mitglied');
+      renderFailure(ctx);
+
+      (ctx.fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      ctx.httpMock
+        .expectOne((r) => r.url.endsWith('/projects/'))
+        .flush(page0([makeProject({id: 'p1', title: 'Schilfgürtel Linz'})]));
+      ctx.fixture.detectChanges();
+
+      expect(ctx.fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(ctx.fixture.nativeElement.querySelectorAll('.project-card').length).toBe(1);
+    });
+  });
+
   // --- Empty state: it branches on the two facts the server acts on (#415) ----
   // Projekt visibility is scoped to the account's Beringer, and Projekt creation
   // is Admin-only. The picker used to ignore both and told everyone the same

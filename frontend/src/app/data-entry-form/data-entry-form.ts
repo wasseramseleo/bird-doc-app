@@ -92,8 +92,8 @@ import {
 } from '../core/plausibility/plausibility-acknowledgment';
 import {InfoDialogComponent, InfoDialogData} from '../shared/info-dialog/info-dialog';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
-import {AppIconErrorDirective} from '../shared/app-icons';
 import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
+import {LoadFailureComponent} from '../shared/load-failure/load-failure';
 import {
   AppFailure,
   appFailureOf,
@@ -174,8 +174,8 @@ const SERVER_REJECTION_FIELD_SET = new Set<string>(SERVER_REJECTION_FIELDS);
     MatIconModule,
     MatBadgeModule,
     MarkerSlotsComponent,
-    AppIconErrorDirective,
     FailureBannerComponent,
+    LoadFailureComponent,
   ],
   providers: [provideNativeDateAdapter(), DatePipe, DecimalPipe],
   templateUrl: './data-entry-form.html',
@@ -316,7 +316,11 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // render. Any failure lands here — 5xx, timeout, dropped connection, or
   // status 0 while offline. Only the server path can set it; the queued path
   // reads local state and cannot fail this way.
-  readonly loadError = signal<boolean>(false);
+  // #446 (ADR 0037): aus dem Flag ist die Einordnung geworden — dieselbe, aus
+  // der `saveFailure` seine Worte bezieht. Die Oberflächen bleiben getrennt:
+  // ein gescheitertes *Laden* ersetzt den Inhalt an Ort und Stelle und bekommt
+  // nie ein Banner.
+  readonly loadFailure = signal<AppFailure | null>(null);
   // MO-3 submit feedback: drives the brief green "Gespeichert ✓" button state.
   readonly saved = signal<boolean>(false);
   // #23: a prominent CapsLock warning. Beringer type ring numbers and codes
@@ -972,35 +976,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         return;
       }
 
-      this.loading.set(true);
-      this.loadError.set(false);
-      // #385: the error callback is not optional here. Without it a failed GET
-      // never cleared `loading`, leaving a permanent spinner over an empty
-      // form: Speichern stayed disabled via `entryForm.invalid || loading()`,
-      // the untouched required validators made `onSubmit()` early-return (so
-      // Ctrl+S was dead too), and nothing told the user what had happened.
-      this.apiService.getDataEntry(id).subscribe({
-        next: entry => {
-          this.loadedEntry.set(entry);
-          this.entryForm.patchValue(this.transformToForm(entry));
-          // #273: seed the "last searched ring" key so leaving the Ringnummer on a
-          // saved Wiederfang does not silently re-fetch and clobber edits. A
-          // changed Ringnummer still differs from this key and triggers a lookup.
-          this.lastSearchedRingKey = this.ringLookupKey();
-          // Issue #19/#57: a loaded Sonderart entry must apply the same
-          // collapse / mandatory-comment behaviour as a freshly selected one.
-          this.selectedSpecies.set(entry.species ?? null);
-          this.loading.set(false);
-          // PRD #261 (#267): surface the quiet suffix icons for any stored value
-          // already out of range, without a modal (the norm may still be loading;
-          // loadNorms re-seeds once it lands).
-          this.seedPlausibilityOnLoad();
-        },
-        error: () => {
-          this.loadError.set(true);
-          this.loading.set(false);
-        },
-      });
+      this.loadEntryFromServer(id);
     });
 
     // #338: left/right arrow field-jump must be intercepted in the CAPTURE phase,
@@ -1022,6 +998,58 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     };
     host.addEventListener('keydown', captureArrowNav, true);
     this.destroyRef.onDestroy(() => host.removeEventListener('keydown', captureArrowNav, true));
+  }
+
+  /**
+   * Das GET hinter `/data-entry/:id`.
+   *
+   * #385: der Fehlerzweig ist hier nicht optional. Ohne ihn blieb `loading`
+   * nach einem gescheiterten GET für immer stehen — ein dauerhafter Spinner
+   * über einem leeren Formular: Speichern blieb über `entryForm.invalid ||
+   * loading()` deaktiviert, die unberührten Pflichtvalidatoren ließen
+   * `onSubmit()` früh zurückkehren (auch Strg+S war also tot), und nichts sagte,
+   * was passiert war.
+   *
+   * #446: eine eigene Methode, weil „Erneut laden" genau hierher zurückkommt.
+   */
+  private loadEntryFromServer(id: string): void {
+    this.loading.set(true);
+    this.loadFailure.set(null);
+    this.apiService.getDataEntry(id).subscribe({
+      next: entry => {
+        this.loadedEntry.set(entry);
+        this.entryForm.patchValue(this.transformToForm(entry));
+        // #273: seed the "last searched ring" key so leaving the Ringnummer on a
+        // saved Wiederfang does not silently re-fetch and clobber edits. A
+        // changed Ringnummer still differs from this key and triggers a lookup.
+        this.lastSearchedRingKey = this.ringLookupKey();
+        // Issue #19/#57: a loaded Sonderart entry must apply the same
+        // collapse / mandatory-comment behaviour as a freshly selected one.
+        this.selectedSpecies.set(entry.species ?? null);
+        this.loading.set(false);
+        // PRD #261 (#267): surface the quiet suffix icons for any stored value
+        // already out of range, without a modal (the norm may still be loading;
+        // loadNorms re-seeds once it lands).
+        this.seedPlausibilityOnLoad();
+      },
+      error: (err: unknown) => {
+        this.loadFailure.set(appFailureOf(err));
+        this.loading.set(false);
+      },
+    });
+  }
+
+  /**
+   * „Erneut laden" aus dem In-Place-Fehlerzustand (#446) — der Ausweg der
+   * Klasse *Erneut versuchen* an Ort und Stelle, ohne den Bildschirm zu
+   * verlassen und erneut anzusteuern. Der eingereihte Pfad kommt hier nie an:
+   * er liest lokalen Zustand und kann so gar nicht scheitern.
+   */
+  onReloadEntry(): void {
+    const id = this.entryId();
+    if (id) {
+      this.loadEntryFromServer(id);
+    }
   }
 
   /**

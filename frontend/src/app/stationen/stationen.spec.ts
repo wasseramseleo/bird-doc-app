@@ -7,7 +7,7 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {EMPTY, of} from 'rxjs';
 
 import {StationenComponent} from './stationen';
-import {AppIconEmptyDirective} from '../shared/app-icons';
+import {AppIconEmptyDirective, AppIconErrorDirective} from '../shared/app-icons';
 import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {RingingStation} from '../models/ringing-station.model';
 
@@ -88,6 +88,60 @@ describe('StationenComponent', () => {
     expect(archived).toBeTruthy();
     expect(archived.textContent).toContain('Alt-Stelle');
     expect(archived.textContent).toContain('Archiviert');
+  });
+
+  // #446 (ADR 0037): bis hierher setzte ein gescheitertes Laden nur `loading`
+  // zurück und toastete drei Sekunden — danach stand dieselbe leere Liste da wie
+  // bei einer Organisation ohne Station. „Es sind noch keine Stationen angelegt"
+  // und „Stationen konnten nicht geladen werden" waren nicht zu unterscheiden.
+  describe('In-Place-Ladefehler', () => {
+    it('renders the in-place error state instead of an empty list when the load fails', () => {
+      const {fixture} = setup();
+      const snack = spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/ringing-stations/'))
+        .flush({detail: 'Die Datenbank antwortet gerade nicht.'}, {status: 500, statusText: 'Server Error'});
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Stationen konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      // Der leere Zustand darf hier nicht mitlaufen — das war ja der Defekt.
+      expect(fixture.nativeElement.textContent).not.toContain('keine Stationen angelegt');
+      expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+      // Der kaputte Zustand trägt den Vogel des kaputten, nicht den des leeren.
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
+      // Nichts an einem gescheiterten Laden ist mehr flüchtig — und ein Laden
+      // bekommt kein Banner (ADR 0037, Moment-Achse).
+      expect(snack).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads on „Erneut laden" and recovers on success', () => {
+      const {fixture} = setup();
+      spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/ringing-stations/'))
+        .error(new ProgressEvent('error'), {status: 0, statusText: 'Unknown Error'});
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/ringing-stations/'))
+        .flush(page0([makeStation({handle: 'a', name: 'Aktiv-Stelle'})]));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.station-card').length).toBe(1);
+    });
   });
 
   it('shows an empty state with the named App-Icon when the org has no Station', () => {

@@ -8,6 +8,8 @@ import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
 import {AppIconEmptyDirective} from '../shared/app-icons';
+import {LoadFailureComponent} from '../shared/load-failure/load-failure';
+import {AppFailure, appFailureOf} from '../core/errors/app-failure';
 import {ApiService} from '../service/api.service';
 import {
   EffectiveSpeciesNorm,
@@ -42,6 +44,7 @@ interface NormRow {
     MatDialogModule,
     MatSnackBarModule,
     AppIconEmptyDirective,
+    LoadFailureComponent,
   ],
   templateUrl: './artennormen.html',
   styleUrl: './artennormen.scss',
@@ -53,6 +56,10 @@ export class ArtennormenComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal<boolean>(true);
+  // #446 (ADR 0037): ein gescheitertes Laden ersetzt die Liste an Ort und
+  // Stelle, statt drei Sekunden zu toasten und eine leere Liste stehen zu
+  // lassen — die sah aus wie eine Organisation ganz ohne Artennorm.
+  readonly loadFailure = signal<AppFailure | null>(null);
   private readonly rows = signal<NormRow[]>([]);
   // The Organisation's Empfohlene-Ringgröße overrides (issue #372, ADR 0028),
   // keyed by species_id, so the dialog can pre-fill the current override and the
@@ -182,8 +189,11 @@ export class ArtennormenComponent implements OnInit {
   // The list marks each Art Standard vs angepasst by joining the effective norms
   // (every Art in force) with the Organisation's overrides (the angepasst set),
   // mirroring how Beringer verwalten joins /scientists/ with /mitgliedschaften/.
-  private load(): void {
+  // protected, weil „Erneut laden" aus dem In-Place-Fehlerzustand genau hierher
+  // zurückkommt (#446).
+  protected load(): void {
     this.loading.set(true);
+    this.loadFailure.set(null);
     forkJoin({
       effective: this.api.getEffectiveSpeciesNorms(),
       overrides: this.api.getAllSpeciesNormOverrides(),
@@ -206,11 +216,9 @@ export class ArtennormenComponent implements OnInit {
         );
         this.loading.set(false);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.loading.set(false);
-        this.snackBar.open('Artennormen konnten nicht geladen werden.', 'Schließen', {
-          duration: 3000,
-        });
+        this.loadFailure.set(appFailureOf(err));
       },
     });
   }

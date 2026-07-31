@@ -7,7 +7,7 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {of} from 'rxjs';
 
 import {ArtennormenComponent} from './artennormen';
-import {AppIconEmptyDirective} from '../shared/app-icons';
+import {AppIconEmptyDirective, AppIconErrorDirective} from '../shared/app-icons';
 import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {
   EffectiveSpeciesNorm,
@@ -97,6 +97,19 @@ function flushLoad(
     .flush(page0(ringOverrides));
 }
 
+// Derselbe Ladevorgang, gescheitert: das forkJoin bricht, sobald eines der drei
+// GETs bricht — die beiden übrigen werden dabei abgebrochen und hier nur noch
+// eingesammelt, damit `verify()` nicht über sie stolpert.
+function flushLoadFailure() {
+  httpMock
+    .expectOne((r) => r.method === 'GET' && r.url.endsWith('/species-norms/'))
+    .flush(
+      {detail: 'Die Datenbank antwortet gerade nicht.'},
+      {status: 500, statusText: 'Server Error'},
+    );
+  httpMock.match((r) => r.method === 'GET');
+}
+
 function setup() {
   TestBed.configureTestingModule({
     imports: [ArtennormenComponent],
@@ -162,6 +175,50 @@ describe('ArtennormenComponent', () => {
     expect(
       fixture.nativeElement.querySelector('button[aria-label="Auf Standard zurücksetzen"]'),
     ).toBeNull();
+  });
+
+  // #446 (ADR 0037): bis hierher toastete ein gescheitertes Laden drei Sekunden
+  // und ließ dieselbe leere Liste stehen wie eine Organisation ganz ohne
+  // Artennorm — „noch keine Artennormen in Kraft" und „Artennormen konnten nicht
+  // geladen werden" waren nicht zu unterscheiden.
+  describe('In-Place-Ladefehler', () => {
+    it('renders the in-place error state instead of an empty list when the load fails', () => {
+      const {fixture} = setup();
+      const snack = spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      flushLoadFailure();
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Artennormen konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      expect(fixture.nativeElement.textContent).not.toContain('keine Artennormen');
+      expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
+      expect(snack).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads on „Erneut laden" and recovers on success', () => {
+      const {fixture} = setup();
+      spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      flushLoadFailure();
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      flushLoad([makeNorm({species_id: 'sp-1', species_name: 'Amsel'})]);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.norm-card').length).toBe(1);
+    });
   });
 
   it('shows an empty state when no Artennorm is in force', () => {

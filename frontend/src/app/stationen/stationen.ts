@@ -8,6 +8,8 @@ import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
 import {AppIconEmptyDirective} from '../shared/app-icons';
+import {LoadFailureComponent} from '../shared/load-failure/load-failure';
+import {AppFailure, appFailureOf} from '../core/errors/app-failure';
 import {ApiService} from '../service/api.service';
 import {RingingStation, RingingStationCreatePayload} from '../models/ringing-station.model';
 import {StationFormDialogComponent, StationFormDialogData} from './station-form-dialog/station-form-dialog';
@@ -21,6 +23,7 @@ import {StationFormDialogComponent, StationFormDialogData} from './station-form-
     MatDialogModule,
     MatSnackBarModule,
     AppIconEmptyDirective,
+    LoadFailureComponent,
   ],
   templateUrl: './stationen.html',
   styleUrl: './stationen.scss',
@@ -32,6 +35,11 @@ export class StationenComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal<boolean>(true);
+  // #446 (ADR 0037): ein gescheitertes Laden ersetzt die Liste an Ort und
+  // Stelle. Vorher setzte es nur `loading` zurück und toastete drei Sekunden —
+  // danach stand dieselbe leere Liste da wie bei einer Organisation ohne
+  // Station, und die beiden waren nicht zu unterscheiden.
+  readonly loadFailure = signal<AppFailure | null>(null);
   private readonly stations = signal<RingingStation[]>([]);
 
   // Active Stationen first, then archived; alphabetical within each group so the
@@ -139,8 +147,11 @@ export class StationenComponent implements OnInit {
     });
   }
 
-  private load(): void {
+  // protected, weil „Erneut laden" aus dem In-Place-Fehlerzustand genau hierher
+  // zurückkommt (#446).
+  protected load(): void {
     this.loading.set(true);
+    this.loadFailure.set(null);
     // include_archived so the management list shows retired sites too; the
     // capture picker keeps its default active-only view.
     this.api.getRingingStations(undefined, undefined, true).subscribe({
@@ -148,9 +159,9 @@ export class StationenComponent implements OnInit {
         this.stations.set(res.results);
         this.loading.set(false);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.loading.set(false);
-        this.snackBar.open('Stationen konnten nicht geladen werden.', 'Schließen', {duration: 3000});
+        this.loadFailure.set(appFailureOf(err));
       },
     });
   }

@@ -8,6 +8,8 @@ import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
 import {AppIconEmptyDirective} from '../shared/app-icons';
+import {LoadFailureComponent} from '../shared/load-failure/load-failure';
+import {AppFailure, appFailureOf} from '../core/errors/app-failure';
 import {ApiService} from '../service/api.service';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
@@ -39,6 +41,7 @@ import {
     MatDialogModule,
     MatSnackBarModule,
     AppIconEmptyDirective,
+    LoadFailureComponent,
   ],
   templateUrl: './beringer.html',
   styleUrl: './beringer.scss',
@@ -50,12 +53,20 @@ export class BeringerComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal<boolean>(true);
+  // #446 (ADR 0037): ein gescheitertes Laden ersetzt die Liste an Ort und
+  // Stelle, statt drei Sekunden zu toasten und eine leere Liste stehen zu
+  // lassen — die sah aus wie eine Organisation ganz ohne Beringer.
+  readonly loadFailure = signal<AppFailure | null>(null);
   private readonly beringer = signal<Beringer[]>([]);
 
   // "Mitglieder ohne Beringer-Eintrag": the Organisation's seats that have no
   // Beringer yet. Gap detection is free — a Mitgliedschaft whose `handle` is null
   // IS a member-without-a-Beringer (PRD #205, issue #210).
   readonly gapLoading = signal<boolean>(true);
+  // Der stillste Ladefehler des Bildschirms (#446): das Gap-Panel rendert nur
+  // bei vorhandenen Lücken, ein gescheitertes Laden sah also aus wie „keine
+  // Lücken" — eine Aussage, die der Bildschirm gar nicht treffen konnte.
+  readonly gapLoadFailure = signal<AppFailure | null>(null);
   private readonly gapSeats = signal<Mitgliedschaft[]>([]);
 
   // Stable order for the gap panel: by the seat's username so the reconciliation
@@ -348,16 +359,19 @@ export class BeringerComponent implements OnInit {
     return serverMessage ?? `Konto konnte nicht ${verb} werden.`;
   }
 
-  private load(): void {
+  // protected, weil „Erneut laden" aus dem In-Place-Fehlerzustand genau hierher
+  // zurückkommt (#446).
+  protected load(): void {
     this.loading.set(true);
+    this.loadFailure.set(null);
     this.api.getBeringer().subscribe({
       next: (res) => {
         this.beringer.set(res.results);
         this.loading.set(false);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.loading.set(false);
-        this.snackBar.open('Beringer konnten nicht geladen werden.', 'Schließen', {duration: 3000});
+        this.loadFailure.set(appFailureOf(err));
       },
     });
   }
@@ -365,16 +379,17 @@ export class BeringerComponent implements OnInit {
   // Reads the COMPLETE, paged-through seat list and keeps only the gaps
   // (handle === null). Paging matters: an AC requires the panel to list exactly
   // ALL handle==null seats, so a first-page-only read could miss gaps.
-  private loadGaps(): void {
+  protected loadGaps(): void {
     this.gapLoading.set(true);
+    this.gapLoadFailure.set(null);
     this.api.getAllMitgliedschaften().subscribe({
       next: (seats) => {
         this.gapSeats.set(seats.filter((seat) => seat.handle === null));
         this.gapLoading.set(false);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.gapLoading.set(false);
-        this.snackBar.open('Konten konnten nicht geladen werden.', 'Schließen', {duration: 3000});
+        this.gapLoadFailure.set(appFailureOf(err));
       },
     });
   }

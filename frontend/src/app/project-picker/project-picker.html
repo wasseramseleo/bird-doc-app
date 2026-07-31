@@ -12,7 +12,16 @@
     }
   </header>
 
-  @if (loading()) {
+  <!-- #446 (ADR 0037): der kaputte Zustand steht *an der Stelle* des Pickers und
+       zuerst. Sonst rendert der Leerzustand darunter eine seiner vier Diagnosen
+       (#415) — eine Aussage über Beringer und Rolle, die nach einem
+       gescheiterten Laden schlicht nicht belegt ist. -->
+  @if (loadFailure(); as failure) {
+    <app-load-failure
+      [failure]="failure"
+      titel="Projekte konnten nicht geladen werden."
+      (reload)="load()"></app-load-failure>
+  } @else if (loading()) {
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (projects().length === 0) {
     <div class="picker__empty">
