@@ -20,6 +20,7 @@ import {RingSize} from '../models/ring.model';
 import {AuthService} from '../service/auth.service';
 import {ConnectivityService} from '../core/offline/connectivity';
 import {OutboxStoreService} from '../core/offline/outbox-store';
+import {IndexedDbStore} from '../core/offline/indexed-db-store';
 import {OutboxService} from '../service/outbox.service';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
@@ -172,10 +173,10 @@ describe('TodaySessionComponent', () => {
 
   // Both the reference-cache read (species/Station/Beringer display lookup)
   // and, indirectly, the queued-entry resolution write through to the real
-  // (unpatched by Zone) browser IndexedDB — only real elapsed time observes
-  // their completion (same pattern as offline-readiness.spec.ts).
+  // (unpatched by Zone) browser IndexedDB — the store reports when that work is
+  // done (issue #464), which a fixed 20 ms budget only guessed at.
   function settle(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 20));
+    return TestBed.inject(IndexedDbStore).whenIdle();
   }
 
   afterEach(async () => {

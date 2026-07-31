@@ -21,7 +21,17 @@ From `frontend/`:
 CHROME_BIN=/usr/bin/google-chrome ./node_modules/.bin/ng test --watch=false --browsers=ChromeHeadless
 ```
 
-The builder is `@angular/build:karma` (no `karma.conf.js`, no `src/test.ts`). The suite finishes in **~3 seconds**, exits **0**, and leaves **no** lingering `ng`/`karma`/`ChromeHeadless` processes.
+The builder is `@angular/build:karma` (no `karma.conf.js`, no `src/test.ts`). The suite exits **0** and leaves **no** lingering `ng`/`karma`/`ChromeHeadless` processes.
+
+**Waiting for IndexedDB in a spec — never with a timer (issue #464).** IndexedDB is not patched by Zone, so neither `fixture.whenStable()` nor a plain microtask `await` observes an offline read/write finishing. The seam is `IndexedDbStore.whenIdle()`, which resolves once nothing is in flight:
+
+```ts
+function settle(): Promise<void> {
+  return TestBed.inject(IndexedDbStore).whenIdle();
+}
+```
+
+Do **not** reach for `await new Promise((r) => setTimeout(r, 20))`. That was the old pattern and it is what made the suite wander: a fixed wall-clock *budget* is a bet that the machine is not momentarily busy, and across ~1300 specs that bet was lost often enough to drop one or two specs — at a *different* place every run, so every red run read as a fresh regression. (A bare `setTimeout(…, 0)` to yield a turn is fine and still common here — the problem is waiting a *duration*, not yielding.) `whenIdle()` covers work already in flight or queued within a few turns of it; a spec waiting on something further downstream — an HTTP response that only then touches the store — still has to await that other thing itself. Note that `Error: IndexedDB blocked` and `Error: quota exceeded` in the log are **deliberate spec fixtures** (`auth.service.spec.ts`, `data-access-facade.service.spec.ts`, `reference-cache.service.spec.ts` inject exactly those rejections to test degradation) — they are expected output, not symptoms.
 
 **Invocation rules — follow these or the run will appear to "hang":**
 - Call the **direct binary `./node_modules/.bin/ng`** — do **NOT** use `npx ng test`. The RTK hook rewrites `npx ...` to `rtk npx ...`, and ng test wrapped by the rtk proxy **hangs until timeout and emits zero output** (this is why "ng test produces no output even in the foreground"). The direct binary is passed through unchanged by rtk, so output streams normally. (As a backstop, `npx` is in `exclude_commands` in `~/.config/rtk/config.toml`, but the env-var prefix above defeats that match — always use the direct binary.)

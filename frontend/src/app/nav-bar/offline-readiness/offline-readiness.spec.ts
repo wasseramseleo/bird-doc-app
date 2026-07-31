@@ -7,6 +7,7 @@ import {Subject, of} from 'rxjs';
 
 import {OfflineReadiness} from './offline-readiness';
 import {ReferenceBundleCacheService} from '../../core/offline/reference-bundle-cache';
+import {IndexedDbStore} from '../../core/offline/indexed-db-store';
 import {OfflineBundle} from '../../models/offline-bundle.model';
 import {APP_RELOAD, AppUpdateService} from '../../service/app-update.service';
 import {UnsavedChangesService} from '../../service/unsaved-changes.service';
@@ -95,9 +96,10 @@ function emitVersionReady(swUpdate: FakeSwUpdate): void {
 
 /** The refresh chain writes through to the real (unpatched by Zone) browser
  * IndexedDB, so neither `fixture.whenStable()` nor a plain microtask await
- * observes its completion — only real elapsed time does. */
+ * observes its completion. The store reports its own quiescence instead
+ * (issue #464) — a fixed wall-clock budget was a race the suite kept losing. */
 function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
+  return TestBed.inject(IndexedDbStore).whenIdle();
 }
 
 /** Waits for a condition instead of guessing at a delay. How long that real

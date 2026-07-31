@@ -74,6 +74,159 @@ describe('IndexedDbStore', () => {
     expect(result).toEqual({foo: 'bar'});
   });
 
+  describe('a blocked open (issue #464)', () => {
+    // `blocked` fires when an open needs a version change while an older
+    // connection is still open. Unhandled, the request neither succeeds nor
+    // errors — it simply hangs, and whoever awaited it hangs with it. That is
+    // the one failure mode a spec can never recover from, so it must reject.
+    // Only the *first* open blocks — every later one is the real thing. The
+    // shared `afterEach` above still has to be able to clean up, and a spy that
+    // blocked forever would take it down with an error that says nothing.
+    function blockOnlyTheFirstOpen(): void {
+      const originalOpen = indexedDB.open.bind(indexedDB);
+      let attempt = 0;
+      spyOn(indexedDB, 'open').and.callFake((name: string, version?: number): IDBOpenDBRequest => {
+        if (++attempt > 1) {
+          return originalOpen(name, version);
+        }
+        const request = {error: null} as unknown as IDBOpenDBRequest;
+        queueMicrotask(() => request.onblocked?.(new Event('blocked') as IDBVersionChangeEvent));
+        return request;
+      });
+    }
+
+    it('rejects instead of hanging when the open is blocked by an older connection', async () => {
+      blockOnlyTheFirstOpen();
+
+      await expectAsync(store.get('identity', 'k1')).toBeRejected();
+    });
+
+    it('closes the connection a blocked open still hands back once it completes', async () => {
+      // `blocked` does not cancel the open — the browser finishes it as soon as
+      // the older connection goes. By then the caller has been rejected and
+      // nobody holds the result, so it has to be closed here or it is exactly
+      // the leaked handle this whole change is about.
+      const close = spyOn(IDBDatabase.prototype, 'close').and.callThrough();
+      const originalOpen = indexedDB.open.bind(indexedDB);
+      let blockedRequest: IDBOpenDBRequest | undefined;
+      let attempt = 0;
+      spyOn(indexedDB, 'open').and.callFake((name: string, version?: number): IDBOpenDBRequest => {
+        const request = originalOpen(name, version);
+        if (++attempt === 1) {
+          blockedRequest = request;
+          queueMicrotask(() => request.onblocked?.(new Event('blocked') as IDBVersionChangeEvent));
+        }
+        return request;
+      });
+
+      await expectAsync(store.get('identity', 'k1')).toBeRejected();
+      // The browser never cancelled that open — wait for it to finish anyway.
+      while (blockedRequest!.readyState !== 'done') {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      expect(blockedRequest!.result).toBeTruthy();
+      expect(close).toHaveBeenCalled();
+    });
+
+    it('lets the next call retry, rather than wedging the store for the rest of the page', async () => {
+      blockOnlyTheFirstOpen();
+
+      await expectAsync(store.put('identity', 'k1', {foo: 'bar'})).toBeRejected();
+
+      await store.put('identity', 'k1', {foo: 'bar'});
+      expect(await store.get('identity', 'k1')).toEqual({foo: 'bar'});
+    });
+  });
+
+  describe('closing the connection (issue #464)', () => {
+    // In the browser this fires once, at app teardown: one page, one
+    // connection, exactly as before. Under Karma every `TestBed` builds a new
+    // root injector and so a new `IndexedDbStore`, and each reset destroys it —
+    // which is what stops ~1300 specs from stacking up open handles on the one
+    // shared `birddoc-offline` and blocking each other's opens.
+    it('closes the open connection when the injector that created it is destroyed', async () => {
+      await store.put('identity', 'k1', {foo: 'bar'});
+      const close = spyOn(IDBDatabase.prototype, 'close').and.callThrough();
+
+      TestBed.resetTestingModule();
+      // The close waits on the open it is closing, so it lands a turn later.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(close).toHaveBeenCalled();
+    });
+
+    it('re-opens on the next call after being closed, rather than handing back a dead handle', async () => {
+      await store.put('identity', 'k1', {foo: 'bar'});
+
+      store.ngOnDestroy();
+
+      expect(await store.get('identity', 'k1')).toEqual({foo: 'bar'});
+    });
+  });
+
+  describe('whenIdle() (issue #464)', () => {
+    // The seam that lets a spec await the *real* IndexedDB round-trip instead
+    // of guessing at it with `setTimeout(…, 20)`. The guess is what made the
+    // suite wander: the work is unpatched by Zone, so neither `whenStable()`
+    // nor a microtask await observes it, and a 20 ms budget is simply lost
+    // whenever the machine is momentarily busy.
+    it('does not resolve until an in-flight write has actually completed', async () => {
+      let written = false;
+      const write = store.put('identity', 'k1', {foo: 'bar'}).then(() => {
+        written = true;
+      });
+
+      await store.whenIdle();
+
+      expect(written).toBe(true);
+      await write;
+    });
+
+    it('also waits out work queued by the completion of earlier work', async () => {
+      let chained = false;
+      void store.put('identity', 'k1', {foo: 'bar'}).then(() =>
+        store.get('identity', 'k1').then(() => {
+          chained = true;
+        }),
+      );
+
+      await store.whenIdle();
+
+      expect(chained).toBe(true);
+    });
+
+    it('resolves when the store has nothing in flight', async () => {
+      await expectAsync(store.whenIdle()).toBeResolved();
+    });
+
+    it('gives up with a sentence naming the cause rather than spinning forever', async () => {
+      // An open that never settles either way — the one shape that would
+      // otherwise leave `whenIdle()` polling for the rest of the run. Only the
+      // first open hangs, so the shared `afterEach` can still clean up.
+      const originalOpen = indexedDB.open.bind(indexedDB);
+      let attempt = 0;
+      spyOn(indexedDB, 'open').and.callFake((name: string, version?: number): IDBOpenDBRequest =>
+        ++attempt > 1
+          ? originalOpen(name, version)
+          : ({error: null} as unknown as IDBOpenDBRequest),
+      );
+      void store.get('identity', 'k1');
+
+      // Elapsed time, simulated: the ceiling is 10 s and no spec should sit
+      // through it. The first reading sets the deadline, every later one is
+      // already past it.
+      const startedAt = Date.now();
+      let reading = 0;
+      spyOn(Date, 'now').and.callFake(() => (++reading > 1 ? startedAt + 11_000 : startedAt));
+
+      await expectAsync(store.whenIdle()).toBeRejectedWithError(/never settled/);
+
+      // Drop the hung open so the cleanup below re-opens for real.
+      store.ngOnDestroy();
+    });
+  });
+
   describe('getAll() (issue #160, the offline outbox)', () => {
     afterEach(async () => {
       await store.delete('outbox', 'o1');
