@@ -54,9 +54,14 @@ function entry(overrides: Partial<DataEntry> = {}): DataEntry {
 describe('RecentEntriesCacheService', () => {
   let service: RecentEntriesCacheService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     TestBed.configureTestingModule({});
     service = TestBed.inject(RecentEntriesCacheService);
+    // The store is the real browser IndexedDB, shared by the whole suite — so the
+    // first test *establishes* the empty database instead of assuming it (#402).
+    // A backstop against a future spec that leaves a row behind, not the main fix:
+    // a clear cannot remove a write that is still in flight.
+    await service.clear();
   });
 
   afterEach(async () => {
