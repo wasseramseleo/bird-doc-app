@@ -175,7 +175,12 @@
     </div>
   </div>
 
+  <!-- #466: der Zuhörer am Formular, der sich das zuletzt fokussierte Eingabefeld
+       merkt. Die beiden Aktionen des Stundenwechsel-Banners geben den Fokus
+       dorthin zurück; die Banner-Knöpfe selbst stehen zwar in diesem Formular,
+       tragen aber kein formControlName und werden deshalb nicht aufgezeichnet. -->
   <form [formGroup]="entryForm" (ngSubmit)="onSubmit()" class="data-entry-form" novalidate
+        (focusin)="rememberFocusedControl($event)"
         [class.edit-mode]="isEditMode()"
         [class.non-standard-mode]="isNonStandard()">
     @if (capsLockOn()) {

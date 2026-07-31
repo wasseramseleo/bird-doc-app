@@ -156,4 +156,26 @@ test.describe('Keyboard workflow happy-path (#23)', () => {
     // Create mode clears the form after a successful save.
     await expect(page.locator('input[formControlName="ring_number"]')).toHaveValue('');
   });
+
+  // #466: die Ringstatus-Taste trägt über den Ring-Block hinweg — sie überspringt,
+  // was die App selbst gefüllt hat. Diese Art trägt keine Empfohlene Ringgröße,
+  // also hält der Sprung genau dort: dem einzigen Feld des Blocks, zu dem die App
+  // nichts beizutragen hat. Der Tastatur-Durchlauf über Zentrale und Ringgröße
+  // entfällt damit.
+  test('die Ringstatus-Taste „w" trägt den Fokus über den Ring-Block auf die Ringgröße', async ({
+    page,
+  }) => {
+    await selectProject(page, PROJECT.title);
+    await page.goto('/data-entry');
+
+    const status = page.locator('mat-select[formControlName="bird_status"]');
+    await status.focus();
+    await status.press('w');
+
+    await expect(status).toContainText('Wiederfang');
+    await expect(page.locator('mat-select[formControlName="ring_size"]')).toBeFocused();
+    // Übersprungen, nicht übergangen: die Zentrale ist auf dem Wiederfang sehr wohl
+    // bedienbar — nur eben schon vorbelegt.
+    await expect(page.locator('input[formControlName="central"]')).toBeEnabled();
+  });
 });
