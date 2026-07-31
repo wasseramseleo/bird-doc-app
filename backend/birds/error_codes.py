@@ -30,12 +30,15 @@ five ``error_messages`` dictionaries are the exception: each replaces the prose
 *and* names a rule of this domain (a Station needs an Ortskodierung; ``ZZZ`` is
 not a Zentrale), so each carries its own code.
 
-Exactly one code cannot reach the wire, by construction and noted at its entry
-below: ``last_admin`` on the **removal** path, whose body is a JSON list with no
-sibling key to hang the envelope on. Reshaping that body to make room would break
-the ADR 0033 byte identity a month-old bundle replays into; the German sentence
-still travels, which is the fallback ADR 0038 prescribes anyway, and the same
-rule *is* published on the demote path, whose body is a mapping.
+**Two entries do not reach a client as written, both noted at their entry below.**
+``last_admin`` is published on the demote path but not on the **removal** one,
+whose body is a JSON list with no sibling key to hang the envelope on: reshaping
+it would break the ADR 0033 byte identity a month-old bundle replays into, and
+the German sentence still travels, which is ADR 0038's own fallback.
+``ring_size_required_foreign`` reaches **no** wire at all — every caller is
+stopped before it (the DRF field refuses a blank Größe as ``blank``; the IWM
+importer's split cannot produce one), so it guards the *service seam* rather than
+the client contract. Everything else here is a client-facing contract.
 """
 
 from rest_framework.exceptions import ErrorDetail
@@ -51,6 +54,16 @@ RING_ALREADY_FIRST_CAUGHT = "ring_already_first_caught"
 RING_SIZE_INVALID_AUSTRIAN = "ring_size_invalid_austrian"
 
 # Under any other Zentrale the Größe is free text — but never empty.
+#
+# **Reaches no client, by construction** (the second of the two exceptions named
+# in the module docstring). ``DataEntrySerializer.ring_size`` is a plain
+# ``CharField``: a blank Größe is DRF's own ``blank`` — the correct *condition* —
+# long before ``normalize_ring_size`` runs, and the IWM importer's
+# ``^([A-Za-z]+)(\d+)$`` split refuses an unsplittable Ringnummer one step earlier
+# rather than handing an empty Größe on. So this code guards the **service seam**
+# — ``normalize_ring_size`` is shared and public, and the next caller may well
+# reach it — not the client contract, and it is asserted at that seam
+# (``test_error_codes.py``) with the reason pinned through the API beside it.
 RING_SIZE_REQUIRED_FOREIGN = "ring_size_required_foreign"
 
 # An Erstfang or a 'Ring vernichtet' record draws a fresh number from the
@@ -153,6 +166,22 @@ STATION_OTHER_ORGANISATION = "station_other_organisation"
 
 
 # --- IWM-Import (ADR 0013, issue #125) ----------------------------------------
+# Two kinds of rejection live here. The three below are **whole-file**: the
+# upload never becomes a report, so they travel as an ordinary 400 with the
+# ``errors`` envelope. The rest are **per-row** — the ones an Admin actually acts
+# on, one per bad row — and they travel inside the report's own ``errors`` list as
+# ``{row, reason, code}`` (the ``code`` additive; the Import-Dialog reads
+# ``row``/``reason``). A row rejection is a rejection: leaving that list uncoded
+# while every other surface names its cause is precisely the half-coded API ADR
+# 0038 rules out. The report's ``warnings`` list is deliberately **not** coded —
+# a Projekt-Methode divergence blocks nothing and is not a rejection.
+#
+# A row that fails inside the shared capture service publishes *that* service's
+# code (``aves_ignota_comment_required``, ``ring_already_first_caught``, … — it
+# rides on ``CaptureValidationError.code``), and an unknown Zentralen-Code in the
+# „Ring" column publishes ``central_unknown``, exactly as the write path does: a
+# code names a cause, not a call site. Only the causes the importer alone can
+# have are named below.
 
 # No file came with the multipart upload.
 FILE_REQUIRED = "file_required"
@@ -165,6 +194,45 @@ IWM_FILE_UNREADABLE = "iwm_file_unreadable"
 # More data rows than one import may carry. Split the file or ask an Operator:in
 # for the bulk-load — nothing was written and nothing truncated.
 IWM_ROW_CAP_EXCEEDED = "iwm_row_cap_exceeded"
+
+# The row's „Ringnummer" cell is empty — nothing to identify the ring by.
+IWM_ROW_RING_NUMBER_MISSING = "iwm_row_ring_number_missing"
+
+# The Ringnummer is not a valid Austrian one: it does not split into letters +
+# digits, or its leading letters are not an Austrian Ringgröße. A typo to fix.
+IWM_ROW_RING_NUMBER_INVALID = "iwm_row_ring_number_invalid"
+
+# A **foreign** Zentrale's Ringnummer in an exotic format the generic
+# letters+digits split cannot take apart. A different way out from the code above:
+# nothing in the file can be corrected, the entry is recorded by hand (US 23).
+IWM_ROW_RING_NUMBER_UNSPLITTABLE = "iwm_row_ring_number_unsplittable"
+
+# The row carries no Datum.
+IWM_ROW_DATE_MISSING = "iwm_row_date_missing"
+
+# Datum and/or Uhrzeit are present but not readable as a date/time — typically a
+# text cell where the sheet wants a date.
+IWM_ROW_DATE_INVALID = "iwm_row_date_invalid"
+
+# The row carries no Art.
+IWM_ROW_SPECIES_MISSING = "iwm_row_species_missing"
+
+# The Art is not in the Artenliste. Distinct from the above: the cell is filled,
+# the name is simply not one this backend knows.
+IWM_ROW_SPECIES_UNKNOWN = "iwm_row_species_unknown"
+
+# The row names no Beringer:in. (An *unfamiliar* Kürzel is auto-created, issue
+# #121 — only an absent one is a refusal.)
+IWM_ROW_BERINGER_MISSING = "iwm_row_beringer_missing"
+
+# The row names neither Ort nor Ortskodierung, so no Station can be resolved or
+# auto-created.
+IWM_ROW_PLACE_MISSING = "iwm_row_place_missing"
+
+# The unfamiliar Kürzel is already owned by a Beringer:in in another Organisation
+# (``Scientist.handle`` is globally unique), so it cannot be auto-created here.
+# One row is refused; the import is not aborted.
+IWM_ROW_BERINGER_HANDLE_TAKEN = "iwm_row_beringer_handle_taken"
 
 
 # --- Anmeldung und Sitzung (ADR 0008) -----------------------------------------

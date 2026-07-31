@@ -47,6 +47,14 @@ An unknown species, a missing required field (no ring number / no date) and a
 blank Aves-ignota Bemerkung are blocking errors, as is a cross-Organisation
 Kürzel collision (``_RowError``). Duplicate detection, the row cap and
 Projekt-method warnings are enforced as described above.
+
+Every blocking row error carries its **Domänencode** beside its German sentence
+(``{row, reason, code}`` — ADR 0038, ``birds/error_codes.py``): the ones the
+shared capture service raises publish *its* code, carried across on
+``CaptureValidationError.code`` so an imported row and a typed capture name the
+same rule, and the importer's own refusals carry the ``iwm_row_*`` codes. The
+``warnings`` list stays uncoded — a Projekt-Methode divergence blocks nothing and
+is not a rejection.
 """
 
 import re
@@ -58,6 +66,7 @@ import openpyxl
 from django.db import transaction
 from django.utils.timezone import make_aware
 
+from . import error_codes
 from .capture_service import CaptureValidationError, create_capture, validate_capture
 
 # The Tot-Fund's Umstand code is taken from the exporter rather than restated
@@ -156,7 +165,7 @@ def build_import_preview(content, project):
     errors = []
     for resolved in rows:
         if resolved.error is not None:
-            errors.append({"row": resolved.row, "reason": resolved.error})
+            errors.append(_row_error(resolved.row, resolved.error, resolved.code))
             continue
         key = _capture_key(resolved.kwargs)
         if key in seen:
@@ -205,7 +214,7 @@ def commit_import(content, project, *, enforce_cap=True):
     errors = []
     for resolved in rows:
         if resolved.error is not None:
-            errors.append({"row": resolved.row, "reason": resolved.error})
+            errors.append(_row_error(resolved.row, resolved.error, resolved.code))
             continue
         key = _capture_key(resolved.kwargs)
         if key in seen:
@@ -216,7 +225,11 @@ def commit_import(content, project, *, enforce_cap=True):
             seen.add(key)
             created += 1
         except CaptureValidationError as exc:
-            errors.append({"row": resolved.row, "reason": str(exc.message)})
+            # The rules only the write can see (the Erstfang collision, the
+            # Ringgröße normalisation). The code rides on the exception, so the
+            # row publishes exactly what the online capture write publishes for
+            # the same violation — a code names a cause, not a call site.
+            errors.append(_row_error(resolved.row, str(exc.message), exc.code))
     _adopt_context(project, adoptions)
     return {
         "created": created,
@@ -250,16 +263,30 @@ def _existing_keys(project):
     }
 
 
+def _row_error(row, reason, code):
+    """One entry of a report's ``errors`` list.
+
+    The German ``reason`` is what the Import-Dialog shows; the ``code`` is the
+    rule it names (ADR 0038), so a client acts on the cause instead of comparing
+    sentences. The key is **additive** — the Dialog reads ``row``/``reason`` and
+    is unmoved by it — and it is never ``None``: every blocking row cause has a
+    code, because a half-coded list cannot be told from an uncoded one."""
+    return {"row": row, "reason": reason, "code": code}
+
+
 class _ResolvedRow:
     """One data row resolved to either capture kwargs (``error is None``) or a
-    blocking ``error`` reason, tagged with its 1-based sheet row number."""
+    blocking ``error`` reason **and its Domänencode**, tagged with its 1-based
+    sheet row number. The code travels with the reason from the moment the row is
+    refused, because only the refusing branch knows which rule it was."""
 
-    __slots__ = ("row", "kwargs", "error")
+    __slots__ = ("row", "kwargs", "error", "code")
 
-    def __init__(self, row, kwargs=None, error=None):
+    def __init__(self, row, kwargs=None, error=None, code=None):
         self.row = row
         self.kwargs = kwargs
         self.error = error
+        self.code = code
 
 
 class _RowError(Exception):
@@ -267,10 +294,12 @@ class _RowError(Exception):
     auto-create blocked by a constraint (e.g. a Kürzel already owned by another
     Organisation, ``Scientist.handle`` being globally unique). Caught in
     ``_resolve_row`` and turned into a blocking ``_ResolvedRow`` error so one bad
-    row never aborts the whole atomic import."""
+    row never aborts the whole atomic import. Carries the rule's Domänencode the
+    same way ``CaptureValidationError`` does — the raise site is what knows it."""
 
-    def __init__(self, reason):
+    def __init__(self, reason, code):
         self.reason = reason
+        self.code = code
         super().__init__(reason)
 
 
@@ -360,7 +389,8 @@ class _Resolver:
             if Scientist.objects.filter(handle=kuerzel).exists():
                 raise _RowError(
                     f"Beringer:in-Kürzel {kuerzel!r} ist bereits in einer anderen "
-                    "Organisation vergeben und kann nicht angelegt werden."
+                    "Organisation vergeben und kann nicht angelegt werden.",
+                    error_codes.IWM_ROW_BERINGER_HANDLE_TAKEN,
                 )
             self.created_beringer.append(kuerzel)
             self._new_beringer[kuerzel] = (
@@ -594,43 +624,63 @@ def _resolve_row(values, header_index, row_num, project, resolver):
 
     ringnummer = text("Ringnummer")
     if not ringnummer:
-        return _ResolvedRow(row_num, error="Ringnummer fehlt.")
+        return _ResolvedRow(
+            row_num, error="Ringnummer fehlt.", code=error_codes.IWM_ROW_RING_NUMBER_MISSING
+        )
     # The "Ring" column names the ring's issuing Zentrale (an EURING scheme code);
     # absent/blank means the domestic AUW (backward compatible). An unknown code is
-    # rejected so a typo surfaces instead of corrupting data (US 24).
+    # rejected so a typo surfaces instead of corrupting data (US 24). That is the
+    # resolver's only refusal, and it is the same *cause* the write path publishes
+    # as ``central_unknown`` — a code names a cause, not a call site — so the
+    # caller names it here rather than the two-tuple carrying it.
     central, central_error = resolver.central_for(text("Ring"))
     if central_error is not None:
-        return _ResolvedRow(row_num, error=central_error)
+        return _ResolvedRow(row_num, error=central_error, code=error_codes.CENTRAL_UNKNOWN)
     parsed = _split_ringnummer(ringnummer, central)
     if parsed is None:
         # AUW keeps its historical message; a foreign row whose Ringnummer cannot
         # be split by the generic letters+digits regex (an exotic format) is
         # rejected with guidance to record it manually — never a silent
-        # mis-import (US 23).
+        # mis-import (US 23). Two codes, because the ways out differ: fix the
+        # Nummer, versus record this one entry by hand.
         if central.scheme_code == AUW_SCHEME_CODE:
-            return _ResolvedRow(row_num, error=f"Ungültige Ringnummer: {ringnummer!r}.")
+            return _ResolvedRow(
+                row_num,
+                error=f"Ungültige Ringnummer: {ringnummer!r}.",
+                code=error_codes.IWM_ROW_RING_NUMBER_INVALID,
+            )
         return _ResolvedRow(
-            row_num, error=_foreign_unsplittable_message(ringnummer, central.scheme_code)
+            row_num,
+            error=_foreign_unsplittable_message(ringnummer, central.scheme_code),
+            code=error_codes.IWM_ROW_RING_NUMBER_UNSPLITTABLE,
         )
     ring_size, ring_number = parsed
 
     datum = _cell(values, header_index, "Datum")
     if _is_blank(datum):
-        return _ResolvedRow(row_num, error="Datum fehlt.")
+        return _ResolvedRow(row_num, error="Datum fehlt.", code=error_codes.IWM_ROW_DATE_MISSING)
     date_time = _combine_datetime(datum, _cell(values, header_index, "Uhrzeit"))
     if date_time is None:
-        return _ResolvedRow(row_num, error="Ungültiges Datum bzw. Uhrzeit.")
+        return _ResolvedRow(
+            row_num, error="Ungültiges Datum bzw. Uhrzeit.", code=error_codes.IWM_ROW_DATE_INVALID
+        )
 
     art = text("Art")
     if not art:
-        return _ResolvedRow(row_num, error="Art fehlt.")
+        return _ResolvedRow(row_num, error="Art fehlt.", code=error_codes.IWM_ROW_SPECIES_MISSING)
     species = resolver.species(art)
     if species is None:
-        return _ResolvedRow(row_num, error=f"Unbekannte Art (nicht in der Artenliste): {art!r}.")
+        return _ResolvedRow(
+            row_num,
+            error=f"Unbekannte Art (nicht in der Artenliste): {art!r}.",
+            code=error_codes.IWM_ROW_SPECIES_UNKNOWN,
+        )
 
     kuerzel = text("BeringerIn")
     if not kuerzel:
-        return _ResolvedRow(row_num, error="Beringer:in fehlt.")
+        return _ResolvedRow(
+            row_num, error="Beringer:in fehlt.", code=error_codes.IWM_ROW_BERINGER_MISSING
+        )
 
     # The Tot-Fund Fangmarker, reconstructed from the row's own Umstand 08 (ADR
     # 0034) — the export's inverse, so a Tot-Fund survives the round-trip as the
@@ -645,7 +695,11 @@ def _resolve_row(values, header_index, row_num, project, resolver):
     place_code = text("Ortskodierung")
     name = text("Ort")
     if not place_code and not name:
-        return _ResolvedRow(row_num, error="Ort bzw. Ortskodierung fehlt.")
+        return _ResolvedRow(
+            row_num,
+            error="Ort bzw. Ortskodierung fehlt.",
+            code=error_codes.IWM_ROW_PLACE_MISSING,
+        )
     # An unfamiliar Kürzel / Ort is auto-created (issue #121); coordinates for a
     # new Station are parsed from the export's "lat, lon" Geo-Koordinaten. An
     # auto-create blocked by a constraint (e.g. a Kürzel already owned by another
@@ -664,7 +718,7 @@ def _resolve_row(values, header_index, row_num, project, resolver):
             }
         )
     except _RowError as exc:
-        return _ResolvedRow(row_num, error=exc.reason)
+        return _ResolvedRow(row_num, error=exc.reason, code=exc.code)
 
     kwargs = {
         "species": species,
@@ -717,7 +771,10 @@ def _resolve_row(values, header_index, row_num, project, resolver):
             is_dead_recovery=kwargs["is_dead_recovery"],
         )
     except CaptureValidationError as exc:
-        return _ResolvedRow(row_num, error=str(exc.message))
+        # The shared service's own rule, published with the shared service's own
+        # code: an imported Aves-ignota row without Bemerkung and a typed one name
+        # the same cause, because the code rides on the exception (ADR 0038).
+        return _ResolvedRow(row_num, error=str(exc.message), code=exc.code)
     return _ResolvedRow(row_num, kwargs=kwargs)
 
 

@@ -13,12 +13,14 @@ rather than be carried along by it. The German sentences are asserted through
 byte-identity constraint holds unchanged, this slice only adds meaning to the
 sibling key.
 
-Driven through the existing DRF HTTP API with the fixtures from ``conftest.py``;
-the two rules the write path cannot reach (a blank Größe is a field-level
-``blank`` long before the service sees it) are exercised at the capture service,
-the seam ``test_capture_service.py`` already uses.
+Driven through the existing DRF HTTP API with the fixtures from ``conftest.py``.
+The one rule no request can reach — a blank foreign Ringgröße, refused as a
+field-level ``blank`` long before the service sees it — is exercised at the
+capture service, the seam ``test_capture_service.py`` already uses, and the
+*reason* it cannot reach the wire is pinned through the API beside it.
 """
 
+from datetime import date, time
 from io import BytesIO
 
 import openpyxl
@@ -81,6 +83,71 @@ def _minimal_fangdaten_upload():
     )
 
 
+# The authentic ``Fangdaten`` columns a row-level test needs (a superset of
+# ``REQUIRED_HEADERS``; the importer reads by name), mirroring the layout
+# ``test_iwm_import.py`` builds its sheets from.
+_FANGDATEN_HEADERS = [
+    "Ring",
+    "Ringnummer",
+    "Ringstatus",
+    "Art",
+    "Geschlecht",
+    "Alter",
+    "Datum",
+    "Uhrzeit",
+    "Ortskodierung",
+    "Ort",
+    "Bemerkungen",
+    "BeringerIn",
+]
+
+
+def _fangdaten_row(species, scientist, ringing_station, **overrides):
+    """A structurally complete, resolvable row for tenant A."""
+    row = {
+        "Ring": "AUW",
+        "Ringnummer": "V00604",
+        "Ringstatus": "E",
+        "Art": species.common_name_de,
+        "Geschlecht": "U",
+        "Alter": 3,
+        "Datum": date(2026, 6, 30),
+        "Uhrzeit": time(8, 15),
+        "Ort": ringing_station.name,
+        "Bemerkungen": "",
+        "BeringerIn": scientist.handle,
+    }
+    row.update(overrides)
+    return row
+
+
+def _fangdaten_upload(rows):
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Fangdaten"
+    sheet.append(_FANGDATEN_HEADERS)
+    columns = {header: i + 1 for i, header in enumerate(_FANGDATEN_HEADERS)}
+    for row_offset, row in enumerate(rows, start=2):
+        for header, column in columns.items():
+            value = row.get(header)
+            if value not in (None, ""):
+                sheet.cell(row=row_offset, column=column, value=value)
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return SimpleUploadedFile(
+        "import.xlsx",
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _row_codes(report):
+    """The per-row rejections of an ``ImportPreview``/``ImportResult``, keyed by
+    sheet row: the Import-Dialog's own list, which carries its own ``code``
+    beside the German ``reason`` (the envelope is for the *whole-file* refusals)."""
+    return {entry["row"]: entry["code"] for entry in report["errors"]}
+
+
 # --- Capture-Pfad (ADR 0004, 0006, 0019, 0026) -------------------------------
 
 
@@ -129,13 +196,18 @@ def test_invalid_austrian_ring_size_names_its_own_rule(
 
 
 @pytest.mark.django_db
-def test_foreign_ring_size_required_names_its_own_rule(
+def test_foreign_ring_size_required_guards_the_service_seam_not_the_wire(
     species, scientist, ringing_station, organization
 ):
-    """The other Ringgröße rule: under a foreign Zentrale the Größe is free text
-    but never empty. A blank Größe is a field-level ``blank`` long before the DRF
-    write path reaches the service, so the rule is exercised where it lives — the
-    shared capture service the IWM import runs through too."""
+    """The other Ringgröße rule, and the one code in the catalogue **no request
+    can observe** — noted as such at its entry in ``error_codes.py``.
+
+    No caller can hand ``normalize_ring_size`` a blank Größe: the DRF field
+    refuses one first (pinned by the test below) and the IWM importer's
+    letters+digits split cannot produce one (pinned by
+    ``test_iwm_unsplittable_foreign_ringnummer_never_reaches_a_blank_groesse``).
+    So it is asserted where it actually bites — the shared service seam, whose
+    contract is with the *next* caller, not with a client."""
     with pytest.raises(CaptureValidationError) as exc_info:
         create_capture(
             species=species,
@@ -151,6 +223,28 @@ def test_foreign_ring_size_required_names_its_own_rule(
 
     assert exc_info.value.field == "ring_size"
     assert exc_info.value.code == "ring_size_required_foreign"
+
+
+@pytest.mark.django_db
+def test_a_blank_ring_size_is_refused_at_the_field_long_before_the_rule_speaks(
+    auth_client, species, scientist, ringing_station
+):
+    """Why the rule above cannot reach the wire, pinned rather than asserted in
+    prose. ``DataEntrySerializer.ring_size`` is a plain ``CharField`` (no
+    ``allow_blank``, whitespace trimmed), so ``""``/``"   "`` is DRF's generic
+    ``blank`` — the condition, correctly — and ``normalize_ring_size`` never runs.
+    Relaxing that field would make the catalogue's note false, so it breaks this
+    test first."""
+    payload = _payload(species, scientist, ringing_station, ring_number="907", ring_size="   ")
+    payload["central"] = "SKB"
+    payload["bird_status"] = "w"
+
+    response = auth_client.post(DATA_ENTRIES_URL, payload, format="json")
+
+    assert response.status_code == 400
+    body = response.json()
+    assert list(_without_envelope(body)) == ["ring_size"]
+    assert _codes(body) == ["blank"]
 
 
 @pytest.mark.django_db
@@ -549,6 +643,161 @@ def test_over_cap_import_carries_its_own_code_and_keeps_its_cap_key(
     assert body["errors"] == [
         {"field": "file", "code": "iwm_row_cap_exceeded", "detail": body["file"]}
     ]
+
+
+# --- IWM-Import: die Zeilenzurückweisungen ------------------------------------
+# The three refusals above are whole-file: the upload never becomes a report. A
+# *row* rejection is the one an Admin actually acts on — one per bad row, listed
+# in the report's own ``errors`` as ``{row, reason, code}``. The ``code`` is
+# additive; the Import-Dialog reads ``row``/``reason`` and is unmoved by it.
+
+
+@pytest.mark.django_db
+def test_an_imported_row_publishes_the_same_rule_the_write_path_does(
+    auth_client, aves_ignota_species, scientist, ringing_station, project
+):
+    """A code names a **cause, not a call site**: the Aves-ignota Bemerkung is
+    ``aves_ignota_comment_required`` whether a Beringer typed the capture or an
+    Admin imported it. ``CaptureValidationError.code`` is what carries it across
+    — the same exception both the serializer and the importer catch."""
+    upload = _fangdaten_upload(
+        [
+            _fangdaten_row(
+                aves_ignota_species, scientist, ringing_station, Bemerkungen="", Ringstatus="W"
+            )
+        ]
+    )
+
+    response = auth_client.post(
+        f"{PROJECTS_URL}{project.id}/import-iwm/", {"file": upload}, format="multipart"
+    )
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["errors"] == [
+        {
+            "row": 2,
+            "reason": "Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich.",
+            "code": "aves_ignota_comment_required",
+        }
+    ]
+
+
+@pytest.mark.django_db
+def test_a_committed_row_rejection_carries_its_code_too(
+    auth_client, species, scientist, ringing_station, project
+):
+    """The other seam: a rejection only the *write* raises. The dry-run cannot
+    see the Erstfang collision (it writes nothing), so the commit path has its own
+    ``CaptureValidationError`` handler — and it must publish the same code the
+    online capture write publishes for the very same ring."""
+    first = _payload(species, scientist, ringing_station, ring_number="00604")
+    first["bird_status"] = "e"
+    assert auth_client.post(DATA_ENTRIES_URL, first, format="json").status_code == 201
+
+    upload = _fangdaten_upload([_fangdaten_row(species, scientist, ringing_station)])
+    response = auth_client.post(
+        f"{PROJECTS_URL}{project.id}/import-iwm/",
+        {"file": upload, "commit": "true"},
+        format="multipart",
+    )
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["created"] == 0
+    assert report["errors"] == [
+        {
+            "row": 2,
+            "reason": "Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.",
+            "code": "ring_already_first_caught",
+        }
+    ]
+
+
+@pytest.mark.django_db
+def test_the_importers_own_row_refusals_each_name_their_cause(
+    auth_client, species, scientist, ringing_station, project
+):
+    """The rest of the row-level surface: refusals the importer writes itself,
+    before a capture is ever built. All of them, in one file — a half-coded list
+    would leave the Dialog unable to tell „a code I do not know" from „a row error
+    with no code" (ADR 0038). The unknown Zentralen-Code reuses the write path's
+    ``central_unknown``: same cause, different call site, one code."""
+    upload = _fangdaten_upload(
+        [
+            _fangdaten_row(species, scientist, ringing_station, Ringnummer=""),
+            _fangdaten_row(species, scientist, ringing_station, Ringnummer="V99999", Ring="ZZZ"),
+            _fangdaten_row(species, scientist, ringing_station, Ringnummer="V-nonsense"),
+            _fangdaten_row(species, scientist, ringing_station, Datum=""),
+            _fangdaten_row(species, scientist, ringing_station, Datum="übermorgen"),
+            _fangdaten_row(species, scientist, ringing_station, Art=""),
+            _fangdaten_row(species, scientist, ringing_station, Art="Ferkelvogel"),
+            _fangdaten_row(species, scientist, ringing_station, BeringerIn=""),
+            _fangdaten_row(species, scientist, ringing_station, Ort="", Ortskodierung=""),
+        ]
+    )
+
+    response = auth_client.post(
+        f"{PROJECTS_URL}{project.id}/import-iwm/", {"file": upload}, format="multipart"
+    )
+
+    assert response.status_code == 200
+    report = response.json()
+    assert _row_codes(report) == {
+        2: "iwm_row_ring_number_missing",
+        3: "central_unknown",
+        4: "iwm_row_ring_number_invalid",
+        5: "iwm_row_date_missing",
+        6: "iwm_row_date_invalid",
+        7: "iwm_row_species_missing",
+        8: "iwm_row_species_unknown",
+        9: "iwm_row_beringer_missing",
+        10: "iwm_row_place_missing",
+    }
+    # The German prose is untouched — the code rides beside it, never instead.
+    assert report["errors"][0]["reason"] == "Ringnummer fehlt."
+
+
+@pytest.mark.django_db
+def test_a_kuerzel_owned_by_another_organisation_names_its_cause(
+    auth_client, species, scientist, ringing_station, project, scientist_b
+):
+    """``Scientist.handle`` is globally unique, so an unfamiliar Kürzel already
+    owned elsewhere cannot be auto-created — a blocking row, not a 500. The way
+    out is a different Kürzel in the file, which is what the code names."""
+    upload = _fangdaten_upload(
+        [_fangdaten_row(species, scientist, ringing_station, BeringerIn=scientist_b.handle)]
+    )
+
+    response = auth_client.post(
+        f"{PROJECTS_URL}{project.id}/import-iwm/", {"file": upload}, format="multipart"
+    )
+
+    assert response.status_code == 200
+    report = response.json()
+    assert _row_codes(report) == {2: "iwm_row_beringer_handle_taken"}
+
+
+@pytest.mark.django_db
+def test_iwm_unsplittable_foreign_ringnummer_never_reaches_a_blank_groesse(
+    auth_client, species, scientist, ringing_station, project
+):
+    """The second half of why ``ring_size_required_foreign`` cannot reach the
+    wire. A foreign Ringnummer is split by ``^([A-Za-z]+)(\\d+)$``, so the Größe
+    the importer hands the capture service is never empty: a value that would
+    yield one is refused *here*, one row earlier, with its own code."""
+    upload = _fangdaten_upload(
+        [_fangdaten_row(species, scientist, ringing_station, Ring="SKB", Ringnummer="12345")]
+    )
+
+    response = auth_client.post(
+        f"{PROJECTS_URL}{project.id}/import-iwm/", {"file": upload}, format="multipart"
+    )
+
+    assert response.status_code == 200
+    report = response.json()
+    assert _row_codes(report) == {2: "iwm_row_ring_number_unsplittable"}
+    assert "manuell" in report["errors"][0]["reason"]
 
 
 # --- Anmeldung und Sitzung (ADR 0008) -----------------------------------------
