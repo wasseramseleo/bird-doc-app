@@ -842,10 +842,11 @@ describe('DataEntryFormComponent', () => {
       expect(cellText('weight_gram')).toBe('19,0');
     });
 
-    // #405 (#374 (#1) abgelöst): der Bemerkungs-Indikator ist jetzt das ⓘ selbst,
-    // das nur bei vorhandener Bemerkung rendert — der frühere Badge-Punkt auf dem
-    // immer sichtbaren Info-Button ist damit weg. Dasselbe Glyph bedeutet in
-    // beiden Tabellen wieder dasselbe: „hat Bemerkung", nicht „hier klicken".
+    // #405 (#374 (#1) abgelöst): der Indikator ist jetzt das ⓘ selbst — der frühere
+    // Badge-Punkt auf dem immer sichtbaren Info-Button ist damit weg. Dasselbe Glyph
+    // bedeutet in beiden Tabellen wieder dasselbe: seit #468 „in dieser Zeile steht
+    // mehr, als die Spalten zeigen" (Brutfleck, CPL+ oder Bemerkung), nicht „hier
+    // klicken". Diese Zeilen tragen keine Merkmale, hier entscheidet also die Bemerkung.
     it('shows the ⓘ only on a past Fang that carries a comment', () => {
       component.recaptureHistory.set([
         historyRow({ comment: 'linker Flügel verletzt' }),

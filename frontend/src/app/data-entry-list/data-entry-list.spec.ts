@@ -410,8 +410,9 @@ describe('DataEntryListComponent', () => {
     expect(bothSlots[2].querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
   });
 
-  // #388: das ⓘ wird nur gerendert, *wenn* eine Bemerkung existiert — der Badge-Punkt
-  // würde also bloß die Existenz des Icons wiederholen.
+  // #388: das ⓘ wird nur gerendert, *wenn* die Zeile mehr trägt als die Spalten zeigen
+  // — seit #468 Brutfleck, CPL+ oder Bemerkung. Der Badge-Punkt würde also bloß die
+  // Existenz des Icons wiederholen.
   it('renders the ⓘ without a badge dot', () => {
     flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
 
