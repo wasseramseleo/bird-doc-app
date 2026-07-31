@@ -13,6 +13,8 @@ import { By } from '@angular/platform-browser';
 registerLocaleData(localeDeAt);
 
 import { ProjectDashboardComponent } from './project-dashboard';
+import { AppIconEmptyDirective, AppIconErrorDirective } from '../../shared/app-icons';
+import { renderedGlyph, seamGlyph } from '../../shared/app-icons.testing';
 import { DASHBOARD_NOW } from './dashboard-state';
 import { SpeciesBarChartComponent } from './species-bar-chart/species-bar-chart';
 import { SpeciesLineChartComponent } from './species-line-chart/species-line-chart';
@@ -21,6 +23,7 @@ import { FaengeSparklineComponent } from './faenge-sparkline/faenge-sparkline';
 import { Project, Projekttyp } from '../../models/project.model';
 import { ProjectStats } from '../../models/project-stats.model';
 import { ProjectActionsService } from '../../service/project-actions.service';
+import { SchreibFehler } from '../../core/errors/schreib-fehler';
 
 // The recency chip and the Ruhige-Phase note (issue #295) are relative to "now".
 // Pin it so every populated payload has a deterministic „vor N Tagen": with the
@@ -103,11 +106,13 @@ function setup(project: Project, now: Date = DEFAULT_NOW) {
   // The dashboard delegates Bearbeiten/Export to the shared ProjectActionsService
   // (issue #222); the real one wires MatDialog/Router/HTTP, so stub it. Tests that
   // assert delegation read the spy; the rest just need it to not blow up.
-  const actions = jasmine.createSpyObj<ProjectActionsService>('ProjectActionsService', [
-    'edit',
-    'exportIwm',
-    'loadReferenceData',
-  ]);
+  // #448: der Schreib-Fehlschlag ist kein Methoden-Spy, sondern Zustand, den
+  // das Template liest — der Stub trägt deshalb einen echten `SchreibFehler`.
+  const actions = jasmine.createSpyObj<ProjectActionsService>(
+    'ProjectActionsService',
+    ['edit', 'exportIwm', 'loadReferenceData'],
+    {schreibFehler: new SchreibFehler()},
+  );
   TestBed.configureTestingModule({
     imports: [ProjectDashboardComponent],
     providers: [
@@ -566,6 +571,14 @@ describe('ProjectDashboardComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Fänge');
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker — `app-icon-empty`
+    // im Template ohne die Direktive in `imports` ist für Angular kein Fehler,
+    // ließe aber ein leeres `<mat-icon>` im Browser stehen.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.dashboard__state--empty mat-icon')))
+      .toBeTruthy();
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
+    // Der leere Zustand trägt nicht den Vogel des kaputten (ADR 0037).
+    expect(seamGlyph(fixture, AppIconErrorDirective)).toBe('');
     httpMock.verify();
   });
 
@@ -1043,6 +1056,12 @@ describe('ProjectDashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('.dashboard__state--error')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.dashboard__state--offline')).toBeNull();
     expect(fixture.nativeElement.querySelector('.fangtag-strip')).toBeNull();
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.dashboard__state--error mat-icon')))
+      .toBeTruthy();
+    expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+    // Der kaputte Zustand trägt nicht den Vogel des leeren (ADR 0037).
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
     httpMock.verify();
   });
 });

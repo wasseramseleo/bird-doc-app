@@ -1,4 +1,12 @@
 <section class="dashboard">
+  <!-- #448 (ADR 0037): die ausgelöste Schreibung. Bearbeiten und IWM-Export
+       wohnen im ProjectActionsService, ihre Geste aber hier — also zeigt dieser
+       Bildschirm den Fehlschlag, und er verfällt nicht. -->
+  @if (actions.schreibFehler.failure(); as failure) {
+    <app-failure-banner [failure]="failure"
+                        (retry)="actions.schreibFehler.erneut()"></app-failure-banner>
+  }
+
   <header class="dashboard__header">
     <div class="dashboard__identity">
       <h1>{{ project().title }}</h1>
@@ -82,13 +90,13 @@
     }
     @case ('error') {
       <div class="dashboard__state dashboard__state--error">
-        <mat-icon aria-hidden="true">error_outline</mat-icon>
+        <mat-icon app-icon-error aria-hidden="true"></mat-icon>
         <p>Statistiken konnten nicht geladen werden. Bitte versuche es später erneut.</p>
       </div>
     }
     @case ('empty') {
       <div class="dashboard__state dashboard__state--empty">
-        <mat-icon aria-hidden="true">insights</mat-icon>
+        <mat-icon app-icon-empty aria-hidden="true"></mat-icon>
         <p>In diesem Zeitraum gibt es noch keine Fänge.</p>
       </div>
     }

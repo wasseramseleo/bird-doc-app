@@ -65,6 +65,70 @@ Single-page Angular 21 app for bird-ringing field data entry, behind a session-a
 - `src/app/models/` — TypeScript interfaces and enums mirroring backend models
 - `src/app/core/directives/select-on-tab.ts` — selects the active autocomplete option on Tab keypress
 - `src/app/shared/directives/focus-next.ts` — advances focus to the next form field on Enter/selection
+- `src/app/core/errors/app-failure.ts` — the Einordnung: every failure classified into one of six Fehlerklassen
+- `src/app/shared/failure-banner/failure-banner.ts` — the surface a refused write lands on
+
+**Die Einordnung — how a failure is handled (ADR 0037/0038, PRD #438).** A component
+never reads an HTTP status and never builds a message out of one; it calls
+`appFailureOf(error)` and gets an `AppFailure` carrying its **Fehlerklasse** (Korrigieren ·
+Erneut versuchen · Neu anmelden · Freigeben lassen · App aktualisieren · Unbekannt), the
+server's German sentence, the rejected field, the code and the class's one way out. The
+classification is a **pure function** (`classifyFailure`, the `plausibility.ts` model),
+unit-tested against real DRF bodies. `failureInterceptor` is registered **outermost**
+(`app.config.ts`, `HTTP_INTERCEPTORS_IN_ORDER` — the order is contract) and **attaches** the
+classification to the error rather than replacing it, so `authInterceptor` still sees the raw
+error, the offline facade still branches on `status === 0` and the sync still reads
+`Retry-After`. A refused write renders `<app-failure-banner>` where the gesture happened and
+**does not time out**; a field-bound rejection additionally sets `serverRejected` on that
+control, which Angular clears by itself the moment that field is edited. Two rules keep that
+marking honest: it is only ever set on a control listed in `SERVER_REJECTION_FIELDS` (the
+controls whose template really renders the sentence) and never on a disabled one — otherwise
+the field would go red without a word — and it **never** blocks Speichern. The button reads
+`saveBlocked()`, not `entryForm.invalid`, and `onSubmit()` drops every `serverRejected` before
+it checks validity, because the one way out of *Korrigieren* is that very button (ADR 0037:
+a remedy fills the form and never saves). A rejection met during a **replay** is the same
+thing and asks the same mapping: `SyncService` flags an entry on the Fehlerklasse
+*Korrigieren* (ADR 0033's 400/422 positive list, kept in one place now — plus the **409**,
+which #448 put on the same side of that line: a conflict the server named itself is a
+condition of the request, never of the run, and no repetition resolves it) and writes the whole
+`AppFailure` onto it — the sentence at `OutboxEntry.syncError`, the structure beside it at
+`syncErrorEnvelope` — so a rejected entry re-opened days later renders the same complete
+banner with no network at all. **The way out of *Freigeben lassen* is a person, not
+a button** (#450): the banner reads `GET /birds/org-admins/` — the Admins of the requester's
+own Organisation, Name und Kürzel — and names them („Freigeben kann das Alice Auer (ALC) oder
+…"), because „wende dich an eine:n Admin" is a shrug in an Organisation of twenty. Where that
+list cannot be read (offline, an empty Organisation, or the read itself failing) the banner
+**degrades to the class's plain way out** and never to an empty name list or a second error.
+A **CSRF-Ablehnung never gets there**: it is the same 403 with the opposite way out, so
+`csrf_failed` classifies as *Erneut versuchen* (the disambiguation from #441) and the Admin
+list is not even read. **A code can bring remedies of its own** (#444): on
+`ring_already_first_caught` the banner names the colliding Erstfang out of `context.rival`
+(`core/errors/ring-kollision.ts`, a pure function like the classification itself) and offers
+three ways on — open that Erstfang, „Als Wiederfang erfassen", take the next free Ringnummer
+(the existing `GET /rings/next-number/`, no second endpoint). **None of them saves**, none
+navigates away and none discards: they fill the form and the Beringer presses Speichern
+himself, because „Als Wiederfang" changes the scientific claim of the record. Opening the
+rival is the ordinary navigation to a Fang, so the `unsavedChangesGuard` (#407) asks first —
+by way of the empty capture route, because `/data-entry/:a` → `/data-entry/:b` is one and the
+same route to the Router and would reuse the component without ever running the guard.
+Without the context — an older backend, a bundle mid-rollout — the banner degrades to the
+sentence alone and offers no remedy at all, exactly as it does for a code it does not know.
+**A snackbar only ever confirms a success** (#448): every refused write
+on the Verwaltungsbildschirme — Stationen, Beringer (Zuordnung und Seat-Verwaltung included),
+Artennormen, Projekt-Anlage/-Bearbeitung, IWM-Import, „Heute" — renders that same
+`<app-failure-banner>` where the gesture happened, held by a `SchreibFehler`
+(`core/errors/schreib-fehler.ts`) that pairs the classified failure with what „Erneut
+versuchen" means *there*. „There" is a **boundary**, not just an address: on a component the
+failure dies with the screen for free, but the two root services that hold one
+(`ProjectActionsService`, `DataEntryRefreshService`) outlive every screen and must say so —
+the first clears on `NavigationEnd` and drops a response that arrives after the switch, the
+second clears on every list load. Otherwise a refusal earned on `/projekte` reappears over an
+unrelated Projekt, with an „Erneut versuchen" that re-sends the abandoned write.
+Two repo-wide guards keep the snackbar rule true with no exceptions left:
+`npm run check:transport-strings` keeps a transport string or a raw status out of any message,
+and `npm run check:erfolgsmeldungen` keeps a failure out of any snackbar — its message must
+stand in the source, must carry no failure wording, and must not sit in an `error` branch.
+Both run in `npm test` and in CI.
 
 **Data flow:**
 1. Autocomplete fields (species, ringing station, scientist) use RxJS `valueChanges` → `debounceTime(300)` → `switchMap` to the API

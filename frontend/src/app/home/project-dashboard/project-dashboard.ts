@@ -17,6 +17,7 @@ import {fromEvent} from 'rxjs';
 
 import {ApiService} from '../../service/api.service';
 import {ProjectActionsService} from '../../service/project-actions.service';
+import {FailureBannerComponent} from '../../shared/failure-banner/failure-banner';
 import {PROJEKTTYP_LABELS, Project, Projekttyp} from '../../models/project.model';
 import {
   ProjectStats,
@@ -24,6 +25,7 @@ import {
   ProjectStatsTotals,
   StatsRangePreset,
 } from '../../models/project-stats.model';
+import {AppIconEmptyDirective, AppIconErrorDirective} from '../../shared/app-icons';
 import {SpeciesBarChartComponent} from './species-bar-chart/species-bar-chart';
 import {SpeciesLineChartComponent} from './species-line-chart/species-line-chart';
 import {HourHistogramChartComponent} from './hour-histogram-chart/hour-histogram-chart';
@@ -72,6 +74,9 @@ interface RangePresetOption {
     SpeciesLineChartComponent,
     HourHistogramChartComponent,
     FaengeSparklineComponent,
+    AppIconErrorDirective,
+    AppIconEmptyDirective,
+    FailureBannerComponent,
   ],
   templateUrl: './project-dashboard.html',
   styleUrl: './project-dashboard.scss',
@@ -79,7 +84,9 @@ interface RangePresetOption {
 })
 export class ProjectDashboardComponent {
   private readonly api = inject(ApiService);
-  private readonly actions = inject(ProjectActionsService);
+  // protected, weil das Template den Schreib-Fehlschlag des Dienstes rendert
+  // (#448): Bearbeiten und IWM-Export werden hier ausgelöst.
+  protected readonly actions = inject(ProjectActionsService);
   // The reference "now" for the recency chip + Ruhige-Phase threshold (injected
   // so it is deterministic under test). This is a read-only reference clock, not
   // a signal — the values it feeds only ever change when a fresh stats payload

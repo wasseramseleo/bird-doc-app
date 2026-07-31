@@ -3,12 +3,15 @@ import { Router, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { of } from 'rxjs';
 
 import { ProjectPickerComponent } from './project-picker';
 import { ProjectService } from '../service/project.service';
 import { ProjectActionsService } from '../service/project-actions.service';
 import { AuthService } from '../service/auth.service';
-import { OrganizationRolle } from '../models/auth-user.model';
+import { AuthUser, OrganizationRolle } from '../models/auth-user.model';
 import { Project, Projekttyp } from '../models/project.model';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
@@ -55,13 +58,17 @@ function setup() {
  * "Mitglieder ohne Beringer-Eintrag" panel keys on — and `rolle` is the
  * per-Organisation Rolle, `null` when no Organisation is active.
  */
-function signIn(handle: string | null, rolle: OrganizationRolle): void {
+function signIn(
+  handle: string | null,
+  rolle: OrganizationRolle,
+  organization: AuthUser['organization'] = null,
+): void {
   TestBed.inject(AuthService).currentUser.set({
     username: 'fre',
     handle,
     isStaff: false,
     rolle,
-    organization: null,
+    organization,
   });
 }
 
@@ -170,12 +177,88 @@ describe('ProjectPickerComponent', () => {
     expect(create).toHaveBeenCalled();
   });
 
+  // #446 (ADR 0037): bis hierher toastete ein gescheitertes Laden drei Sekunden
+  // und ließ danach den Leerzustand stehen — der Bildschirm behauptete also
+  // „du bist noch keinem Projekt zugeordnet" oder „dein Konto hat noch keinen
+  // Beringer", obwohl er in Wahrheit nichts wusste. Diese Diagnose ist genau
+  // die, die #415 richtiggestellt hat; sie darf nicht über einen Ladefehler
+  // zurückkommen.
+  describe('In-Place-Ladefehler', () => {
+    /** ngOnInit, mit einem gescheiterten Projekt-GET statt einer Liste. */
+    function renderFailure(ctx: ReturnType<typeof setup>): void {
+      ctx.fixture.detectChanges();
+      ctx.httpMock
+        .expectOne((r) => r.url.endsWith('/projects/'))
+        .flush(
+          {detail: 'Die Datenbank antwortet gerade nicht.'},
+          {status: 500, statusText: 'Server Error'},
+        );
+      ctx.httpMock.expectOne((r) => r.url.endsWith('/scientists/')).flush(page0([]));
+      ctx.fixture.detectChanges();
+    }
+
+    it('renders the in-place error state instead of an empty picker when the load fails', () => {
+      const ctx = setup();
+      signIn('FRE', 'mitglied');
+      renderFailure(ctx);
+
+      const zustand = ctx.fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Projekte konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      // Keine der vier Diagnosen des Leerzustands (#415) darf hier stehen — der
+      // Bildschirm weiß nicht, ob es Projekte gibt.
+      expect(emptyText(ctx)).toBe('');
+      expect(ctx.fixture.nativeElement.textContent).not.toContain(
+        'Du bist noch keinem Projekt zugeordnet',
+      );
+      expect(ctx.fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+      // Ein Laden bekommt kein Banner (ADR 0037, Moment-Achse).
+      expect(ctx.fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads on „Erneut laden" and recovers on success', () => {
+      const ctx = setup();
+      signIn('FRE', 'mitglied');
+      renderFailure(ctx);
+
+      (ctx.fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      ctx.httpMock
+        .expectOne((r) => r.url.endsWith('/projects/'))
+        .flush(page0([makeProject({id: 'p1', title: 'Schilfgürtel Linz'})]));
+      ctx.fixture.detectChanges();
+
+      expect(ctx.fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(ctx.fixture.nativeElement.querySelectorAll('.project-card').length).toBe(1);
+    });
+  });
+
   // --- Empty state: it branches on the two facts the server acts on (#415) ----
   // Projekt visibility is scoped to the account's Beringer, and Projekt creation
   // is Admin-only. The picker used to ignore both and told everyone the same
   // untrue thing: "Du bist noch keinem Projekt zugeordnet."
 
   describe('empty state', () => {
+    // #439: Der Icon-Seam lässt das Marken-Logo hier bewusst stehen. Es ist kein
+    // Material-Icon, fällt also nicht unter „kein Template benennt eine Glyphe
+    // der Rolle leer-oder-kaputt", und dieser Bildschirm ist das Erste, was ein
+    // Mitglied ohne Projekt sieht. Der Tausch gegen die Spot-Illustration B1
+    // (docs/artist-brief.md) ist eine gestalterische Entscheidung mit eigenem
+    // Ticket, kein Nebeneffekt eines Prefactors.
+    it('keeps the brand logo above the empty state', () => {
+      const ctx = setup();
+      signIn('FRE', 'mitglied');
+      render(ctx, []);
+
+      const logo = ctx.fixture.nativeElement.querySelector(
+        '.picker__empty img.picker__empty-logo',
+      ) as HTMLImageElement | null;
+      expect(logo).not.toBeNull();
+      expect(logo!.getAttribute('src')).toBe('/birddoc-logo-1930x1930.png');
+    });
+
     it('names the missing Beringer as the cause for a no-Beringer Admin, not a missing Projekt-Zuordnung', () => {
       const ctx = setup();
       signIn(null, 'admin');
@@ -294,6 +377,49 @@ describe('ProjectPickerComponent', () => {
       expect(createButton(ctx))
         .withContext('gating is not an empty-state-only concern')
         .toBeNull();
+    });
+  });
+
+  // #448 (ADR 0037): eine abgelehnte Projekt-Anlage landet dort, wo gedrückt
+  // wurde — auf dem Picker. Die Geste wohnt im ProjectActionsService, also hält
+  // der den Fehlschlag; gezeigt wird er hier, und er verfällt nicht.
+  describe('Schreib-Banner', () => {
+    it('renders a refused Projekt-Anlage in the banner, not in a snackbar', () => {
+      const ctx = setup();
+      signIn('FRE', 'admin', { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' });
+      render(ctx, []);
+      const snack = spyOn(ctx.fixture.debugElement.injector.get(MatSnackBar), 'open');
+      // Der Dienst öffnet den Dialog über den Wurzel-Injektor, also wird der
+      // dortige MatDialog gestubbt — er löst mit dem ausgefüllten Formular auf.
+      spyOn(TestBed.inject(MatDialog), 'open').and.returnValue({
+        afterClosed: () =>
+          of({
+            title: 'Schilfgürtel Linz',
+            description: '',
+            scientistIds: [],
+            projekttyp: Projekttyp.Sonstiges,
+            hiddenOptionalFields: [],
+            defaultStationHandle: null,
+            saisonStartMonth: null,
+            saisonEndMonth: null,
+            wochengrenzeWeekday: 0,
+            wochengrenzeTime: '00:00',
+          }),
+      } as never);
+
+      createButton(ctx)!.click();
+      ctx.httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/projects/'))
+        .flush(
+          { title: ['Ein Projekt mit diesem Titel besteht in deiner Organisation bereits.'] },
+          { status: 400, statusText: 'Bad Request' },
+        );
+      ctx.fixture.detectChanges();
+
+      const banner = ctx.fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent).toContain('Ein Projekt mit diesem Titel besteht');
+      expect(snack).not.toHaveBeenCalled();
     });
   });
 });

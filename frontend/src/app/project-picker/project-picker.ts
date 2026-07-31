@@ -4,8 +4,10 @@ import {Router, RouterLink} from '@angular/router';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
-import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
+import {LoadFailureComponent} from '../shared/load-failure/load-failure';
+import {AppFailure, appFailureOf} from '../core/errors/app-failure';
 import {ProjectService} from '../service/project.service';
 import {ProjectActionsService} from '../service/project-actions.service';
 import {AuthService} from '../service/auth.service';
@@ -46,7 +48,8 @@ export type PickerEmptyCase =
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
-    MatSnackBarModule,
+    FailureBannerComponent,
+    LoadFailureComponent,
   ],
   templateUrl: './project-picker.html',
   styleUrl: './project-picker.scss',
@@ -54,12 +57,22 @@ export type PickerEmptyCase =
 })
 export class ProjectPickerComponent implements OnInit {
   private readonly projectService = inject(ProjectService);
-  private readonly actions = inject(ProjectActionsService);
+  // protected, weil das Template den Schreib-Fehlschlag des Dienstes rendert
+  // (#448): die Geste passiert hier, die Arbeit dort.
+  protected readonly actions = inject(ProjectActionsService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal<boolean>(true);
+  /**
+   * #446 (ADR 0037): ein gescheitertes Laden ersetzt den Picker an Ort und
+   * Stelle. Vorher toastete es drei Sekunden und ließ den Leerzustand stehen —
+   * der Bildschirm behauptete dann eine der vier Diagnosen aus #415 („noch
+   * keinem Projekt zugeordnet", „dein Konto hat noch keinen Beringer"), obwohl
+   * er in Wahrheit gar nichts wusste. Genau diese falsche Diagnose hat #415
+   * beseitigt; sie darf nicht über einen Ladefehler zurückkommen.
+   */
+  readonly loadFailure = signal<AppFailure | null>(null);
   // Rendered from the shared ProjectService list so the picker and the navbar
   // switcher can never disagree about which Projekte exist.
   readonly projects = this.projectService.projects;
@@ -94,12 +107,20 @@ export class ProjectPickerComponent implements OnInit {
     // The create/edit dialogs need the Organisationen and Beringer; the shared
     // ProjectActionsService owns loading them.
     this.actions.loadReferenceData();
+    this.load();
+  }
+
+  // protected, weil „Erneut laden" aus dem In-Place-Fehlerzustand genau hierher
+  // zurückkommt (#446). Die Referenzdaten der Dialoge bleiben davon unberührt:
+  // erneut zu laden gilt dem Inhalt, der nicht kam.
+  protected load(): void {
     this.loading.set(true);
+    this.loadFailure.set(null);
     this.projectService.loadProjects().subscribe({
       next: () => this.loading.set(false),
-      error: () => {
+      error: (err: unknown) => {
         this.loading.set(false);
-        this.snackBar.open('Projekte konnten nicht geladen werden.', 'Schließen', {duration: 3000});
+        this.loadFailure.set(appFailureOf(err));
       },
     });
   }

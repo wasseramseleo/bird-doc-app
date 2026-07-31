@@ -13,7 +13,24 @@
     </button>
   </header>
 
-  @if (!gapLoading() && sortedGapSeats().length > 0) {
+  <!-- #448 (ADR 0037): die ausgelöste Schreibung — Anlegen, Bearbeiten, Löschen,
+       Zuordnen, Verknüpfen und Aufheben. Das Banner sitzt über beiden Listen, die
+       bedienbar bleiben, und verfällt nicht. -->
+  @if (schreibFehler.failure(); as failure) {
+    <app-failure-banner [failure]="failure"
+                        (retry)="schreibFehler.erneut()"></app-failure-banner>
+  }
+
+  <!-- #446 (ADR 0037): scheitert das Lesen der Konten, steht der Fehlerzustand
+       an der Stelle des Gap-Panels. Sonst rendert es schlicht nichts — und
+       „keine Lücken" ist eine Aussage, die dieser Bildschirm dann gar nicht
+       treffen kann. Die Beringer-Liste darunter bleibt davon unberührt. -->
+  @if (gapLoadFailure(); as failure) {
+    <app-load-failure
+      [failure]="failure"
+      titel="Konten konnten nicht geladen werden."
+      (reload)="loadGaps()"></app-load-failure>
+  } @else if (!gapLoading() && sortedGapSeats().length > 0) {
     <section class="gap-panel" aria-label="Mitglieder ohne Beringer-Eintrag">
       <div class="gap-panel__head">
         <h2 class="gap-panel__title">Mitglieder ohne Beringer-Eintrag</h2>
@@ -42,10 +59,18 @@
     </section>
   }
 
-  @if (loading()) {
+  <!-- Der kaputte Zustand steht *an der Stelle* der Liste und zuerst — sonst
+       sähe er wieder aus wie der leere (#446). -->
+  @if (loadFailure(); as failure) {
+    <app-load-failure
+      [failure]="failure"
+      titel="Beringer konnten nicht geladen werden."
+      (reload)="load()"></app-load-failure>
+  } @else if (loading()) {
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (sortedBeringer().length === 0) {
     <div class="beringer__empty">
+      <mat-icon app-icon-empty aria-hidden="true"></mat-icon>
       <p>Es sind noch keine Beringer angelegt.</p>
     </div>
   } @else {

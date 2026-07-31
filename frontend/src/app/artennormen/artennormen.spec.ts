@@ -7,6 +7,8 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {of} from 'rxjs';
 
 import {ArtennormenComponent} from './artennormen';
+import {AppIconEmptyDirective, AppIconErrorDirective} from '../shared/app-icons';
+import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {
   EffectiveSpeciesNorm,
   SpeciesNormOverride,
@@ -95,6 +97,19 @@ function flushLoad(
     .flush(page0(ringOverrides));
 }
 
+// Derselbe Ladevorgang, gescheitert: das forkJoin bricht, sobald eines der drei
+// GETs bricht — die beiden übrigen werden dabei abgebrochen und hier nur noch
+// eingesammelt, damit `verify()` nicht über sie stolpert.
+function flushLoadFailure() {
+  httpMock
+    .expectOne((r) => r.method === 'GET' && r.url.endsWith('/species-norms/'))
+    .flush(
+      {detail: 'Die Datenbank antwortet gerade nicht.'},
+      {status: 500, statusText: 'Server Error'},
+    );
+  httpMock.match((r) => r.method === 'GET');
+}
+
 function setup() {
   TestBed.configureTestingModule({
     imports: [ArtennormenComponent],
@@ -162,6 +177,50 @@ describe('ArtennormenComponent', () => {
     ).toBeNull();
   });
 
+  // #446 (ADR 0037): bis hierher toastete ein gescheitertes Laden drei Sekunden
+  // und ließ dieselbe leere Liste stehen wie eine Organisation ganz ohne
+  // Artennorm — „noch keine Artennormen in Kraft" und „Artennormen konnten nicht
+  // geladen werden" waren nicht zu unterscheiden.
+  describe('In-Place-Ladefehler', () => {
+    it('renders the in-place error state instead of an empty list when the load fails', () => {
+      const {fixture} = setup();
+      const snack = spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      flushLoadFailure();
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Artennormen konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      expect(fixture.nativeElement.textContent).not.toContain('keine Artennormen');
+      expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
+      expect(snack).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads on „Erneut laden" and recovers on success', () => {
+      const {fixture} = setup();
+      spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      flushLoadFailure();
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      flushLoad([makeNorm({species_id: 'sp-1', species_name: 'Amsel'})]);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.norm-card').length).toBe(1);
+    });
+  });
+
   it('shows an empty state when no Artennorm is in force', () => {
     const {fixture} = setup();
 
@@ -171,6 +230,13 @@ describe('ArtennormenComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.norm-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Artennormen');
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template — ein
+    // vergessener `imports`-Eintrag ist für Angular kein Fehler und ließe das
+    // Icon im Browser leer, während das Attribut im DOM stünde.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.artennormen__empty mat-icon')))
+      .toBeTruthy();
+    // ...und gezeichnet hat es der Name des *leeren* Zustands.
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
   });
 
   it('adds an override from the dialog via POST /species-norm-overrides/ and reloads', () => {
@@ -349,6 +415,78 @@ describe('ArtennormenComponent', () => {
 
     // A successful reset reloads both lists.
     flushLoad([makeNorm({species_id: 'sp-2', species_name: 'Zaunkönig'})]);
+  });
+
+  // #448 (ADR 0037): der handgeschriebene Extraktor dieses Bildschirms
+  // (`errorMessage`) ist weg, und eine zurückgewiesene Speicherung landet im
+  // Banner statt in einer Snackbar — dieselbe Oberfläche, die ein abgelehnter
+  // Fang bekommt.
+  describe('Schreib-Banner', () => {
+    it('renders the server sentence of a refused save in the banner, not in a snackbar', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      fixture.detectChanges();
+      flushLoad([makeNorm({species_id: 'sp-1', species_name: 'Amsel'})]);
+      fixture.detectChanges();
+
+      const payload = {species_id: 'sp-1', weight_mean: '12.0'} as SpeciesNormOverridePayload;
+      spyOnDialog(fixture, dialogResult(payload));
+      component.openAddDialog();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/species-norm-overrides/'))
+        .flush(
+          {
+            weight_mean: ['Das Mittelgewicht muss größer als 0 sein.'],
+            errors: [
+              {
+                field: 'weight_mean',
+                code: 'min_value',
+                detail: 'Das Mittelgewicht muss größer als 0 sein.',
+              },
+            ],
+          },
+          {status: 400, statusText: 'Bad Request'},
+        );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Das Mittelgewicht muss größer als 0 sein.');
+      expect(banner.textContent).toContain('Speichern abgelehnt');
+      expect(snack).not.toHaveBeenCalled();
+    });
+
+    it('renders a refused reset in the banner and does not reload', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      fixture.detectChanges();
+      flushLoad([makeNorm({species_id: 'sp-2', species_name: 'Zaunkönig'})]);
+      fixture.detectChanges();
+
+      spyOnDialog(fixture, true);
+      component.openResetDialog({
+        species_id: 'sp-2',
+        species_name: 'Zaunkönig',
+        is_override: true,
+        override_id: 'ov-2',
+        norm: makeNorm({species_id: 'sp-2', species_name: 'Zaunkönig'}),
+      });
+
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/species-norm-overrides/ov-2/'))
+        .flush(
+          {detail: 'Das darf nur eine Administratorin deiner Organisation.'},
+          {status: 403, statusText: 'Forbidden'},
+        );
+      fixture.detectChanges();
+      // Die Klasse *Freigeben lassen* liest die Admins der eigenen Organisation
+      // (#450); ohne Antwort bleibt es beim Ausweg-Satz der Klasse.
+      httpMock.match((r) => r.method === 'GET' && r.url.endsWith('/org-admins/'));
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Das darf nur eine Administratorin deiner Organisation.');
+      expect(snack).not.toHaveBeenCalled();
+    });
   });
 
   it('does not reset when the confirmation is cancelled', () => {

@@ -3,11 +3,11 @@
 <mat-dialog-content class="import-dialog">
   <p class="import-dialog__project">Projekt: {{ data.projectTitle }}</p>
 
-  @if (errorMessage(); as message) {
-    <div class="import-dialog__error" role="alert">
-      <mat-icon>error_outline</mat-icon>
-      <span>{{ message }}</span>
-    </div>
+  <!-- #448 (ADR 0037): die ausgelöste Schreibung. Der Banner steht über dem
+       Ablauf, der bedienbar bleibt, und verfällt nicht. -->
+  @if (schreibFehler.failure(); as failure) {
+    <app-failure-banner [failure]="failure"
+                        (retry)="schreibFehler.erneut()"></app-failure-banner>
   }
 
   @if (loading()) {

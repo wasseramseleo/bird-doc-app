@@ -88,11 +88,18 @@ export class OutboxIndicator {
     // (issue #164) does not: it needs fixing in the form, so it is called out
     // separately rather than folded into the reassuring "der Rest folgt".
     const deferred = result.total - result.synced - result.flagged;
-    let message = `${result.synced} von ${result.total} Einträgen synchronisiert`;
-    if (result.flagged > 0) {
-      message += `, ${result.flagged} mit Fehler markiert`;
-    }
-    message += deferred > 0 ? ' – der Rest folgt automatisch.' : '.';
-    this.snackBar.open(message, 'Schließen', {duration: 3000});
+    const markiert = result.flagged > 0 ? `, ${result.flagged} mit Fehler markiert` : '';
+    const rest = deferred > 0 ? ' – der Rest folgt automatisch.' : '.';
+    // #448: diese Snackbar bleibt — sie *bestätigt* einen gelaufenen Abgleich
+    // („5 von 7 Einträgen synchronisiert") und erklärt keinen Fehlschlag: was
+    // markiert wurde, trägt seine eigene bleibende Oberfläche in „Heute" und im
+    // Formular (#164, #445). Der Satz steht jetzt am Aufruf statt in drei
+    // Zuweisungen davor, damit die Meldung im Quelltext lesbar ist — wortgleich,
+    // und ohne die Prüfung `check-erfolgsmeldungen.mjs` blind zu machen.
+    this.snackBar.open(
+      `${result.synced} von ${result.total} Einträgen synchronisiert${markiert}${rest}`,
+      'Schließen',
+      {duration: 3000},
+    );
   }
 }

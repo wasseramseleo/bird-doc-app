@@ -1,4 +1,5 @@
 import { LOCALE_ID, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
@@ -11,9 +12,12 @@ import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 
 import { DataEntryListComponent } from './data-entry-list';
+import { AppIconEmptyDirective, AppIconErrorDirective } from '../shared/app-icons';
+import { renderedGlyph, seamGlyph } from '../shared/app-icons.testing';
 
 registerLocaleData(localeDeAt);
 import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
+import { appFailureOf } from '../core/errors/app-failure';
 import { ProjectService } from '../service/project.service';
 import { Project, Projekttyp } from '../models/project.model';
 import { BirdStatus, DataEntry } from '../models/data-entry.model';
@@ -97,6 +101,140 @@ describe('DataEntryListComponent', () => {
   // einen Erfolg, den der Bildschirm widerlegt; wer das sieht, erfasst den Fang
   // plausibel erneut und erzeugt genau die zweite lebende Erstfang-Zeile auf
   // einer Ringnummer, die ADR 0019 verbietet.
+  // #439 (ADR 0037): „Der leere und der kaputte Zustand bekommen verschiedene
+  // Vögel." Diese Liste ist der einzige Bildschirm, der beide Zustände kennt —
+  // also wird hier geprüft, dass sie sich unterscheiden, statt nur, dass jeder
+  // *irgendein* Icon hat.
+  //
+  // Geprüft wird am gezeichneten Ergebnis: nach `mat-icon[app-icon-error]` zu
+  // suchen hieße bloß, das Attribut zurückzulesen, das das Template selbst
+  // hineinschreibt. Fehlt die Direktive im `imports`-Array der Komponente, ist
+  // das für Angular kein Fehler — das Attribut stünde im DOM, das Icon bliebe
+  // im Browser leer, und die Spec merkte nichts.
+  describe('Icon-Seam der beiden Zustände', () => {
+    it('renders the named error icon when the list could not be loaded', () => {
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'))
+        .flush('boom', { status: 500, statusText: 'Server Error' });
+      fixture.detectChanges();
+
+      const state = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(state).not.toBeNull();
+      expect(renderedGlyph(state.querySelector('mat-icon'))).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+      // Der kaputte Zustand trägt nicht den Vogel des leeren.
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
+    });
+
+    it('renders the named empty icon when the Projekt has no Fang yet', () => {
+      flushEntries([]);
+
+      const state = fixture.nativeElement.querySelector('.entry-list__state');
+      expect(state.textContent).toContain('noch keine Einträge');
+      expect(renderedGlyph(state.querySelector('mat-icon'))).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
+      // ...und der leere nicht den des kaputten.
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBe('');
+    });
+
+    it('draws a different bird for the empty state than for the broken one', () => {
+      flushEntries([]);
+      const empty = seamGlyph(fixture, AppIconEmptyDirective);
+
+      // Dieselbe Komponente, frisch geladen — diesmal bricht das GET.
+      component.onPageChange({pageIndex: 0, pageSize: 25, length: 0} as PageEvent);
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'))
+        .flush('boom', { status: 500, statusText: 'Server Error' });
+      fixture.detectChanges();
+      const error = seamGlyph(fixture, AppIconErrorDirective);
+
+      expect(empty).toBeTruthy();
+      expect(error).toBeTruthy();
+      expect(error).not.toEqual(empty);
+    });
+  });
+
+  // #446 (ADR 0037): der Fehlerzustand dieser Liste ist seit #385 der Vorfahr
+  // aller sechs — jetzt ist er dasselbe Bauteil wie überall sonst. Sein
+  // bisheriges Verhalten bleibt, und „Erneut laden" kommt dazu: bislang war das
+  // Wiederkommen nur über einen Projektwechsel oder eine neue Suche zu haben.
+  describe('In-Place-Ladefehler (#446)', () => {
+    it('names what could not be loaded and carries the server sentence', () => {
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'))
+        .flush(
+          { detail: 'Die Datenbank antwortet gerade nicht.' },
+          { status: 500, statusText: 'Server Error' },
+        );
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand.textContent).toContain('Die Einträge konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      // Der leere Zustand läuft nicht mit — das war der Defekt aus PRD #438.
+      expect(fixture.nativeElement.textContent).not.toContain('noch keine Einträge');
+      // Ein Laden bekommt kein Banner (ADR 0037, Moment-Achse).
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads on „Erneut laden" and recovers on success', () => {
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'))
+        .error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      flushEntries([row({ id: 'wieder-da' })]);
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('tr.entry-row').length).toBe(1);
+    });
+  });
+
+  // #448 (ADR 0037): das gescheiterte „Rückgängig" fällt, nachdem „Löschen"
+  // längst hierher navigiert und die Erfassungsmaske zerstört hat — ein Banner
+  // dort sähe niemand. Es kommt über denselben Rückkanal wie das Nachladen und
+  // landet hier, wo das Snackbar stand und gedrückt wurde.
+  describe('Schreib-Banner des gescheiterten „Rückgängig" (#448)', () => {
+    it('renders the failure the restore handed over, in place and without a timeout', () => {
+      flushEntries([row({ id: 'bleibt' })]);
+
+      TestBed.inject(DataEntryRefreshService).schreibFehler.zeige(
+        appFailureOf(
+          new HttpErrorResponse({
+            status: 404,
+            statusText: 'Not Found',
+            error: { detail: 'Dieser Fang ist endgültig gelöscht.' },
+          }),
+        ),
+        () => {},
+      );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent).toContain('Dieser Fang ist endgültig gelöscht.');
+      // Die Liste selbst steht unversehrt daneben — das Banner ersetzt nichts.
+      expect(fixture.nativeElement.querySelectorAll('tr.entry-row').length).toBe(1);
+    });
+
+    it('clears the banner when the list loads again', () => {
+      flushEntries([row({ id: 'bleibt' })]);
+      const refresh = TestBed.inject(DataEntryRefreshService);
+      refresh.schreibFehler.zeige(appFailureOf(new Error('kaputt')), () => {});
+      fixture.detectChanges();
+
+      refresh.request();
+      fixture.detectChanges();
+      flushEntries([row({ id: 'bleibt' })]);
+
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+  });
+
   describe('refresh after a restore (#392)', () => {
     it('reloads and shows the restored row again', () => {
       flushEntries([row({ id: 'bleibt' })]);

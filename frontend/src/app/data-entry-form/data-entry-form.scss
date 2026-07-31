@@ -18,37 +18,13 @@
   z-index: 1000;
 }
 
-// Issue #164: a flagged (server-rejected) queued entry opened for fixing.
-.sync-error-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 1rem;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background-color: var(--bd-error-bg, rgba(179, 38, 30, 0.08));
-  border: 1px solid var(--bd-error, #b3261e);
-  color: var(--bd-error, #b3261e);
-  font-size: 0.85rem;
+// #443: das Banner der abgelehnten Schreibung wohnt samt seiner Optik jetzt in
+// `shared/failure-banner` — dasselbe Bauteil online wie beim Replay (ADR 0037).
 
-  mat-icon {
-    flex: none;
-  }
-}
-
-// #385: der Zustand „Eintrag konnte nicht geladen werden" — er ersetzt das
-// Formular, ist also kein Banner wie .sync-error-banner (das *über* einem
-// bedienbaren Formular sitzt), sondern der zentrierte Leerzustand von
-// „Letzte Fänge" (.entry-list__state--error).
-.load-error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 48px 16px;
-  color: var(--bd-error, #b3261e);
-  text-align: center;
-}
+// #385/#446: der Zustand „Eintrag konnte nicht geladen werden" — er ersetzt das
+// Formular, ist also kein Banner wie `app-failure-banner` (das *über* einem
+// bedienbaren Formular sitzt). Er wohnt samt seiner Optik jetzt in
+// `shared/load-failure`: dasselbe Bauteil auf allen sechs Bildschirmen.
 
 // #340: the non-blocking Stundenwechsel-Hinweis on the Uhrzeit field — an alert
 // colour plus a short note and a one-click revert to the previous hour. Mirrors

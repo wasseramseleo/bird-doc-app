@@ -6,7 +6,10 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test",
+    "test": "npm run check:icon-seam && npm run check:transport-strings && npm run check:erfolgsmeldungen && ng test",
+    "check:icon-seam": "node scripts/check-icon-seam.mjs",
+    "check:transport-strings": "node scripts/check-transport-strings.mjs",
+    "check:erfolgsmeldungen": "node scripts/check-erfolgsmeldungen.mjs",
     "e2e": "PLAYWRIGHT_FORCE_ASYNC_LOADER=1 playwright test"
   },
   "prettier": {

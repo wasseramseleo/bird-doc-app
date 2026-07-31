@@ -29,6 +29,10 @@ import {
   DataEntryDetailDialogComponent,
 } from '../data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
+import {AppIconErrorDirective} from '../shared/app-icons';
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
+import {appFailureOf} from '../core/errors/app-failure';
+import {SchreibFehler} from '../core/errors/schreib-fehler';
 
 interface QueuedRow {
   id: string;
@@ -56,7 +60,14 @@ interface QueuedRow {
  */
 @Component({
   selector: 'app-today-session',
-  imports: [CommonModule, MatIconModule, MatButtonModule, MatProgressSpinnerModule],
+  imports: [
+    CommonModule,
+    MatIconModule,
+    MatButtonModule,
+    MatProgressSpinnerModule,
+    AppIconErrorDirective,
+    FailureBannerComponent,
+  ],
   templateUrl: './today-session.html',
   styleUrl: './today-session.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -77,6 +88,11 @@ export class TodaySessionComponent implements OnInit {
 
   readonly loadingSynced = signal(false);
   readonly syncedEntries = signal<DataEntry[]>([]);
+
+  // #448 (ADR 0037): auch hier ist das Löschen eine ausgelöste Schreibung — sie
+  // landet im Banner und bleibt dort, statt drei Sekunden zu toasten. Die
+  // Erfolgsmeldung bleibt die Snackbar.
+  readonly schreibFehler = new SchreibFehler();
 
   // Best-effort, read once on init: the cached offline reference bundle
   // (issue #158) resolves a queued entry's flat write-shape payload back to
@@ -196,14 +212,16 @@ export class TodaySessionComponent implements OnInit {
       if (!confirmed) {
         return;
       }
-      this.outbox.delete(row.id).subscribe({
-        next: () =>
-          this.snackBar.open('Eintrag wurde gelöscht.', undefined, {duration: 2000}),
-        error: () =>
-          this.snackBar.open('Eintrag konnte nicht gelöscht werden.', 'Schließen', {
-            duration: 3000,
-          }),
-      });
+      this.deleteQueuedEntry(row.id);
+    });
+  }
+
+  private deleteQueuedEntry(id: string): void {
+    this.schreibFehler.leeren();
+    this.outbox.delete(id).subscribe({
+      next: () => this.snackBar.open('Eintrag wurde gelöscht.', undefined, {duration: 2000}),
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.deleteQueuedEntry(id)),
     });
   }
 }

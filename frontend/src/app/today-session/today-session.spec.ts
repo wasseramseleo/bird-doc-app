@@ -7,9 +7,12 @@ import {provideHttpClient} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
 import {provideNoopAnimations} from '@angular/platform-browser/animations';
 import {MatDialog} from '@angular/material/dialog';
-import {of} from 'rxjs';
+import {MatSnackBar} from '@angular/material/snack-bar';
+import {of, throwError} from 'rxjs';
 
 import {TodaySessionComponent} from './today-session';
+import {AppIconErrorDirective} from '../shared/app-icons';
+import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {ProjectService} from '../service/project.service';
 import {Project, Projekttyp} from '../models/project.model';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
@@ -231,6 +234,11 @@ describe('TodaySessionComponent', () => {
 
       const row = fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement;
       expect(row.classList).toContain('session-row--error');
+      // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template —
+      // `app-icon-error` ohne die Direktive in `imports` ist für Angular kein
+      // Fehler und ließe das Abzeichen im Browser ohne Icon.
+      expect(renderedGlyph(row.querySelector('.session-row__badge--error mat-icon'))).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Sync-Fehler');
       expect(text).toContain(
@@ -335,6 +343,45 @@ describe('TodaySessionComponent', () => {
       expect(navigateSpy).not.toHaveBeenCalled();
       const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
       expect(stored).toEqual([]);
+    });
+
+    // #448 (ADR 0037): auch „Heute" ist ein ausgelöster Schreibvorgang. Ein
+    // gescheitertes Löschen toastete drei Sekunden und war weg, bevor der
+    // Beringer — beide Hände am Vogel — hinsehen konnte.
+    it('renders the banner instead of a snackbar when the delete fails', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload(),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+
+      const snack = spyOn(fixture.debugElement.injector.get(MatSnackBar), 'open');
+      spyOn(TestBed.inject(OutboxService), 'delete').and.returnValue(
+        throwError(() => new Error('IndexedDB hat den Schreibvorgang abgelehnt.')),
+      );
+      dialog.open.and.returnValue({afterClosed: () => of(true)} as never);
+
+      const deleteButton = fixture.nativeElement.querySelector(
+        '.session-row--queued [data-testid="delete-queued"]',
+      ) as HTMLElement;
+      deleteButton.click();
+      await settle();
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      // Ein Fehlschlag ohne Transport dahinter fällt auf *Unbekannt* und
+      // beschuldigt damit nie die Eingabe (ADR 0037).
+      expect(banner.textContent).toContain('Unerwarteter Fehler');
+      expect(snack).not.toHaveBeenCalled();
     });
 
     it('keeps the entry queued when the delete confirmation is cancelled', async () => {

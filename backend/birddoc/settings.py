@@ -121,12 +121,18 @@ AUTHENTICATION_BACKENDS = [
 REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
+    # DRF's own session authentication, with a CSRF refusal that names itself
+    # instead of wearing the generic ``permission_denied`` a Rechteverweigerung
+    # wears too (ADR 0037 — the two 403s have opposite ways out).
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        "birds.authentication.CodedSessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # The Fehlervertrag (ADR 0038): one global handler, and every endpoint carries
+    # a machine-readable ``errors`` list beside its unchanged German prose body.
+    "EXCEPTION_HANDLER": "birds.errors.exception_handler",
 }
 
 LOGGING = {

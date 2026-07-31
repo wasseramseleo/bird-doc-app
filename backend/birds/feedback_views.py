@@ -4,6 +4,9 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
+from . import error_codes
+from .errors import error_entry
+
 
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
@@ -16,8 +19,13 @@ def feedback_view(request):
     """
     message = (request.data.get("message") or "").strip()
     if not message:
+        # Hand-built, so it hangs its own ``errors`` envelope (ADR 0038).
+        refusal = "Bitte gib eine Nachricht ein."
         return Response(
-            {"detail": "Bitte gib eine Nachricht ein."},
+            {
+                "detail": refusal,
+                "errors": [error_entry(error_codes.FEEDBACK_MESSAGE_REQUIRED, refusal)],
+            },
             status=status.HTTP_400_BAD_REQUEST,
         )
 

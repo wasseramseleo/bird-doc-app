@@ -1,0 +1,69 @@
+<div class="failure-banner" role="alert" data-testid="failure-banner">
+  <mat-icon app-icon-error aria-hidden="true"></mat-icon>
+  <span class="failure-banner__text">
+    <strong>{{ titelZeile() }}:</strong>
+    {{ failure().text }}
+    @if (adminSatz(); as satz) {
+      <span data-testid="failure-admins">{{ satz }}</span>
+    } @else {
+      {{ worte().ausweg }}
+    }
+  </span>
+  <!-- #444: der kollidierende Erstfang, damit der Beringer entscheiden kann,
+       statt zu raten — Datum, Uhrzeit, Art und Kürzel. Er steht auf einer
+       eigenen Zeile, damit die Abhilfen darunter auch auf einem Telefon Platz
+       haben. Fehlt der Kontext, fehlt diese Zeile ersatzlos. -->
+  @if (erstfangZeile(); as zeile) {
+    <span class="failure-banner__rival" data-testid="failure-rival">{{ zeile }}</span>
+  }
+  @switch (abhilfe()) {
+    @case ('neu-anmelden') {
+      <button mat-stroked-button type="button" data-testid="failure-anmelden"
+              (click)="onAnmelden()">
+        Anmelden
+      </button>
+    }
+    @case ('app-aktualisieren') {
+      <button mat-stroked-button type="button" data-testid="failure-aktualisieren"
+              (click)="onAktualisieren()">
+        Jetzt aktualisieren
+      </button>
+    }
+    @case ('erneut-versuchen') {
+      <button mat-stroked-button type="button" data-testid="failure-erneut"
+              (click)="retry.emit()">
+        Erneut versuchen
+      </button>
+    }
+  }
+  <!-- #444: die drei Abhilfen der bereits vergebenen Ringnummer. Keine von
+       ihnen speichert, keine navigiert vom Eintrag weg (das Öffnen des Rivalen
+       fragt über den `unsavedChangesGuard` erst), keine verwirft etwas — sie
+       füllen das Formular, und drücken muss der Beringer selbst. -->
+  @if (erstfang()) {
+    <button mat-stroked-button type="button" data-testid="failure-rival-oeffnen"
+            (click)="onErstfangOeffnen()">
+      Erstfang öffnen
+    </button>
+    <button mat-stroked-button type="button" data-testid="failure-wiederfang"
+            (click)="alsWiederfang.emit()">
+      Als Wiederfang erfassen
+    </button>
+    @if (keineFreieNummer()) {
+      <span class="failure-banner__hinweis" data-testid="failure-keine-freie-nummer">
+        Zurzeit ist keine freie Ringnummer zu bekommen.
+      </span>
+    } @else {
+      <button mat-stroked-button type="button" data-testid="failure-freie-nummer"
+              (click)="freieNummer.emit()">
+        Nächste freie Nummer übernehmen
+      </button>
+    }
+  }
+  @if (meldenAngeboten()) {
+    <button mat-stroked-button type="button" data-testid="failure-melden"
+            (click)="onFehlerMelden()">
+      Fehler melden
+    </button>
+  }
+</div>

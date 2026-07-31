@@ -12,10 +12,33 @@
     }
   </header>
 
-  @if (loading()) {
+  <!-- #448 (ADR 0037): die ausgelöste Schreibung. Anlegen, Bearbeiten und Export
+       wohnen im ProjectActionsService, ihre Geste aber hier — also zeigt dieser
+       Bildschirm den Fehlschlag, und er verfällt nicht. -->
+  @if (actions.schreibFehler.failure(); as failure) {
+    <app-failure-banner [failure]="failure"
+                        (retry)="actions.schreibFehler.erneut()"></app-failure-banner>
+  }
+
+  <!-- #446 (ADR 0037): der kaputte Zustand steht *an der Stelle* des Pickers und
+       zuerst. Sonst rendert der Leerzustand darunter eine seiner vier Diagnosen
+       (#415) — eine Aussage über Beringer und Rolle, die nach einem
+       gescheiterten Laden schlicht nicht belegt ist. -->
+  @if (loadFailure(); as failure) {
+    <app-load-failure
+      [failure]="failure"
+      titel="Projekte konnten nicht geladen werden."
+      (reload)="load()"></app-load-failure>
+  } @else if (loading()) {
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (projects().length === 0) {
     <div class="picker__empty">
+      <!-- Hier hängt später die Spot-Illustration „Empty-State" (docs/artist-brief.md,
+           B1 — „leere Projektliste"). Bis dahin bleibt das Marken-Logo stehen: es
+           ist kein Material-Icon, der Icon-Seam (#439) hat es also nicht zu
+           ersetzen, und dieser Bildschirm ist das Erste, was ein Mitglied ohne
+           Projekt sieht — ihn im Vorbeigehen umzuräumen wäre ein Redesign, das
+           dieses Ticket ausdrücklich nicht ist. -->
       <img
         src="/birddoc-logo-1930x1930.png"
         alt=""

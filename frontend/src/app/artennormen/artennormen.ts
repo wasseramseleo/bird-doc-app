@@ -1,5 +1,4 @@
 import {ChangeDetectionStrategy, Component, OnInit, computed, inject, signal} from '@angular/core';
-import {HttpErrorResponse} from '@angular/common/http';
 import {Observable, forkJoin, of} from 'rxjs';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
@@ -7,6 +6,11 @@ import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 
+import {AppIconEmptyDirective} from '../shared/app-icons';
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
+import {LoadFailureComponent} from '../shared/load-failure/load-failure';
+import {AppFailure, appFailureOf} from '../core/errors/app-failure';
+import {SchreibFehler} from '../core/errors/schreib-fehler';
 import {ApiService} from '../service/api.service';
 import {
   EffectiveSpeciesNorm,
@@ -40,6 +44,9 @@ interface NormRow {
     MatProgressSpinnerModule,
     MatDialogModule,
     MatSnackBarModule,
+    AppIconEmptyDirective,
+    FailureBannerComponent,
+    LoadFailureComponent,
   ],
   templateUrl: './artennormen.html',
   styleUrl: './artennormen.scss',
@@ -51,6 +58,13 @@ export class ArtennormenComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal<boolean>(true);
+  // #446 (ADR 0037): ein gescheitertes Laden ersetzt die Liste an Ort und
+  // Stelle, statt drei Sekunden zu toasten und eine leere Liste stehen zu
+  // lassen — die sah aus wie eine Organisation ganz ohne Artennorm.
+  readonly loadFailure = signal<AppFailure | null>(null);
+  // #448 (ADR 0037): eine zurückgewiesene Speicherung landet im Banner, dort wo
+  // die Geste stattfand. Eine Snackbar bestätigt hier nur noch Gelungenes.
+  readonly schreibFehler = new SchreibFehler();
   private readonly rows = signal<NormRow[]>([]);
   // The Organisation's Empfohlene-Ringgröße overrides (issue #372, ADR 0028),
   // keyed by species_id, so the dialog can pre-fill the current override and the
@@ -94,24 +108,29 @@ export class ArtennormenComponent implements OnInit {
       if (!result) {
         return;
       }
-      // The norm override and the Empfohlene-Ringgröße override are written
-      // **independently** (ADR 0028): the norm save is upserted as before, while
-      // the ring size is upserted, reset, or left untouched on its own resource.
-      forkJoin({
-        norm: this.api.saveSpeciesNormOverride(result.norm),
-        ring: this.reconcileRingSize(result.norm.species_id, result.ringSize),
-      }).subscribe({
-        next: ({norm}: {norm: SpeciesNormOverride}) => {
-          this.snackBar.open(
-            `Artennorm für „${norm.species_name}“ wurde gespeichert.`,
-            'Schließen',
-            {duration: 3000},
-          );
-          this.load();
-        },
-        error: (err: HttpErrorResponse) =>
-          this.snackBar.open(this.errorMessage(err, 'gespeichert'), 'Schließen', {duration: 5000}),
-      });
+      this.saveNorm(result);
+    });
+  }
+
+  // The norm override and the Empfohlene-Ringgröße override are written
+  // **independently** (ADR 0028): the norm save is upserted as before, while
+  // the ring size is upserted, reset, or left untouched on its own resource.
+  private saveNorm(result: ArtennormDialogResult): void {
+    this.schreibFehler.leeren();
+    forkJoin({
+      norm: this.api.saveSpeciesNormOverride(result.norm),
+      ring: this.reconcileRingSize(result.norm.species_id, result.ringSize),
+    }).subscribe({
+      next: ({norm}: {norm: SpeciesNormOverride}) => {
+        this.snackBar.open(
+          `Artennorm für „${norm.species_name}“ wurde gespeichert.`,
+          'Schließen',
+          {duration: 3000},
+        );
+        this.load();
+      },
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.saveNorm(result)),
     });
   }
 
@@ -157,31 +176,38 @@ export class ArtennormenComponent implements OnInit {
       if (!confirmed) {
         return;
       }
-      this.api.deleteSpeciesNormOverride(overrideId).subscribe({
-        next: () => {
-          this.snackBar.open(
-            `„${row.species_name}“ verwendet wieder die Standard-Artennorm.`,
-            'Schließen',
-            {duration: 3000},
-          );
-          this.load();
-        },
-        error: (err: HttpErrorResponse) =>
-          this.snackBar.open(this.errorMessage(err, 'zurückgesetzt'), 'Schließen', {duration: 5000}),
-      });
+      this.resetNorm(row, overrideId);
     });
   }
 
-  private errorMessage(err: HttpErrorResponse, verb: string): string {
-    const body = err.error as {detail?: string} | undefined;
-    return body?.detail ?? `Artennorm konnte nicht ${verb} werden.`;
+  private resetNorm(row: NormRow, overrideId: string): void {
+    this.schreibFehler.leeren();
+    this.api.deleteSpeciesNormOverride(overrideId).subscribe({
+      next: () => {
+        this.snackBar.open(
+          `„${row.species_name}“ verwendet wieder die Standard-Artennorm.`,
+          'Schließen',
+          {duration: 3000},
+        );
+        this.load();
+      },
+      // #448: der handgeschriebene Extraktor dieses Bildschirms (`errorMessage`)
+      // ist weg — er grub eigenhändig `detail` aus dem Körper und war für jeden
+      // Feldfehler blind. Der Serversatz kommt jetzt aus derselben Einordnung
+      // wie überall sonst (ADR 0038).
+      error: (err: unknown) =>
+        this.schreibFehler.zeige(appFailureOf(err), () => this.resetNorm(row, overrideId)),
+    });
   }
 
   // The list marks each Art Standard vs angepasst by joining the effective norms
   // (every Art in force) with the Organisation's overrides (the angepasst set),
   // mirroring how Beringer verwalten joins /scientists/ with /mitgliedschaften/.
-  private load(): void {
+  // protected, weil „Erneut laden" aus dem In-Place-Fehlerzustand genau hierher
+  // zurückkommt (#446).
+  protected load(): void {
     this.loading.set(true);
+    this.loadFailure.set(null);
     forkJoin({
       effective: this.api.getEffectiveSpeciesNorms(),
       overrides: this.api.getAllSpeciesNormOverrides(),
@@ -204,11 +230,9 @@ export class ArtennormenComponent implements OnInit {
         );
         this.loading.set(false);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.loading.set(false);
-        this.snackBar.open('Artennormen konnten nicht geladen werden.', 'Schließen', {
-          duration: 3000,
-        });
+        this.loadFailure.set(appFailureOf(err));
       },
     });
   }

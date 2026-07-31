@@ -1,8 +1,9 @@
 import {TestBed} from '@angular/core/testing';
-import {provideHttpClient} from '@angular/common/http';
+import {HttpErrorResponse, provideHttpClient} from '@angular/common/http';
 import {provideHttpClientTesting} from '@angular/common/http/testing';
 import {firstValueFrom} from 'rxjs';
 
+import {classifyFailure, Fehlerklasse, localFailure} from '../core/errors/app-failure';
 import {OutboxService} from './outbox.service';
 import {AuthService} from './auth.service';
 import {OutboxStoreService} from '../core/offline/outbox-store';
@@ -359,7 +360,7 @@ describe('OutboxService', () => {
   });
 
   describe('flag() (issue #164 — a server-rejected entry stays queued, flagged)', () => {
-    it('durably attaches the server error to a queued entry and keeps it pending', async () => {
+    async function queueOne(): Promise<OutboxService> {
       await TestBed.inject(OutboxStoreService).add({
         id: 'uuid-1',
         accountKey: 'fre',
@@ -368,9 +369,14 @@ describe('OutboxService', () => {
       });
       const service = TestBed.inject(OutboxService);
       await service.ready;
+      return service;
+    }
+
+    it('durably attaches the server error to a queued entry and keeps it pending', async () => {
+      const service = await queueOne();
       const entry = service.findQueued('uuid-1')!;
 
-      await service.flag(entry, 'Ring bereits vergeben.');
+      await service.flag(entry, localFailure(Fehlerklasse.Korrigieren, 'Ring bereits vergeben.'));
 
       // The flag is visible reactively on the pending entry...
       expect(service.findQueued('uuid-1')?.syncError).toBe('Ring bereits vergeben.');
@@ -380,16 +386,72 @@ describe('OutboxService', () => {
       const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
       expect(stored[0].syncError).toBe('Ring bereits vergeben.');
     });
+
+    // #445 (ADR 0038): der ganze Umschlag reist mit auf den Eintrag — additiv
+    // neben der deutschen Zeile, die dort seit #164 steht und dort byteweise
+    // stehen bleibt. Tage später, ohne Netz, ist der kollidierende Erstfang
+    // damit immer noch da.
+    it('durably writes the whole envelope beside the unchanged sentence', async () => {
+      const service = await queueOne();
+      const rival = {
+        rival: {
+          id: '6f1a6a1e-0f0e-4f5a-9a3b-2f9d1c7e5b40',
+          date_time: '2026-03-01T12:00:00Z',
+          species: 'Teichrohrsänger',
+          staff: 'FRE',
+        },
+      };
+      const collision = 'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+      const failure = classifyFailure(
+        new HttpErrorResponse({
+          status: 400,
+          statusText: 'Bad Request',
+          url: 'https://app.birddoc.eu/api/birds/data-entries/',
+          error: {
+            ring_number: collision,
+            errors: [
+              {
+                field: 'ring_number',
+                code: 'ring_already_first_caught',
+                detail: collision,
+                context: rival,
+              },
+            ],
+          },
+        }),
+      );
+
+      await service.flag(service.findQueued('uuid-1')!, failure);
+
+      const stored = (await TestBed.inject(OutboxStoreService).listForAccount('fre'))[0];
+      expect(stored.syncError).toBe(collision);
+      expect(stored.syncErrorEnvelope).toEqual({
+        klasse: Fehlerklasse.Korrigieren,
+        code: 'ring_already_first_caught',
+        field: 'ring_number',
+        detail: collision,
+        context: rival,
+      });
+    });
   });
 
   describe('update() clears a prior flag (issue #164 — fixing re-queues clean)', () => {
-    it('drops the syncError when a flagged entry is re-saved from the form', async () => {
+    it('drops the syncError — envelope and all — when a flagged entry is re-saved from the form', async () => {
       await TestBed.inject(OutboxStoreService).add({
         id: 'uuid-1',
         accountKey: 'fre',
         payload: {species_id: 's1', ring_number: '0043'},
         queuedAt: '2026-07-02T09:00:00.000Z',
         syncError: 'Ring bereits vergeben.',
+        // #445: the whole structure goes with it — a corrected entry carries no
+        // trace of the rejection it answers.
+        syncErrorEnvelope: {
+          klasse: Fehlerklasse.Korrigieren,
+          code: 'ring_already_first_caught',
+          field: 'ring_number',
+          detail: 'Ring bereits vergeben.',
+          context: {rival: {id: 'r1', date_time: '2026-03-01T12:00:00Z', species: 'X', staff: 'FRE'}},
+        },
       });
       const service = TestBed.inject(OutboxService);
       await service.ready;
@@ -398,8 +460,10 @@ describe('OutboxService', () => {
       await firstValueFrom(service.update('uuid-1', {species_id: 's1', ring_number: '0099'}));
 
       expect(service.findQueued('uuid-1')?.syncError).toBeFalsy();
+      expect(service.findQueued('uuid-1')?.syncErrorEnvelope).toBeFalsy();
       const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
       expect(stored[0].syncError).toBeFalsy();
+      expect(stored[0].syncErrorEnvelope).toBeFalsy();
       expect(stored[0].payload).toEqual({species_id: 's1', ring_number: '0099'});
     });
   });

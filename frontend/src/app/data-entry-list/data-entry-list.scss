@@ -44,9 +44,8 @@
   color: var(--bd-ink-soft);
   text-align: center;
 
-  &--error {
-    color: var(--bd-error);
-  }
+  // #446: der kaputte Zustand wohnt samt seiner Optik jetzt in
+  // `shared/load-failure` — dasselbe Bauteil auf allen sechs Bildschirmen.
 
   mat-icon {
     font-size: 32px;

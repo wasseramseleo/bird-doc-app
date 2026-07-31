@@ -52,6 +52,7 @@ import {DataEntryRefreshService} from '../service/data-entry-refresh.service';
 import {DataAccessFacadeService} from '../service/data-access-facade.service';
 import {UnsavedChangesService} from '../service/unsaved-changes.service';
 import {ConnectivityService} from '../core/offline/connectivity';
+import {isDurablyQueued} from '../core/offline/durable-write';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
 import {WorkbenchStorageService} from '../service/workbench-storage.service';
@@ -92,12 +93,64 @@ import {
 } from '../core/plausibility/plausibility-acknowledgment';
 import {InfoDialogComponent, InfoDialogData} from '../shared/info-dialog/info-dialog';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
+import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
+import {LoadFailureComponent} from '../shared/load-failure/load-failure';
+import {
+  AppFailure,
+  appFailureOf,
+  failureFromSyncError,
+  Fehlerklasse,
+  localFailure,
+} from '../core/errors/app-failure';
 
 // #232: the strict Austrian (AUW) ring-size codes. When the Zentrale switches
 // back from a foreign scheme to the Projekt-Zentrale, a free-text Größe that is
 // not one of these is cleared so the restored dropdown never carries an unlisted
 // value.
 const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
+
+// #443: welcher Control zu welchem Feldnamen des Servers gehört. Die Schreibform
+// ist flach (`species_id`), das Formular hält die Objekte (`species`) — siehe
+// `transformFromForm()`. Alles Übrige heißt in beiden Welten gleich.
+const CONTROL_FOR_SERVER_FIELD: Record<string, string> = {
+  species_id: 'species',
+  staff_id: 'staff',
+  ringing_station_id: 'ringing_station',
+};
+
+/** Der Fehlerschlüssel, unter dem der Serversatz an einem Control hängt. */
+const SERVER_REJECTED = 'serverRejected';
+
+/**
+ * #443: die Controls, deren Vorlage den Serversatz auch wirklich als `mat-error`
+ * zeigt — **die einzigen, die markiert werden dürfen**.
+ *
+ * Der Schreib-Serializer kann jedes Feld zurückweisen, nicht nur die acht der
+ * Kern-Maske: eine fehlerhafte Dezimalzahl im Gewicht ist genauso ein 400 wie
+ * eine doppelte Ringnummer. Ein Control ohne `mat-error` zu markieren ergäbe ein
+ * **rotes, stummes Feld** — rot, ohne einen Satz, der sagt warum. Deshalb ist
+ * diese Liste die Bedingung: was hier nicht steht, wird nicht markiert und
+ * erscheint allein im Banner, wo der Satz auf jeden Fall steht.
+ *
+ * Nicht dabei und bewusst so: `has_brood_patch`, `has_cpl_plus` und
+ * `has_hunger_stripes` sind `mat-checkbox` und haben gar keinen Fehlerplatz, und
+ * `is_dead_recovery`/`is_non_standard` sind Fangmarker ohne eigenes Eingabefeld.
+ *
+ * Die Liste ist exportiert, weil eine Spec sie durchgeht und für **jeden**
+ * Eintrag beweist, dass der Satz danach am Feld steht — sonst driftete sie
+ * lautlos von der Vorlage weg.
+ */
+export const SERVER_REJECTION_FIELDS: readonly string[] = [
+  'ringing_station', 'staff', 'date_time', 'species', 'bird_status', 'central',
+  'ring_size', 'ring_number',
+  'net_location', 'net_height', 'net_direction',
+  'age_class', 'sex', 'fat_deposit', 'muscle_class',
+  'small_feather_int', 'small_feather_app', 'hand_wing',
+  'tarsus', 'feather_span', 'wing_span', 'weight_gram',
+  'comment', 'parasites', 'notch_f2', 'inner_foot',
+];
+
+const SERVER_REJECTION_FIELD_SET = new Set<string>(SERVER_REJECTION_FIELDS);
 
 @Component({
   selector: 'app-data-entry-form',
@@ -122,6 +175,8 @@ const AUSTRIAN_RING_SIZES = new Set<string>(Object.values(RingSize));
     MatIconModule,
     MatBadgeModule,
     MarkerSlotsComponent,
+    FailureBannerComponent,
+    LoadFailureComponent,
   ],
   providers: [provideNativeDateAdapter(), DatePipe, DecimalPipe],
   templateUrl: './data-entry-form.html',
@@ -225,11 +280,42 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // saves back into the outbox (re-queue) instead of PUTting to the server.
   private readonly loadedQueuedEntry = signal<OutboxEntry | null>(null);
   readonly isQueuedEditMode = computed(() => this.loadedQueuedEntry() !== null);
-  // Issue #164: the server's rejection message when this queued entry was
+  // Issue #164: the server's rejection when this queued entry was
   // skipped-and-flagged during sync — shown as a banner so the Mitglied knows
   // exactly what to fix before re-saving (which re-queues it clean). `null`
-  // for an ordinary, never-rejected queued entry.
-  readonly syncError = computed(() => this.loadedQueuedEntry()?.syncError ?? null);
+  // for an ordinary, never-rejected queued entry. #443: lifted into the shared
+  // AppFailure shape so it renders through the *same* banner an online
+  // rejection does. #445: the entry carries the whole rejection now — Klasse,
+  // Code, Feld, Kontext beside the sentence — so this banner is complete days
+  // later with no network at all, colliding Erstfang included. An entry an
+  // older bundle flagged has only the sentence, and it stays exactly that: a
+  // bare `detail` with no invented code.
+  readonly syncFailure = computed(() => {
+    const entry = this.loadedQueuedEntry();
+    return entry?.syncError
+      ? failureFromSyncError(entry.syncError, entry.syncErrorEnvelope)
+      : null;
+  });
+  // #443 (ADR 0037): the server's rejection of a save the Beringer just
+  // gestured for — classified, never a transport string, and it does not time
+  // out. Cleared when the next attempt starts and when one succeeds.
+  private readonly saveFailure = signal<AppFailure | null>(null);
+  // One banner, two moments. A fresh rejection wins over an older
+  // Synchronisierungsfehler: it is the answer to the button just pressed.
+  readonly bannerFailure = computed(() => this.saveFailure() ?? this.syncFailure());
+  // Only the *heading* knows the moment (ADR 0037): a rejection met during a
+  // replay says so, an online one gets its class's own title.
+  readonly bannerTitel = computed(() =>
+    this.saveFailure() ? null : 'Synchronisierung abgelehnt',
+  );
+  // #444: das Formular hat nach der nächsten freien Ringnummer gefragt und
+  // keine bekommen. Dann steht im Banner ein Satz statt eines Knopfes, der
+  // wortlos nichts täte — und die getippte Nummer bleibt, wo sie ist.
+  readonly keineFreieNummer = signal(false);
+  // What "Erneut versuchen" means for the failure currently on screen. The
+  // banner only reports that it was pressed; only this form knows which errand
+  // failed — a save, a Ringhistorie lookup, a delete.
+  private readonly retryAction = signal<(() => void) | null>(null);
   // The queued entry's payload resolved to display-ready form values (issue
   // #163), kept alongside `loadedQueuedEntry` so Zurücksetzen can restore it
   // without re-reading the reference cache.
@@ -241,7 +327,11 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // render. Any failure lands here — 5xx, timeout, dropped connection, or
   // status 0 while offline. Only the server path can set it; the queued path
   // reads local state and cannot fail this way.
-  readonly loadError = signal<boolean>(false);
+  // #446 (ADR 0037): aus dem Flag ist die Einordnung geworden — dieselbe, aus
+  // der `saveFailure` seine Worte bezieht. Die Oberflächen bleiben getrennt:
+  // ein gescheitertes *Laden* ersetzt den Inhalt an Ort und Stelle und bekommt
+  // nie ein Banner.
+  readonly loadFailure = signal<AppFailure | null>(null);
   // MO-3 submit feedback: drives the brief green "Gespeichert ✓" button state.
   readonly saved = signal<boolean>(false);
   // #23: a prominent CapsLock warning. Beringer type ring numbers and codes
@@ -747,6 +837,15 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       }
     });
 
+    // #444: „Es gibt keine freie Nummer" gilt für die Ringgröße, für die
+    // gefragt wurde. Wählt der Beringer eine andere, ist die Antwort hinfällig
+    // — sonst bliebe der Satz stehen und mit ihm die Abhilfe verschwunden, die
+    // für die neue Größe sehr wohl eine Nummer hätte.
+    effect(() => {
+      this.ringSize();
+      this.keineFreieNummer.set(false);
+    });
+
     // Issue #19: a 'ring_destroyed' record ("Ring Vernichtet") carries no bird
     // data, so the bird-field validators must step aside or the collapsed form
     // could never be submitted. Ringnummer/Ringgröße stay required.
@@ -897,35 +996,7 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         return;
       }
 
-      this.loading.set(true);
-      this.loadError.set(false);
-      // #385: the error callback is not optional here. Without it a failed GET
-      // never cleared `loading`, leaving a permanent spinner over an empty
-      // form: Speichern stayed disabled via `entryForm.invalid || loading()`,
-      // the untouched required validators made `onSubmit()` early-return (so
-      // Ctrl+S was dead too), and nothing told the user what had happened.
-      this.apiService.getDataEntry(id).subscribe({
-        next: entry => {
-          this.loadedEntry.set(entry);
-          this.entryForm.patchValue(this.transformToForm(entry));
-          // #273: seed the "last searched ring" key so leaving the Ringnummer on a
-          // saved Wiederfang does not silently re-fetch and clobber edits. A
-          // changed Ringnummer still differs from this key and triggers a lookup.
-          this.lastSearchedRingKey = this.ringLookupKey();
-          // Issue #19/#57: a loaded Sonderart entry must apply the same
-          // collapse / mandatory-comment behaviour as a freshly selected one.
-          this.selectedSpecies.set(entry.species ?? null);
-          this.loading.set(false);
-          // PRD #261 (#267): surface the quiet suffix icons for any stored value
-          // already out of range, without a modal (the norm may still be loading;
-          // loadNorms re-seeds once it lands).
-          this.seedPlausibilityOnLoad();
-        },
-        error: () => {
-          this.loadError.set(true);
-          this.loading.set(false);
-        },
-      });
+      this.loadEntryFromServer(id);
     });
 
     // #338: left/right arrow field-jump must be intercepted in the CAPTURE phase,
@@ -947,6 +1018,58 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     };
     host.addEventListener('keydown', captureArrowNav, true);
     this.destroyRef.onDestroy(() => host.removeEventListener('keydown', captureArrowNav, true));
+  }
+
+  /**
+   * Das GET hinter `/data-entry/:id`.
+   *
+   * #385: der Fehlerzweig ist hier nicht optional. Ohne ihn blieb `loading`
+   * nach einem gescheiterten GET für immer stehen — ein dauerhafter Spinner
+   * über einem leeren Formular: Speichern blieb über `entryForm.invalid ||
+   * loading()` deaktiviert, die unberührten Pflichtvalidatoren ließen
+   * `onSubmit()` früh zurückkehren (auch Strg+S war also tot), und nichts sagte,
+   * was passiert war.
+   *
+   * #446: eine eigene Methode, weil „Erneut laden" genau hierher zurückkommt.
+   */
+  private loadEntryFromServer(id: string): void {
+    this.loading.set(true);
+    this.loadFailure.set(null);
+    this.apiService.getDataEntry(id).subscribe({
+      next: entry => {
+        this.loadedEntry.set(entry);
+        this.entryForm.patchValue(this.transformToForm(entry));
+        // #273: seed the "last searched ring" key so leaving the Ringnummer on a
+        // saved Wiederfang does not silently re-fetch and clobber edits. A
+        // changed Ringnummer still differs from this key and triggers a lookup.
+        this.lastSearchedRingKey = this.ringLookupKey();
+        // Issue #19/#57: a loaded Sonderart entry must apply the same
+        // collapse / mandatory-comment behaviour as a freshly selected one.
+        this.selectedSpecies.set(entry.species ?? null);
+        this.loading.set(false);
+        // PRD #261 (#267): surface the quiet suffix icons for any stored value
+        // already out of range, without a modal (the norm may still be loading;
+        // loadNorms re-seeds once it lands).
+        this.seedPlausibilityOnLoad();
+      },
+      error: (err: unknown) => {
+        this.loadFailure.set(appFailureOf(err));
+        this.loading.set(false);
+      },
+    });
+  }
+
+  /**
+   * „Erneut laden" aus dem In-Place-Fehlerzustand (#446) — der Ausweg der
+   * Klasse *Erneut versuchen* an Ort und Stelle, ohne den Bildschirm zu
+   * verlassen und erneut anzusteuern. Der eingereihte Pfad kommt hier nie an:
+   * er liest lokalen Zustand und kann so gar nicht scheitern.
+   */
+  onReloadEntry(): void {
+    const id = this.entryId();
+    if (id) {
+      this.loadEntryFromServer(id);
+    }
   }
 
   /**
@@ -1170,8 +1293,11 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
           );
           this.focusNext('staff');
         },
-        error: () => {
-          this.snackBar.open('Beringer konnte nicht angelegt werden.', 'Schließen', {duration: 3000});
+        error: (err: unknown) => {
+          // #443: eine ausgelöste Schreibung, die scheitert, landet im Banner
+          // und bleibt dort — nicht in einer Snackbar, die vor der Antwort auf
+          // die Frage „warum?" wieder weg ist.
+          this.showFailure(appFailureOf(err), () => this.onCreateBeringer(handle));
         },
       });
     });
@@ -1184,10 +1310,14 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     if (!ringDestroyed) {
       // #427: ein Knopf, der wortlos nichts tut, ist genau der Defekt hier.
       // Lässt sich die Sonderart nicht auflösen, sagt der Klick das sichtbar.
-      this.snackBar.open(
-        'Die Sonderart „Ring vernichtet" ist gerade nicht verfügbar — bitte die Seite neu laden.',
-        'Schließen',
-        {duration: 5000},
+      // #443: sichtbar heißt bleibend, und die Klasse ist *Unbekannt* — die
+      // Referenzdaten fehlen, das liegt nie an der Eingabe.
+      this.showFailure(
+        localFailure(
+          Fehlerklasse.Unbekannt,
+          'Die Sonderart „Ring vernichtet" ist gerade nicht verfügbar — bitte die Seite neu laden.',
+        ),
+        () => this.onDestroyedRing(),
       );
       return;
     }
@@ -1465,9 +1595,14 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         }
         this.loading.set(false);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.loading.set(false);
-        this.snackBar.open('Fehler beim Laden der Ringhistorie.', 'Schließen', {duration: 3000});
+        // #443: auch ein gescheitertes Laden verfällt nicht mehr nach drei
+        // Sekunden — die Ringhistorie einfach leer zu lassen ist genau der
+        // „kaputt sieht aus wie leer"-Defekt, den dieses PRD abräumt. „Erneut
+        // versuchen" wiederholt die Suche. (#446 stellt den Ladefehler später
+        // an Ort und Stelle, sobald es dafür ein Bauteil gibt.)
+        this.showFailure(appFailureOf(err), () => this.fetchRingHistory());
       }
     });
   }
@@ -1582,11 +1717,11 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
           this.router.navigateByUrl('/data-entries');
           this.offerUndo(id);
         },
-        error: (err) => {
+        error: (err: unknown) => {
           console.error('Error deleting data entry', err);
-          this.snackBar.open('Eintrag konnte nicht gelöscht werden.', 'Schließen', {
-            duration: 3000,
-          });
+          // #443: das Löschen ist eine ausgelöste Schreibung — scheitert sie,
+          // sagt das Banner warum, und der Eintrag steht unversehrt da.
+          this.showFailure(appFailureOf(err), () => this.onDeleteEntry());
         },
       });
     });
@@ -1602,23 +1737,34 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     this.snackBar
       .open('Eintrag wurde gelöscht.', 'Rückgängig', {duration: 10000})
       .onAction()
-      .subscribe(() => {
-        this.apiService.restoreDataEntry(id).subscribe({
-          next: () => {
-            // Die Liste, auf die das Löschen navigiert hat, steht längst — sie
-            // lädt nur beim Betreten und beim Projektwechsel. Ohne dieses Signal
-            // meldet das Snackbar einen Erfolg, den der Bildschirm widerlegt.
-            this.entryRefresh.request();
-            this.snackBar.open('Eintrag wurde wiederhergestellt.', undefined, {duration: 3000});
-          },
-          error: (err) => {
-            console.error('Error restoring data entry', err);
-            this.snackBar.open('Eintrag konnte nicht wiederhergestellt werden.', 'Schließen', {
-              duration: 3000,
-            });
-          },
-        });
-      });
+      .subscribe(() => this.restoreEntry(id));
+  }
+
+  /**
+   * Das „Rückgängig" selbst — bewusst **nach** der Navigation lauffähig: es
+   * benutzt nur Wurzel-Dienste, keine Signale dieser Komponente.
+   */
+  private restoreEntry(id: string): void {
+    this.entryRefresh.schreibFehler.leeren();
+    this.apiService.restoreDataEntry(id).subscribe({
+      next: () => {
+        // Die Liste, auf die das Löschen navigiert hat, steht längst — sie
+        // lädt nur beim Betreten und beim Projektwechsel. Ohne dieses Signal
+        // meldet das Snackbar einen Erfolg, den der Bildschirm widerlegt.
+        this.entryRefresh.request();
+        this.snackBar.open('Eintrag wurde wiederhergestellt.', undefined, {duration: 3000});
+      },
+      error: (err: unknown) => {
+        console.error('Error restoring data entry', err);
+        // #448: die letzte Fehlschlag-Snackbar der SPA, und sie konnte an
+        // dieser Stelle nicht anders: das „Rückgängig" fällt, nachdem
+        // „Löschen" längst zur Fangliste navigiert und diese Komponente
+        // zerstört hat — ein Banner hier sähe niemand. Also nimmt der
+        // Fehlschlag denselben Rückkanal wie das Nachladen und landet dort,
+        // wo das Snackbar stand und gedrückt wurde.
+        this.entryRefresh.schreibFehler.zeige(appFailureOf(err), () => this.restoreEntry(id));
+      },
+    });
   }
 
   // PRD #245: recompute the inline Plausibilitätswarnungen from the current form
@@ -1730,7 +1876,14 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   }
 
   onSubmit(): void {
-    if (this.entryForm.invalid) {
+    // #443: NICHT `entryForm.invalid` — **dieselbe Frage, die der Knopf stellt**,
+    // damit die beiden nie auseinanderlaufen. Eine Feldmarkierung macht ihr
+    // Control ungültig; hörte dieses `return` darauf, wäre jede Speicherung
+    // beendet, bis genau dieses eine Feld angefasst wird — obwohl das Banner
+    // darüber „Bitte korrigieren und erneut speichern" sagt und ADR 0037 sich
+    // darauf verlässt, dass eine Abhilfe das Formular füllt und das Mitglied
+    // dann Speichern drückt.
+    if (this.invalidBeyondServerRejection()) {
       Object.values(this.entryForm.controls).forEach(control => {
         if (control.invalid) {
           control.markAsTouched();
@@ -1739,6 +1892,10 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       this.focusFirstInvalid();
       return;
     }
+
+    // Der Versuch geht wirklich hinaus: die Markierungen beantworteten den
+    // vorigen und gehen mit ihm — wie das Banner, das `performSave()` zurücknimmt.
+    this.clearServerRejections();
 
     // PRD #261 (#266): saving is never gated on a Plausibilitätswarnung. Every
     // trigger path — a numeric blur, a categorical selectionChange, and an Art
@@ -1751,6 +1908,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
 
   private performSave(): void {
     this.loading.set(true);
+    // #443: der neue Versuch beantwortet den alten — das Banner des letzten
+    // Fehlschlags geht, bevor dieser hier eine Antwort hat.
+    this.saveFailure.set(null);
     const rawValue = this.entryForm.getRawValue();
 
     // #155: only reuse the idempotency key across a resubmit when it replays the
@@ -1774,13 +1934,18 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
     // enqueues on a genuine connectivity failure); a queued edit writes
     // straight back into the outbox via `OutboxService.update()` — it was
     // never on the server to begin with, so there is nothing to PUT. An edit
-    // of an already-*synced* record always targets the server, so it stays on
-    // `apiService` unchanged (offline edits of synced entries are out of
-    // scope for PRD #152 — see its "Out of Scope" section).
+    // of an already-*synced* record always targets the server: es gibt keinen
+    // Offline-Rückfall dafür (offline edits of synced entries are out of scope
+    // for PRD #152 — see its "Out of Scope" section) und keinen Rückfall auf
+    // eine abgelaufene Sitzung (#447, ADR 0039 — ein Edit ändert nur, was der
+    // Server bereits hält). Es geht trotzdem über die Fassade, weil dort die
+    // Tabelle steht und weil der Edit die eine Markierung braucht, die er sehr
+    // wohl verdient: sein 401 wird am Formular gemeldet, nicht mit einem Sprung
+    // zur Anmeldung, der die Korrektur mitnähme.
     const saveOperation: Observable<unknown> = this.isQueuedEditMode()
       ? this.outbox.update(this.entryId()!, formValue as Record<string, unknown>)
       : this.isEditMode()
-        ? this.apiService.updateDataEntry(this.entryId()!, formValue)
+        ? this.dataAccess.updateDataEntry(this.entryId()!, formValue)
         : this.dataAccess.createDataEntry(formValue);
 
     saveOperation.subscribe({
@@ -1813,16 +1978,216 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
         setTimeout(() => this.saved.set(false), 900);
         this.cleanReset();
       },
-      error: (err) => {
+      error: (err: unknown) => {
         console.error('Error saving data entry', err);
-        if (!this.isEditMode()) {
+        // #447 (ADR 0039): eine abgelaufene Sitzung hat den Fang **nicht**
+        // vernichtet — er liegt dauerhaft in der Outbox, genau wie bei einem
+        // Netzausfall. Das Formular verhält sich deshalb wie nach einer
+        // eingereihten Speicherung: der Fang ist erfasst, das Formular steht
+        // frisch für den nächsten Vogel da, und der `unsavedChangesGuard` (#407)
+        // hat nichts mehr zu verwerfen, wenn das Banner zur Anmeldung führt.
+        // Der Fehlschlag bleibt trotzdem im Banner stehen — die Sitzung muss
+        // erneuert werden, und erst danach überträgt sich der Eintrag.
+        if (isDurablyQueued(err)) {
+          this.rememberBeringer();
+          this.entryForm.markAsPristine();
+          this.cleanReset();
+        } else if (!this.isEditMode()) {
           this.lastFailedSubmission = JSON.stringify(rawValue);
         }
-        this.snackBar.open(`Fehler beim Speichern: ${err.message}`, 'Schließen');
+        // #443 (ADR 0037): die Zurückweisung landet dort, wo die Geste
+        // stattfand, und verfällt nicht — statt in einer Snackbar, die nach
+        // drei Sekunden weg ist, während der Beringer beide Hände am Vogel hat.
+        // Die Klasse kommt aus der gemeinsamen Einordnung; hier wird nie ein
+        // Status gelesen und nie eine Meldung selbst gebaut.
+        this.showFailure(appFailureOf(err), () => this.onSubmit());
         this.loading.set(false);
       },
       complete: () => this.loading.set(false)
     });
+  }
+
+  /**
+   * #443 (ADR 0037): einen Fehlschlag zeigen — im Banner, und wo er an einem
+   * Feld hängt, zusätzlich an diesem Feld.
+   *
+   * `retry` ist, was „Erneut versuchen" in *diesem* Moment bedeutet. Das Banner
+   * weiß das nicht und soll es nicht wissen: es meldet nur den Wunsch nach oben.
+   */
+  private showFailure(failure: AppFailure, retry: () => void): void {
+    this.saveFailure.set(failure);
+    this.retryAction.set(retry);
+    this.markRejectedField(failure);
+    // Ein neuer Fehlschlag, eine neue Frage: was beim vorigen Mal keine freie
+    // Nummer hergab, wird nicht als Antwort auf diesen ausgegeben.
+    this.keineFreieNummer.set(false);
+  }
+
+  /** Der Ausweg „Erneut versuchen", so wie ihn dieser Fehlschlag gemeint hat. */
+  onRetryFailure(): void {
+    this.retryAction()?.();
+  }
+
+  /**
+   * „Als Wiederfang erfassen" (#444, ADR 0037) — die erste der drei Abhilfen
+   * einer bereits vergebenen Ringnummer: der Vogel trägt den Ring schon, also
+   * ist das in Wahrheit ein Wiederfang.
+   *
+   * Sie setzt den **Ringstatus und sonst nichts** — insbesondere bleibt die
+   * Ringnummer stehen, denn der Ring sitzt am Vogel. Und sie **speichert
+   * nicht**: „Als Wiederfang" ändert die wissenschaftliche Aussage des
+   * Datensatzes, und ein Fehlgriff meldete sonst einen Wiederfang für einen nie
+   * zuvor gefangenen Vogel. Sichtbar, widerruflich, bewusst — drücken muss der
+   * Beringer selbst.
+   *
+   * Die Feldmarkierung an der Ringnummer bleibt ebenfalls stehen: sie hält
+   * fest, woran der Versuch scheiterte, und ist kein Hindernis — `onSubmit()`
+   * räumt sie vor der Prüfung ab (#443).
+   */
+  onAlsWiederfang(): void {
+    this.uebernehmen('bird_status', BirdStatus.ReCatch);
+  }
+
+  /**
+   * „Die nächste freie Ringnummer übernehmen" (#444) — für den anderen Fall:
+   * vorige Woche hat jemand eine Nummer vertippt, und dieser Vogel braucht
+   * einfach die nächste.
+   *
+   * Gefragt wird der **bestehende** Endpunkt, den auch der Vorschlag der Maske
+   * benutzt (#42/#22, im Zuschnitt des Projekts) — es gibt dafür keine zweite
+   * Fläche. Das ist ein **Lesen**, keine Speicherung: der Griff zum Speichern
+   * bleibt der des Beringers.
+   *
+   * Kommt keine Nummer — der Endpunkt kennt keine (`next_number: null`), es
+   * fehlt die Ringgröße, oder das Lesen selbst scheitert —, dann sagt das
+   * Banner genau das. Das Feld bleibt dabei unangetastet: die getippte Nummer
+   * ist das, was der Beringer hat, und ein Knopf, der sie wortlos wegnimmt,
+   * wäre schlimmer als keiner.
+   */
+  onFreieNummerUebernehmen(): void {
+    const size = this.entryForm.get('ring_size')?.value as RingSize | null;
+    if (!size) {
+      this.keineFreieNummer.set(true);
+      return;
+    }
+    this.dataAccess.getNextRingNumber(size, this.currentProject()?.id).subscribe({
+      next: ({ next_number }) => {
+        if (!next_number) {
+          this.keineFreieNummer.set(true);
+          return;
+        }
+        this.uebernehmen('ring_number', next_number);
+      },
+      // Ein Fehler über dem Fehler ist das schlechteste erreichbare Ergebnis
+      // (ADR 0038): das Banner bleibt, wie es ist, und sagt nur, dass es keine
+      // Nummer anzubieten hat.
+      error: () => this.keineFreieNummer.set(true),
+    });
+  }
+
+  /**
+   * Was eine Abhilfe tut, und mehr tut sie nicht: einen Wert ins Formular
+   * schreiben und ihn als ungespeichert kennzeichnen.
+   *
+   * `markAsDirty` ist hier die halbe Miete — ein programmatisch gesetzter Wert
+   * ist für Angular nicht „berührt", und ohne diese Zeile wüsste weder der
+   * `unsavedChangesGuard` (#407) noch Zurücksetzen (#24), dass hier etwas
+   * steht, das noch niemand verantwortet hat.
+   */
+  private uebernehmen(name: string, wert: unknown): void {
+    const control = this.entryForm.get(name);
+    if (!control) {
+      return;
+    }
+    control.setValue(wert);
+    control.markAsDirty();
+  }
+
+  /**
+   * Die Feldmarkierung: der Serversatz wird als Fehler auf genau dem
+   * zurückgewiesenen Control gesetzt und macht es rot. Eine Zurückweisung ohne
+   * einzelnes Feld (Erstfang gegen die falsche Zentrale, eine
+   * Rechteverweigerung) markiert nichts — sie rendert nur das Banner.
+   *
+   * **Gelöscht wird sie, sobald genau dieses Feld bearbeitet wird**, und das
+   * ganz von selbst: eine Wertänderung lässt Angular die Fehler des Controls aus
+   * seinen Validatoren neu rechnen, und der von Hand gesetzte ist damit weg.
+   * Ein *anderes* Feld zu bearbeiten rührt dieses Control nicht an — genau die
+   * Trennung, die #443 verlangt.
+   */
+  private markRejectedField(failure: AppFailure): void {
+    if (!failure.field) {
+      return;
+    }
+    const name = CONTROL_FOR_SERVER_FIELD[failure.field] ?? failure.field;
+    const control = this.entryForm.get(name);
+    if (!control) {
+      return;
+    }
+    // Nur markieren, was auch zu sehen ist. Ein Control ohne `mat-error` (eine
+    // Checkbox, ein Fangmarker) oder ein abgeschaltetes (ein vom Projekt
+    // ausgeblendetes Optionales Feld, die Zentrale am Erstfang) würde sonst
+    // stumm rot — rot ohne Satz. Dann steht der Satz im Banner allein, was er
+    // ohnehin immer tut.
+    if (!SERVER_REJECTION_FIELD_SET.has(name) || control.disabled) {
+      return;
+    }
+    control.setErrors({...(control.errors ?? {}), [SERVER_REJECTED]: failure.text});
+    // Ohne „berührt" zeigt das mat-form-field den Fehler nicht an.
+    control.markAsTouched();
+  }
+
+  /**
+   * #443: alle Feldmarkierungen zurücknehmen — genau so, wie eine Bearbeitung
+   * des Feldes es täte. `updateValueAndValidity` rechnet die Fehler des Controls
+   * aus seinen **Validatoren** neu; der von Hand gesetzte Serversatz ist damit
+   * weg, echte Eingabefehler bleiben stehen. `emitEvent: false`, damit keine der
+   * Autocomplete-Pipelines auf einer unveränderten Eingabe neu sucht.
+   */
+  private clearServerRejections(): void {
+    for (const control of Object.values(this.entryForm.controls)) {
+      if (control.errors?.[SERVER_REJECTED] === undefined) {
+        continue;
+      }
+      control.updateValueAndValidity({emitEvent: false});
+    }
+  }
+
+  /**
+   * #443: Ist Speichern gerade unmöglich?
+   *
+   * Eine Feldmarkierung macht das Control ungültig — sie ist ja rot. Sie darf
+   * aber **niemals den Knopf sperren**: der einzige Ausweg der Klasse
+   * *Korrigieren* ist „Bitte korrigieren und erneut speichern", und ADR 0037
+   * baut darauf, dass eine Abhilfe das Formular füllt und das Mitglied dann
+   * Speichern drückt. Ein gesperrter Knopf unter einem Banner, das zum Speichern
+   * auffordert, wäre „ein Knopf, der wortlos nichts tut" (#427).
+   *
+   * Deshalb zählt hier nur, was **die Eingabe selbst** ungültig macht. Ein
+   * abgeschaltetes Control trägt keine Fehler (Angular leert sie beim
+   * Abschalten) und fällt damit hier heraus — dieselbe Rechnung wie
+   * `entryForm.invalid`, bloß ohne den Serversatz.
+   */
+  protected saveBlocked(): boolean {
+    return this.loading() || this.invalidBeyondServerRejection();
+  }
+
+  private invalidBeyondServerRejection(): boolean {
+    if (this.entryForm.valid) {
+      return false;
+    }
+    if (this.entryForm.errors) {
+      return true;
+    }
+    return Object.values(this.entryForm.controls).some((control) =>
+      Object.keys(control.errors ?? {}).some((key) => key !== SERVER_REJECTED),
+    );
+  }
+
+  /** Der Serversatz an einem Feld, für dessen `mat-error` — sonst `null`. */
+  serverRejection(controlName: string): string | null {
+    const message = this.entryForm.get(controlName)?.errors?.[SERVER_REJECTED];
+    return typeof message === 'string' ? message : null;
   }
 
   private getInitialDateTime(): string {

@@ -7,6 +7,8 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {of} from 'rxjs';
 
 import {BeringerComponent} from './beringer';
+import {AppIconEmptyDirective, AppIconErrorDirective} from '../shared/app-icons';
+import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
 import {SeatPickerDialogData} from './seat-picker-dialog/seat-picker-dialog';
@@ -26,6 +28,17 @@ function flushGaps(seats: Mitgliedschaft[] = []) {
   httpMock
     .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
     .flush(page0(seats));
+}
+
+// The write tests assert on the *rendered* screen, so both init loads have to
+// have run and been answered before a gesture.
+function renderScreen(fixture: ComponentFixture<BeringerComponent>, beringer: Beringer[] = []) {
+  fixture.detectChanges();
+  httpMock
+    .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+    .flush(page0(beringer));
+  flushGaps();
+  fixture.detectChanges();
 }
 
 function makeBeringer(overrides: Partial<Beringer> = {}): Beringer {
@@ -77,6 +90,107 @@ function spyOnDialog(fixture: ComponentFixture<BeringerComponent>, afterClosed: 
 
 describe('BeringerComponent', () => {
   afterEach(() => httpMock.verify());
+
+  // #446 (ADR 0037): bis hierher toastete ein gescheitertes Laden drei Sekunden
+  // und ließ dieselbe leere Liste stehen wie eine Organisation ohne Beringer.
+  // Der Gap-Panel-Ladefehler war noch stiller: das Panel rendert nur bei
+  // vorhandenen Lücken, ein Fehlschlag sah also aus wie „keine Lücken".
+  describe('In-Place-Ladefehler', () => {
+    it('renders the in-place error state instead of an empty list when the Beringer load fails', () => {
+      const {fixture} = setup();
+      const snack = spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .flush(
+          {detail: 'Die Datenbank antwortet gerade nicht.'},
+          {status: 500, statusText: 'Server Error'},
+        );
+      flushGaps();
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Beringer konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      expect(fixture.nativeElement.textContent).not.toContain('keine Beringer angelegt');
+      expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
+      expect(snack).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads the Beringer list on „Erneut laden" and recovers on success', () => {
+      const {fixture} = setup();
+      spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .error(new ProgressEvent('error'), {status: 0, statusText: 'Unknown Error'});
+      flushGaps();
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .flush(page0([makeBeringer({id: 'a', full_name: 'Anna Bauer'})]));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.beringer-card').length).toBe(1);
+    });
+
+    it('renders the in-place error state in place of the gap panel when the seats fail to load', () => {
+      const {fixture} = setup();
+      const snack = spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .flush(page0([makeBeringer({id: 'a', full_name: 'Anna Bauer'})]));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+        .flush({detail: 'Keine Verbindung.'}, {status: 503, statusText: 'Service Unavailable'});
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Konten konnten nicht geladen werden.');
+      expect(fixture.nativeElement.querySelector('.gap-panel')).toBeNull();
+      // Die Beringer-Liste hat geladen und bleibt bedienbar — der Fehlschlag
+      // des einen Ladevorgangs ersetzt nur, was *er* laden sollte.
+      expect(fixture.nativeElement.querySelectorAll('.beringer-card').length).toBe(1);
+      expect(snack).not.toHaveBeenCalled();
+    });
+
+    it('reloads the seats on „Erneut laden" and shows the gap panel on success', () => {
+      const {fixture} = setup();
+      spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .flush(page0([makeBeringer({id: 'a', full_name: 'Anna Bauer'})]));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+        .error(new ProgressEvent('error'), {status: 0, statusText: 'Unknown Error'});
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      flushGaps([makeSeat({id: 's1', username: 'gap'})]);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.gap-card').length).toBe(1);
+    });
+  });
 
   it('lists the org Beringer sorted by surname then first name, requesting GET /scientists/', () => {
     const {fixture} = setup();
@@ -177,6 +291,13 @@ describe('BeringerComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.beringer-card')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('keine Beringer');
+    // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template — ein
+    // vergessener `imports`-Eintrag ist für Angular kein Fehler und ließe das
+    // Icon im Browser leer, während das Attribut im DOM stünde.
+    expect(renderedGlyph(fixture.nativeElement.querySelector('.beringer__empty mat-icon')))
+      .toBeTruthy();
+    // ...und gezeichnet hat es der Name des *leeren* Zustands.
+    expect(seamGlyph(fixture, AppIconEmptyDirective)).toBeTruthy();
   });
 
   it('adds a Beringer from the dialog result via POST /scientists/ and reloads', () => {
@@ -210,24 +331,77 @@ describe('BeringerComponent', () => {
     httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/')).flush(page0([]));
   });
 
-  it('surfaces the German duplicate-Kürzel 400 message and does not reload', () => {
-    const {fixture, component} = setup();
-    const snack = spyOnSnackBar(fixture);
-    const payload = {first_name: 'Nora', last_name: 'Neu', handle: 'FRE'};
-    spyOnDialog(fixture, payload);
+  // #448 (ADR 0037): die drei handgeschriebenen Extraktoren dieses Bildschirms
+  // (`saveErrorMessage`, `linkErrorMessage`, `deleteErrorMessage`) sind weg — der
+  // Serversatz kommt aus derselben Einordnung wie überall, und er steht im
+  // Banner statt in einer Snackbar, die nach fünf Sekunden geht.
+  describe('Schreib-Banner', () => {
+    it('surfaces the German duplicate-Kürzel 400 message in the banner and does not reload', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      renderScreen(fixture);
+      const payload = {first_name: 'Nora', last_name: 'Neu', handle: 'FRE'};
+      spyOnDialog(fixture, payload);
 
-    component.openEditDialog(makeBeringer({id: '42', handle: 'NNE'}));
+      component.openEditDialog(makeBeringer({id: '42', handle: 'NNE'}));
 
-    httpMock
-      .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/42/'))
-      .flush(
-        {handle: ['Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.']},
-        {status: 400, statusText: 'Bad Request'},
-      );
+      httpMock
+        .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/42/'))
+        .flush(
+          {handle: ['Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.']},
+          {status: 400, statusText: 'Bad Request'},
+        );
+      fixture.detectChanges();
 
-    expect(snack).toHaveBeenCalled();
-    expect(snack.calls.mostRecent().args[0] as string).toContain('Kürzel');
-    // A rejected save does not reload the list — nothing changed, so no GET.
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Dieses Kürzel ist bereits vergeben');
+      expect(snack).not.toHaveBeenCalled();
+      // A rejected save does not reload the list — nothing changed, so no GET.
+    });
+
+    it('surfaces a refused link (the mitgliedschaft_id 400) in the banner', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      renderScreen(fixture);
+      spyOnDialog(fixture, 'seat-1');
+
+      component.openLinkDialog(makeBeringer({id: '7', is_member: false}));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+        .flush(page0([makeSeat({id: 'seat-1', handle: null})]));
+      httpMock
+        .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/7/'))
+        .flush(
+          {mitgliedschaft_id: ['Dieses Konto ist bereits mit einem Beringer verknüpft.']},
+          {status: 400, statusText: 'Bad Request'},
+        );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('bereits mit einem Beringer verknüpft');
+      expect(snack).not.toHaveBeenCalled();
+    });
+
+    // Ein Lesevorgang, der an einer Geste hängt und keinen Inhalt hat, den er
+    // ersetzen könnte: der Picker öffnet gar nicht erst. Er landet deshalb dort,
+    // wo gedrückt wurde — genauso wie die Ringhistorie im Erfassungsformular.
+    it('surfaces a failed seat read behind „Konto verknüpfen" in the banner', () => {
+      const {fixture, component} = setup();
+      const snack = spyOnSnackBar(fixture);
+      renderScreen(fixture);
+      const dialogSpy = spyOnDialog(fixture, undefined);
+
+      component.openLinkDialog(makeBeringer({id: '7', is_member: false}));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+        .flush({detail: 'Die Konten konnten nicht gelesen werden.'}, {status: 503, statusText: 'Service Unavailable'});
+      fixture.detectChanges();
+
+      expect(dialogSpy).not.toHaveBeenCalled();
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner.textContent).toContain('Die Konten konnten nicht gelesen werden.');
+      expect(snack).not.toHaveBeenCalled();
+    });
   });
 
   // --- Link / unlink a Beringer to a seat (PRD #205, issue #209) -------------

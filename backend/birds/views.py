@@ -15,7 +15,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import error_codes
 from .accounts import normalize_email
+from .errors import error_entry
 from .export_filename import iwm_export_content_disposition
 from .invitations import account_for_email, seats_available
 from .iwm_export import build_iwm_workbook
@@ -58,6 +60,7 @@ from .serializers import (
     DataEntrySerializer,
     MitgliedschaftSerializer,
     OfflineSpeciesSerializer,
+    OrgAdminSerializer,
     OrganizationSerializer,
     OrgEinladungSerializer,
     ProjectSerializer,
@@ -123,7 +126,29 @@ LINKED_BERINGER_DELETE_MESSAGE = (
 class SeatLimitReached(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = SEAT_LIMIT_MESSAGE
-    default_code = "seat_limit_reached"
+    default_code = error_codes.SEAT_LIMIT_REACHED
+
+
+class StationHasCaptures(APIException):
+    """The Station is referenced by captures, so it is archived, not deleted.
+
+    Raised rather than answered with a hand-built ``Response`` so the refusal
+    passes through the global handler and carries its ``errors`` envelope like
+    every other one. The body is unchanged: an ``APIException`` with a plain
+    ``detail`` renders exactly the ``{"detail": …}`` this used to send.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = STATION_HAS_CAPTURES_MESSAGE
+    default_code = error_codes.STATION_HAS_CAPTURES
+
+
+class BeringerHasAccount(APIException):
+    """The Beringer is a linked Mitglied — the way out is member management."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = LINKED_BERINGER_DELETE_MESSAGE
+    default_code = error_codes.BERINGER_HAS_ACCOUNT
 
 
 def _ring_consuming_entries(organization):
@@ -174,7 +199,8 @@ def _parse_iso_date(value, field):
         return datetime.date.fromisoformat(value)
     except ValueError as exc:
         raise ValidationError(
-            {field: f"Ungültiges Datum: {value!r} (erwartet JJJJ-MM-TT)."}
+            {field: f"Ungültiges Datum: {value!r} (erwartet JJJJ-MM-TT)."},
+            code=error_codes.DATE_INVALID,
         ) from exc
 
 
@@ -188,7 +214,10 @@ def _require_active_organization(user):
     """
     organization = active_organization(user)
     if organization is None:
-        raise PermissionDenied("Keine aktive Organisation — eine Mitgliedschaft ist erforderlich.")
+        raise PermissionDenied(
+            "Keine aktive Organisation — eine Mitgliedschaft ist erforderlich.",
+            code=error_codes.NO_ACTIVE_ORGANISATION,
+        )
     return organization
 
 
@@ -292,7 +321,17 @@ class DataEntryViewSet(viewsets.ModelViewSet):
                 schema_version=unmigratable.schema_version,
                 submitted_by=request.user,
             )
-            return Response({"detail": UNMIGRATABLE_PAYLOAD_MESSAGE})
+            # An acceptance, not a refusal — but it still says what became of
+            # the payload, in the envelope shape the client already reads, so no
+            # endpoint answers with an outcome it cannot name (ADR 0038).
+            return Response(
+                {
+                    "detail": UNMIGRATABLE_PAYLOAD_MESSAGE,
+                    "errors": [
+                        error_entry(error_codes.UNMIGRATABLE_PAYLOAD, UNMIGRATABLE_PAYLOAD_MESSAGE)
+                    ],
+                }
+            )
 
         serializer = self.get_serializer(data=migrated)
         serializer.is_valid(raise_exception=True)
@@ -499,7 +538,17 @@ class RingViewSet(viewsets.ReadOnlyModelViewSet):
         """
         ring_size = request.query_params.get("size")
         if not ring_size:
-            return Response({"error": "Ring size parameter is required."}, status=400)
+            # Built by hand, and keyed ``error`` rather than ``detail`` — an old
+            # shape kept byte-identical, so the envelope is hung beside it here
+            # instead of coming from the global handler.
+            message = "Ring size parameter is required."
+            return Response(
+                {
+                    "error": message,
+                    "errors": [error_entry(error_codes.RING_SIZE_PARAMETER_REQUIRED, message)],
+                },
+                status=400,
+            )
 
         organization = active_organization(request.user)
         if organization is None:
@@ -588,11 +637,8 @@ class RingingStationViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         try:
             instance.delete()
-        except ProtectedError:
-            return Response(
-                {"detail": STATION_HAS_CAPTURES_MESSAGE},
-                status=status.HTTP_409_CONFLICT,
-            )
+        except ProtectedError as exc:
+            raise StationHasCaptures() from exc
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _reject_foreign_organization(self, organization):
@@ -600,7 +646,7 @@ class RingingStationViewSet(viewsets.ModelViewSet):
         # IsOrgAdminOrReadOnly object check already blocks editing a *foreign*
         # Station; this also blocks moving one to another tenant on update.)
         if organization != active_organization(self.request.user):
-            raise PermissionDenied(OTHER_ORG_MESSAGE)
+            raise PermissionDenied(OTHER_ORG_MESSAGE, code=error_codes.NOT_OWN_ORGANISATION)
 
 
 class ScientistViewSet(
@@ -712,16 +758,13 @@ class ScientistViewSet(
         the Admin gate (``get_permissions``) makes a non-Admin a 403."""
         instance = self.get_object()
         if instance.user_id is not None:
-            return Response(
-                {"detail": LINKED_BERINGER_DELETE_MESSAGE},
-                status=status.HTTP_409_CONFLICT,
-            )
+            raise BeringerHasAccount()
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _reject_foreign_organization(self, organization):
         if organization != active_organization(self.request.user):
-            raise PermissionDenied(OTHER_ORG_MESSAGE)
+            raise PermissionDenied(OTHER_ORG_MESSAGE, code=error_codes.NOT_OWN_ORGANISATION)
 
 
 class OrganizationViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
@@ -834,7 +877,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
         project = self.get_object()
         upload = request.FILES.get("file")
         if upload is None:
-            raise ValidationError({"file": "Es wurde keine Datei hochgeladen."})
+            raise ValidationError(
+                {"file": "Es wurde keine Datei hochgeladen."}, code=error_codes.FILE_REQUIRED
+            )
         content = upload.read()
         commit = str(request.data.get("commit", "")).strip().lower() in ("true", "1", "yes", "on")
         try:
@@ -842,12 +887,22 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 return Response(commit_import(content, project))
             return Response(build_import_preview(content, project))
         except IwmRowCapExceeded as exc:
+            # The one rejection that cannot be a ``raise``: its body carries a
+            # typed ``cap`` object the Import-Dialog reads, and DRF would coerce
+            # those numbers to strings on the way through a ValidationError. Built
+            # by hand, envelope and all, with ``file``/``cap`` untouched.
             return Response(
-                {"file": exc.message, "cap": {"limit": exc.limit, "exceeded": True}},
+                {
+                    "file": exc.message,
+                    "cap": {"limit": exc.limit, "exceeded": True},
+                    "errors": [
+                        error_entry(error_codes.IWM_ROW_CAP_EXCEEDED, exc.message, field="file")
+                    ],
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except IwmStructureError as exc:
-            raise ValidationError({"file": str(exc)}) from exc
+            raise ValidationError({"file": str(exc)}, code=error_codes.IWM_FILE_UNREADABLE) from exc
 
 
 class OrgEinladungViewSet(
@@ -882,13 +937,15 @@ class OrgEinladungViewSet(
             organization=organization, user=account_for_email(email)
         ).exists():
             raise ValidationError(
-                {"email": "Diese Person ist bereits Mitglied dieser Organisation."}
+                {"email": "Diese Person ist bereits Mitglied dieser Organisation."},
+                code=error_codes.ALREADY_MEMBER,
             )
         if OrgEinladung.objects.filter(
             organization=organization, email=email, accepted_at__isnull=True
         ).exists():
             raise ValidationError(
-                {"email": "Für diese E-Mail gibt es bereits eine offene Einladung."}
+                {"email": "Für diese E-Mail gibt es bereits eine offene Einladung."},
+                code=error_codes.INVITATION_ALREADY_PENDING,
             )
         if seats_available(organization) <= 0:
             raise SeatLimitReached()
@@ -966,12 +1023,19 @@ class MitgliedschaftViewSet(
             and new_rolle != Mitgliedschaft.Rolle.ADMIN
             and self._is_last_admin(membership)
         ):
-            raise ValidationError({"rolle": LAST_ADMIN_MESSAGE})
+            raise ValidationError({"rolle": LAST_ADMIN_MESSAGE}, code=error_codes.LAST_ADMIN)
         serializer.save()
 
     def perform_destroy(self, instance):
         if instance.rolle == Mitgliedschaft.Rolle.ADMIN and self._is_last_admin(instance):
-            raise ValidationError(LAST_ADMIN_MESSAGE)
+            # The one rejection whose Domänencode cannot reach the wire: a bare
+            # sentence renders as a JSON *list*, and a list has no sibling key to
+            # hang the ``errors`` envelope on. Giving it one would mean reshaping
+            # the body (to ``{"non_field_errors": […]}``), which is exactly the
+            # ADR 0033 byte identity a month-old bundle replays into — so the code
+            # is set here and published on the demote path above, while the
+            # sentence alone travels here, ADR 0038's own fallback.
+            raise ValidationError(LAST_ADMIN_MESSAGE, code=error_codes.LAST_ADMIN)
         instance.delete()
 
     @staticmethod
@@ -982,6 +1046,48 @@ class MitgliedschaftViewSet(
             )
             .exclude(pk=membership.pk)
             .exists()
+        )
+
+
+class OrgAdminViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """The Admins of the requester's own Organisation, readable by every Mitglied
+    of that Organisation (issue #450, ADR 0037).
+
+    „Wende dich an eine:n Admin" is a shrug in an Organisation with twenty
+    Mitglieder, and until now a Mitglied could not even find out **whom** to ask:
+    ``OrganizationSerializer`` carries only ``id/handle/name/country`` and
+    ``/mitgliedschaften/`` is Admin-only. So the Fehlerklasse *Freigeben lassen*
+    gets a surface of its own — **Name und Kürzel**, nothing else
+    (``OrgAdminSerializer``).
+
+    Deliberately **list-only**: a refused Mitglied asks „wen frage ich?", never
+    „wer ist Mitgliedschaft 7f3a…?". There is no detail route to address one by
+    id, and nothing here is writable — member management stays where it was
+    (``MitgliedschaftViewSet``, Admin-only).
+
+    Scoped strictly to the **own** Organisation (ADR 0005): another tenant's
+    Admins are absent from the queryset, and an account with no resolvable active
+    Organisation gets an **empty** list — never a 403, never another tenant's
+    data, mirroring every other org-scoped collection here.
+    """
+
+    serializer_class = OrgAdminSerializer
+
+    def get_queryset(self):
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return Mitgliedschaft.objects.none()
+        return (
+            Mitgliedschaft.objects.filter(
+                organization=organization, rolle=Mitgliedschaft.Rolle.ADMIN
+            )
+            # ``user__scientist`` is the reverse side of the Beringer OneToOne —
+            # both rendered fields hang off it, so one join spares a query per row.
+            .select_related("user", "user__scientist")
+            # Ordered by the one key that is never null (the Name may be empty and
+            # the Kürzel may be absent), mirroring ``MitgliedschaftViewSet``. The
+            # username itself is not rendered — it only makes the order stable.
+            .order_by("user__username")
         )
 
 

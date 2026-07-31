@@ -3,6 +3,9 @@ import {provideHttpClient} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
 import {firstValueFrom} from 'rxjs';
 
+import {appFailureOf, Fehlerklasse} from '../core/errors/app-failure';
+import {DURABLE_WRITE, isDurablyQueued} from '../core/offline/durable-write';
+
 import {DataAccessFacadeService} from './data-access-facade.service';
 import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
@@ -994,6 +997,97 @@ describe('DataAccessFacadeService', () => {
     });
   });
 
+  // #447 (ADR 0039): dauerhaft ist, was sonst nirgends existiert. Ein
+  // Sitzungsablauf vernichtete bislang einen Fang, den ein vollständiger
+  // Netzausfall bewahrt hätte — der Vogel ist zu diesem Zeitpunkt beringt und
+  // wieder in der Luft, der Datensatz existiert nirgendwo sonst.
+  describe('createDataEntry() bei abgelaufener Sitzung (#447, ADR 0039)', () => {
+    function payload(): Partial<DataEntry> {
+      return {
+        idempotency_key: 'uuid-401',
+        species_id: 's1',
+        ring_number: '0043',
+      } as unknown as Partial<DataEntry>;
+    }
+
+    function rejectWith401(): Promise<DataEntry | null> {
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+      resultPromise.catch(() => undefined);
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush(
+          {
+            detail: 'Anmeldedaten fehlen.',
+            errors: [{field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.'}],
+          },
+          {status: 401, statusText: 'Unauthorized'},
+        );
+      return resultPromise;
+    }
+
+    it('reiht den Fang in die Outbox ein, statt ihn zu vernichten — unter dem Konto, das ihn erfasst hat', async () => {
+      await expectAsync(rejectWith401()).toBeRejected();
+
+      const queued = await TestBed.inject(OutboxStoreService).list();
+      expect(queued.length).toBe(1);
+      expect(queued[0].accountKey).toBe('fre');
+      expect(queued[0].payload).toEqual(payload() as unknown as Record<string, unknown>);
+    });
+
+    it('reiht ihn unter seinem eigenen Idempotenzschlüssel ein, damit ein Replay den Fang nicht verdoppelt', async () => {
+      // Der ursprüngliche POST kann den Server doch noch erreicht haben. Der
+      // eingereihte Eintrag trägt deshalb denselben Schlüssel (#155), unter dem
+      // er hinausgegangen ist — nie einen zweiten.
+      await expectAsync(rejectWith401()).toBeRejected();
+
+      const queued = await TestBed.inject(OutboxStoreService).list();
+      expect(queued[0].id).toBe('uuid-401');
+      expect(queued[0].payload['idempotency_key']).toBe('uuid-401');
+      expect(queued[0].schemaVersion).toBe(PAYLOAD_SCHEMA_VERSION);
+    });
+
+    it('meldet danach *Neu anmelden* und sagt, dass der Eintrag gesichert ist', async () => {
+      let caught: unknown;
+      await rejectWith401().catch((error: unknown) => (caught = error));
+
+      const failure = appFailureOf(caught);
+      expect(failure.klasse).toBe(Fehlerklasse.NeuAnmelden);
+      expect(failure.remedy).toBe('neu-anmelden');
+      expect(failure.text).toContain('gesichert');
+      expect(failure.text).toContain('nach der Anmeldung übertragen');
+      expect(isDurablyQueued(caught)).toBeTrue();
+    });
+
+    it('markiert die Anfrage als dauerhaften Schreibvorgang, damit der Redirect wartet, bis der Fang sicher ist', async () => {
+      const resultPromise = firstValueFrom(service.createDataEntry(payload()));
+      resultPromise.catch(() => undefined);
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect(req.request.context.get(DURABLE_WRITE)).toBeTrue();
+      req.flush({detail: 'Anmeldedaten fehlen.'}, {status: 401, statusText: 'Unauthorized'});
+
+      await expectAsync(resultPromise).toBeRejected();
+    });
+
+    it('hält den Verbindungszustand unverändert — eine tote Sitzung ist kein Netzausfall', async () => {
+      await expectAsync(rejectWith401()).toBeRejected();
+
+      expect(connectivity.isOffline()).toBeFalse();
+    });
+
+    it('lässt die Sitzung selbst unangetastet, damit der nächste Fang noch ein Konto hat, unter dem er einzureihen ist', async () => {
+      await expectAsync(rejectWith401()).toBeRejected();
+
+      // Die Aufforderung zur erneuten Anmeldung ist das Banner; abgemeldet wird
+      // erst, wenn das Mitglied sie drückt (`FailureBannerComponent`). Bis
+      // dahin reiht auch der nächste Fang sich noch ein, statt verloren zu gehen.
+      expect(TestBed.inject(AuthService).currentUser()?.username).toBe('fre');
+      expect(TestBed.inject(OutboxService).pendingEntries().length).toBe(1);
+    });
+  });
+
   describe('createScientist() (issue #167, offline no-account Beringer quick-add)', () => {
     const payload = {first_name: 'Filip', last_name: 'Reiter', handle: 'FRE'};
 
@@ -1040,6 +1134,34 @@ describe('DataAccessFacadeService', () => {
       await expectAsync(resultPromise).toBeRejected();
       expect(connectivity.isOffline()).toBeFalse();
       expect(await TestBed.inject(PendingBeringerStoreService).list()).toEqual([]);
+    });
+
+    // #447 (ADR 0039): die Schnellanlage ist aus demselben Grund dauerhaft wie
+    // der Fang — der Beringer wird an einer Station ohne Empfang angelegt und
+    // existiert sonst nirgends.
+    it('rettet den Beringer bei abgelaufener Sitzung (401) durably in die Warteschlange, statt ihn zu vernichten', async () => {
+      const resultPromise = firstValueFrom(service.createScientist(payload));
+      let caught: unknown;
+      resultPromise.catch((error: unknown) => (caught = error));
+
+      const req = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'),
+      );
+      expect(req.request.context.get(DURABLE_WRITE)).toBeTrue();
+      req.flush({detail: 'Anmeldedaten fehlen.'}, {status: 401, statusText: 'Unauthorized'});
+
+      await expectAsync(resultPromise).toBeRejected();
+
+      const queued = await TestBed.inject(PendingBeringerStoreService).list();
+      expect(queued.length).toBe(1);
+      expect(queued[0].handle).toBe('FRE');
+      expect(queued[0].accountKey).toBe('fre');
+
+      const failure = appFailureOf(caught);
+      expect(failure.klasse).toBe(Fehlerklasse.NeuAnmelden);
+      expect(failure.text).toContain('Der Beringer ist auf diesem Gerät gesichert');
+      expect(isDurablyQueued(caught)).toBeTrue();
+      expect(connectivity.isOffline()).toBeFalse();
     });
   });
 

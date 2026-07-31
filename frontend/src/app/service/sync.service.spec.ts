@@ -5,6 +5,7 @@ import {Router, provideRouter} from '@angular/router';
 import {firstValueFrom} from 'rxjs';
 
 import {SyncService} from './sync.service';
+import {DataAccessFacadeService} from './data-access-facade.service';
 import {AppUpdateService} from './app-update.service';
 import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
@@ -390,6 +391,74 @@ describe('SyncService', () => {
       expect(await resultPromise).toEqual({total: 1, synced: 0, flagged: 1});
       const remaining = await outboxStore.list();
       expect(remaining[0].syncError).toBe('Diese Station wurde archiviert.');
+    });
+
+    it('reads a rejection carrying the new errors envelope exactly as it read the same body without it', async () => {
+      // The server now ships a sibling key `errors` beside every rejection
+      // (PRD #438, ADR 0038, backend issue #440). A device may be offline for
+      // ~30 days, so *this* bundle — the one that knows nothing of `errors` —
+      // is what replays a month-old payload (ADR 0033). `extractServerMessage`
+      // is the one extractor in the app that enumerates **all** body keys
+      // (`Object.values`) rather than reading named ones, so it is the one that
+      // could swallow a new sibling key badly. Hence this proof runs against
+      // the real client rather than a re-implementation of it: every rejection
+      // shape the replay path can meet, each with the envelope bolted on, must
+      // flag with the very same sentence as the envelope-free specs above.
+      const collision = 'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+      auth.currentUser.set(authUser());
+      await outboxStore.add(
+        makeEntry({id: 'uuid-1', queuedAt: '2026-07-02T09:00:00.000Z', payload: {idempotency_key: 'uuid-1'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-2', queuedAt: '2026-07-02T09:05:00.000Z', payload: {idempotency_key: 'uuid-2'}}),
+      );
+      await outboxStore.add(
+        makeEntry({id: 'uuid-3', queuedAt: '2026-07-02T09:10:00.000Z', payload: {idempotency_key: 'uuid-3'}}),
+      );
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      // `{field: [string]}` — the field-error map of the spec above, plus the envelope.
+      expectCreatePost().flush(
+        {
+          ring_number: [collision],
+          errors: [{field: 'ring_number', code: 'unique', detail: collision}],
+        },
+        {status: 400, statusText: 'Bad Request'},
+      );
+      await settle();
+
+      // `{field: string}` — the bare-sentence variant DRF renders for a rejection
+      // raised out of `create` rather than during `is_valid`, which is literally the
+      // body the replay path gets today (backend
+      // `test_replayed_capture_rejection_reads_the_same_to_a_month_old_bundle`).
+      expectCreatePost().flush(
+        {
+          ring_number: collision,
+          errors: [{field: 'ring_number', code: 'invalid', detail: collision}],
+        },
+        {status: 400, statusText: 'Bad Request'},
+      );
+      await settle();
+
+      // `{detail: …}` — the second shape ADR 0033 names, plus the envelope.
+      expectCreatePost().flush(
+        {
+          detail: 'Diese Station wurde archiviert.',
+          errors: [{field: null, code: 'invalid', detail: 'Diese Station wurde archiviert.'}],
+        },
+        {status: 400, statusText: 'Bad Request'},
+      );
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 3, synced: 0, flagged: 3});
+      const flagged = new Map((await outboxStore.list()).map((entry) => [entry.id, entry.syncError]));
+      expect(flagged.get('uuid-1')).toBe(collision);
+      expect(flagged.get('uuid-2')).toBe(collision);
+      expect(flagged.get('uuid-3')).toBe('Diese Station wurde archiviert.');
     });
 
     it('does not re-attempt an already-flagged entry — only the still-eligible one is replayed', async () => {
@@ -1095,6 +1164,75 @@ describe('SyncService', () => {
       expect(navigate.calls.mostRecent().args[0]).toEqual(['/login']);
       expect(auth.currentUser()).toBeNull();
       expect(service.syncing()).toBeFalse();
+    });
+  });
+  // #447 (ADR 0039): ein Fang, den eine abgelaufene Sitzung in die Outbox
+  // gerettet hat, statt ihn zu vernichten, überträgt sich nach der erneuten
+  // Anmeldung von selbst — unter demselben Konto, das ihn erfasst hat. Der
+  // Replay ist dabei unverändert der bestehende: dieselbe Warteschlange,
+  // dieselbe accountKey-Bindung, derselbe Idempotenzschlüssel.
+  describe('ein bei abgelaufener Sitzung geretteter Fang (#447, ADR 0039)', () => {
+    /** Erfasst einen Fang, den der Server mit einer toten Sitzung zurückweist. */
+    async function rescueOn401(): Promise<void> {
+      auth.currentUser.set(authUser());
+      await TestBed.inject(OutboxService).ready;
+      const create = firstValueFrom(
+        TestBed.inject(DataAccessFacadeService).createDataEntry({
+          idempotency_key: 'uuid-1',
+          ring_number: '0043',
+        } as never),
+      );
+      create.catch(() => undefined);
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush(
+          {
+            detail: 'Anmeldedaten fehlen.',
+            errors: [{field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.'}],
+          },
+          {status: 401, statusText: 'Unauthorized'},
+        );
+      await expectAsync(create).toBeRejected();
+      await settle();
+      expect((await outboxStore.list()).map((e) => e.accountKey)).toEqual(['fre']);
+    }
+
+    it('überträgt sich beim nächsten Sync, nachdem sich dasselbe Konto neu angemeldet hat', async () => {
+      await rescueOn401();
+      // Die Anmeldung: „Anmelden" im Banner beendet die Sitzung, das Mitglied
+      // meldet sich erneut an — dasselbe Konto.
+      auth.currentUser.set(null);
+      auth.currentUser.set(authUser());
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      const post = expectCreatePost();
+      // Derselbe Idempotenzschlüssel, unter dem er hinausging: hatte der
+      // ursprüngliche POST den Server doch noch erreicht, verdoppelt der Replay
+      // den Fang nicht.
+      expect(post.request.body).toEqual({
+        idempotency_key: 'uuid-1',
+        ring_number: '0043',
+        schema_version: PAYLOAD_SCHEMA_VERSION,
+      });
+      post.flush({id: 'server-1'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 1, flagged: 0});
+      expect(await outboxStore.list()).toEqual([]);
+    });
+
+    it('wird von einem anderen Konto nicht zurückgespielt', async () => {
+      await rescueOn401();
+      auth.currentUser.set(authUser({username: 'anna', handle: 'ANN'}));
+
+      const result = await firstValueFrom(service.syncNow());
+
+      expect(result).toEqual({total: 0, synced: 0, flagged: 0});
+      expect((await outboxStore.list()).map((e) => e.id)).toEqual(['uuid-1']);
     });
   });
 });

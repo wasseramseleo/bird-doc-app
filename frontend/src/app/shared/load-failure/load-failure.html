@@ -1,0 +1,19 @@
+<!-- `load-error` ist der Name, den dieser Zustand seit #385 im Erfassungsformular
+     trägt; er bleibt, damit die Zusicherungen von damals unverändert weiter auf
+     denselben Zustand zeigen — jetzt nur eben auf allen sechs Bildschirmen. -->
+<div class="load-failure" role="alert" data-testid="load-error">
+  <mat-icon app-icon-error aria-hidden="true"></mat-icon>
+  <p class="load-failure__titel">{{ titelZeile() }}</p>
+  <p class="load-failure__grund">{{ failure().text }} {{ worte().ausweg }}</p>
+  <div class="load-failure__aktionen">
+    @if (abhilfe() === 'erneut-versuchen') {
+      <button mat-stroked-button type="button" data-testid="load-error-reload"
+              (click)="reload.emit()">
+        Erneut laden
+      </button>
+    }
+    <!-- Die Ausstiegs-Aktion des Bildschirms, wo es eine gibt — sie steht
+         *neben* „Erneut laden", nicht an dessen Stelle. -->
+    <ng-content></ng-content>
+  </div>
+</div>

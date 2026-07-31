@@ -1,9 +1,10 @@
-import { LOCALE_ID, Provider, signal } from '@angular/core';
+import { Component, LOCALE_ID, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
 import { ActivatedRoute, provideRouter, Router } from '@angular/router';
-import { provideHttpClient } from '@angular/common/http';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
@@ -16,7 +17,7 @@ import {
 } from '@angular/material/autocomplete';
 import { EMPTY, firstValueFrom, Observable, of, Subject } from 'rxjs';
 
-import { DataEntryFormComponent } from './data-entry-form';
+import { DataEntryFormComponent, SERVER_REJECTION_FIELDS } from './data-entry-form';
 import {
   AgeClass,
   BirdStatus,
@@ -29,6 +30,8 @@ import {
   SmallFeatherIntMoult,
 } from '../models/data-entry.model';
 import { Species } from '../models/species.model';
+import { AppIconErrorDirective } from '../shared/app-icons';
+import { renderedGlyph, seamGlyph } from '../shared/app-icons.testing';
 import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
 import { ProjectService } from '../service/project.service';
@@ -50,6 +53,13 @@ import { InfoDialogComponent } from '../shared/info-dialog/info-dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../shared/confirm-dialog/confirm-dialog';
 import { ConnectivityService } from '../core/offline/connectivity';
 import { unsavedChangesGuard } from '../core/guards/unsaved-changes.guard';
+import { HTTP_INTERCEPTORS_IN_ORDER } from '../app.config';
+import { ApiService } from '../service/api.service';
+import {
+  classifyFailure,
+  Fehlerklasse,
+  SyncErrorEnvelope,
+} from '../core/errors/app-failure';
 
 registerLocaleData(localeDeAt);
 
@@ -1566,6 +1576,9 @@ describe('DataEntryFormComponent', () => {
       expect(has('[formControlName="bird_status"]')).toBe(false);
     });
 
+    // #443: die Meldung bleibt sichtbar — sie steht jetzt im Banner statt in
+    // einer Snackbar, die nach fünf Sekunden weg ist. Der Punkt des Issues
+    // („nie stumm wirkungslos") ist unverändert, die Oberfläche ist es nicht.
     it('meldet sichtbar, wenn die Sonderart gar nicht aufzulösen ist — nie stumm wirkungslos', () => {
       const snackBar = (component as unknown as { snackBar: MatSnackBar }).snackBar;
       const openSpy = spyOn(snackBar, 'open').and.callThrough();
@@ -1573,10 +1586,13 @@ describe('DataEntryFormComponent', () => {
       answerSpeciesLookup([...firstPage]);
 
       component.onDestroyedRing();
+      fixture.detectChanges();
 
       expect(dialogMock.open).not.toHaveBeenCalled();
-      expect(openSpy).toHaveBeenCalled();
-      expect(openSpy.calls.mostRecent().args[0] as string).toContain('Ring vernichtet');
+      expect(openSpy).not.toHaveBeenCalled();
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent as string).toContain('Ring vernichtet');
       expect(component.isRingDestroyed()).toBe(false);
     });
   });
@@ -1984,10 +2000,16 @@ describe('DataEntryFormComponent', () => {
       f.detectChanges();
 
       expect(f.componentInstance.loading()).toBe(false);
-      expect(f.componentInstance.loadError()).toBe(true);
+      expect(f.componentInstance.loadFailure()).not.toBeNull();
 
       const el = f.nativeElement as HTMLElement;
       expect(el.querySelector('[data-testid="load-error"]')).toBeTruthy();
+      // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template. Nach
+      // `mat-icon[app-icon-error]` zu suchen hieße, das Attribut zurückzulesen,
+      // das das Template selbst hineinschreibt — fehlte die Direktive im
+      // `imports`-Array, bliebe das Icon im Browser leer und die Spec grün.
+      expect(renderedGlyph(el.querySelector('[data-testid="load-error"] mat-icon'))).toBeTruthy();
+      expect(seamGlyph(f, AppIconErrorDirective)).toBeTruthy();
       expect(el.querySelector('mat-spinner')).toBeNull();
       // "instead of the form" — an empty form behind an error message is exactly
       // the dead end #385 reports.
@@ -2030,8 +2052,71 @@ describe('DataEntryFormComponent', () => {
       f.detectChanges();
 
       expect(f.componentInstance.loading()).toBe(false);
-      expect(f.componentInstance.loadError()).toBe(true);
+      expect(f.componentInstance.loadFailure()).not.toBeNull();
       expect((f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')).toBeTruthy();
+    });
+
+    // #446 (ADR 0037): derselbe Zustand, jetzt das gemeinsame Bauteil aller
+    // sechs Bildschirme. Die Worte kommen aus der Fehlerklasse, „Zur Liste"
+    // bleibt daneben stehen — und „Erneut laden" kommt dazu: bis hierher war
+    // der Ausweg aus einem gescheiterten Laden nur, den Bildschirm zu verlassen
+    // und erneut anzusteuern.
+    it('names what could not be loaded, carries the server sentence and renders no banner (#446)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(
+          { detail: 'Die Datenbank antwortet gerade nicht.' },
+          { status: 500, statusText: 'Server Error' },
+        );
+      f.detectChanges();
+
+      const zustand = (f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')!;
+      expect(zustand.textContent).toContain('Der Eintrag konnte nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      // Ein Laden bekommt kein Banner (ADR 0037, Moment-Achse) — das Banner
+      // sitzt über einem bedienbaren Formular, und hier ist keines.
+      expect((f.nativeElement as HTMLElement).querySelector('[data-testid="failure-banner"]'))
+        .toBeNull();
+    });
+
+    it('keeps "Zur Liste" beside "Erneut laden" in the failed-load state (#446)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+      f.detectChanges();
+
+      const zustand = (f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')!;
+      expect(zustand.querySelector('[data-testid="load-error-back"]')).toBeTruthy();
+      expect(zustand.querySelector('[data-testid="load-error-reload"]')).toBeTruthy();
+    });
+
+    it('reloads the entry on „Erneut laden" and renders the form on success (#446)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      f.detectChanges();
+
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+      f.detectChanges();
+
+      (f.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+      f.detectChanges();
+
+      expect(f.componentInstance.loadFailure()).toBeNull();
+      expect((f.nativeElement as HTMLElement).querySelector('[data-testid="load-error"]')).toBeNull();
+      expect((f.nativeElement as HTMLElement).querySelector('form')).toBeTruthy();
+      expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
     });
 
     it('saves an edit via PUT, then returns to the list without clearing the form', async () => {
@@ -2055,6 +2140,61 @@ describe('DataEntryFormComponent', () => {
       // No clearForm() on edit: the loaded values must survive the save.
       expect(f.componentInstance.entryForm.get('species')!.value).toEqual(savedEntry().species);
       expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
+    });
+
+    // #447 (ADR 0039): eine Bearbeitung ändert nur, was der Server bereits hält
+    // — sie scheitert deshalb weiterhin **laut**, und eingereiht wird sie nie:
+    // ein zurückgespielter Edit bräuchte eine Konfliktbehandlung, die der
+    // Create-Pfad nie gebraucht hat. Geprüft wird hier genau das — das leere
+    // Outbox-Fach und das Banner an der Geste.
+    //
+    // Dass die Korrektur den Fehlschlag **überlebt**, kann dieser Aufbau nicht
+    // zeigen: `setupEditMode` meldet `provideHttpClient()` ohne Interceptor an
+    // und `provideRouter([])` ohne Route, also läuft weder der `authInterceptor`
+    // noch der `unsavedChangesGuard`, und niemand könnte das Formular hier
+    // überhaupt wegnehmen. Diese Behauptung steht deshalb am Ende der Datei, an
+    // der echten Kette („der Fang-Edit bei abgelaufener Sitzung, an der echten
+    // Kette"), mitsamt der Gegenprobe, die sie scheitern lässt.
+    it('reiht eine Bearbeitung bei abgelaufener Sitzung nicht ein und meldet sie am Formular (#447)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+      await TestBed.inject(OutboxService).ready;
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Korrektur am Hauptnetz');
+      f.componentInstance.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(
+          {
+            detail: 'Anmeldedaten fehlen.',
+            errors: [{ field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.' }],
+          },
+          { status: 401, statusText: 'Unauthorized' },
+        );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      f.detectChanges();
+
+      expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
+      expect(f.componentInstance.entryForm.get('comment')!.value).toBe('Korrektur am Hauptnetz');
+      expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
+
+      const banner = (f.nativeElement as HTMLElement).querySelector(
+        '[data-testid="failure-banner"]',
+      );
+      expect(banner).not.toBeNull();
+      expect(banner!.textContent).toContain('Sitzung abgelaufen');
+      // Kein Versprechen, das hier niemand halten kann.
+      expect(banner!.textContent).not.toContain('gesichert');
     });
 
     it('never sends idempotency_key on an edit (#155): editing must not touch the create key', async () => {
@@ -2281,6 +2421,12 @@ describe('DataEntryFormComponent', () => {
     async function setupQueuedEditMode(
       outboxId: string,
       payload: Record<string, unknown>,
+      // #164: the server's rejection message, left on the queued entry. Present
+      // means the form opens with the Sync-Fehler-Banner over it.
+      syncError?: string,
+      // #445: the whole rejection beside it — Klasse, Code, Text, Feld, Kontext.
+      // Absent (with a `syncError` present) is what an older bundle left behind.
+      syncErrorEnvelope?: SyncErrorEnvelope,
     ): Promise<{ f: ComponentFixture<DataEntryFormComponent>; httpMock: HttpTestingController }> {
       const routeStub = {
         snapshot: { paramMap: { get: (key: string) => (key === 'id' ? outboxId : null) } },
@@ -2309,6 +2455,8 @@ describe('DataEntryFormComponent', () => {
         accountKey: 'fre',
         payload,
         queuedAt: '2026-07-02T09:00:00.000Z',
+        ...(syncError === undefined ? {} : { syncError }),
+        ...(syncErrorEnvelope === undefined ? {} : { syncErrorEnvelope }),
       });
       // The outbox must have finished restoring before the component is
       // constructed — see the `entryId` effect's comment on why the
@@ -2559,6 +2707,135 @@ describe('DataEntryFormComponent', () => {
       expect(stored[0].payload['ring_size']).toBe('SA');
       expect(stored[0].payload['ring_number']).toBe('AB1234');
       expect(stored[0].payload['comment']).toBe('Tippfehler korrigiert');
+    });
+
+    // #439 (ADR 0037): das Sync-Fehler-Banner ist der zweite Fehlerzustand dieses
+    // Bildschirms — neben `load-error` — und der einzige, den ein Beringer im
+    // Feld regelmäßig sieht. Auch er benennt sein App-Icon, statt eine Glyphe zu
+    // nennen; geprüft wird am gezeichneten Ergebnis, nicht am Marker im Template.
+    it('renders the App-Icon of the broken state in the Sync-Fehler-Banner', async () => {
+      const { f } = await setupQueuedEditMode(
+        'outbox-uuid-1',
+        queuedPayload(),
+        'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.',
+      );
+      f.detectChanges();
+      await settle();
+      f.detectChanges();
+
+      const el = f.nativeElement as HTMLElement;
+      // #443: dasselbe Banner, jetzt das gemeinsame Bauteil — die Überschrift
+      // des Moments bleibt „Synchronisierung abgelehnt".
+      const banner = el.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner!.textContent).toContain('Synchronisierung abgelehnt');
+      expect(renderedGlyph(banner!.querySelector('mat-icon'))).toBeTruthy();
+      expect(seamGlyph(f, AppIconErrorDirective)).toBeTruthy();
+    });
+
+    // #445 (ADR 0038, User Story 31): Tage später, ohne Netz. Was der Eintrag
+    // beim Flaggen nicht mitbekommen hat, kann er sich jetzt nirgends mehr
+    // holen — kein Nachfassen, und schon gar keins ohne Empfang.
+    describe('ein zurückgewiesener Eintrag, Tage später wieder geöffnet (#445)', () => {
+      const KOLLISION =
+        'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+      const RIVAL = {
+        rival: {
+          id: '6f1a6a1e-0f0e-4f5a-9a3b-2f9d1c7e5b40',
+          date_time: '2026-03-01T12:00:00Z',
+          species: 'Teichrohrsänger',
+          staff: 'FRE',
+        },
+      };
+
+      it('zeigt ohne Netz dasselbe vollständige Banner wie online — kollidierender Erstfang inbegriffen', async () => {
+        const { f, httpMock } = await setupQueuedEditMode(
+          'outbox-uuid-1',
+          queuedPayload(),
+          KOLLISION,
+          {
+            klasse: Fehlerklasse.Korrigieren,
+            code: 'ring_already_first_caught',
+            field: 'ring_number',
+            detail: KOLLISION,
+            context: RIVAL,
+          },
+        );
+        f.detectChanges();
+        await settle();
+        f.detectChanges();
+
+        // Derselbe Fehlschlag, den die Leitung getragen hätte — nur dass hier
+        // keine Leitung ist.
+        const wiederGeoeffnet = f.componentInstance.bannerFailure()!;
+        expect(wiederGeoeffnet.klasse).toBe(Fehlerklasse.Korrigieren);
+        expect(wiederGeoeffnet.code).toBe('ring_already_first_caught');
+        expect(wiederGeoeffnet.field).toBe('ring_number');
+        expect(wiederGeoeffnet.text).toBe(KOLLISION);
+        expect(wiederGeoeffnet.context).toEqual(RIVAL);
+
+        // Und es ist wirklich derselbe: online eingeordnet ergibt derselbe
+        // Antwortkörper Feld für Feld dasselbe.
+        const online = classifyFailure(
+          new HttpErrorResponse({
+            status: 400,
+            statusText: 'Bad Request',
+            url: 'https://app.birddoc.eu/api/birds/data-entries/',
+            error: {
+              ring_number: KOLLISION,
+              errors: [
+                {
+                  field: 'ring_number',
+                  code: 'ring_already_first_caught',
+                  detail: KOLLISION,
+                  context: RIVAL,
+                },
+              ],
+            },
+          }),
+        );
+        expect(wiederGeoeffnet.klasse).toBe(online.klasse);
+        expect(wiederGeoeffnet.code).toBe(online.code);
+        expect(wiederGeoeffnet.field).toBe(online.field);
+        expect(wiederGeoeffnet.text).toBe(online.text);
+        expect(wiederGeoeffnet.context).toEqual(online.context);
+
+        const banner = (f.nativeElement as HTMLElement).querySelector(
+          '[data-testid="failure-banner"]',
+        );
+        expect(banner!.textContent).toContain(KOLLISION);
+        // Nichts davon wurde erfragt: kein Nachfassen, das offline nie ankäme —
+        // der Fehler trägt seinen Kontext selbst (ADR 0038). Geprüft an jeder
+        // Anfrage, die den kollidierenden Erstfang überhaupt liefern könnte:
+        // der Fang selbst und die Ringhistorie.
+        const nachgefasst = httpMock
+          .match(() => true)
+          .map((r) => r.request.urlWithParams)
+          .filter((url) => url.includes('data-entries') || url.includes('rings'));
+        expect(nachgefasst).toEqual([]);
+      });
+
+      it('erfindet für einen von einem älteren Bundle geflaggten Eintrag keinen Code', async () => {
+        // Ein Gerät, das wochenlang ohne Netz war, hält genau diese Einträge:
+        // eine blanke Zeile Prosa, ohne Umschlag. Sie bleibt lesbar und gilt
+        // als reines `detail` — mehr behauptet niemand über sie.
+        const { f } = await setupQueuedEditMode('outbox-uuid-1', queuedPayload(), KOLLISION);
+        f.detectChanges();
+        await settle();
+        f.detectChanges();
+
+        const failure = f.componentInstance.bannerFailure()!;
+        expect(failure.klasse).toBe(Fehlerklasse.Korrigieren);
+        expect(failure.text).toBe(KOLLISION);
+        expect(failure.code).toBeNull();
+        expect(failure.field).toBeNull();
+        expect(failure.context).toBeNull();
+
+        const banner = (f.nativeElement as HTMLElement).querySelector(
+          '[data-testid="failure-banner"]',
+        );
+        expect(banner!.textContent).toContain(KOLLISION);
+      });
     });
   });
 
@@ -7720,6 +7997,34 @@ describe('DataEntryFormComponent', () => {
       expect(openSpy).toHaveBeenCalled();
     });
 
+    // #443 (ADR 0037): ein gescheitertes Löschen ist eine ausgelöste Schreibung
+    // — es sagt im Banner, warum, und verfällt nicht.
+    it('renders a failed delete in the banner instead of a snackbar', async () => {
+      await setupForm();
+      dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
+      const openSpy = spyOn(snackBarOf(fixture), 'open').and.callThrough();
+
+      btn('delete-entry-button')!.click();
+      httpMock
+        .expectOne((r) => r.method === 'DELETE' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(
+          {
+            detail: 'Anmeldedaten fehlen.',
+            errors: [{ field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.' }],
+          },
+          { status: 403, statusText: 'error' },
+        );
+      fixture.detectChanges();
+
+      const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent as string).toContain('Anmeldedaten fehlen.');
+      // Die Klasse, nicht der Status: eine tote Sitzung kommt als 403 an und
+      // bekommt trotzdem „Anmelden", nicht „frag eine Administratorin".
+      expect(banner.querySelector('[data-testid="failure-anmelden"]')).not.toBeNull();
+      expect(openSpy).not.toHaveBeenCalled();
+    });
+
     it('deletes nothing when the modal is cancelled', async () => {
       await setupForm();
       dialogMock.open.and.returnValue({ afterClosed: () => of(false) });
@@ -7815,11 +8120,18 @@ describe('DataEntryFormComponent', () => {
       expect(refresh.token()).toBeGreaterThan(before);
     });
 
-    it('does not ask the list to reload when the restore failed', async () => {
+    // #448: der Fehlschlag des „Rückgängig" war die letzte Fehlschlag-Snackbar
+    // der SPA — und sie konnte hier nicht anders, weil „Löschen" längst zur
+    // Fangliste navigiert und diese Maske zerstört hat. Sie geht denselben Weg
+    // wie das Nachladen: über den Rückkanal auf die Liste, wo das Snackbar
+    // steht und die Geste stattfand.
+    it('does not ask the list to reload when the restore failed, and hands it the failure instead of a snackbar', async () => {
       await setupForm();
       dialogMock.open.and.returnValue({ afterClosed: () => of(true) });
       const action = new Subject<void>();
-      spyOn(snackBarOf(fixture), 'open').and.returnValue({ onAction: () => action } as never);
+      const openSpy = spyOn(snackBarOf(fixture), 'open').and.returnValue({
+        onAction: () => action,
+      } as never);
       spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
       const refresh = TestBed.inject(DataEntryRefreshService);
       const before = refresh.token();
@@ -7830,12 +8142,21 @@ describe('DataEntryFormComponent', () => {
         .flush(null, { status: 204, statusText: 'No Content' });
 
       action.next();
+      const openCallsBefore = openSpy.calls.count();
       httpMock
         .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/42/restore/'))
-        .flush({ detail: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+        .flush(
+          { detail: 'Dieser Fang ist endgültig gelöscht.' },
+          { status: 404, statusText: 'Not Found' },
+        );
 
       // Nichts kam zurück, also gibt es auch nichts nachzuladen.
       expect(refresh.token()).toBe(before);
+      // Und kein Toast: der Fehlschlag reist auf den Rückkanal.
+      expect(openSpy.calls.count()).toBe(openCallsBefore);
+      expect(refresh.schreibFehler.failure()?.text).toContain(
+        'Dieser Fang ist endgültig gelöscht.',
+      );
     });
 
     it('leaves the entry deleted when the undo window closes unused', async () => {
@@ -7870,6 +8191,753 @@ describe('DataEntryFormComponent', () => {
       expect(btn('delete-entry-button')!.disabled).toBe(false);
     });
   });
+
+  // #443 (ADR 0037/0038): die abgelehnte Speicherung. Bisher quittierte eine
+  // bereits vergebene Ringnummer mit „Fehler beim Speichern: Http failure
+  // response for …: 400 OK" in einer Snackbar, die nach drei Sekunden weg war —
+  // während der Server längst einen präzisen deutschen Satz geliefert hatte.
+  describe('die abgelehnte Speicherung: Banner und Feldmarkierung (#443)', () => {
+    let httpMock: HttpTestingController;
+    let snackBar: jasmine.Spy;
+
+    const RING_ALREADY_FIRST_CAUGHT =
+      'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+    const ADMIN_ONLY =
+      'Diese Aktion ist Administrator:innen der Organisation vorbehalten. ' +
+      'Bitte wende dich an eine Administratorin oder einen Administrator.';
+
+    // Der Antwortkörper, mit dem dieses PRD anfing — echt, so wie ihn
+    // `backend/birds/tests/test_error_envelope.py` gegen die laufende API
+    // zusichert (test_ring_collision_body_is_unchanged_and_carries_its_entry).
+    const ringCollisionBody = {
+      ring_number: RING_ALREADY_FIRST_CAUGHT,
+      errors: [{ field: 'ring_number', code: 'invalid', detail: RING_ALREADY_FIRST_CAUGHT }],
+    };
+
+    // Die Instanzen der Komponente, nicht die der Wurzel: `MatSnackBarModule`
+    // und `MatDialogModule` führen beide einen eigenen Provider, den der
+    // Standalone-Injektor der Komponente hält — ein `TestBed.inject(...)`-Spion
+    // wäre ein anderer Dienst und die Zusicherung damit wertlos.
+    const snackBarOf = (): MatSnackBar =>
+      (component as unknown as { snackBar: MatSnackBar }).snackBar;
+    const dialogOf = (): MatDialog => (component as unknown as { dialog: MatDialog }).dialog;
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+      snackBar = spyOn(snackBarOf(), 'open').and.callThrough();
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    function submitAndReject(status: number, body: Record<string, unknown>): void {
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush(body, { status, statusText: 'error' });
+      fixture.detectChanges();
+    }
+
+    const banner = (): HTMLElement | null =>
+      fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+
+    const saveButton = (): HTMLButtonElement =>
+      fixture.nativeElement.querySelector(
+        '.action-buttons button[type="submit"]',
+      ) as HTMLButtonElement;
+
+    const fieldError = (name: string): HTMLElement | null =>
+      fixture.nativeElement.querySelector(`[data-testid="server-error-${name}"]`);
+
+    const expectPost = () =>
+      httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+
+    it('rendert den deutschen Satz des Servers — die Transportzeichenkette kommt nirgends vor', () => {
+      fillValidWiederfang();
+
+      submitAndReject(400, ringCollisionBody);
+
+      expect(banner()).not.toBeNull();
+      expect(banner()!.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+      expect(banner()!.textContent).not.toContain('Http failure response');
+      expect(banner()!.textContent).not.toContain('400');
+      expect(fixture.nativeElement.textContent).not.toContain('Fehler beim Speichern');
+    });
+
+    it('öffnet keine Snackbar mehr — eine flüchtige Meldung bestätigt nur noch Gelungenes', () => {
+      fillValidWiederfang();
+
+      submitAndReject(400, ringCollisionBody);
+
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('markiert zusätzlich das zurückgewiesene Feld mit dem Satz des Servers', () => {
+      fillValidWiederfang();
+
+      submitAndReject(400, ringCollisionBody);
+
+      const ringNumber = component.entryForm.get('ring_number')!;
+      expect(ringNumber.hasError('serverRejected')).toBeTrue();
+      expect(component.serverRejection('ring_number')).toBe(RING_ALREADY_FIRST_CAUGHT);
+      // Und sie steht auch am Feld, nicht nur im Zustand.
+      const markierung = fixture.nativeElement.querySelector(
+        '[data-testid="server-error-ring_number"]',
+      ) as HTMLElement | null;
+      expect(markierung).not.toBeNull();
+      expect(markierung!.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+    });
+
+    it('rendert bei einer Zurückweisung ohne einzelnes Feld nur das Banner', () => {
+      fillValidWiederfang();
+
+      // Eine Rechteverweigerung trifft den Datensatz als Ganzes — es gibt kein
+      // Feld, das rot werden könnte (test_admin_only_403_…).
+      submitAndReject(403, {
+        detail: ADMIN_ONLY,
+        errors: [{ field: null, code: 'permission_denied', detail: ADMIN_ONLY }],
+      });
+
+      expect(banner()!.textContent).toContain(ADMIN_ONLY);
+      expect(component.entryForm.get('ring_number')!.hasError('serverRejected')).toBeFalse();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="server-error-ring_number"]'),
+      ).toBeNull();
+    });
+
+    it('löscht die Feldmarkierung, sobald genau dieses Feld bearbeitet wird', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      component.entryForm.get('ring_number')!.setValue('901235');
+      fixture.detectChanges();
+
+      expect(component.serverRejection('ring_number')).toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="server-error-ring_number"]'),
+      ).toBeNull();
+    });
+
+    it('lässt die Feldmarkierung stehen, wenn ein anderes Feld bearbeitet wird', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      component.entryForm.get('comment')!.setValue('Ein anderer Gedanke');
+      fixture.detectChanges();
+
+      expect(component.serverRejection('ring_number')).toBe(RING_ALREADY_FIRST_CAUGHT);
+    });
+
+    it('bleibt stehen, bis es behandelt ist — es verfällt nicht', fakeAsync(() => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      // Weit jenseits jeder Snackbar-Dauer: der Beringer hat beide Hände am Vogel.
+      tick(60_000);
+      fixture.detectChanges();
+
+      expect(banner()).not.toBeNull();
+      expect(banner()!.textContent).toContain(RING_ALREADY_FIRST_CAUGHT);
+    }));
+
+    it('nimmt das Banner zurück, sobald die Speicherung gelingt', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+      expect(banner()).not.toBeNull();
+
+      component.entryForm.get('ring_number')!.setValue('901235');
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      fixture.detectChanges();
+
+      expect(banner()).toBeNull();
+    });
+
+    // AC: „Kein Fehlschlag öffnet auf der Erfassungsmaske noch eine Snackbar."
+    // Die drei übrigen Fehlschläge dieses Bildschirms wandern mit — bis auf
+    // einen, der nach dem Wegnavigieren fällt (siehe Kommentar in `offerUndo`).
+    it('zeigt auch eine gescheiterte Beringer-Schnellanlage im Banner statt in einer Snackbar', () => {
+      spyOn(dialogOf(), 'open').and.returnValue({
+        afterClosed: () => of({ handle: 'NEU', first_name: 'Nina', last_name: 'Mayr' }),
+      } as never);
+
+      component.onCreateBeringer('NEU');
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/scientists/'))
+        .flush(
+          {
+            handle: ['Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.'],
+            errors: [
+              {
+                field: 'handle',
+                code: 'unique',
+                detail: 'Dieses Kürzel ist bereits vergeben. Bitte wähle ein anderes Kürzel.',
+              },
+            ],
+          },
+          { status: 400, statusText: 'error' },
+        );
+      fixture.detectChanges();
+
+      expect(banner()!.textContent).toContain('Dieses Kürzel ist bereits vergeben');
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('zeigt eine gescheiterte Ringhistorie im Banner statt in einer Snackbar', () => {
+      component.entryForm.patchValue({
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+
+      component.fetchRingHistory();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.includes('/birds/data-entries/'))
+        .flush({ detail: 'Serverfehler' }, { status: 500, statusText: 'error' });
+      fixture.detectChanges();
+
+      expect(banner()).not.toBeNull();
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('drückt auf „Erneut versuchen" die Speicherung erneut', () => {
+      fillValidWiederfang();
+      // Eine vorübergehende Störung: die Klasse *Erneut versuchen* bietet den Knopf.
+      submitAndReject(503, { detail: 'Wartung' });
+
+      const erneut = banner()!.querySelector(
+        '[data-testid="failure-erneut"]',
+      ) as HTMLButtonElement;
+      expect(erneut).not.toBeNull();
+      erneut.click();
+
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+    });
+
+    // ── Der Ausweg darf nicht zufallen ────────────────────────────────────────
+    // Die Feldmarkierung macht ihr Control ungültig — sie ist ja rot. Sperrte
+    // das den Speichern-Knopf, stünde unter dem Banner „Bitte korrigieren und
+    // erneut speichern" ein toter Knopf: „ein Knopf, der wortlos nichts tut"
+    // (#427). ADR 0037 (Z. 72-76) verlangt sogar ausdrücklich das Gegenteil —
+    // eine Abhilfe wie #444s „Als Wiederfang erfassen" **füllt** das Formular
+    // und überlässt das Speichern dem Mitglied.
+
+    it('lässt Speichern nach einer Feldmarkierung bedienbar', () => {
+      fillValidWiederfang();
+
+      submitAndReject(400, ringCollisionBody);
+
+      expect(fieldError('ring_number')).not.toBeNull();
+      expect(saveButton().disabled).toBeFalse();
+    });
+
+    it('speichert erneut, wenn ein ANDERES Feld korrigiert wurde — genau der Weg, den eine Abhilfe geht', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      // Was #444s „Als Wiederfang erfassen" tut: es setzt den Status und rührt
+      // das zurückgewiesene Feld nicht an. Danach drückt das Mitglied Speichern.
+      component.entryForm.get('comment')!.setValue('Ring lag schon vor.');
+      fixture.detectChanges();
+
+      expect(saveButton().disabled).toBeFalse();
+      saveButton().click();
+      fixture.detectChanges();
+
+      expectPost().flush({});
+    });
+
+    it('speichert nach einer Feldmarkierung auch per Strg+S', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      component.entryForm.get('comment')!.setValue('Ring lag schon vor.');
+      component.onKeydown(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }));
+
+      expectPost().flush({});
+    });
+
+    it('nimmt die Feldmarkierung beim nächsten Versuch zurück — sie beantwortete den vorigen', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      component.onSubmit();
+      fixture.detectChanges();
+
+      expect(component.serverRejection('ring_number')).toBeNull();
+      expect(fieldError('ring_number')).toBeNull();
+      expectPost().flush({});
+    });
+
+    it('sperrt Speichern weiterhin, solange die Eingabe selbst unvollständig ist', () => {
+      // Kein fillValidWiederfang(): Art, Station, Beringer und Ringnummer fehlen.
+      fixture.detectChanges();
+
+      expect(saveButton().disabled).toBeTrue();
+    });
+
+    it('lässt die Feldmarkierung stehen, wenn gar nicht erst abgeschickt wird', () => {
+      fillValidWiederfang();
+      submitAndReject(400, ringCollisionBody);
+
+      // Eine echte Lücke in der Eingabe: jetzt sperrt der Knopf wieder — und
+      // zwar aus dem richtigen Grund. Der Knopf und `onSubmit()` stellen
+      // dieselbe Frage, sie können nicht auseinanderlaufen.
+      component.entryForm.get('species')!.setValue(null);
+      fixture.detectChanges();
+      expect(saveButton().disabled).toBeTrue();
+
+      component.onSubmit();
+      fixture.detectChanges();
+
+      expect(component.serverRejection('ring_number')).toBe(RING_ALREADY_FIRST_CAUGHT);
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'));
+    });
+
+    // ── Nur markieren, was auch zu lesen ist ──────────────────────────────────
+    // Der Schreib-Serializer kann jedes Feld zurückweisen, nicht nur die acht
+    // der Kern-Maske: „eine doppelte Ringnummer und eine fehlerhafte Dezimalzahl
+    // sind beide 400" (#443). Ein markiertes Control ohne `mat-error` wäre rot
+    // und stumm.
+
+    it('zeigt den Serversatz auch an einem Messfeld', () => {
+      fillValidWiederfang();
+      const detail = 'Es sind höchstens 1 Dezimalstellen zulässig.';
+
+      // Echte DRF-Form: der Feldschlüssel unverändert daneben, der Umschlag
+      // additiv (ADR 0038 / #440).
+      submitAndReject(400, {
+        weight_gram: [detail],
+        errors: [{ field: 'weight_gram', code: 'max_decimal_places', detail }],
+      });
+
+      expect(fieldError('weight_gram')).not.toBeNull();
+      expect(fieldError('weight_gram')!.textContent).toContain(detail);
+      expect(banner()!.textContent).toContain(detail);
+    });
+
+    it('markiert kein Control, dessen Vorlage den Satz nicht zeigen kann — dann steht er im Banner allein', () => {
+      fillValidWiederfang();
+      const detail = 'Es wird ein gültiger Wahrheitswert erwartet.';
+
+      // Brutfleck ist eine mat-checkbox: sie hat keinen Platz für einen
+      // mat-error. Rot ohne Satz wäre schlimmer als gar nicht rot.
+      submitAndReject(400, {
+        has_brood_patch: [detail],
+        errors: [{ field: 'has_brood_patch', code: 'invalid', detail }],
+      });
+
+      const brutfleck = component.entryForm.get('has_brood_patch')!;
+      expect(brutfleck.hasError('serverRejected')).toBeFalse();
+      expect(brutfleck.valid).toBeTrue();
+      expect(banner()!.textContent).toContain(detail);
+      expect(saveButton().disabled).toBeFalse();
+    });
+
+    it('markiert kein abgeschaltetes Control — ein ausgeblendetes Feld ist nicht zu sehen', () => {
+      fillValidWiederfang();
+      // Erstfang schaltet die Zentrale ab und zwingt sie auf die Projekt-Zentrale.
+      component.entryForm.get('bird_status')!.setValue(BirdStatus.FirstCatch);
+      fixture.detectChanges();
+      expect(component.entryForm.get('central')!.disabled).toBeTrue();
+      const detail = 'Ein Erstfang läuft immer gegen die eigene Zentrale.';
+
+      submitAndReject(400, { errors: [{ field: 'central', code: 'invalid', detail }] });
+
+      expect(component.serverRejection('central')).toBeNull();
+      expect(banner()!.textContent).toContain(detail);
+    });
+
+    // Die Liste, die `markRejectedField()` bindet, gegen die Vorlage gehalten:
+    // für JEDEN Eintrag muss der Satz danach wirklich am Feld stehen. Ein
+    // mat-error wird nur in den DOM projiziert, wenn das mat-form-field im
+    // Fehlerzustand ist — die DOM-Zusicherung beweist also beides zugleich.
+    it('zeigt den Serversatz an jedem Control, das er markieren darf', () => {
+      fillValidWiederfang();
+      // Diesjährig, damit auch die Kleingefieder-Fortschritt-Auswahl eingeschaltet
+      // ist (sie ist nur für Alter = 3 bedienbar).
+      component.entryForm.get('age_class')!.setValue(AgeClass.ThisYear);
+      fixture.detectChanges();
+
+      for (const name of SERVER_REJECTION_FIELDS) {
+        const detail = `Der Server hat «${name}» zurückgewiesen.`;
+        submitAndReject(400, { errors: [{ field: name, code: 'invalid', detail }] });
+
+        expect(component.entryForm.get(name)!.disabled)
+          .withContext(`${name} ist abgeschaltet und damit unsichtbar`)
+          .toBeFalse();
+        expect(fieldError(name)).withContext(`kein mat-error für ${name}`).not.toBeNull();
+        expect(fieldError(name)!.textContent).withContext(name).toContain(detail);
+        expect(saveButton().disabled).withContext(`Speichern tot nach ${name}`).toBeFalse();
+      }
+    });
+  });
+
+  // #444 (ADR 0037/0038): die bereits vergebene Ringnummer bekommt ihre drei
+  // Abhilfen — den kollidierenden Erstfang öffnen, den Fang als Wiederfang
+  // erfassen, die nächste freie Nummer übernehmen. **Keine von ihnen
+  // speichert.** Ein Fehlgriff meldete sonst einen Wiederfang für einen nie
+  // zuvor gefangenen Vogel; „Als Wiederfang" ändert die wissenschaftliche
+  // Aussage des Datensatzes und bleibt deshalb sichtbar, widerruflich und
+  // bewusst.
+  describe('die Abhilfen bei bereits vergebener Ringnummer (#444)', () => {
+    let httpMock: HttpTestingController;
+
+    const KOLLISION =
+      'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+
+    /** Der Rivale aus `test_the_collision_names_the_erstfang_that_holds_the_number`. */
+    const RIVAL = {
+      id: '6f1a6a1e-0f0e-4f5a-9a3b-2f9d1c7e5b40',
+      date_time: '2026-07-28T08:15:00+02:00',
+      species: 'Teichrohrsänger',
+      staff: 'FRE',
+    };
+
+    /** Der Antwortkörper, den der Server heute schickt — DRF-Form plus Umschlag. */
+    const kollisionsKoerper = {
+      ring_number: KOLLISION,
+      errors: [
+        {
+          field: 'ring_number',
+          code: 'ring_already_first_caught',
+          detail: KOLLISION,
+          context: { rival: RIVAL },
+        },
+      ],
+    };
+
+    /** Derselbe Körper von einem Backend vor #442: der Code ohne seinen Kontext. */
+    const kollisionsKoerperOhneKontext = {
+      ring_number: KOLLISION,
+      errors: [{ field: 'ring_number', code: 'ring_already_first_caught', detail: KOLLISION }],
+    };
+
+    const banner = (): HTMLElement | null =>
+      fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+
+    const knopf = (testid: string): HTMLButtonElement | null =>
+      fixture.nativeElement.querySelector(`[data-testid="${testid}"]`);
+
+    const saveButton = (): HTMLButtonElement =>
+      fixture.nativeElement.querySelector(
+        '.action-buttons button[type="submit"]',
+      ) as HTMLButtonElement;
+
+    const nextNumberRead = () =>
+      httpMock.expectOne(
+        (r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'),
+      );
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    /**
+     * Ein vollständiger **Erstfang** auf einer Nummer, die es schon gibt — der
+     * Fall, mit dem PRD #438 anfing. Die Nummer kommt aus dem Vorschlag der
+     * Maske (#42): genau die, die zwei Geräte offline unabhängig voneinander
+     * vergeben haben.
+     */
+    function erstfangAufVergebenerNummer(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.FirstCatch,
+        ring_size: RingSize.S,
+      });
+      fixture.detectChanges();
+      nextNumberRead().flush({ next_number: '901234' });
+      fixture.detectChanges();
+      expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+    }
+
+    function submitAndReject(body: Record<string, unknown>): void {
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush(body, { status: 400, statusText: 'error' });
+      fixture.detectChanges();
+    }
+
+    it('nennt den kollidierenden Erstfang mit Datum, Uhrzeit, Art und Beringer-Kürzel', () => {
+      erstfangAufVergebenerNummer();
+
+      submitAndReject(kollisionsKoerper);
+
+      const rivale = fixture.nativeElement.querySelector('[data-testid="failure-rival"]');
+      expect(rivale).not.toBeNull();
+      expect(rivale.textContent).toContain('2026');
+      expect(rivale.textContent).toContain('Teichrohrsänger');
+      expect(rivale.textContent).toContain('FRE');
+      expect(rivale.textContent).not.toContain('2026-07-28T08:15');
+    });
+
+    it('setzt mit „Als Wiederfang erfassen" den Ringstatus und ändert sonst nichts', () => {
+      erstfangAufVergebenerNummer();
+      submitAndReject(kollisionsKoerper);
+      const vorher = component.entryForm.getRawValue() as Record<string, unknown>;
+
+      knopf('failure-wiederfang')!.click();
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('bird_status')!.value).toBe(BirdStatus.ReCatch);
+      // Feld für Feld dasselbe Formular, bis auf den einen Wert. Insbesondere
+      // steht die Ringnummer unangetastet da: der Ring sitzt am Vogel.
+      const nachher: Record<string, unknown> = {
+        ...(component.entryForm.getRawValue() as Record<string, unknown>),
+        bird_status: vorher['bird_status'],
+      };
+      expect(nachher).toEqual(vorher);
+      // Und nicht eine einzige Anfrage — schon gar keine Speicherung.
+      httpMock.expectNone(() => true);
+    });
+
+    it('überlässt das Speichern dem Beringer: erst sein Griff schickt den Wiederfang los', () => {
+      erstfangAufVergebenerNummer();
+      submitAndReject(kollisionsKoerper);
+
+      knopf('failure-wiederfang')!.click();
+      fixture.detectChanges();
+      // Der geänderte Wert steht sichtbar im Formular, und nichts ist unterwegs.
+      httpMock.expectNone((r) => r.method === 'POST');
+      expect(saveButton().disabled).toBeFalse();
+
+      saveButton().click();
+      fixture.detectChanges();
+
+      const post = httpMock.expectOne(
+        (r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'),
+      );
+      expect((post.request.body as Record<string, unknown>)['bird_status']).toBe(
+        BirdStatus.ReCatch,
+      );
+      post.flush({});
+    });
+
+    it('trägt die nächste freie Ringnummer ins Feld ein, ohne zu speichern', () => {
+      erstfangAufVergebenerNummer();
+      submitAndReject(kollisionsKoerper);
+
+      knopf('failure-freie-nummer')!.click();
+      fixture.detectChanges();
+
+      // Der bestehende Endpunkt, im Projekt-Zuschnitt (#22) — und keine zweite
+      // Fläche dafür.
+      const gefragt = nextNumberRead();
+      expect(gefragt.request.params.get('size')).toBe(RingSize.S);
+      expect(gefragt.request.params.get('project')).toBe('p1');
+      gefragt.flush({ next_number: '901235' });
+      fixture.detectChanges();
+
+      expect(component.entryForm.get('ring_number')!.value).toBe('901235');
+      // Gespeichert wird nichts: die freie Nummer zu erfragen ist ein Lesen,
+      // der Griff zum Speichern bleibt der des Beringers.
+      httpMock.expectNone((r) => r.method !== 'GET');
+      expect(saveButton().disabled).toBeFalse();
+    });
+
+    it('sagt es, wenn keine freie Ringnummer zu bekommen ist, statt das Feld zu leeren', () => {
+      erstfangAufVergebenerNummer();
+      submitAndReject(kollisionsKoerper);
+
+      knopf('failure-freie-nummer')!.click();
+      fixture.detectChanges();
+      nextNumberRead().flush({ next_number: null });
+      fixture.detectChanges();
+
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="failure-keine-freie-nummer"]'),
+      ).not.toBeNull();
+      expect(knopf('failure-freie-nummer')).toBeNull();
+      // Die getippte Nummer bleibt stehen — sie ist das, was der Beringer hat.
+      expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+      expect(banner()!.textContent).toContain(KOLLISION);
+    });
+
+    it('navigiert bei keiner Abhilfe weg und verwirft nichts', () => {
+      erstfangAufVergebenerNummer();
+      submitAndReject(kollisionsKoerper);
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate');
+      const navigateByUrl = spyOn(router, 'navigateByUrl');
+      const dialog = spyOn(
+        (component as unknown as { dialog: MatDialog }).dialog,
+        'open',
+      ).and.callThrough();
+
+      knopf('failure-wiederfang')!.click();
+      fixture.detectChanges();
+      knopf('failure-freie-nummer')!.click();
+      fixture.detectChanges();
+      nextNumberRead().flush({ next_number: '901235' });
+      fixture.detectChanges();
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(navigateByUrl).not.toHaveBeenCalled();
+      // Kein „Änderungen verwerfen?" und nichts Verworfenes: der Fang steht
+      // vollständig da, das Banner auch.
+      expect(dialog).not.toHaveBeenCalled();
+      expect(component.entryForm.get('species')!.value).toEqual({
+        id: 's1',
+        common_name_de: 'Kohlmeise',
+      } as never);
+      expect(banner()).not.toBeNull();
+    });
+
+    it('öffnet den kollidierenden Erstfang, ohne den Eintrag still fallen zu lassen', () => {
+      erstfangAufVergebenerNummer();
+      submitAndReject(kollisionsKoerper);
+      const navigate = spyOn(TestBed.inject(Router), 'navigate');
+
+      knopf('failure-rival-oeffnen')!.click();
+      fixture.detectChanges();
+
+      // Die gewöhnliche Navigation zu einem Fang — damit hängt der
+      // `unsavedChangesGuard` (#407) davor wie überall sonst, statt hier eine
+      // Ausnahme zu bekommen.
+      expect(navigate).toHaveBeenCalledWith(['/data-entry', RIVAL.id]);
+      // Der Eintrag ist bis dahin unangetastet: nichts gespeichert, nichts
+      // geleert.
+      httpMock.expectNone(() => true);
+      expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+      expect(component.entryForm.get('bird_status')!.value).toBe(BirdStatus.FirstCatch);
+    });
+
+    it('degradiert ohne Kontext auf den Satz allein', () => {
+      // Ein älteres Backend oder ein Bundle mitten in der Auslieferung: der
+      // Code kommt an, der Rivale nicht. Dann steht der Satz da — mit Banner,
+      // mit Feldmarkierung, ohne Rivalen und ohne eine Abhilfe, die ins Leere
+      // führte.
+      erstfangAufVergebenerNummer();
+
+      submitAndReject(kollisionsKoerperOhneKontext);
+
+      expect(banner()!.textContent).toContain(KOLLISION);
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-rival"]')).toBeNull();
+      expect(knopf('failure-wiederfang')).toBeNull();
+      expect(knopf('failure-freie-nummer')).toBeNull();
+      expect(knopf('failure-rival-oeffnen')).toBeNull();
+      expect(component.serverRejection('ring_number')).toBe(KOLLISION);
+    });
+  });
+
+  // #447 (ADR 0039): dauerhaft ist, was sonst nirgends existiert. Ein
+  // Sitzungsablauf mitten in einer Runde vernichtete bislang den Fang: die App
+  // sprang zur Anmeldung, der `unsavedChangesGuard` fragte „Änderungen
+  // verwerfen?", und wer bestätigte, verlor ihn — obwohl derselbe Fang bei
+  // einem Netzausfall längst als *nicht synchronisiert* sicher gewesen wäre.
+  // Der Vogel ist zu diesem Zeitpunkt beringt und wieder in der Luft.
+  describe('die abgelaufene Sitzung: der Fang wird gerettet (#447, ADR 0039)', () => {
+    let httpMock: HttpTestingController;
+    let snackBar: jasmine.Spy;
+
+    const NOT_AUTHENTICATED = {
+      detail: 'Anmeldedaten fehlen.',
+      errors: [{ field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.' }],
+    };
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+      await TestBed.inject(OutboxService).ready;
+      snackBar = spyOn(
+        (component as unknown as { snackBar: MatSnackBar }).snackBar,
+        'open',
+      ).and.callThrough();
+    });
+
+    afterEach(async () => {
+      const db = TestBed.inject(IndexedDbStore);
+      const queued = await db.getAll<{ id: string }>('outbox');
+      await Promise.all(queued.map((entry) => db.delete('outbox', entry.id)));
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    /** Speichern drücken und den Server die Sitzung ablehnen lassen. */
+    async function submitAndExpire(): Promise<void> {
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+      // Die Rettung schreibt in das echte (nicht von Zone gepatchte) IndexedDB,
+      // das nur echte verstrichene Zeit beobachtet.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      fixture.detectChanges();
+    }
+
+    const banner = (): HTMLElement | null =>
+      fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+
+    it('reiht den Fang in die Outbox ein, statt ihn zu vernichten', async () => {
+      fillValidWiederfang();
+
+      await submitAndExpire();
+
+      const queued = await TestBed.inject(OutboxStoreService).list();
+      expect(queued.length).toBe(1);
+      expect(queued[0].accountKey).toBe('fre');
+      expect(queued[0].payload['ring_number']).toBe('901234');
+      expect(TestBed.inject(OutboxService).pendingCount()).toBe(1);
+    });
+
+    it('sagt, dass der Eintrag gesichert ist und nach der Anmeldung übertragen wird — mit der Anmeldung im Griff', async () => {
+      fillValidWiederfang();
+
+      await submitAndExpire();
+
+      expect(banner()).not.toBeNull();
+      expect(banner()!.textContent).toContain('gesichert');
+      expect(banner()!.textContent).toContain('nach der Anmeldung übertragen');
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="failure-anmelden"]'),
+      ).not.toBeNull();
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('lässt kein ungespeichertes Formular zurück — der Guard hat nichts mehr zu verwerfen', async () => {
+      fillValidWiederfang();
+
+      await submitAndExpire();
+
+      // Der Fang ist erfasst: das Formular steht wieder frisch für den nächsten
+      // Vogel da, genau wie nach einer offline eingereihten Speicherung.
+      expect(component.entryForm.pristine).toBeTrue();
+      expect(component.entryForm.get('ring_number')!.value).toBeFalsy();
+      // Und das Banner bleibt trotzdem stehen — es verfällt nie.
+      expect(banner()).not.toBeNull();
+    });
+  });
+
 });
 
 // #407 (ADR 0032): the capture form is the only place a half-entered Wiederfang
@@ -8145,5 +9213,510 @@ describe('DataEntryFormComponent unsaved changes reach the CanDeactivate guard (
     const { asked, left } = await leaveTheForm();
     expect(asked).withContext('a destroyed form has no input to protect').toBeFalse();
     expect(left).toBeTrue();
+  });
+});
+
+/** Die Anmeldung, wohin der `authInterceptor` springt — mehr braucht es nicht. */
+@Component({ selector: 'app-login-stub', standalone: true, template: '<p>Anmeldung</p>' })
+class LoginStubComponent {}
+
+// #447 (ADR 0037): der Fang-Edit **scheitert laut** — aber laut heißt nicht „das
+// Formular verschwindet". Vor diesem Schnitt tat der `authInterceptor` seine
+// 401-Arbeit global und als erster: `currentUser` weg, beide Zwischenspeicher
+// weg, Sprung zur Anmeldung — alles, bevor die Komponente den Fehler überhaupt
+// sah. Die Navigation weckte den `unsavedChangesGuard` (#407) über einer
+// Korrektur, die im Formular und sonst nirgends steht: „Verwerfen" vernichtete
+// sie, „Weiter bearbeiten" ließ das Mitglied auf einem Formular ohne Sitzung
+// sitzen, dessen jedes weitere Speichern wieder mit 401 endet.
+//
+// Die Specs weiter oben können das nicht sehen: sie melden `provideHttpClient()`
+// ohne Interceptor an und `provideRouter([])` ohne Route, also läuft weder der
+// Interceptor noch der Guard, und ihre Behauptung „die Korrektur steht noch im
+// Formular" kann nicht scheitern. Dieser Block hängt beides ein — die echte
+// Kette aus `app.config.ts` und die echte `canDeactivate`-Route aus
+// `app.routes.ts` — und die **Gegenprobe** am Ende zeigt an genau diesem Aufbau,
+// dass er scheitern kann.
+describe('DataEntryFormComponent: der Fang-Edit bei abgelaufener Sitzung, an der echten Kette (#447, ADR 0037)', () => {
+  let harness: RouterTestingHarness;
+  let component: DataEntryFormComponent;
+  let httpMock: HttpTestingController;
+
+  // Wie im Guard-Block: zwei Dialoge, absichtlich getrennt. Der Guard fragt über
+  // den Wurzel-Injektor, das Formular über seinen eigenen — so kann ein
+  // Tot-Fund-Popup nie als „der Guard hat gefragt" durchgehen.
+  const guardDialog = { open: jasmine.createSpy('guardDialog.open') };
+  const formDialog = { open: jasmine.createSpy('formDialog.open') };
+
+  const MITGLIED = {
+    username: 'fre',
+    handle: 'FRE',
+    isStaff: false,
+    rolle: 'mitglied' as const,
+    organization: null,
+  };
+
+  const NOT_AUTHENTICATED = {
+    detail: 'Anmeldedaten fehlen.',
+    errors: [{ field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.' }],
+  };
+
+  const project = {
+    id: 'p1',
+    title: 'Herbst',
+    description: '',
+    projekttyp: Projekttyp.Sonstiges,
+    organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+    default_station: null,
+    scientists: [],
+    created: '',
+    updated: '',
+  } as Project;
+
+  function savedEntry(): DataEntry {
+    return {
+      id: '42',
+      species: {
+        id: 's1',
+        common_name_de: 'Kohlmeise',
+        scientific_name: 'Parus major',
+        ring_size: RingSize.S,
+      },
+      ring: { id: 'r1', number: '901234', size: RingSize.S },
+      staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' },
+      ringing_station: {
+        handle: 'STAMT',
+        name: 'Linz, Botanischer Garten',
+        organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      },
+      project: null,
+      net_location: 3,
+      net_height: 2,
+      net_direction: null,
+      feather_span: 54,
+      wing_span: 73,
+      tarsus: 19,
+      notch_f2: null,
+      inner_foot: null,
+      weight_gram: 18,
+      bird_status: BirdStatus.ReCatch,
+      fat_deposit: null,
+      muscle_class: null,
+      age_class: AgeClass.ThisYear,
+      sex: Sex.Female,
+      small_feather_int: null,
+      small_feather_app: null,
+      hand_wing: null,
+      date_time: '2024-05-01T08:30:00Z',
+      created: '2024-05-01T08:30:00Z',
+      updated: '2024-05-01T08:30:00Z',
+      comment: 'Wiederfang am Hauptnetz',
+      parasites: [],
+      has_hunger_stripes: false,
+      has_brood_patch: false,
+      has_cpl_plus: false,
+    } as unknown as DataEntry;
+  }
+
+  /** Das echte IndexedDB und die echte Navigation beobachten nur echte Zeit. */
+  const settle = (ms = 20) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /**
+   * Beantwortet jede offene Ladeanfrage — welche genau beim Öffnen anfallen
+   * (Sonderart-Lookup, der Eintrag selbst), ist nicht Gegenstand dieses Blocks.
+   */
+  function answerLoads(): void {
+    for (const req of httpMock.match(() => true)) {
+      if (req.request.url.endsWith('/birds/data-entries/42/')) {
+        req.flush(savedEntry());
+      } else {
+        req.flush({ count: 0, next: null, previous: null, results: [] });
+      }
+    }
+  }
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    guardDialog.open.calls.reset();
+    formDialog.open.calls.reset();
+    // „Verwerfen" — die schlimmstmögliche Antwort, und genau die, die #447
+    // beschreibt. Wird der Guard je gefragt, ist die Korrektur weg, und diese
+    // Specs sehen es.
+    guardDialog.open.and.returnValue({ afterClosed: () => of(true) });
+    formDialog.open.and.returnValue({ afterClosed: () => of(undefined) });
+    await TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          // Wortgleich aus `app.routes.ts`, nur ohne `authGuard`: der prüft die
+          // Sitzung, die dieser Test gerade absichtlich sterben lässt.
+          {
+            path: 'data-entry/:id',
+            component: DataEntryFormComponent,
+            canDeactivate: [unsavedChangesGuard],
+          },
+          { path: 'login', component: LoginStubComponent },
+          { path: '', component: LoginStubComponent },
+        ]),
+        // Die echte Kette, in der vertraglichen Reihenfolge aus `app.config.ts`.
+        provideHttpClient(withInterceptors(HTTP_INTERCEPTORS_IN_ORDER)),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+        { provide: LOCALE_ID, useValue: 'de-AT' },
+        {
+          provide: ProjectService,
+          useValue: {
+            currentProject: signal<Project | null>(project),
+            setCurrent: () => {},
+            clear: () => {},
+          },
+        },
+        { provide: MatDialog, useValue: guardDialog },
+      ],
+    })
+      .overrideComponent(DataEntryFormComponent, {
+        add: { providers: [{ provide: MatDialog, useValue: formDialog }] },
+      })
+      .compileComponents();
+
+    httpMock = TestBed.inject(HttpTestingController);
+    TestBed.inject(AuthService).currentUser.set(MITGLIED);
+    await TestBed.inject(OutboxService).ready;
+
+    harness = await RouterTestingHarness.create();
+    component = await harness.navigateByUrl('/data-entry/42', DataEntryFormComponent);
+    answerLoads();
+    await settle();
+    answerLoads();
+    harness.detectChanges();
+  });
+
+  afterEach(async () => {
+    const db = TestBed.inject(IndexedDbStore);
+    const queued = await db.getAll<{ id: string }>('outbox');
+    await Promise.all(queued.map((entry) => db.delete('outbox', entry.id)));
+    await TestBed.inject(ReferenceBundleCacheService).clear();
+  });
+
+  /** Die Korrektur, die das Mitglied gerade getippt hat — und sonst nirgends steht. */
+  function typeTheCorrection(): void {
+    component.entryForm.get('comment')!.setValue('Korrektur am Hauptnetz');
+    component.entryForm.get('comment')!.markAsDirty();
+    expect(component.entryForm.dirty).withContext('eine Korrektur in Arbeit').toBeTrue();
+  }
+
+  /** Ob der `unsavedChangesGuard` über die Korrektur gefragt hat. */
+  const askedToDiscard = (): boolean =>
+    guardDialog.open.calls.all().some((call) => call.args[0] === ConfirmDialogComponent);
+
+  const banner = (): HTMLElement | null =>
+    (harness.fixture.nativeElement as HTMLElement).querySelector('[data-testid="failure-banner"]');
+
+  it('bleibt am Formular stehen: kein Sprung zur Anmeldung, keine Frage nach dem Verwerfen', async () => {
+    typeTheCorrection();
+
+    component.onSubmit();
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+    await settle();
+    harness.detectChanges();
+
+    expect(TestBed.inject(Router).url).toBe('/data-entry/42');
+    expect(askedToDiscard()).withContext('der Guard hat nichts zu fragen').toBeFalse();
+    expect(component.entryForm.get('comment')!.value).toBe('Korrektur am Hauptnetz');
+    expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+    expect(
+      (harness.fixture.nativeElement as HTMLElement).querySelector('form'),
+    ).withContext('das Formular steht noch da').not.toBeNull();
+  });
+
+  // Der zweite Teil des Fehlschlags: die Sitzung am Gerät bleibt bis zum Knopf
+  // stehen. Wäre `currentUser` schon leer, verschwände die Navigationsleiste
+  // unter dem Mitglied, `OutboxService.pendingEntries()` fiele leer (es filtert
+  // auf `currentUser()`), und der nächste Fang ginge nirgendwohin.
+  it('reißt die Sitzung am Gerät nicht weg, während die Korrektur noch dasteht', async () => {
+    const cache = TestBed.inject(ReferenceBundleCacheService);
+    await cache.save({
+      bundle: {
+        identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+        species: [],
+        ringing_stations: [],
+        scientists: [],
+        projects: [],
+        centrals: [],
+        last_consumed_ring_numbers: [],
+      } as unknown as OfflineBundle,
+      refreshedAt: '2026-06-01T09:00:00.000Z',
+    });
+    typeTheCorrection();
+
+    component.onSubmit();
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+    await settle();
+
+    expect(TestBed.inject(AuthService).currentUser()).not.toBeNull();
+    expect(await cache.load()).withContext('das Bündel, aus dem weiter erfasst wird').not.toBeNull();
+  });
+
+  it('sagt am Formular, was los ist — mit der Anmeldung im Griff und ohne ein Versprechen, das keiner halten kann', async () => {
+    typeTheCorrection();
+
+    component.onSubmit();
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+    await settle();
+    harness.detectChanges();
+
+    expect(banner()).not.toBeNull();
+    expect(banner()!.textContent).toContain('Sitzung abgelaufen');
+    // Der Edit wird nie eingereiht — also verspricht ihm auch niemand etwas.
+    expect(banner()!.textContent).not.toContain('gesichert');
+    expect(
+      (harness.fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="failure-anmelden"]',
+      ),
+    ).not.toBeNull();
+    expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
+  });
+
+  // Die Gegenprobe. Derselbe Aufbau, aber der Weg von vor #447: `ApiService`
+  // ohne die Markierung, wie `data-entry-form.ts` den Edit bis hierher
+  // abschickte. Dann tut der Interceptor genau das, was das Issue meldet — und
+  // diese Specs sehen es. Ohne sie wäre oben nicht zu erkennen, ob Interceptor
+  // und Guard überhaupt in der Kette hängen.
+  it('Gegenprobe: ohne die Markierung springt derselbe 401 zur Anmeldung und der Guard verwirft die Korrektur', async () => {
+    typeTheCorrection();
+
+    TestBed.inject(ApiService)
+      .updateDataEntry('42', { comment: 'Korrektur am Hauptnetz' } as never)
+      .subscribe({ error: () => undefined });
+    httpMock
+      .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+      .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+    await settle(60);
+    harness.detectChanges();
+
+    expect(TestBed.inject(Router).url).toContain('/login');
+    expect(askedToDiscard()).withContext('genau die Frage, die #447 meldet').toBeTrue();
+    expect(TestBed.inject(AuthService).currentUser()).toBeNull();
+    expect(
+      (harness.fixture.nativeElement as HTMLElement).querySelector('form'),
+    ).withContext('das Formular ist weg — und die Korrektur mit ihm').toBeNull();
+  });
+});
+
+// #444 (ADR 0037): „Den kollidierenden Erstfang öffnen" ist eine gewöhnliche
+// Navigation zu einem Fang — und muss deshalb dieselben Verwerfen-Regeln
+// bekommen wie jede andere (#407). Genau hier wäre die Ausnahme verlockend
+// gewesen: „der Beringer will ja hinüber, also lass ihn". Sie hätte den Fang,
+// der im Formular und sonst nirgends steht, still fallen lassen.
+//
+// Die Specs weiter oben können das nicht sehen — sie melden `provideRouter([])`
+// ohne Route an, also läuft gar kein `canDeactivate`. Dieser Block hängt die
+// echten Routen aus `app.routes.ts` ein und fragt den echten Wächter.
+describe('DataEntryFormComponent: der kollidierende Erstfang, geöffnet am echten Wächter (#444, #407)', () => {
+  let harness: RouterTestingHarness;
+  let component: DataEntryFormComponent;
+  let httpMock: HttpTestingController;
+
+  const guardDialog = { open: jasmine.createSpy('guardDialog.open') };
+  const formDialog = { open: jasmine.createSpy('formDialog.open') };
+
+  const KOLLISION = 'Für diese Ringnummer besteht in dieser Organisation bereits ein Erstfang.';
+  const RIVAL_ID = '6f1a6a1e-0f0e-4f5a-9a3b-2f9d1c7e5b40';
+  const kollisionsKoerper = {
+    ring_number: KOLLISION,
+    errors: [
+      {
+        field: 'ring_number',
+        code: 'ring_already_first_caught',
+        detail: KOLLISION,
+        context: {
+          rival: {
+            id: RIVAL_ID,
+            date_time: '2026-07-28T08:15:00+02:00',
+            species: 'Teichrohrsänger',
+            staff: 'FRE',
+          },
+        },
+      },
+    ],
+  };
+
+  const project = {
+    id: 'p1',
+    title: 'Herbst',
+    description: '',
+    projekttyp: Projekttyp.Sonstiges,
+    organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+    default_station: null,
+    scientists: [],
+    created: '',
+    updated: '',
+  } as Project;
+
+  const settle = (ms = 20) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /** Beantwortet jede offene Ladeanfrage — welche genau anfallen, ist hier nicht der Punkt. */
+  function answerLoads(nextNumber: string | null = '901234'): void {
+    for (const req of httpMock.match(() => true)) {
+      if (req.request.url.endsWith('/birds/rings/next-number/')) {
+        req.flush({ next_number: nextNumber });
+      } else {
+        req.flush({ count: 0, next: null, previous: null, results: [] });
+      }
+    }
+  }
+
+  const askedToDiscard = (): boolean =>
+    guardDialog.open.calls.all().some((call) => call.args[0] === ConfirmDialogComponent);
+
+  const rivalButton = (): HTMLButtonElement | null =>
+    (harness.fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="failure-rival-oeffnen"]',
+    );
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    guardDialog.open.calls.reset();
+    formDialog.open.calls.reset();
+    formDialog.open.and.returnValue({ afterClosed: () => of(undefined) });
+    await TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          // Wortgleich aus `app.routes.ts`, nur ohne `authGuard`.
+          {
+            path: 'data-entry',
+            component: DataEntryFormComponent,
+            canDeactivate: [unsavedChangesGuard],
+          },
+          {
+            path: 'data-entry/:id',
+            component: DataEntryFormComponent,
+            canDeactivate: [unsavedChangesGuard],
+          },
+          { path: '', component: LoginStubComponent },
+        ]),
+        provideHttpClient(withInterceptors(HTTP_INTERCEPTORS_IN_ORDER)),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+        { provide: LOCALE_ID, useValue: 'de-AT' },
+        {
+          provide: ProjectService,
+          useValue: {
+            currentProject: signal<Project | null>(project),
+            setCurrent: () => {},
+            clear: () => {},
+          },
+        },
+        { provide: MatDialog, useValue: guardDialog },
+      ],
+    })
+      .overrideComponent(DataEntryFormComponent, {
+        add: { providers: [{ provide: MatDialog, useValue: formDialog }] },
+      })
+      .compileComponents();
+
+    httpMock = TestBed.inject(HttpTestingController);
+    TestBed.inject(AuthService).currentUser.set({
+      username: 'fre',
+      handle: 'FRE',
+      isStaff: false,
+      rolle: 'mitglied',
+      organization: null,
+    });
+    await TestBed.inject(OutboxService).ready;
+
+    harness = await RouterTestingHarness.create();
+    component = await harness.navigateByUrl('/data-entry', DataEntryFormComponent);
+    answerLoads();
+    harness.detectChanges();
+  });
+
+  afterEach(async () => {
+    const db = TestBed.inject(IndexedDbStore);
+    const queued = await db.getAll<{ id: string }>('outbox');
+    await Promise.all(queued.map((entry) => db.delete('outbox', entry.id)));
+  });
+
+  /** Ein Erstfang auf einer schon vergebenen Nummer, vom Server zurückgewiesen. */
+  async function abgelehnterErstfang(): Promise<void> {
+    component.entryForm.patchValue({
+      ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+      staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+      species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+      bird_status: BirdStatus.FirstCatch,
+      ring_size: RingSize.S,
+    });
+    harness.detectChanges();
+    answerLoads();
+    harness.detectChanges();
+    expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+    // Der Fang steht im Formular und sonst nirgends — genau das, was der
+    // Wächter schützt.
+    component.entryForm.get('comment')!.setValue('Netz 3, kurz vor der Runde');
+    component.entryForm.get('comment')!.markAsDirty();
+
+    component.onSubmit();
+    httpMock
+      .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+      .flush(kollisionsKoerper, { status: 400, statusText: 'error' });
+    await settle();
+    harness.detectChanges();
+    expect(rivalButton()).not.toBeNull();
+  }
+
+  it('fragt vor dem Öffnen nach dem Verwerfen und bleibt bei „Weiter bearbeiten" stehen', async () => {
+    guardDialog.open.and.returnValue({ afterClosed: () => of(false) });
+    await abgelehnterErstfang();
+
+    rivalButton()!.click();
+    await settle();
+    harness.detectChanges();
+
+    expect(askedToDiscard()).withContext('dieselbe Frage wie überall sonst').toBeTrue();
+    expect(TestBed.inject(Router).url).toBe('/data-entry');
+    // Nichts verloren: der Fang steht Feld für Feld noch da.
+    expect(component.entryForm.get('comment')!.value).toBe('Netz 3, kurz vor der Runde');
+    expect(component.entryForm.get('ring_number')!.value).toBe('901234');
+    expect(component.entryForm.get('bird_status')!.value).toBe(BirdStatus.FirstCatch);
+  });
+
+  it('öffnet den kollidierenden Erstfang, sobald der Beringer das Verwerfen bestätigt', async () => {
+    guardDialog.open.and.returnValue({ afterClosed: () => of(true) });
+    await abgelehnterErstfang();
+
+    rivalButton()!.click();
+    await settle();
+    answerLoads();
+    harness.detectChanges();
+
+    expect(askedToDiscard()).toBeTrue();
+    expect(TestBed.inject(Router).url).toBe(`/data-entry/${RIVAL_ID}`);
+  });
+
+  it('fragt bei den beiden übrigen Abhilfen gar nicht erst — sie bleiben am Formular', async () => {
+    await abgelehnterErstfang();
+    const el = harness.fixture.nativeElement as HTMLElement;
+
+    (el.querySelector('[data-testid="failure-wiederfang"]') as HTMLButtonElement).click();
+    harness.detectChanges();
+    (el.querySelector('[data-testid="failure-freie-nummer"]') as HTMLButtonElement).click();
+    harness.detectChanges();
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/rings/next-number/'))
+      .flush({ next_number: '901235' });
+    await settle();
+    harness.detectChanges();
+
+    expect(askedToDiscard()).withContext('hier wird nichts verlassen').toBeFalse();
+    expect(TestBed.inject(Router).url).toBe('/data-entry');
+    expect(component.entryForm.get('bird_status')!.value).toBe(BirdStatus.ReCatch);
+    expect(component.entryForm.get('ring_number')!.value).toBe('901235');
+    expect(component.entryForm.get('comment')!.value).toBe('Netz 3, kurz vor der Runde');
+    // Und nichts davon war eine Speicherung.
+    httpMock.expectNone((r) => r.method === 'POST' || r.method === 'PUT');
   });
 });

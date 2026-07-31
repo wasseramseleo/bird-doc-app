@@ -1,7 +1,7 @@
 // src/app/service/api.service.ts
 
 import {Injectable, inject} from '@angular/core';
-import {HttpClient, HttpParams, HttpResponse} from '@angular/common/http';
+import {HttpClient, HttpContext, HttpParams, HttpResponse} from '@angular/common/http';
 import {EMPTY, Observable} from 'rxjs';
 import {expand, reduce} from 'rxjs/operators';
 import {DataEntry} from '../models/data-entry.model';
@@ -13,6 +13,7 @@ import {Central} from '../models/central.model';
 import {Scientist, ScientistCreatePayload} from '../models/scientist.model';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
+import {OrgAdmin} from '../models/org-admin.model';
 import {Organization} from '../models/organization.model';
 import {Project, ProjectCreatePayload, ProjectUpdatePayload} from '../models/project.model';
 import {ImportPreview, ImportResult} from '../models/iwm-import.model';
@@ -62,12 +63,23 @@ export class ApiService {
     return this.http.get<DataEntry>(`${this.apiUrl}/data-entries/${id}/`);
   }
 
-  createDataEntry(dataEntry: Partial<DataEntry>): Observable<DataEntry> {
-    return this.http.post<DataEntry>(`${this.apiUrl}/data-entries/`, dataEntry);
+  // `context` trägt die Markierungen aus #447 (ADR 0037/0039), die
+  // `DataAccessFacadeService` setzt und der `authInterceptor` liest. Ohne
+  // Angabe — der Replay des Sync — geht die Anfrage unverändert hinaus und ein
+  // 401 wird behandelt wie eh und je.
+  createDataEntry(dataEntry: Partial<DataEntry>, context?: HttpContext): Observable<DataEntry> {
+    return this.http.post<DataEntry>(`${this.apiUrl}/data-entries/`, dataEntry, {context});
   }
 
-  updateDataEntry(id: string, dataEntry: Partial<DataEntry>): Observable<DataEntry> {
-    return this.http.put<DataEntry>(`${this.apiUrl}/data-entries/${id}/`, dataEntry);
+  // `context`: siehe `createDataEntry`. Der Fang-Edit ist **nicht** dauerhaft —
+  // er trägt nur die Markierung, dass sein 401 an der Geste gemeldet wird
+  // (#447), damit die Korrektur im Formular stehen bleibt.
+  updateDataEntry(
+    id: string,
+    dataEntry: Partial<DataEntry>,
+    context?: HttpContext,
+  ): Observable<DataEntry> {
+    return this.http.put<DataEntry>(`${this.apiUrl}/data-entries/${id}/`, dataEntry, {context});
   }
 
   // #392 (ADR 0030): „Eintrag löschen". Der Server behält die Zeile hinter einem
@@ -177,8 +189,12 @@ export class ApiService {
     return this.http.get<PaginatedApiResponse<Scientist>>(`${this.apiUrl}/scientists/`, {params});
   }
 
-  createScientist(payload: ScientistCreatePayload): Observable<Scientist> {
-    return this.http.post<Scientist>(`${this.apiUrl}/scientists/`, payload);
+  // `context`: siehe `createDataEntry` — die Beringer-Schnellanlage (#167) ist
+  // der zweite dauerhafte Schreibvorgang (#447, ADR 0039). Die Admin-Anlage auf
+  // dem Beringer-Bildschirm ruft dieselbe Methode ohne Kontext und scheitert
+  // damit weiterhin laut.
+  createScientist(payload: ScientistCreatePayload, context?: HttpContext): Observable<Scientist> {
+    return this.http.post<Scientist>(`${this.apiUrl}/scientists/`, payload, {context});
   }
 
   // Admin-only edit of a Beringer's name + Kürzel (PRD #205). A duplicate Kürzel
@@ -219,6 +235,16 @@ export class ApiService {
         ),
         reduce((acc, res) => acc.concat(res.results), [] as Mitgliedschaft[]),
       );
+  }
+
+  // Die Admins der eigenen Organisation, lesbar für jedes Mitglied dieser
+  // Organisation (#450, ADR 0037). Damit „Freigeben lassen" eine **Person**
+  // nennen kann statt „wende dich an eine:n Admin" zu zucken. Strikt die eigene
+  // Organisation (ADR 0005); ohne aktive Organisation kommt eine leere Seite,
+  // kein 403. Nur Name und Kürzel reisen mit — deshalb ist es nicht
+  // `/mitgliedschaften/`, das Admin-only ist und die E-Mail führt.
+  getOrgAdmins(): Observable<PaginatedApiResponse<OrgAdmin>> {
+    return this.http.get<PaginatedApiResponse<OrgAdmin>>(`${this.apiUrl}/org-admins/`);
   }
 
   // Link a no-account Beringer to a seat, promoting it to a Mitglied — addressed

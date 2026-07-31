@@ -17,6 +17,7 @@ router.register(r"organizations", views.OrganizationViewSet, basename="organizat
 router.register(r"projects", views.ProjectViewSet, basename="project")
 router.register(r"invitations", views.OrgEinladungViewSet, basename="invitation")
 router.register(r"mitgliedschaften", views.MitgliedschaftViewSet, basename="mitgliedschaft")
+router.register(r"org-admins", views.OrgAdminViewSet, basename="org-admin")
 router.register(
     r"species-norm-overrides", views.SpeciesNormViewSet, basename="species-norm-override"
 )

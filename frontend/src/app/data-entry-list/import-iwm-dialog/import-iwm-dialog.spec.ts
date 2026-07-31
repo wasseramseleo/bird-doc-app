@@ -1,3 +1,4 @@
+import {HttpErrorResponse} from '@angular/common/http';
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
@@ -138,40 +139,56 @@ describe('ImportIwmDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalledWith(false);
   });
 
-  it('surfaces the over-cap rejection message and does not commit', () => {
+  it('surfaces the over-cap rejection message in the banner and does not commit', () => {
     // An over-cap file is rejected on preview (issue #125): the backend returns
     // the cap-guidance message, which the dialog surfaces so the Admin knows to
     // split the file or ask an operator — nothing is committed.
     api.importIwmDryRun.and.returnValue(
-      throwError(() => ({
-        error: {
-          file:
-            'Die Datei enthält 6000 Datenzeilen und überschreitet die Obergrenze von ' +
-            '5000 Zeilen pro Import. Bitte die Datei in kleinere Dateien aufteilen oder ' +
-            'eine:n Operator:in bitten, den Bulk-Load per Management-Kommando auszuführen.',
-          cap: {limit: 5000, exceeded: true},
-        },
-      })),
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 400,
+            statusText: 'Bad Request',
+            error: {
+              file:
+                'Die Datei enthält 6000 Datenzeilen und überschreitet die Obergrenze von ' +
+                '5000 Zeilen pro Import. Bitte die Datei in kleinere Dateien aufteilen oder ' +
+                'eine:n Operator:in bitten, den Bulk-Load per Management-Kommando auszuführen.',
+              cap: {limit: 5000, exceeded: true},
+            },
+          }),
+      ),
     );
 
     selectFile();
 
     expect(component.phase()).toBe('select');
-    const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('aufteilen');
-    expect(text).toContain('Management-Kommando');
+    // #448 (ADR 0037): derselbe Banner, den auch ein abgelehnter Fang bekommt —
+    // der vierte handgeschriebene Extraktor (`extractMessage`) ist weg.
+    const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+    expect(banner).not.toBeNull();
+    expect(banner.textContent).toContain('aufteilen');
+    expect(banner.textContent).toContain('Management-Kommando');
     expect(api.importIwmCommit).not.toHaveBeenCalled();
   });
 
-  it('surfaces a structural fast-fail message and stays on the select step', () => {
+  it('surfaces a structural fast-fail message in the banner and stays on the select step', () => {
     api.importIwmDryRun.and.returnValue(
-      throwError(() => ({error: {file: 'Das Blatt „Fangdaten“ fehlt in der Datei.'}})),
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 400,
+            statusText: 'Bad Request',
+            error: {file: ['Das Blatt „Fangdaten“ fehlt in der Datei.']},
+          }),
+      ),
     );
 
     selectFile();
 
     expect(component.phase()).toBe('select');
-    expect(component.errorMessage()).toContain('Fangdaten');
+    const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+    expect(banner.textContent).toContain('Fangdaten');
     expect(api.importIwmCommit).not.toHaveBeenCalled();
   });
 });
