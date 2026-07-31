@@ -78,7 +78,7 @@ import {
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {TotFundDialogComponent, TotFundDialogData} from './tot-fund-dialog/tot-fund-dialog';
 import {selectedOptionValidator} from '../shared/validators/selected-option.validator';
-import {getAgeClassLabel, getSexLabel} from './data-entry-labels';
+import {getAgeClassLabel, getBirdStatusLabel, getSexLabel} from './data-entry-labels';
 import {
   computePlausibilityWarnings,
   PlausibilityMeasurements,
@@ -381,6 +381,9 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   // detail dialog via data-entry-labels.
   readonly getAgeClassLabel = getAgeClassLabel;
   readonly getSexLabel = getSexLabel;
+  // #469: der Ringstatus liegt seit diesem Issue daneben — ein Ring vernichtet
+  // in derselben Fanggeschichte trägt keinen und liest sich als Gedankenstrich.
+  readonly getBirdStatusLabel = getBirdStatusLabel;
 
   // Form Definition
   entryForm = this.fb.group({

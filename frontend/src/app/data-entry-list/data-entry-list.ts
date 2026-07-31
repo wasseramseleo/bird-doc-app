@@ -17,6 +17,7 @@ import {ApiService} from '../service/api.service';
 import {DataEntryRefreshService} from '../service/data-entry-refresh.service';
 import {ProjectService} from '../service/project.service';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
+import {getBirdStatusLabel} from '../data-entry-form/data-entry-labels';
 import {AppIconEmptyDirective} from '../shared/app-icons';
 import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {LoadFailureComponent} from '../shared/load-failure/load-failure';
@@ -79,6 +80,9 @@ export class DataEntryListComponent implements OnInit {
   readonly searchControl = new FormControl('', {nonNullable: true});
 
   readonly BirdStatus = BirdStatus;
+  // #469: der Ringstatus wird an genau einem Ort zu einem Wort — im geteilten
+  // Beschriftungsmodul, neben Alter und Geschlecht.
+  readonly getBirdStatusLabel = getBirdStatusLabel;
   // #388: 'marker' ist die letzte Spalte — die Bemerkungs- und Fangmarker-Icons
   // gehören zur Zeile, nicht zur Art.
   readonly displayedColumns: string[] = [

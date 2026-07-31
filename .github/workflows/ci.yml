@@ -88,5 +88,7 @@ jobs:
         run: npm run check:transport-strings
       - name: Erfolgsmeldungen-Check
         run: npm run check:erfolgsmeldungen
+      - name: Vokabular-Check
+        run: npm run check:vokabular
       - name: Production build
         run: npm run build -- --configuration production

@@ -79,20 +79,9 @@
   }
 }
 
-// Discreet marker next to the Art name on a sentinel row.
-.sentinel-badge {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 7px;
-  border-radius: 12px;
-  border: 1px solid var(--bd-line);
-  background-color: var(--bd-paper);
-  color: var(--bd-ink-soft);
-  font-size: 0.7rem;
-  font-style: normal;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
+// #469: die Plakette „vernichtet" neben dem Artnamen stand hier. Sie ist
+// gegangen — der Artname „Ring Vernichtet" sagt dasselbe, und die gedämpfte
+// Zeile oben trägt das Erkennen weiter.
 
 // #388: die Marker-Spalte. Feste Breite, damit die Spalte nicht mit dem Inhalt
 // atmet. Die Slots selbst wohnen in app-marker-slots (#405) — die matColumnDef

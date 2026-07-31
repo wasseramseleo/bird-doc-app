@@ -84,22 +84,31 @@
         <!-- #388: die Art-Zelle trägt nur noch Artname + Sonderart-Badge — eine
              Sonderart *ist* die Art. Die Fangmarker markieren dagegen den Fang
              und stehen in der Marker-Spalte (ADR 0026). -->
+        <!-- #469: die Plakette „vernichtet" ist gegangen — der Artname „Ring
+             Vernichtet" steht hier und sagt dasselbe. Die gedämpfte Zeile
+             (entry-row--sentinel) trägt das Erkennen weiter. -->
         <td mat-cell *matCellDef="let element" data-testid="species-cell">
           {{ element.species.common_name_de }}
-          @if (element.species.special_kind === 'ring_destroyed') {
-            <span class="sentinel-badge">vernichtet</span>
-          }
         </td>
       </ng-container>
 
+      <!-- #469: kein Ringstatus, kein Chip. Ein Ring vernichtet ist weder
+           Erstfang noch Wiederfang — das Backend leert das Feld —, und die
+           Zelle zeigt dieselbe leere Darstellung wie Tarsus/Federlänge/Gewicht
+           daneben. Das Wort selbst kommt aus data-entry-labels, nirgends
+           sonst. -->
       <ng-container matColumnDef="bird_status">
         <th mat-header-cell *matHeaderCellDef>Status</th>
-        <td mat-cell *matCellDef="let element">
-          <span class="status-chip"
-                [class.chip-erstfang]="element.bird_status === BirdStatus.FirstCatch"
-                [class.chip-wiederfang]="element.bird_status !== BirdStatus.FirstCatch">
-            {{ element.bird_status === BirdStatus.FirstCatch ? 'Erstfang' : 'Wiederfang' }}
-          </span>
+        <td mat-cell *matCellDef="let element" data-testid="status-cell">
+          @if (element.bird_status) {
+            <span class="status-chip"
+                  [class.chip-erstfang]="element.bird_status === BirdStatus.FirstCatch"
+                  [class.chip-wiederfang]="element.bird_status === BirdStatus.ReCatch">
+              {{ getBirdStatusLabel(element.bird_status) }}
+            </span>
+          } @else {
+            {{ getBirdStatusLabel(element.bird_status) }}
+          }
         </td>
       </ng-container>
 
