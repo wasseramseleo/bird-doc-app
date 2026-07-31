@@ -58,7 +58,7 @@ German: it is an honest preview of the German app itself (ADR 0009).
       <text x="730" y="342" class="data" font-size="26" fill="#2B2A26">{{ fang_karte.wing_mm }} mm</text>
       <text x="860" y="312" class="sans" font-size="17" fill="#A6A095">Gewicht</text>
       <text x="860" y="342" class="data" font-size="26" fill="#2B2A26">{{ fang_karte.weight_g }} g</text>
-      <text x="1010" y="312" class="sans" font-size="17" fill="#A6A095">Fett</text>
+      <text x="1010" y="312" class="sans" font-size="17" fill="#A6A095">Fettvorrat</text>
       <text x="1010" y="342" class="data" font-size="26" fill="#2B2A26">{{ fang_karte.fat }}</text>
 
       <text x="730" y="392" class="sans" font-size="17" fill="#A6A095">Alter</text>

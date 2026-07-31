@@ -10238,3 +10238,73 @@ describe('DataEntryFormComponent: der kollidierende Erstfang, geöffnet am echte
     httpMock.expectNone((r) => r.method === 'POST' || r.method === 'PUT');
   });
 });
+
+// #467: „Fett" benennt nicht, was die Beringer:in am Vogel schätzt — geschätzt
+// wird der Fettvorrat. Die Erfassungsmaske beschriftet das Feld entsprechend;
+// die IWM-Meldedatei behält ihre Spalte `Fett`, weil das das Meldestellen-Format
+// ist und keine Beschriftung, die BirdDoc wählen dürfte (CONTEXT.md, dieselbe
+// Spaltung wie CPL+/Kloake).
+describe('Fettvorrat: die Erfassungsmaske benennt, was geschätzt wird (#467)', () => {
+  const projekt = (): Project =>
+    ({
+      id: 'p1',
+      title: 'Herbst',
+      description: '',
+      projekttyp: Projekttyp.Sonstiges,
+      organization: { id: 'o1', handle: 'IWM', name: 'IWM Linz', country: 'AT' },
+      default_station: null,
+      scientists: [],
+      created: '',
+      updated: '',
+    }) as Project;
+
+  async function renderCreateForm(): Promise<ComponentFixture<DataEntryFormComponent>> {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [DataEntryFormComponent],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+        {
+          provide: ProjectService,
+          useValue: {
+            currentProject: signal<Project | null>(projekt()),
+            setCurrent: () => {},
+            clear: () => {},
+          },
+        },
+      ],
+    }).compileComponents();
+    const f = TestBed.createComponent(DataEntryFormComponent);
+    f.detectChanges();
+    TestBed.inject(HttpTestingController)
+      .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/species/'))
+      .flush({ count: 0, next: null, previous: null, results: [] });
+    f.detectChanges();
+    return f;
+  }
+
+  // Durch die gerenderte Maske gelesen, nicht durch eine Konstante — die
+  // Beschriftung ist genau das, was am Ringtisch zu sehen ist.
+  const labelOf = (f: ComponentFixture<DataEntryFormComponent>, control: string): string => {
+    const field = (f.nativeElement as HTMLElement)
+      .querySelector(`[formControlName="${control}"]`)!
+      .closest('mat-form-field')!;
+    return field.querySelector('mat-label')!.textContent!.trim();
+  };
+
+  it('beschriftet das Feld mit „Fettvorrat"', async () => {
+    const f = await renderCreateForm();
+
+    expect(labelOf(f, 'fat_deposit')).toBe('Fettvorrat');
+  });
+
+  it('lässt die Muskelklasse daneben unverändert', async () => {
+    // Ausdrücklich nicht mit umbenannt: „Muskelklasse" bleibt „Muskelklasse".
+    const f = await renderCreateForm();
+
+    expect(labelOf(f, 'muscle_class')).toBe('Muskelklasse');
+  });
+});

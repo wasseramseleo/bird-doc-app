@@ -168,4 +168,27 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
       expect(parasitText(fixture)).toBe('Rote Milben, Zecke');
     });
   });
+
+  // Fettvorrat (issue #467): der Dialog trägt dieselbe Beschriftung wie die
+  // Erfassungsmaske. „Fett" ist allein die Spaltenüberschrift der IWM-Meldedatei
+  // — dieselbe Spaltung wie CPL+/Kloake (CONTEXT.md).
+  describe('Kondition labels', () => {
+    const labels = (fixture: ComponentFixture<DataEntryDetailDialogComponent>) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('dt')) as HTMLElement[]).map(dt =>
+        dt.textContent!.trim(),
+      );
+
+    it('names the fat reserve Fettvorrat, never the export column Fett', async () => {
+      const fixture = await render(baseEntry());
+
+      expect(labels(fixture)).toContain('Fettvorrat');
+      expect(labels(fixture)).not.toContain('Fett');
+    });
+
+    it('leaves Muskelklasse beside it untouched', async () => {
+      const fixture = await render(baseEntry());
+
+      expect(labels(fixture)).toContain('Muskelklasse');
+    });
+  });
 });
