@@ -1,17 +1,30 @@
-import {ChangeDetectionStrategy, Component, computed, inject, input, output} from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {MatButtonModule} from '@angular/material/button';
 import {MatDialog, MatDialogModule} from '@angular/material/dialog';
 import {MatIconModule} from '@angular/material/icon';
 import {Router} from '@angular/router';
 import {firstValueFrom} from 'rxjs';
 
-import {AppFailure, FEHLERKLASSE_WORTE} from '../../core/errors/app-failure';
+import {AppFailure, FEHLERKLASSE_WORTE, Fehlerklasse} from '../../core/errors/app-failure';
 import {fehlerMeldenAngeboten, fehlerberichtVorlage} from '../../core/errors/fehlerbericht';
 import {AppIconErrorDirective} from '../app-icons';
 import {
   FeedbackDialogComponent,
   FeedbackDialogData,
 } from '../../feedback/feedback-dialog/feedback-dialog';
+import {OrgAdmin} from '../../models/org-admin.model';
+import {ApiService} from '../../service/api.service';
 import {AppUpdateService} from '../../service/app-update.service';
 import {AuthService} from '../../service/auth.service';
 import {UnsavedChangesService} from '../../service/unsaved-changes.service';
@@ -36,8 +49,12 @@ import {UnsavedChangesService} from '../../service/unsaved-changes.service';
  * 5xx dieselbe Klasse trägt wie ein Verbindungsabbruch und trotzdem ein Defekt
  * ist; die Regel steht in `fehlerMeldenAngeboten`, nicht hier.
  * Ein Code, den der Client nicht kennt, bekommt keinen eigenen Knopf (ADR 0038);
- * die ring-gebundenen Abhilfen (#444) und die namentlich genannten Admins (#450)
- * kommen in ihren eigenen Scheiben dazu.
+ * die ring-gebundenen Abhilfen (#444) kommen in ihrer eigenen Scheibe dazu.
+ *
+ * **Der Ausweg der Klasse *Freigeben lassen* ist kein Knopf, sondern eine
+ * Person** (#450): dort liest das Banner die Admins der eigenen Organisation und
+ * nennt sie beim Namen, weil „wende dich an eine:n Admin" in einer Organisation
+ * mit zwanzig Mitgliedern ein Achselzucken ist (ADR 0037).
  */
 @Component({
   selector: 'app-failure-banner',
@@ -49,8 +66,10 @@ import {UnsavedChangesService} from '../../service/unsaved-changes.service';
 })
 export class FailureBannerComponent {
   private readonly router = inject(Router);
+  private readonly api = inject(ApiService);
   private readonly appUpdate = inject(AppUpdateService);
   private readonly auth = inject(AuthService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly unsavedChanges = inject(UnsavedChangesService);
   private readonly dialog = inject(MatDialog);
 
@@ -70,6 +89,59 @@ export class FailureBannerComponent {
   protected readonly worte = computed(() => FEHLERKLASSE_WORTE[this.failure().klasse]);
   protected readonly titelZeile = computed(() => this.titel() ?? this.worte().titel);
   protected readonly abhilfe = computed(() => this.failure().remedy);
+
+  /** Die Admins der eigenen Organisation — leer, solange keine gelesen wurden. */
+  private readonly admins = signal<readonly OrgAdmin[]>([]);
+
+  /**
+   * Der Ausweg **mit Namen** — oder `null`, wo niemand zu nennen ist.
+   *
+   * `null` ist die Degradierung, und sie ist der wichtigere Fall: ohne Netz, bei
+   * einem gescheiterten Lesevorgang, in einer Organisation ohne nennbaren Admin.
+   * Dann bleibt es beim Ausweg-Satz der Klasse — nie ein leeres „frag: ", nie ein
+   * zweiter Fehler über dem ersten.
+   *
+   * **Die Klasse steht auch hier vor der Liste**, nicht nur vor dem Lesen: das
+   * Banner überlebt den Wechsel von einem Fehlschlag zum nächsten (`showFailure()`
+   * kommt aus fünf Botengängen, und nur das Speichern leert es vorher), und eine
+   * Antwort, die erst danach eintrifft, gehört einer Klasse, die nicht mehr da
+   * ist. Ohne diese Prüfung schriebe sie Namen auf ein *Erneut versuchen* — und
+   * verdrängte dort dessen eigenen Ausweg-Satz. Ein Mitglied zu einer Kollegin zu
+   * schicken, wo niemand etwas freizugeben hat, ist genau der Fehlgriff, gegen
+   * den die Disambiguierung des 403 (#441) angetreten ist.
+   */
+  protected readonly adminSatz = computed(() => {
+    if (this.failure().klasse !== Fehlerklasse.FreigebenLassen) {
+      return null;
+    }
+    const namen = this.admins()
+      .map(adminName)
+      .filter((name) => name.length > 0);
+    return namen.length > 0 ? `Freigeben kann das ${aufzaehlung(namen)}.` : null;
+  });
+
+  constructor() {
+    effect(() => {
+      // Gelesen wird nur, wo eine Person überhaupt etwas ausrichten kann. Eine
+      // CSRF-Ablehnung kommt deshalb nie hier an: sie ist *Erneut versuchen*
+      // (#441) — jemanden ihretwegen zu behelligen wäre der Fehlgriff, den die
+      // Disambiguierung des 403 ausgeräumt hat.
+      if (this.failure().klasse !== Fehlerklasse.FreigebenLassen) {
+        this.admins.set([]);
+        return;
+      }
+      this.api
+        .getOrgAdmins()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (seite) => this.admins.set(seite.results),
+          // Scheitert das Lesen selbst, wird daraus **kein** eigener Fehlschlag:
+          // ein Fehler über den Fehler ist das schlechteste erreichbare Ergebnis
+          // (ADR 0038). Das Banner nennt dann eben niemanden.
+          error: () => this.admins.set([]),
+        });
+    });
+  }
 
   /**
    * Ob „Fehler melden" danebensteht (#449). Eigene Bedingung und kein Zweig des
@@ -134,4 +206,30 @@ export class FailureBannerComponent {
     };
     this.dialog.open(FeedbackDialogComponent, {width: '32rem', autoFocus: 'dialog', data});
   }
+}
+
+/**
+ * Wie ein Admin im Banner heißt: „Alice Auer (ALC)", sonst das eine, was da ist.
+ *
+ * Beides kann fehlen, und nichts wird erfunden — ein Konto, das (noch) kein
+ * Beringer ist, hat kein Kürzel, ein Konto ohne hinterlegten Namen keinen Namen.
+ * Wer weder zu benennen noch abzukürzen ist, bekommt eine leere Zeichenkette und
+ * fällt damit aus der Aufzählung: eine Klammer um nichts wäre schlechter als
+ * seine Abwesenheit.
+ */
+function adminName({name, handle}: OrgAdmin): string {
+  const voll = (name ?? '').trim();
+  const kuerzel = (handle ?? '').trim();
+  if (voll && kuerzel) {
+    return `${voll} (${kuerzel})`;
+  }
+  return voll || kuerzel;
+}
+
+/** „A", „A oder B", „A, B oder C" — deutsch aufgezählt, nicht kommagetrennt. */
+function aufzaehlung(namen: readonly string[]): string {
+  if (namen.length === 1) {
+    return namen[0];
+  }
+  return `${namen.slice(0, -1).join(', ')} oder ${namen[namen.length - 1]}`;
 }

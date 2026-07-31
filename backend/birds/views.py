@@ -60,6 +60,7 @@ from .serializers import (
     DataEntrySerializer,
     MitgliedschaftSerializer,
     OfflineSpeciesSerializer,
+    OrgAdminSerializer,
     OrganizationSerializer,
     OrgEinladungSerializer,
     ProjectSerializer,
@@ -1045,6 +1046,48 @@ class MitgliedschaftViewSet(
             )
             .exclude(pk=membership.pk)
             .exists()
+        )
+
+
+class OrgAdminViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """The Admins of the requester's own Organisation, readable by every Mitglied
+    of that Organisation (issue #450, ADR 0037).
+
+    „Wende dich an eine:n Admin" is a shrug in an Organisation with twenty
+    Mitglieder, and until now a Mitglied could not even find out **whom** to ask:
+    ``OrganizationSerializer`` carries only ``id/handle/name/country`` and
+    ``/mitgliedschaften/`` is Admin-only. So the Fehlerklasse *Freigeben lassen*
+    gets a surface of its own — **Name und Kürzel**, nothing else
+    (``OrgAdminSerializer``).
+
+    Deliberately **list-only**: a refused Mitglied asks „wen frage ich?", never
+    „wer ist Mitgliedschaft 7f3a…?". There is no detail route to address one by
+    id, and nothing here is writable — member management stays where it was
+    (``MitgliedschaftViewSet``, Admin-only).
+
+    Scoped strictly to the **own** Organisation (ADR 0005): another tenant's
+    Admins are absent from the queryset, and an account with no resolvable active
+    Organisation gets an **empty** list — never a 403, never another tenant's
+    data, mirroring every other org-scoped collection here.
+    """
+
+    serializer_class = OrgAdminSerializer
+
+    def get_queryset(self):
+        organization = active_organization(self.request.user)
+        if organization is None:
+            return Mitgliedschaft.objects.none()
+        return (
+            Mitgliedschaft.objects.filter(
+                organization=organization, rolle=Mitgliedschaft.Rolle.ADMIN
+            )
+            # ``user__scientist`` is the reverse side of the Beringer OneToOne —
+            # both rendered fields hang off it, so one join spares a query per row.
+            .select_related("user", "user__scientist")
+            # Ordered by the one key that is never null (the Name may be empty and
+            # the Kürzel may be absent), mirroring ``MitgliedschaftViewSet``. The
+            # username itself is not rendered — it only makes the order stable.
+            .order_by("user__username")
         )
 
 

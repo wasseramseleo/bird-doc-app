@@ -1,6 +1,6 @@
 import {ComponentFixture, TestBed, fakeAsync, tick} from '@angular/core/testing';
 import {HttpErrorResponse, provideHttpClient} from '@angular/common/http';
-import {provideHttpClientTesting} from '@angular/common/http/testing';
+import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
 import {MatDialog, MatDialogRef} from '@angular/material/dialog';
 import {provideRouter, Router} from '@angular/router';
 import {provideNoopAnimations} from '@angular/platform-browser/animations';
@@ -271,7 +271,7 @@ describe('FailureBannerComponent', () => {
   });
 
   it('bietet bei „Freigeben lassen" keinen der drei Knöpfe an', () => {
-    // Die namentlich genannten Admins sind #450; hier steht der Ausweg als Satz.
+    // Der Ausweg ist eine Person, kein Knopf — siehe die Scheibe darunter.
     const el = render(
       rejection(403, {
         detail: 'Diese Aktion ist Administrator:innen der Organisation vorbehalten.',
@@ -289,5 +289,210 @@ describe('FailureBannerComponent', () => {
     expect(button(el, 'Jetzt aktualisieren')).toBeUndefined();
     expect(button(el, 'Erneut versuchen')).toBeUndefined();
     expect(el.textContent).toContain('Administrator');
+  });
+});
+
+/**
+ * „Freigeben lassen" nennt eine Person (#450, ADR 0037).
+ *
+ * „Wende dich an eine:n Admin" ist in einer Organisation mit zwanzig Mitgliedern
+ * ein Achselzucken. Sobald die Klasse *Freigeben lassen* feststeht, liest das
+ * Banner die Admins der **eigenen** Organisation (`GET /birds/org-admins/`,
+ * ADR 0005) und nennt sie beim Namen.
+ *
+ * Die Kehrseite trägt genauso viel Gewicht: wo die Liste **nicht** zu lesen ist —
+ * ohne Netz, oder weil der Lesevorgang selbst scheitert —, bleibt es beim blanken
+ * Grund. Ein leeres „frag: " oder ein zweiter Fehler über den ersten wäre das
+ * schlechteste erreichbare Ergebnis.
+ */
+describe('FailureBannerComponent — die Admins beim Namen (#450)', () => {
+  let fixture: ComponentFixture<FailureBannerComponent>;
+  let httpMock: HttpTestingController;
+
+  const ADMIN_ONLY =
+    'Diese Aktion ist Administrator:innen der Organisation vorbehalten. ' +
+    'Bitte wende dich an eine Administratorin oder einen Administrator.';
+  /** Der Ausweg-Satz der Klasse, solange keine Person genannt werden kann. */
+  const NUR_DIE_ROLLE =
+    'Das darf nur eine Administratorin oder ein Administrator deiner Organisation.';
+
+  /**
+   * Der Antwortkörper aus `test_admin_only_403_is_unchanged_and_gains_a_field_less_entry`
+   * — Code und Satz byte-gleich zu dem, was der Server heute schickt:
+   * `admin_only` (der Domänencode aus #441), nicht DRFs generisches
+   * `permission_denied`, das seit der Disambiguierung des 403 kein Endpunkt mehr
+   * ausstellt.
+   */
+  const rechteverweigerung = () =>
+    rejection(403, {
+      detail: ADMIN_ONLY,
+      errors: [{field: null, code: 'admin_only', detail: ADMIN_ONLY}],
+    });
+
+  function render(failure: AppFailure): HTMLElement {
+    fixture = TestBed.createComponent(FailureBannerComponent);
+    fixture.componentRef.setInput('failure', failure);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  const adminRead = () =>
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/org-admins/'));
+
+  const bannerText = (el: HTMLElement) =>
+    el.querySelector('[data-testid="failure-banner"]')!.textContent!;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [FailureBannerComponent],
+      providers: [
+        provideRouter([{path: 'login', children: []}]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideNoopAnimations(),
+      ],
+    }).compileComponents();
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  it('nennt die Admins der eigenen Organisation mit Namen und Kürzel', () => {
+    const el = render(rechteverweigerung());
+
+    adminRead().flush({
+      count: 2,
+      next: null,
+      previous: null,
+      results: [
+        {name: 'Alice Auer', handle: 'ALC'},
+        {name: 'Mara Berg', handle: 'MAR'},
+      ],
+    });
+    fixture.detectChanges();
+
+    expect(bannerText(el)).toContain('Alice Auer (ALC)');
+    expect(bannerText(el)).toContain('Mara Berg (MAR)');
+    // Der Grund des Servers bleibt stehen; ersetzt wird nur das Achselzucken.
+    expect(bannerText(el)).toContain(ADMIN_ONLY);
+    expect(bannerText(el)).not.toContain(NUR_DIE_ROLLE);
+  });
+
+  it('lässt einen Admin weg, den es weder benennen noch abkürzen kann', () => {
+    // Ein Konto ohne Namen und ohne Beringer-Eintrag: der Server erfindet nichts
+    // (test_an_admin_without_a_beringer_entry_carries_no_kuerzel), und ein Name
+    // aus dem Nichts steht auch hier nicht.
+    const el = render(rechteverweigerung());
+
+    adminRead().flush({
+      count: 3,
+      next: null,
+      previous: null,
+      results: [
+        {name: 'Alice Auer', handle: 'ALC'},
+        {name: 'Gerda Ohnebogen', handle: null},
+        {name: '', handle: null},
+      ],
+    });
+    fixture.detectChanges();
+
+    expect(bannerText(el)).toContain('Alice Auer (ALC)');
+    expect(bannerText(el)).toContain('Gerda Ohnebogen');
+    expect(bannerText(el)).not.toContain('()');
+  });
+
+  it('degradiert auf den blanken Grund, wenn die Admin-Liste nicht zu lesen ist', () => {
+    // Ohne Netz: Status 0. Der Fehlschlag über dem Fehlschlag bleibt unsichtbar —
+    // das Banner sagt weiter, was los ist, und nennt eben niemanden.
+    const el = render(rechteverweigerung());
+
+    adminRead().error(new ProgressEvent('error'), {status: 0, statusText: 'offline'});
+    fixture.detectChanges();
+
+    expect(bannerText(el)).toContain(ADMIN_ONLY);
+    expect(bannerText(el)).toContain(NUR_DIE_ROLLE);
+    expect(fixture.nativeElement.querySelector('[data-testid="failure-admins"]')).toBeNull();
+    // Kein zweites Banner, kein zweiter Fehler.
+    expect(el.querySelectorAll('[data-testid="failure-banner"]').length).toBe(1);
+  });
+
+  it('degradiert genauso, wenn die Organisation keinen nennbaren Admin hergibt', () => {
+    // Ein Konto ohne aktive Organisation bekommt ein **leeres** Ergebnis, keinen
+    // 403 (test_account_without_active_organisation_gets_an_empty_result_not_a_403).
+    const el = render(rechteverweigerung());
+
+    adminRead().flush({count: 0, next: null, previous: null, results: []});
+    fixture.detectChanges();
+
+    expect(bannerText(el)).toContain(NUR_DIE_ROLLE);
+    expect(fixture.nativeElement.querySelector('[data-testid="failure-admins"]')).toBeNull();
+  });
+
+  it('schickt eine CSRF-Ablehnung zu niemandem und liest die Liste gar nicht erst', () => {
+    // test_csrf_ablehnung_carries_a_different_code_than_rechteverweigerung:
+    // derselbe 403, der gegensätzliche Ausweg. Ein Mitglied deswegen zu einer
+    // Kollegin zu schicken, ist genau der Fehlgriff, den #441 ausgeräumt hat.
+    const el = render(
+      rejection(403, {
+        detail: 'CSRF Failed: CSRF cookie not set.',
+        errors: [
+          {field: null, code: 'csrf_failed', detail: 'CSRF Failed: CSRF cookie not set.'},
+        ],
+      }),
+    );
+
+    httpMock.expectNone((r) => r.url.includes('org-admins'));
+    expect(
+      Array.from(el.querySelectorAll('button')).some((b) =>
+        b.textContent?.includes('Erneut versuchen'),
+      ),
+    ).toBeTrue();
+    expect(el.querySelector('[data-testid="failure-admins"]')).toBeNull();
+    expect(bannerText(el)).not.toContain('Administrator');
+  });
+
+  it('malt eine verspätete Antwort nicht auf das Banner einer anderen Klasse', () => {
+    // Dasselbe Bauteil, ein zweiter Fehlschlag: `data-entry-form` ruft
+    // `showFailure()` aus fünf Botengängen, und nur das Speichern leert das
+    // Banner vorher — es geht also von einem Fehlschlag direkt in den nächsten,
+    // ohne dass die Komponente dazwischen stirbt.
+    const el = render(rechteverweigerung());
+    const laufend = adminRead();
+
+    fixture.componentRef.setInput('failure', rejection(503, {detail: 'Wartung'}));
+    fixture.detectChanges();
+
+    // Die Antwort auf die alte Frage kommt erst jetzt. Sie gehört einer Klasse,
+    // die nicht mehr da ist — und hat auf diesem Banner nichts zu suchen.
+    laufend.flush({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [{name: 'Alice Auer', handle: 'ALC'}],
+    });
+    fixture.detectChanges();
+
+    expect(bannerText(el)).not.toContain('Alice Auer');
+    expect(el.querySelector('[data-testid="failure-admins"]')).toBeNull();
+    // Und der Ausweg dieser Klasse steht noch da, statt von einer Person
+    // verdrängt zu sein, die nichts freizugeben hat.
+    expect(bannerText(el)).toContain('Bitte versuche es noch einmal.');
+    expect(
+      Array.from(el.querySelectorAll('button')).some((b) =>
+        b.textContent?.includes('Erneut versuchen'),
+      ),
+    ).toBeTrue();
+  });
+
+  it('liest die Liste nur, wo eine Person überhaupt etwas ausrichten kann', () => {
+    // In den übrigen fünf Klassen hat kein Admin etwas freizugeben — dort wird
+    // auch nicht gelesen, statt eine Antwort einzuholen und zu verwerfen.
+    for (const anderswo of [
+      rejection(400, {detail: 'Speichern abgelehnt.'}),
+      rejection(503, {detail: 'Wartung'}),
+    ]) {
+      const el = render(anderswo);
+
+      httpMock.expectNone((r) => r.url.includes('org-admins'));
+      expect(el.querySelector('[data-testid="failure-admins"]')).toBeNull();
+    }
   });
 });

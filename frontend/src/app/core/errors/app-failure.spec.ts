@@ -131,6 +131,27 @@ describe('classifyFailure — die übrigen fünf Klassen (ADR 0037)', () => {
     expect(failure.text).toBe(ADMIN_ONLY);
   });
 
+  it('ordnet eine CSRF-Ablehnung als Erneut versuchen ein, obwohl sie als 403 ankommt', () => {
+    // test_csrf_ablehnung_carries_a_different_code_than_rechteverweigerung:
+    // derselbe Status wie die Rechteverweigerung, mit dem **gegensätzlichen**
+    // Ausweg — nochmal drücken ist die ganze Abhilfe, und es gibt niemanden, der
+    // hier etwas freigeben könnte. Genau dafür wurde der 403 disambiguiert
+    // (#441): nach dem Status allein schickte er ein Mitglied zu einer Kollegin
+    // wegen etwas, das sich von selbst erledigt hätte.
+    const failure = classifyFailure(
+      rejection(403, {
+        detail: 'CSRF Failed: CSRF cookie not set.',
+        errors: [
+          {field: null, code: 'csrf_failed', detail: 'CSRF Failed: CSRF cookie not set.'},
+        ],
+      }),
+    );
+
+    expect(failure.klasse).toBe(Fehlerklasse.ErneutVersuchen);
+    expect(failure.remedy).toBe('erneut-versuchen');
+    expect(failure.code).toBe('csrf_failed');
+  });
+
   it('ordnet einen 404 als App aktualisieren ein', () => {
     // test_not_found_detail_is_unchanged_and_gains_a_field_less_entry.
     const failure = classifyFailure(
