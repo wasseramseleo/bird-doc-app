@@ -136,21 +136,89 @@ export function classifyFailure(error: unknown): AppFailure {
 }
 
 /**
- * Hebt einen gespeicherten Synchronisierungsfehler — heute eine blanke Zeile
- * Prosa auf dem geflaggten `OutboxEntry` (#164) — in dieselbe Struktur, damit
- * ein wieder geöffneter zurückgewiesener Eintrag **dasselbe Bauteil** rendert
- * wie eine soeben abgelehnte Speicherung.
+ * Der Umschlag, der einen Synchronisierungsfehler **überdauert** (#445,
+ * ADR 0038): was von einem eingeordneten Fehlschlag auf den geflaggten
+ * `OutboxEntry` geschrieben wird, damit ein Tage später wieder geöffneter
+ * zurückgewiesener Eintrag dasselbe vollständige Banner zeigt — ganz ohne Netz,
+ * ohne Nachfassen, das selbst scheitern könnte.
  *
- * Die Klasse ist *Korrigieren*, und zwar nicht geraten: nur ein 400/422 verdient
- * überhaupt ein Flag (ADR 0033s Positivliste), und genau das **ist** diese
- * Klasse. Ein Code wird nie erfunden — es war keiner dabei. (#445 schreibt
- * künftig die volle Struktur auf den Eintrag, statt eine Zeichenkette zu heben;
- * eine von einem älteren Bundle geschriebene Zeichenkette kommt dann weiter hier
- * durch.)
+ * Es ist derselbe Umschlag wie auf der Leitung, in derselben Haltung: er reist
+ * **additiv neben** `OutboxEntry.syncError`, der deutschen Zeile, die dort seit
+ * #164 steht und dort byteweise stehen bleibt — genauso, wie `errors` neben der
+ * unangetasteten DRF-Form reist. Der Satz steht deshalb an beiden Stellen; auf
+ * der Leitung ist das der ausdrücklich angenommene Preis, und im Datensatz gilt
+ * er aus demselben Grund: IndexedDB überlebt jeden Bundle-Tausch, und ein
+ * Bundle, das den Umschlag noch nicht kennt, liest die Zeile weiterhin.
+ *
+ * `status` und `original` bleiben draußen. Nicht aus Sparsamkeit: der
+ * Ursprungsfehler ist ein `HttpErrorResponse` und damit nicht strukturiert
+ * klonbar — er würde den Schreibvorgang in die IndexedDB werfen lassen. Und ein
+ * erinnerter Fehlschlag hat keinen Transport mehr hinter sich, auf den ein
+ * Bauteil verzweigen dürfte.
  */
-export function failureFromSyncError(message: string): AppFailure {
-  return localFailure(Fehlerklasse.Korrigieren, message);
+export interface SyncErrorEnvelope {
+  readonly klasse: Fehlerklasse;
+  readonly code: string | null;
+  readonly field: string | null;
+  readonly detail: string;
+  readonly context: Record<string, unknown> | null;
 }
+
+/** Was von einem eingeordneten Fehlschlag auf den geflaggten Eintrag gehört. */
+export function syncErrorEnvelopeOf(failure: AppFailure): SyncErrorEnvelope {
+  return {
+    klasse: failure.klasse,
+    code: failure.code,
+    field: failure.field,
+    detail: failure.text,
+    context: failure.context,
+  };
+}
+
+/**
+ * Der gemerkte Synchronisierungsfehler eines geflaggten `OutboxEntry`, zurück in
+ * der Einordnung — damit ein wieder geöffneter zurückgewiesener Eintrag
+ * **dasselbe Bauteil** rendert wie eine soeben abgelehnte Speicherung.
+ *
+ * Zwei Formen kommen hier an, und die zweite ist der Grund für das Ganze:
+ *
+ * 1. **Mit Umschlag** (#445): der ganze Fehlschlag, wie ihn die Leitung trug —
+ *    Klasse, Code, Feld, Kontext. Der kollidierende Erstfang steht dann auch
+ *    ohne Netz noch da.
+ * 2. **Ohne Umschlag**: eine blanke Zeile Prosa, geschrieben von einem älteren
+ *    Bundle (#164). Sie gilt als reines `detail`, und es wird ihr **kein Code
+ *    erfunden** — es war keiner dabei. Ein Gerät, das wochenlang ohne Netz war,
+ *    hält genau solche Einträge; sie sind der Grund, warum es diesen Mechanismus
+ *    gibt. Die Klasse ist dann *Korrigieren*, und zwar nicht geraten: nur ein
+ *    400/422 verdient überhaupt ein Flag (ADR 0033s Positivliste), und genau das
+ *    **ist** diese Klasse.
+ */
+export function failureFromSyncError(
+  message: string,
+  envelope?: SyncErrorEnvelope | null,
+): AppFailure {
+  if (!envelope) {
+    return localFailure(Fehlerklasse.Korrigieren, message);
+  }
+  // Was in IndexedDB liegt, überlebt das Bundle, das es schrieb — eine Klasse,
+  // die dieser Client nicht kennt, darf das Banner nicht ohne Worte dastehen
+  // lassen (dieselbe Haltung wie ADR 0031 gegenüber einem zurückgezogenen
+  // Vokabular). *Korrigieren* ist der richtige Rückfall: geflaggt wird nur, was
+  // der Beringer selbst berichtigen kann.
+  const klasse = KNOWN_KLASSEN.has(envelope.klasse) ? envelope.klasse : Fehlerklasse.Korrigieren;
+  return {
+    klasse,
+    code: envelope.code ?? null,
+    field: envelope.field ?? null,
+    text: message.trim() || envelope.detail?.trim() || FEHLERKLASSE_WORTE[klasse].ersatzGrund,
+    context: envelope.context ?? null,
+    remedy: ABHILFE_JE_KLASSE[klasse],
+    status: null,
+    original: null,
+  };
+}
+
+const KNOWN_KLASSEN = new Set<Fehlerklasse>(Object.values(Fehlerklasse));
 
 /**
  * Ein Fehlschlag ohne Transport dahinter — etwas, das am Gerät scheiterte oder

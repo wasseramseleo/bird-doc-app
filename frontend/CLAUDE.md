@@ -86,9 +86,14 @@ controls whose template really renders the sentence) and never on a disabled one
 the field would go red without a word — and it **never** blocks Speichern. The button reads
 `saveBlocked()`, not `entryForm.invalid`, and `onSubmit()` drops every `serverRejected` before
 it checks validity, because the one way out of *Korrigieren* is that very button (ADR 0037:
-a remedy fills the form and never saves). A snackbar only ever
+a remedy fills the form and never saves). A rejection met during a **replay** is the same
+thing and asks the same mapping: `SyncService` flags an entry on the Fehlerklasse
+*Korrigieren* (ADR 0033's 400/422 positive list, kept in one place now) and writes the whole
+`AppFailure` onto it — the sentence at `OutboxEntry.syncError`, the structure beside it at
+`syncErrorEnvelope` — so a rejected entry re-opened days later renders the same complete
+banner with no network at all. A snackbar only ever
 confirms a **success** — `npm run check:transport-strings` keeps a transport string or a raw
-status out of any message repo-wide.
+status out of any message repo-wide, with no exceptions left.
 
 **Data flow:**
 1. Autocomplete fields (species, ringing station, scientist) use RxJS `valueChanges` → `debounceTime(300)` → `switchMap` to the API

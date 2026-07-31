@@ -11,7 +11,7 @@ import {Injectable} from '@angular/core';
  * so existing stores/data are never dropped.
  */
 export const OFFLINE_DB_NAME = 'birddoc-offline';
-export const OFFLINE_DB_VERSION = 5;
+export const OFFLINE_DB_VERSION = 6;
 // v2 (issue #158) adds 'referenceCache' — the offline reference bundle
 // (species pool, org reference data, last-consumed ring numbers) plus its
 // last-refreshed timestamp, read/written by `ReferenceBundleCacheService`.
@@ -28,6 +28,14 @@ export const OFFLINE_DB_VERSION = 5;
 // placeholder id that dependent captures reference until sync creates (or
 // Kürzel-matches) the real Beringer, read/written by
 // `PendingBeringerStoreService`.
+// v6 (issue #445, PRD #438) adds no store: it versions a *record shape*. A
+// flagged 'outbox' entry no longer carries one line of prose but the whole
+// rejection beside it (`OutboxEntry.syncErrorEnvelope` — Klasse, Code, Text,
+// Feld, Kontext), so a rejected entry re-opened days later renders its complete
+// banner with no network at all. Nothing is migrated: an entry an older bundle
+// flagged keeps its plain `syncError` string and reads as a bare `detail` with
+// no code — a device offline for weeks holds exactly those, and inventing a
+// code for one would put a claim on the record that nobody ever made.
 export const OFFLINE_STORES = [
   'identity',
   'referenceCache',
@@ -36,6 +44,25 @@ export const OFFLINE_STORES = [
   'pendingBeringer',
 ] as const;
 export type OfflineStoreName = (typeof OFFLINE_STORES)[number];
+
+/**
+ * The upgrade itself: create any store missing from a prior version, and touch
+ * nothing else — existing stores and their data are never dropped, so a version
+ * that only changes a *record* shape (v6, issue #445) passes through as a no-op
+ * and leaves every queued capture exactly as its bundle wrote it.
+ *
+ * Exported so the upgrade can be *exercised* rather than promised
+ * (`indexed-db-store.spec.ts`): a spec drives the real handler across a version
+ * step on a database of its own, since re-opening the shared `birddoc-offline`
+ * at an older version would depend on which spec ran first.
+ */
+export function ensureOfflineStores(db: IDBDatabase): void {
+  for (const storeName of OFFLINE_STORES) {
+    if (!db.objectStoreNames.contains(storeName)) {
+      db.createObjectStore(storeName);
+    }
+  }
+}
 
 /**
  * Thin promise-based wrapper over the native IndexedDB API — a generic,
@@ -103,14 +130,7 @@ export class IndexedDbStore {
     if (!this.dbPromise) {
       this.dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
         const request = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
-        request.onupgradeneeded = () => {
-          const db = request.result;
-          for (const storeName of OFFLINE_STORES) {
-            if (!db.objectStoreNames.contains(storeName)) {
-              db.createObjectStore(storeName);
-            }
-          }
-        };
+        request.onupgradeneeded = () => ensureOfflineStores(request.result);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => {
           // Don't let a transient failure (blocked upgrade, quota, disabled
