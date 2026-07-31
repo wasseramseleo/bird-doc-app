@@ -37,7 +37,11 @@ def test_home_renders_the_fang_formular_section_in_the_beringer_flow(client):
         "Ringnummer",
         "Alter",
         "Geschlecht",
-        "Fett",
+        # #467: der Mock trägt die Beschriftung der echten App — „Fettvorrat".
+        # „Fett" ist allein die Spaltenüberschrift der IWM-Meldedatei und keine
+        # Beschriftung, die BirdDoc wählen dürfte (CONTEXT.md, dieselbe Spaltung
+        # wie CPL+/Kloake). Deshalb ändert sich hier nur der Landing-Test.
+        "Fettvorrat",
         "Muskelklasse",
         "Flügellänge (mm)",
         "Gewicht (g)",

@@ -509,7 +509,7 @@
 
     <div class="form-section">
       <mat-form-field appearance="outline" floatLabel="always">
-        <mat-label>Fett</mat-label>
+        <mat-label>Fettvorrat</mat-label>
         <mat-select formControlName="fat_deposit" #fatClassSelect
                     (keydown)="onSelectKeydown($event, 'fat_deposit', fatClassOptions, fatClassSelect)">
           @for (option of fatClassOptions; track option.value) {
