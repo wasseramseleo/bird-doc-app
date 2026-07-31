@@ -102,6 +102,13 @@ export class ProjectDashboardComponent {
   // just their count for the strip.
   readonly beringerCount = computed(() => this.project().scientists.length);
 
+  // Die Ansprache trägt die Zahl mit (ADR 0040): „1 Beringer:in", sonst
+  // „Beringer:innen". Ein Zähler, der im Einzahlfall die Mehrzahl schreibt,
+  // wäre genau der Fehler, den die Doppelpunktform vermeiden soll.
+  readonly beringerLabel = computed(() =>
+    this.beringerCount() === 1 ? 'Beringer:in' : 'Beringer:innen',
+  );
+
   // The Projekt's Programme (Projekttyp, ADR 0023) as a German label for the
   // meta strip. Descriptive only — it drives no dashboard behaviour. An unset
   // value falls back to Sonstiges (the backend default).

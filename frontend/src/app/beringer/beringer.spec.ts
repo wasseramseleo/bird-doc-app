@@ -112,9 +112,9 @@ describe('BeringerComponent', () => {
 
       const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
       expect(zustand).not.toBeNull();
-      expect(zustand.textContent).toContain('Beringer konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Beringer:innen konnten nicht geladen werden.');
       expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
-      expect(fixture.nativeElement.textContent).not.toContain('keine Beringer angelegt');
+      expect(fixture.nativeElement.textContent).not.toContain('keine Beringer:innen angelegt');
       expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
       expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
       expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
@@ -290,7 +290,7 @@ describe('BeringerComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.beringer-card')).toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('keine Beringer');
+    expect(fixture.nativeElement.textContent).toContain('keine Beringer:innen');
     // #439: am gezeichneten Ergebnis geprüft, nicht am Marker im Template — ein
     // vergessener `imports`-Eintrag ist für Angular kein Fehler und ließe das
     // Icon im Browser leer, während das Attribut im DOM stünde.
@@ -372,13 +372,13 @@ describe('BeringerComponent', () => {
       httpMock
         .expectOne((r) => r.method === 'PATCH' && r.url.endsWith('/scientists/7/'))
         .flush(
-          {mitgliedschaft_id: ['Dieses Konto ist bereits mit einem Beringer verknüpft.']},
+          {mitgliedschaft_id: ['Dieses Konto ist bereits mit eine:r Beringer:in verknüpft.']},
           {status: 400, statusText: 'Bad Request'},
         );
       fixture.detectChanges();
 
       const banner = fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
-      expect(banner.textContent).toContain('bereits mit einem Beringer verknüpft');
+      expect(banner.textContent).toContain('bereits mit eine:r Beringer:in verknüpft');
       expect(snack).not.toHaveBeenCalled();
     });
 
@@ -495,7 +495,7 @@ describe('BeringerComponent', () => {
     fixture.detectChanges();
 
     const del = fixture.nativeElement.querySelector(
-      'button[aria-label="Beringer löschen"]',
+      'button[aria-label="Beringer:in löschen"]',
     ) as HTMLButtonElement;
     expect(del).withContext('delete button rendered for the Mitglied row').toBeTruthy();
     // A Mitglied is never deleted from this screen — the action is disabled and the

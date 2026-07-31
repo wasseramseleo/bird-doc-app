@@ -1,15 +1,15 @@
 <section class="beringer">
   <header class="beringer__header">
     <div class="beringer__title">
-      <h1>Beringer verwalten</h1>
+      <h1>Beringer:innen verwalten</h1>
       <p class="beringer__subhead">
-        Alle Beringer deiner Organisation. Ein Beringer ist entweder mit einem Konto verknüpft
-        (Mitglied) oder ohne Konto.
+        Alle Beringer:innen deiner Organisation. Ein:e Beringer:in ist entweder mit einem Konto
+        verknüpft (Mitglied) oder ohne Konto.
       </p>
     </div>
     <button mat-flat-button color="primary" (click)="openCreateDialog()">
       <mat-icon>add</mat-icon>
-      Neuer Beringer
+      Neue:r Beringer:in
     </button>
   </header>
 
@@ -35,7 +35,8 @@
       <div class="gap-panel__head">
         <h2 class="gap-panel__title">Mitglieder ohne Beringer-Eintrag</h2>
         <p class="gap-panel__subhead">
-          Diese Konten deiner Organisation haben noch keinen Beringer. Ordne jedem einen Beringer zu.
+          Diese Konten deiner Organisation haben noch keine:n Beringer:in. Ordne jedem eine:n
+          Beringer:in zu.
         </p>
       </div>
       <div class="gap-panel__list">
@@ -51,7 +52,7 @@
               color="primary"
               (click)="openAssignDialog(seat)">
               <mat-icon>person_add</mat-icon>
-              Beringer zuordnen
+              Beringer:in zuordnen
             </button>
           </div>
         }
@@ -64,14 +65,14 @@
   @if (loadFailure(); as failure) {
     <app-load-failure
       [failure]="failure"
-      titel="Beringer konnten nicht geladen werden."
+      titel="Beringer:innen konnten nicht geladen werden."
       (reload)="load()"></app-load-failure>
   } @else if (loading()) {
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (sortedBeringer().length === 0) {
     <div class="beringer__empty">
       <mat-icon app-icon-empty aria-hidden="true"></mat-icon>
-      <p>Es sind noch keine Beringer angelegt.</p>
+      <p>Es sind noch keine Beringer:innen angelegt.</p>
     </div>
   } @else {
     <div class="beringer__list">
@@ -92,7 +93,7 @@
             <button
               mat-icon-button
               type="button"
-              aria-label="Beringer bearbeiten"
+              aria-label="Beringer:in bearbeiten"
               title="Bearbeiten"
               (click)="openEditDialog(beringer)">
               <mat-icon>edit</mat-icon>
@@ -120,11 +121,11 @@
               mat-icon-button
               type="button"
               color="warn"
-              aria-label="Beringer löschen"
+              aria-label="Beringer:in löschen"
               [disabled]="isMitglied(beringer)"
               [title]="
                 isMitglied(beringer)
-                  ? 'Entferne zuerst das Konto in der Mitgliederverwaltung, um diesen Beringer zu löschen.'
+                  ? 'Entferne zuerst das Konto in der Mitgliederverwaltung, um diese:n Beringer:in zu löschen.'
                   : 'Löschen'
               "
               (click)="openDeleteDialog(beringer)">

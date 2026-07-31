@@ -60,7 +60,7 @@ class GespraechForm(forms.ModelForm):
             "email": _("E-Mail"),
             "organisation_name": _("Organisation / Stelle"),
             "contact_role": _("Funktion / Rolle"),
-            "approx_beringer_count": _("Ungefähre Anzahl Beringer"),
+            "approx_beringer_count": _("Ungefähre Anzahl Beringer:innen"),
             "message": _("Nachricht"),
         }
         help_texts = {
@@ -71,7 +71,9 @@ class GespraechForm(forms.ModelForm):
             "contact_role": _(
                 "Deine Funktion in der Organisation (z. B. wissenschaftliche Leitung)."
             ),
-            "approx_beringer_count": _("Für wie viele Beringer sprichst du ungefähr? (optional)"),
+            "approx_beringer_count": _(
+                "Für wie viele Beringer:innen sprichst du ungefähr? (optional)"
+            ),
             "message": _("Worum geht es? Erzähl uns kurz von eurem Vorhaben (optional)."),
         }
 

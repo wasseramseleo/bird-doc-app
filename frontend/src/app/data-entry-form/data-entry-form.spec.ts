@@ -827,7 +827,7 @@ describe('DataEntryFormComponent', () => {
         fixture.nativeElement.querySelectorAll('th[mat-header-cell]'),
       ).map((th) => (th as HTMLElement).textContent!.trim());
       expect(headers).not.toContain('Station');
-      expect(headers).toContain('Beringer');
+      expect(headers).toContain('Beringer:in');
       expect(headers).toContain('Tarsus (mm)');
       expect(headers).toContain('Federlänge (mm)');
 
@@ -4812,7 +4812,7 @@ describe('DataEntryFormComponent', () => {
       expect(errorsIn('ringing_station')).toContain(
         'Unbekannte Station – bitte aus der Liste wählen',
       );
-      expect(errorsIn('staff')).toContain('Unbekannter Beringer – bitte aus der Liste wählen');
+      expect(errorsIn('staff')).toContain('Unbekannte:r Beringer:in – bitte aus der Liste wählen');
     });
 
     it('fires no POST while a control holds unmatched free text, keeping the typed text', () => {
