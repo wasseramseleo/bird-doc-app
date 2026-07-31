@@ -3,7 +3,9 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
+from . import error_codes
 from .capture_service import (
+    AVES_IGNOTA_COMMENT_REQUIRED,
     BIRD_DATA_FIELDS,
     FANGMARKER_FIELDS,
     MARKER_COMMENT_REQUIRED,
@@ -12,6 +14,7 @@ from .capture_service import (
     get_or_create_ring,
     normalize_ring_size,
 )
+from .error_codes import CodedMessage
 from .models import (
     Central,
     DataEntry,
@@ -221,30 +224,50 @@ class RingingStationSerializer(serializers.ModelSerializer):
         required=False,
     )
     # Required at the serializer layer with clear German messages, even though the
-    # model keeps these blank-able for admin/ORM paths.
+    # model keeps these blank-able for admin/ORM paths. Each sentence names a rule
+    # of the Stations-Stammdaten rather than the bare condition DRF tripped on, so
+    # each carries a Domänencode (``CodedMessage`` keeps it through ``Field.fail``,
+    # which would otherwise stamp the dictionary key — ``required``/``blank`` — on
+    # it). A missing name and a blank one are one cause and share one code.
     name = serializers.CharField(
         max_length=255,
         error_messages={
-            "required": _("Ein Name ist erforderlich."),
-            "blank": _("Ein Name ist erforderlich."),
+            "required": CodedMessage(
+                _("Ein Name ist erforderlich."), error_codes.STATION_NAME_REQUIRED
+            ),
+            "blank": CodedMessage(
+                _("Ein Name ist erforderlich."), error_codes.STATION_NAME_REQUIRED
+            ),
         },
     )
     place_code = serializers.CharField(
         max_length=16,
         error_messages={
-            "required": _("Eine Ortskodierung ist erforderlich."),
-            "blank": _("Eine Ortskodierung ist erforderlich."),
+            "required": CodedMessage(
+                _("Eine Ortskodierung ist erforderlich."), error_codes.STATION_PLACE_CODE_REQUIRED
+            ),
+            "blank": CodedMessage(
+                _("Eine Ortskodierung ist erforderlich."), error_codes.STATION_PLACE_CODE_REQUIRED
+            ),
         },
     )
     latitude = serializers.DecimalField(
         max_digits=9,
         decimal_places=6,
-        error_messages={"required": _("Ein Breitengrad ist erforderlich.")},
+        error_messages={
+            "required": CodedMessage(
+                _("Ein Breitengrad ist erforderlich."), error_codes.STATION_LATITUDE_REQUIRED
+            )
+        },
     )
     longitude = serializers.DecimalField(
         max_digits=9,
         decimal_places=6,
-        error_messages={"required": _("Ein Längengrad ist erforderlich.")},
+        error_messages={
+            "required": CodedMessage(
+                _("Ein Längengrad ist erforderlich."), error_codes.STATION_LONGITUDE_REQUIRED
+            )
+        },
     )
     region = serializers.CharField(max_length=128, required=False, allow_blank=True)
     # Optional in the payload; defaults to the creating Organisation's country
@@ -380,7 +403,10 @@ class ScientistSerializer(serializers.ModelSerializer):
         # is always allowed, even when it owns captures (the primary workflow), so
         # the freeze only guards a change to an *existing* link.
         if instance.user_id is not None and self._owns_captures(instance):
-            raise serializers.ValidationError({"mitgliedschaft_id": FROZEN_BERINGER_MESSAGE})
+            raise serializers.ValidationError(
+                {"mitgliedschaft_id": FROZEN_BERINGER_MESSAGE},
+                code=error_codes.BERINGER_FROZEN_BY_CAPTURES,
+            )
         if mitgliedschaft is None:
             instance.user = None
             return
@@ -392,12 +418,18 @@ class ScientistSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         organization = active_organization(request.user) if request is not None else None
         if organization is None or mitgliedschaft.organization_id != organization.pk:
-            raise serializers.ValidationError({"mitgliedschaft_id": CROSS_TENANT_SEAT_MESSAGE})
+            raise serializers.ValidationError(
+                {"mitgliedschaft_id": CROSS_TENANT_SEAT_MESSAGE},
+                code=error_codes.MITGLIEDSCHAFT_OTHER_ORGANISATION,
+            )
         already_linked = (
             Scientist.objects.filter(user=mitgliedschaft.user).exclude(pk=instance.pk).exists()
         )
         if already_linked:
-            raise serializers.ValidationError({"mitgliedschaft_id": SEAT_ALREADY_LINKED_MESSAGE})
+            raise serializers.ValidationError(
+                {"mitgliedschaft_id": SEAT_ALREADY_LINKED_MESSAGE},
+                code=error_codes.ACCOUNT_ALREADY_BERINGER,
+            )
 
     @staticmethod
     def _owns_captures(instance):
@@ -573,7 +605,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             scientists = self._with_creator(scientists)
         if not scientists:
             raise serializers.ValidationError(
-                {"scientist_ids": _("Ein Projekt braucht mindestens eine:n Beringer:in.")}
+                {"scientist_ids": _("Ein Projekt braucht mindestens eine:n Beringer:in.")},
+                code=error_codes.PROJECT_REQUIRES_SCIENTIST,
             )
 
     def validate_hidden_optional_fields(self, value):
@@ -596,7 +629,8 @@ class ProjectSerializer(serializers.ModelSerializer):
                         "default_station_id": _(
                             "Die Station muss zur Organisation des Projekts gehören."
                         )
-                    }
+                    },
+                    code=error_codes.STATION_OTHER_ORGANISATION,
                 )
         self._validate_min_one_scientist(attrs)
         return attrs
@@ -660,7 +694,11 @@ class DataEntrySerializer(serializers.ModelSerializer):
         write_only=True,
         required=False,
         allow_null=True,
-        error_messages={"does_not_exist": _("Unbekannter Zentralen-Code.")},
+        error_messages={
+            "does_not_exist": CodedMessage(
+                _("Unbekannter Zentralen-Code."), error_codes.CENTRAL_UNKNOWN
+            )
+        },
     )
 
     # Parasit (ADR 0027): validated against the vocabulary instead of trusting the
@@ -832,12 +870,14 @@ class DataEntrySerializer(serializers.ModelSerializer):
         if is_aves_ignota or marker_set:
             comment = resolved("comment")
             if not (comment and comment.strip()):
-                message = (
-                    _("Für eine unbekannte Art (Aves ignota) ist eine Bemerkung erforderlich.")
+                # Two rules land on the same field, so the code — not the field —
+                # is what tells them apart for a client (ADR 0038).
+                message, code = (
+                    (AVES_IGNOTA_COMMENT_REQUIRED, error_codes.AVES_IGNOTA_COMMENT_REQUIRED)
                     if is_aves_ignota
-                    else MARKER_COMMENT_REQUIRED
+                    else (MARKER_COMMENT_REQUIRED, error_codes.MARKER_COMMENT_REQUIRED)
                 )
-                raise serializers.ValidationError({"comment": message})
+                raise serializers.ValidationError({"comment": message}, code=code)
         return attrs
 
     def create(self, validated_data):
@@ -852,7 +892,7 @@ class DataEntrySerializer(serializers.ModelSerializer):
         try:
             return create_capture(**validated_data)
         except CaptureValidationError as exc:
-            raise serializers.ValidationError({exc.field: exc.message}) from exc
+            raise serializers.ValidationError({exc.field: exc.message}, code=exc.code) from exc
 
     def update(self, instance, validated_data):
         # #155: the idempotency key identifies the create attempt, not the
@@ -877,7 +917,7 @@ class DataEntrySerializer(serializers.ModelSerializer):
 
                 return updated_instance
         except CaptureValidationError as exc:
-            raise serializers.ValidationError({exc.field: exc.message}) from exc
+            raise serializers.ValidationError({exc.field: exc.message}, code=exc.code) from exc
 
 
 class SpeciesListSerializer(serializers.ModelSerializer):

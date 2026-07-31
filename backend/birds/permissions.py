@@ -9,6 +9,7 @@ friendly message rather than a bare 403.
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+from . import error_codes
 from .models import Mitgliedschaft, Organization
 from .tenancy import active_organization
 
@@ -60,7 +61,11 @@ class IsOrgAdminOrReadOnly(BasePermission):
     so an Admin of one tenant can never mutate another tenant's structure.
     """
 
+    # DRF passes both to ``PermissionDenied``, so the refusal carries its cause
+    # (``admin_only``) rather than the generic ``permission_denied`` — which a
+    # CSRF-Ablehnung wears too, with the opposite way out (ADR 0037).
     message = ADMIN_ONLY_MESSAGE
+    code = error_codes.ADMIN_ONLY
 
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
@@ -80,6 +85,7 @@ class IsOrgAdmin(BasePermission):
     (e.g. the IWM export, a GET that is nonetheless a privileged operation)."""
 
     message = ADMIN_ONLY_MESSAGE
+    code = error_codes.ADMIN_ONLY
 
     def has_permission(self, request, view):
         return is_org_admin(request.user)

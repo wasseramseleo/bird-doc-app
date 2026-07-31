@@ -12,10 +12,15 @@ One global ``EXCEPTION_HANDLER`` (``birddoc/settings.py``) gives every endpoint
 those codes at once — no line of code per view. It adds the **sibling key**
 ``errors``: a list of ``{field, code, detail}``. ``errors`` is thereby a reserved
 top-level key of a rejection body; a serializer field of that name would collide
-with the envelope. (An optional ``context``, and the explicit Domänencodes at the
-hand-written rejection sites, are the next slice — the handler only carries what
-DRF already knows, and only for what it is actually asked to render: a rejection
-a view builds by hand as a plain ``Response`` never reaches an exception handler.)
+with the envelope.
+
+The handler carries whatever code the rejection was raised with. Where that is a
+hand-written rejection of ours, the code is an explicit Domänencode from
+``birds/error_codes.py`` — the catalogue a client author reads; everywhere else
+it is DRF's own generic one. A rejection a view builds by hand as a plain
+``Response`` never reaches an exception handler at all, so it hangs its own entry
+through ``error_entry`` below. (An optional ``context`` — the colliding Erstfang
+travelling with ``ring_already_first_caught`` — is a later slice.)
 
 **Additive, never replacing** (ADR 0038). The body DRF has always sent stays byte
 identical — both ``{field: [string]}`` and ``{"detail": …}``. That is the hard
@@ -50,6 +55,18 @@ def exception_handler(exc, context):
     # and ``errors`` last.
     response.data = {**response.data, "errors": _entries(response.data)}
     return response
+
+
+def error_entry(code, detail, field=None):
+    """One ``errors`` entry, for a rejection the handler never gets to see.
+
+    A view that answers with a hand-built ``Response`` — the IWM row cap, the
+    login refusals — passes through no exception handler at all, so it hangs its
+    own envelope. Going through this rather than writing the dict inline keeps the
+    entry shape defined once, right beside the walker that produces every other
+    one (``birds/error_codes.py`` holds the codes themselves).
+    """
+    return {"field": field, "code": code, "detail": str(detail)}
 
 
 def _entries(body):
