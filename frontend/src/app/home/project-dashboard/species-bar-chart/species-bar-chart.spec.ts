@@ -32,7 +32,7 @@ describe('SpeciesBarChartComponent', () => {
 
   it('renders a bar chart of the given type against the canvas', () => {
     const fixture = setup(top);
-    // The chart is created imperatively (Chart.js direct, ADR 0016) as a bar chart.
+    // The chart is created imperatively (Chart.js direct, ADR 0041) as a bar chart.
     expect(fixture.componentInstance.chartType).toBe('bar');
     expect(fixture.nativeElement.querySelector('canvas')).not.toBeNull();
   });

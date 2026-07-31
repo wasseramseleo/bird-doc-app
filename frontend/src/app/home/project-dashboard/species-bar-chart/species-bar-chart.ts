@@ -23,7 +23,7 @@ import {
 
 import { TopSpecies } from '../../../models/project-stats.model';
 
-// Chart.js used directly — no Angular wrapper (ADR 0016). Register ONLY the bar
+// Chart.js used directly — no Angular wrapper (ADR 0041). Register ONLY the bar
 // controller/elements (plus the two scales and the tooltip a bar chart needs)
 // so the bundle stays tree-shaken; adding another chart type later is a
 // deliberate, explicit registration, not a surprise.

@@ -21,7 +21,7 @@ import {
   PointElement,
 } from 'chart.js';
 
-// Chart.js used directly — no Angular wrapper (ADR 0016). Register ONLY the line
+// Chart.js used directly — no Angular wrapper (ADR 0041). Register ONLY the line
 // controller/elements plus the two scales a line needs; no tooltip/legend, since
 // a sparkline is an axis-less, chrome-less micro-trend. Registration is
 // idempotent per type (the Fänge/Fangtag line chart registers the same set).
