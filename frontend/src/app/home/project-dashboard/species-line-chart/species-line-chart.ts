@@ -25,7 +25,7 @@ import {
 
 import { StatsSeries } from '../../../models/project-stats.model';
 
-// Chart.js used directly — no Angular wrapper (ADR 0016). Register ONLY the line
+// Chart.js used directly — no Angular wrapper (ADR 0041). Register ONLY the line
 // controller/elements (plus the two scales, the tooltip and the legend a
 // multi-line chart needs) so the bundle stays tree-shaken; the bar chart already
 // registered the bar controller separately (registration is idempotent per type).

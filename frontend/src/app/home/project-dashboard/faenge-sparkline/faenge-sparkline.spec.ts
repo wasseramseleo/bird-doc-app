@@ -25,7 +25,7 @@ describe('FaengeSparklineComponent', () => {
     expect(data.labels?.length).toBe(3);
   });
 
-  it('renders a canvas (Chart.js, ADR 0016) rather than an axis-bearing chart', () => {
+  it('renders a canvas (Chart.js, ADR 0041) rather than an axis-bearing chart', () => {
     const fixture = setup([1, 3, 6]);
     expect(fixture.nativeElement.querySelector('canvas')).not.toBeNull();
   });
