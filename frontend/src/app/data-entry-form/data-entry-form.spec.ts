@@ -7938,6 +7938,218 @@ describe('DataEntryFormComponent', () => {
     }));
   });
 
+  // #477: die Fokusvergabe suchte ihr Ziel über `[formControlName="…"]` und traf
+  // beim Kontrollkästchen den Wirt der Material-Komponente — der trägt keine
+  // Tabindex (die liegt auf dem inneren <input>), `.focus()` war ein No-Op. Die
+  // drei Kästchen standen damit zwar in der Fokusordnung, waren aber keine
+  // begehbaren Haltestellen: der Lauf endete an der Zeile, und die Banner-Rückgabe
+  // fiel auf <body>. Geprüft wird ausschließlich, welches Element den Fokus trägt.
+  describe('focus system: die Kontrollkästchen sind begehbare Haltestellen (#477)', () => {
+    let httpMock: HttpTestingController;
+
+    afterEach(() => localStorage.clear());
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+    });
+
+    const el = (name: string) =>
+      fixture.nativeElement.querySelector(`[formControlName="${name}"]`) as HTMLElement;
+
+    // Das fokussierbare Teil eines Kontrollkästchens: das innere <input>, dort wo
+    // Material die Tabindex hinlegt.
+    const checkbox = (name: string) =>
+      fixture.nativeElement.querySelector(
+        `mat-checkbox[formControlName="${name}"] input`,
+      ) as HTMLInputElement;
+
+    // Einen Pfeiltastendruck auf das gerade fokussierte Element schicken und den
+    // 50-ms-Fokuswechsel von focusNext/focusPrevious abwarten.
+    const press = (key: 'ArrowLeft' | 'ArrowRight'): KeyboardEvent => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      (document.activeElement as HTMLElement).dispatchEvent(event);
+      tick(50);
+      return event;
+    };
+
+    it('setzt den Fokus per Pfeil-rechts von Brutfleck auf das innere <input> von CPL+', fakeAsync(() => {
+      checkbox('has_brood_patch').focus();
+
+      const event = press('ArrowRight');
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(checkbox('has_cpl_plus'));
+    }));
+
+    it('setzt den Fokus per Pfeil-links von CPL+ zurück auf das innere <input> von Brutfleck', fakeAsync(() => {
+      checkbox('has_cpl_plus').focus();
+
+      const event = press('ArrowLeft');
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(checkbox('has_brood_patch'));
+    }));
+
+    it('führt den Vorwärtslauf aus der Bemerkung durch die Zeile hindurch bis Parasit', fakeAsync(() => {
+      // Die Bemerkung ist leer, trägt also keinen Cursor, den der Pfeil schützen
+      // müsste — der Sprung greift sofort.
+      el('comment').focus();
+
+      press('ArrowRight');
+      expect(document.activeElement).toBe(checkbox('has_brood_patch'));
+
+      press('ArrowRight');
+      expect(document.activeElement).toBe(checkbox('has_cpl_plus'));
+
+      press('ArrowRight');
+      expect(document.activeElement).toBe(checkbox('has_hunger_stripes'));
+
+      // Und weiter hinaus: kein Feld hinter der Zeile bleibt unerreichbar.
+      press('ArrowRight');
+      expect(document.activeElement).toBe(el('parasites'));
+    }));
+
+    // Enter ist die Haupt-Vorwärtstaste der Maske. Sie muss aus einem Kästchen
+    // genauso weiterführen wie Pfeil-rechts — sonst ist die Zeile für die Taste,
+    // mit der die Beringer:in tatsächlich arbeitet, weiterhin eine Sackgasse.
+    const pressEnter = (): KeyboardEvent => {
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      (document.activeElement as HTMLElement).dispatchEvent(event);
+      tick(50);
+      return event;
+    };
+
+    it('führt Enter von Brutfleck weiter auf das innere <input> von CPL+', fakeAsync(() => {
+      checkbox('has_brood_patch').focus();
+
+      const event = pressEnter();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(checkbox('has_cpl_plus'));
+    }));
+
+    it('führt Enter von Hungerstreifen aus der Zeile hinaus nach Parasit', fakeAsync(() => {
+      checkbox('has_hunger_stripes').focus();
+
+      const event = pressEnter();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(el('parasites'));
+    }));
+
+    it('führt den Rückwärtslauf von Parasit durch die Zeile hindurch bis zur Bemerkung', fakeAsync(() => {
+      el('parasites').focus();
+
+      press('ArrowLeft');
+      expect(document.activeElement).toBe(checkbox('has_hunger_stripes'));
+
+      press('ArrowLeft');
+      expect(document.activeElement).toBe(checkbox('has_cpl_plus'));
+
+      press('ArrowLeft');
+      expect(document.activeElement).toBe(checkbox('has_brood_patch'));
+
+      press('ArrowLeft');
+      expect(document.activeElement).toBe(el('comment'));
+    }));
+
+    // Die Fokusrückgabe des Stundenwechsel-Banners (#466) für die Kästchen. Der
+    // geklickte Knopf verschwindet mit dem Banner aus dem DOM — genau deshalb ist
+    // eine verpuffte Fokusvergabe hier sichtbar: der Fokus fällt auf <body>.
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    function saveAcrossHourBoundary(): void {
+      spyOn(component as unknown as { currentDate: () => Date }, 'currentDate').and.callFake(
+        () => new Date('2026-07-04T14:20:00'),
+      );
+      fillValidWiederfang();
+      component.entryForm.patchValue({ date_time: '2026-07-04T13:00' });
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush({});
+      tick(50);
+      fixture.detectChanges();
+    }
+
+    const revertButton = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="hour-change-revert"]',
+      ) as HTMLButtonElement | null;
+    const dismissButton = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="hour-change-dismiss"]',
+      ) as HTMLButtonElement | null;
+
+    it('gibt den Fokus nach „bei HH:00 bleiben" an das Kästchen zurück, auf dem er stand', fakeAsync(() => {
+      saveAcrossHourBoundary();
+
+      checkbox('has_brood_patch').focus();
+      expect(document.activeElement).toBe(checkbox('has_brood_patch'));
+
+      const revert = revertButton()!;
+      revert.focus();
+      expect(document.activeElement).toBe(revert);
+      revert.click();
+      fixture.detectChanges();
+
+      // Der geklickte Knopf ist mit dem Banner wirklich aus dem DOM — eine
+      // verpuffte Fokusvergabe kann sich hier nicht hinter dem Knopf verstecken.
+      expect(revertButton()).toBeNull();
+      expect(document.activeElement).toBe(checkbox('has_brood_patch'));
+      expect(document.activeElement).not.toBe(document.body);
+
+      tick(900);
+    }));
+
+    it('gibt den Fokus nach dem ✕ an das Kästchen zurück, auf dem er stand', fakeAsync(() => {
+      saveAcrossHourBoundary();
+
+      checkbox('has_hunger_stripes').focus();
+
+      const dismiss = dismissButton()!;
+      dismiss.focus();
+      expect(document.activeElement).toBe(dismiss);
+      dismiss.click();
+      fixture.detectChanges();
+
+      expect(dismissButton()).toBeNull();
+      expect(document.activeElement).toBe(checkbox('has_hunger_stripes'));
+      expect(document.activeElement).not.toBe(document.body);
+
+      tick(900);
+    }));
+
+    it('fällt auf das Art-Feld zurück, wenn das gemerkte Steuerelement kein fokussierbares Teil mehr hat', fakeAsync(() => {
+      saveAcrossHourBoundary();
+
+      checkbox('has_cpl_plus').focus();
+      // Der Wirt bleibt im DOM stehen, sein fokussierbares Teil verschwindet: die
+      // Rückgabe darf sich nicht auf „existiert" verlassen, sonst greift der
+      // Rückfall nie.
+      checkbox('has_cpl_plus').remove();
+      expect(el('has_cpl_plus')).not.toBeNull();
+
+      const revert = revertButton()!;
+      revert.focus();
+      revert.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(el('species'));
+
+      tick(900);
+    }));
+  });
+
   describe('focus system: arrow navigation skips net fields hidden by the Projekt (#338)', () => {
     afterEach(() => localStorage.clear());
 
