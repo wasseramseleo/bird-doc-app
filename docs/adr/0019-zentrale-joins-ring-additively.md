@@ -72,7 +72,3 @@ isolates tenants, the second names the issuing scheme.
 - Ringgröße validation becomes conditional on the ring's Zentrale — AUW's 28
   codes stay a fixed choice, any other Zentrale falls back to trimmed, uppercased,
   length-capped, never-empty free text.
-- **Numbering note**: this record is **0019** per PRD #226 — the next free number
-  when it was written. The duplicate-0016 collision this note used to flag no
-  longer exists: the charting ADR was renumbered to 0041 (issue #416), so every
-  number in `docs/adr/` is now unique.
