@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from 'chart.js';
 
-// Chart.js used directly — no Angular wrapper (ADR 0016). Register ONLY the bar
+// Chart.js used directly — no Angular wrapper (ADR 0041). Register ONLY the bar
 // controller/elements (plus the two scales and the tooltip a bar chart needs) so
 // the bundle stays tree-shaken; the häufigste-Arten bar chart already registered
 // the same set separately (registration is idempotent per type).

@@ -22,6 +22,7 @@ import {ConnectivityService} from '../core/offline/connectivity';
 import {OutboxStoreService} from '../core/offline/outbox-store';
 import {OutboxService} from '../service/outbox.service';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
+import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
 import {DataEntryDetailDialogComponent} from '../data-entry-form/data-entry-detail-dialog/data-entry-detail-dialog';
 import {ConfirmDialogComponent} from '../shared/confirm-dialog/confirm-dialog';
 
@@ -153,11 +154,20 @@ describe('TodaySessionComponent', () => {
     httpMock = TestBed.inject(HttpTestingController);
   }
 
-  function flushSyncedEntries(entries: DataEntry[] = []): void {
+  // A successful fetch makes `DataAccessFacadeService.getTodayEntries()` write the
+  // `recentEntries` cache fire-and-forget — deliberately best effort in production
+  // (#402), but a leak in the suite: unobserved, the write lands *after* this
+  // spec's own `afterEach`, in the middle of a later spec file, and whichever spec
+  // then reads a virgin `recentEntries` store finds this Projekt's row instead.
+  // A cleanup cannot clean up a write that has not happened yet — so awaiting
+  // `settle()` here keeps the write inside the test that caused it. Same shape as
+  // `flushBundleRequest()` in `offline-readiness.spec.ts`; every call site awaits.
+  async function flushSyncedEntries(entries: DataEntry[] = []): Promise<void> {
     const req = httpMock.expectOne(
       (r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/'),
     );
     req.flush({count: entries.length, next: null, previous: null, results: entries});
+    await settle();
   }
 
   // Both the reference-cache read (species/Station/Beringer display lookup)
@@ -172,12 +182,15 @@ describe('TodaySessionComponent', () => {
     await TestBed.inject(OutboxStoreService).remove('outbox-uuid-1');
     await TestBed.inject(OutboxStoreService).remove('outbox-uuid-2');
     await TestBed.inject(ReferenceBundleCacheService).clear();
+    // The third cache this spec writes into the shared, real browser IndexedDB —
+    // via the fire-and-forget write-through of a successful today-fetch (#402).
+    await TestBed.inject(RecentEntriesCacheService).clear();
   });
 
   it('creates', async () => {
     await setup();
     fixture.detectChanges();
-    flushSyncedEntries([]);
+    await flushSyncedEntries([]);
     expect(component).toBeTruthy();
   });
 
@@ -205,7 +218,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -231,7 +244,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -252,7 +265,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -274,7 +287,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -309,7 +322,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -348,7 +361,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -371,7 +384,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -405,7 +418,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -441,7 +454,7 @@ describe('TodaySessionComponent', () => {
 
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([]);
+      await flushSyncedEntries([]);
       await settle();
       fixture.detectChanges();
 
@@ -463,7 +476,7 @@ describe('TodaySessionComponent', () => {
       await setup();
       fixture.detectChanges();
       const entry = syncedEntry();
-      flushSyncedEntries([entry]);
+      await flushSyncedEntries([entry]);
       fixture.detectChanges();
 
       const text = fixture.nativeElement.textContent as string;
@@ -477,7 +490,7 @@ describe('TodaySessionComponent', () => {
     it('reads a synced Ring-vernichtet capture as a dash, not as Wiederfang', async () => {
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([
+      await flushSyncedEntries([
         syncedEntry({
           species: {
             id: 'sent',
@@ -499,7 +512,7 @@ describe('TodaySessionComponent', () => {
     it('names the Ringstatus of a synced capture that has one', async () => {
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([syncedEntry({bird_status: BirdStatus.ReCatch})]);
+      await flushSyncedEntries([syncedEntry({bird_status: BirdStatus.ReCatch})]);
       fixture.detectChanges();
 
       const status = fixture.nativeElement.querySelector(
@@ -511,7 +524,7 @@ describe('TodaySessionComponent', () => {
     it('opens a synced entry in the capture form on click while online', async () => {
       await setup();
       fixture.detectChanges();
-      flushSyncedEntries([syncedEntry({id: 'server-1'})]);
+      await flushSyncedEntries([syncedEntry({id: 'server-1'})]);
       fixture.detectChanges();
 
       const router = TestBed.inject(Router);
@@ -526,7 +539,7 @@ describe('TodaySessionComponent', () => {
       await setup();
       fixture.detectChanges();
       const entry = syncedEntry({id: 'server-1'});
-      flushSyncedEntries([entry]);
+      await flushSyncedEntries([entry]);
       fixture.detectChanges();
 
       TestBed.inject(ConnectivityService).markOffline();
