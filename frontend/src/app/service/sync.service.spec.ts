@@ -5,6 +5,7 @@ import {Router, provideRouter} from '@angular/router';
 import {firstValueFrom} from 'rxjs';
 
 import {SyncService} from './sync.service';
+import {DataAccessFacadeService} from './data-access-facade.service';
 import {AppUpdateService} from './app-update.service';
 import {AuthService} from './auth.service';
 import {OutboxService} from './outbox.service';
@@ -1163,6 +1164,75 @@ describe('SyncService', () => {
       expect(navigate.calls.mostRecent().args[0]).toEqual(['/login']);
       expect(auth.currentUser()).toBeNull();
       expect(service.syncing()).toBeFalse();
+    });
+  });
+  // #447 (ADR 0039): ein Fang, den eine abgelaufene Sitzung in die Outbox
+  // gerettet hat, statt ihn zu vernichten, überträgt sich nach der erneuten
+  // Anmeldung von selbst — unter demselben Konto, das ihn erfasst hat. Der
+  // Replay ist dabei unverändert der bestehende: dieselbe Warteschlange,
+  // dieselbe accountKey-Bindung, derselbe Idempotenzschlüssel.
+  describe('ein bei abgelaufener Sitzung geretteter Fang (#447, ADR 0039)', () => {
+    /** Erfasst einen Fang, den der Server mit einer toten Sitzung zurückweist. */
+    async function rescueOn401(): Promise<void> {
+      auth.currentUser.set(authUser());
+      await TestBed.inject(OutboxService).ready;
+      const create = firstValueFrom(
+        TestBed.inject(DataAccessFacadeService).createDataEntry({
+          idempotency_key: 'uuid-1',
+          ring_number: '0043',
+        } as never),
+      );
+      create.catch(() => undefined);
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush(
+          {
+            detail: 'Anmeldedaten fehlen.',
+            errors: [{field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.'}],
+          },
+          {status: 401, statusText: 'Unauthorized'},
+        );
+      await expectAsync(create).toBeRejected();
+      await settle();
+      expect((await outboxStore.list()).map((e) => e.accountKey)).toEqual(['fre']);
+    }
+
+    it('überträgt sich beim nächsten Sync, nachdem sich dasselbe Konto neu angemeldet hat', async () => {
+      await rescueOn401();
+      // Die Anmeldung: „Anmelden" im Banner beendet die Sitzung, das Mitglied
+      // meldet sich erneut an — dasselbe Konto.
+      auth.currentUser.set(null);
+      auth.currentUser.set(authUser());
+
+      const resultPromise = firstValueFrom(service.syncNow());
+      await settle();
+      expectCsrfFetch().flush(meResponse());
+      await settle();
+
+      const post = expectCreatePost();
+      // Derselbe Idempotenzschlüssel, unter dem er hinausging: hatte der
+      // ursprüngliche POST den Server doch noch erreicht, verdoppelt der Replay
+      // den Fang nicht.
+      expect(post.request.body).toEqual({
+        idempotency_key: 'uuid-1',
+        ring_number: '0043',
+        schema_version: PAYLOAD_SCHEMA_VERSION,
+      });
+      post.flush({id: 'server-1'});
+      await settle();
+
+      expect(await resultPromise).toEqual({total: 1, synced: 1, flagged: 0});
+      expect(await outboxStore.list()).toEqual([]);
+    });
+
+    it('wird von einem anderen Konto nicht zurückgespielt', async () => {
+      await rescueOn401();
+      auth.currentUser.set(authUser({username: 'anna', handle: 'ANN'}));
+
+      const result = await firstValueFrom(service.syncNow());
+
+      expect(result).toEqual({total: 0, synced: 0, flagged: 0});
+      expect((await outboxStore.list()).map((e) => e.id)).toEqual(['uuid-1']);
     });
   });
 });

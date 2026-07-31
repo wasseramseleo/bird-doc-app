@@ -1,9 +1,10 @@
 import {TestBed} from '@angular/core/testing';
-import {HttpClient, provideHttpClient, withInterceptors} from '@angular/common/http';
+import {HttpClient, HttpContext, provideHttpClient, withInterceptors} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
-import {provideRouter} from '@angular/router';
+import {provideRouter, Router} from '@angular/router';
 
 import {authInterceptor} from './auth.interceptor';
+import {durableWrite} from '../offline/durable-write';
 import {AuthService} from '../../service/auth.service';
 import {IdentityCacheService} from '../offline/identity-cache';
 import {ReferenceBundleCacheService} from '../offline/reference-bundle-cache';
@@ -93,5 +94,61 @@ describe('authInterceptor', () => {
     expect(authService.currentUser()).toBeNull();
     expect(await identityCache.load()).toBeNull();
     expect(await referenceBundleCache.load()).toBeNull();
+  });
+
+  // #447 (ADR 0039): ein Sitzungsablauf vernichtete bislang einen Fang, den ein
+  // Netzausfall bewahrt hätte — weil die Aufforderung zur erneuten Anmeldung
+  // *vor* der Rettung kam. Bei einem dauerhaften Schreibvorgang wartet sie: der
+  // Fang geht zuerst in die Outbox, und die reiht unter dem angemeldeten Konto
+  // ein (Mandantengrenze aus #160), das hier deshalb noch stehen muss.
+  describe('ein dauerhafter Schreibvorgang (#447, ADR 0039)', () => {
+    beforeEach(async () => {
+      await identityCache.save({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+      authService.currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+    });
+
+    async function post401(context?: HttpContext): Promise<void> {
+      http
+        .post('/api/birds/data-entries/', {}, context ? {context} : {})
+        .subscribe({error: () => undefined});
+      httpMock
+        .expectOne('/api/birds/data-entries/')
+        .flush({detail: 'Anmeldedaten fehlen.'}, {status: 401, statusText: 'Unauthorized'});
+      // Let the interceptor's cache-clearing microtask settle.
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    it('hält bei einem 401 die Abmeldung und den Sprung zur Anmeldung zurück', async () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate');
+
+      await post401(durableWrite());
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(authService.currentUser()).not.toBeNull();
+      expect(await identityCache.load()).not.toBeNull();
+    });
+
+    it('tut bei einem gewöhnlichen Schreibvorgang unverändert beides', async () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate');
+
+      await post401();
+
+      expect(navigate).toHaveBeenCalledWith(['/login'], jasmine.anything());
+      expect(authService.currentUser()).toBeNull();
+      expect(await identityCache.load()).toBeNull();
+    });
   });
 });

@@ -4,6 +4,7 @@ import {Router} from '@angular/router';
 import {catchError, throwError} from 'rxjs';
 import {AuthService} from '../../service/auth.service';
 import {getCookie} from '../util/cookie';
+import {DURABLE_WRITE} from '../offline/durable-write';
 import {IdentityCacheService} from '../offline/identity-cache';
 import {ReferenceBundleCacheService} from '../offline/reference-bundle-cache';
 
@@ -44,7 +45,25 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(cloned).pipe(
     catchError((err: unknown) => {
-      if (err instanceof HttpErrorResponse && err.status === 401 && !isAuthRequest(req.url)) {
+      // #447 (ADR 0039): bei einem dauerhaften Schreibvorgang — einem Fang-Create
+      // oder einer Beringer-Schnellanlage, deren Inhalt sonst nirgends existiert
+      // — wartet die 401-Arbeit hier. Sie käme sonst *vor* der Rettung: die
+      // Outbox reiht unter dem angemeldeten Konto ein (Mandantengrenze aus
+      // #160), und das wäre zwei Zeilen tiefer schon gelöscht — der Fang mit
+      // ihm, obwohl der Vogel längst wieder in der Luft ist. Die Fassade
+      // (`withDurableFallback`) rettet ihn und meldet danach den Fehlschlag;
+      // abgemeldet wird, wenn das Mitglied „Anmelden" im Banner drückt.
+      //
+      // Bis dahin hält der Klient die Sitzung für gültig, obwohl sie es nicht
+      // mehr ist — bewusst: nur so kennt die Outbox noch das Konto, unter dem
+      // der nächste Fang einzureihen ist. Jede andere Antwort des Servers, auch
+      // jeder Ladevorgang, räumt sie unverändert hier auf.
+      if (
+        err instanceof HttpErrorResponse &&
+        err.status === 401 &&
+        !isAuthRequest(req.url) &&
+        !req.context.get(DURABLE_WRITE)
+      ) {
         authService.currentUser.set(null);
         // A confirmed "not authenticated" here is the same signal bootstrap()
         // treats as logout/expiry (issue #156): clear the cached identity too,

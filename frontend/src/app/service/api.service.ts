@@ -1,7 +1,7 @@
 // src/app/service/api.service.ts
 
 import {Injectable, inject} from '@angular/core';
-import {HttpClient, HttpParams, HttpResponse} from '@angular/common/http';
+import {HttpClient, HttpContext, HttpParams, HttpResponse} from '@angular/common/http';
 import {EMPTY, Observable} from 'rxjs';
 import {expand, reduce} from 'rxjs/operators';
 import {DataEntry} from '../models/data-entry.model';
@@ -62,8 +62,12 @@ export class ApiService {
     return this.http.get<DataEntry>(`${this.apiUrl}/data-entries/${id}/`);
   }
 
-  createDataEntry(dataEntry: Partial<DataEntry>): Observable<DataEntry> {
-    return this.http.post<DataEntry>(`${this.apiUrl}/data-entries/`, dataEntry);
+  // `context` trägt die Markierung des dauerhaften Schreibvorgangs (#447,
+  // ADR 0039), die `DataAccessFacadeService` setzt und der `authInterceptor`
+  // liest. Ohne Angabe — der Replay des Sync — geht die Anfrage unverändert
+  // hinaus und ein 401 wird behandelt wie eh und je.
+  createDataEntry(dataEntry: Partial<DataEntry>, context?: HttpContext): Observable<DataEntry> {
+    return this.http.post<DataEntry>(`${this.apiUrl}/data-entries/`, dataEntry, {context});
   }
 
   updateDataEntry(id: string, dataEntry: Partial<DataEntry>): Observable<DataEntry> {
@@ -177,8 +181,12 @@ export class ApiService {
     return this.http.get<PaginatedApiResponse<Scientist>>(`${this.apiUrl}/scientists/`, {params});
   }
 
-  createScientist(payload: ScientistCreatePayload): Observable<Scientist> {
-    return this.http.post<Scientist>(`${this.apiUrl}/scientists/`, payload);
+  // `context`: siehe `createDataEntry` — die Beringer-Schnellanlage (#167) ist
+  // der zweite dauerhafte Schreibvorgang (#447, ADR 0039). Die Admin-Anlage auf
+  // dem Beringer-Bildschirm ruft dieselbe Methode ohne Kontext und scheitert
+  // damit weiterhin laut.
+  createScientist(payload: ScientistCreatePayload, context?: HttpContext): Observable<Scientist> {
+    return this.http.post<Scientist>(`${this.apiUrl}/scientists/`, payload, {context});
   }
 
   // Admin-only edit of a Beringer's name + Kürzel (PRD #205). A duplicate Kürzel

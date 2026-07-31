@@ -2071,6 +2071,53 @@ describe('DataEntryFormComponent', () => {
       expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
     });
 
+    // #447 (ADR 0039): eine Bearbeitung ändert nur, was der Server bereits hält
+    // — sie scheitert deshalb weiterhin **laut**. Das Original ist unversehrt,
+    // die Korrektur steht noch im Formular und wird nach der Anmeldung erneut
+    // abgeschickt. Eingereiht wird sie nie: ein zurückgespielter Edit bräuchte
+    // eine Konfliktbehandlung, die der Create-Pfad nie gebraucht hat.
+    it('reiht eine Bearbeitung bei abgelaufener Sitzung nicht ein — die Korrektur steht noch im Formular (#447)', async () => {
+      const { f, httpMock } = await setupEditMode('42');
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+      await TestBed.inject(OutboxService).ready;
+      f.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(savedEntry());
+
+      f.componentInstance.entryForm.get('comment')!.setValue('Korrektur am Hauptnetz');
+      f.componentInstance.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'PUT' && r.url.endsWith('/birds/data-entries/42/'))
+        .flush(
+          {
+            detail: 'Anmeldedaten fehlen.',
+            errors: [{ field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.' }],
+          },
+          { status: 401, statusText: 'Unauthorized' },
+        );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      f.detectChanges();
+
+      expect(await TestBed.inject(OutboxStoreService).list()).toEqual([]);
+      expect(f.componentInstance.entryForm.get('comment')!.value).toBe('Korrektur am Hauptnetz');
+      expect(f.componentInstance.entryForm.get('ring_number')!.value).toBe('901234');
+
+      const banner = (f.nativeElement as HTMLElement).querySelector(
+        '[data-testid="failure-banner"]',
+      );
+      expect(banner).not.toBeNull();
+      expect(banner!.textContent).toContain('Sitzung abgelaufen');
+      // Kein Versprechen, das hier niemand halten kann.
+      expect(banner!.textContent).not.toContain('gesichert');
+    });
+
     it('never sends idempotency_key on an edit (#155): editing must not touch the create key', async () => {
       const { f, httpMock } = await setupEditMode('42');
       f.detectChanges();
@@ -8331,6 +8378,109 @@ describe('DataEntryFormComponent', () => {
         expect(fieldError(name)!.textContent).withContext(name).toContain(detail);
         expect(saveButton().disabled).withContext(`Speichern tot nach ${name}`).toBeFalse();
       }
+    });
+  });
+
+  // #447 (ADR 0039): dauerhaft ist, was sonst nirgends existiert. Ein
+  // Sitzungsablauf mitten in einer Runde vernichtete bislang den Fang: die App
+  // sprang zur Anmeldung, der `unsavedChangesGuard` fragte „Änderungen
+  // verwerfen?", und wer bestätigte, verlor ihn — obwohl derselbe Fang bei
+  // einem Netzausfall längst als *nicht synchronisiert* sicher gewesen wäre.
+  // Der Vogel ist zu diesem Zeitpunkt beringt und wieder in der Luft.
+  describe('die abgelaufene Sitzung: der Fang wird gerettet (#447, ADR 0039)', () => {
+    let httpMock: HttpTestingController;
+    let snackBar: jasmine.Spy;
+
+    const NOT_AUTHENTICATED = {
+      detail: 'Anmeldedaten fehlen.',
+      errors: [{ field: null, code: 'not_authenticated', detail: 'Anmeldedaten fehlen.' }],
+    };
+
+    beforeEach(async () => {
+      httpMock = await setupCreateMode();
+      TestBed.inject(AuthService).currentUser.set({
+        username: 'fre',
+        handle: 'FRE',
+        isStaff: false,
+        rolle: 'mitglied',
+        organization: null,
+      });
+      await TestBed.inject(OutboxService).ready;
+      snackBar = spyOn(
+        (component as unknown as { snackBar: MatSnackBar }).snackBar,
+        'open',
+      ).and.callThrough();
+    });
+
+    afterEach(async () => {
+      const db = TestBed.inject(IndexedDbStore);
+      const queued = await db.getAll<{ id: string }>('outbox');
+      await Promise.all(queued.map((entry) => db.delete('outbox', entry.id)));
+    });
+
+    function fillValidWiederfang(): void {
+      component.entryForm.patchValue({
+        ringing_station: { handle: 'STAMT', name: 'Linz' } as never,
+        staff: { id: 'p1', handle: 'FRE', full_name: 'Filip Reiter' } as never,
+        species: { id: 's1', common_name_de: 'Kohlmeise' } as never,
+        bird_status: BirdStatus.ReCatch,
+        ring_size: RingSize.S,
+        ring_number: '901234',
+      });
+    }
+
+    /** Speichern drücken und den Server die Sitzung ablehnen lassen. */
+    async function submitAndExpire(): Promise<void> {
+      component.onSubmit();
+      httpMock
+        .expectOne((r) => r.method === 'POST' && r.url.endsWith('/birds/data-entries/'))
+        .flush(NOT_AUTHENTICATED, { status: 401, statusText: 'Unauthorized' });
+      // Die Rettung schreibt in das echte (nicht von Zone gepatchte) IndexedDB,
+      // das nur echte verstrichene Zeit beobachtet.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      fixture.detectChanges();
+    }
+
+    const banner = (): HTMLElement | null =>
+      fixture.nativeElement.querySelector('[data-testid="failure-banner"]');
+
+    it('reiht den Fang in die Outbox ein, statt ihn zu vernichten', async () => {
+      fillValidWiederfang();
+
+      await submitAndExpire();
+
+      const queued = await TestBed.inject(OutboxStoreService).list();
+      expect(queued.length).toBe(1);
+      expect(queued[0].accountKey).toBe('fre');
+      expect(queued[0].payload['ring_number']).toBe('901234');
+      expect(TestBed.inject(OutboxService).pendingCount()).toBe(1);
+    });
+
+    it('sagt, dass der Eintrag gesichert ist und nach der Anmeldung übertragen wird — mit der Anmeldung im Griff', async () => {
+      fillValidWiederfang();
+
+      await submitAndExpire();
+
+      expect(banner()).not.toBeNull();
+      expect(banner()!.textContent).toContain('gesichert');
+      expect(banner()!.textContent).toContain('nach der Anmeldung übertragen');
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="failure-anmelden"]'),
+      ).not.toBeNull();
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('lässt kein ungespeichertes Formular zurück — der Guard hat nichts mehr zu verwerfen', async () => {
+      fillValidWiederfang();
+
+      await submitAndExpire();
+
+      // Der Fang ist erfasst: das Formular steht wieder frisch für den nächsten
+      // Vogel da, genau wie nach einer offline eingereihten Speicherung.
+      expect(component.entryForm.pristine).toBeTrue();
+      expect(component.entryForm.get('ring_number')!.value).toBeFalsy();
+      // Und das Banner bleibt trotzdem stehen — es verfällt nie.
+      expect(banner()).not.toBeNull();
     });
   });
 

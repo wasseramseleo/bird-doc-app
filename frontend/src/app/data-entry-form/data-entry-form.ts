@@ -52,6 +52,7 @@ import {DataEntryRefreshService} from '../service/data-entry-refresh.service';
 import {DataAccessFacadeService} from '../service/data-access-facade.service';
 import {UnsavedChangesService} from '../service/unsaved-changes.service';
 import {ConnectivityService} from '../core/offline/connectivity';
+import {isDurablyQueued} from '../core/offline/durable-write';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
 import {WorkbenchStorageService} from '../service/workbench-storage.service';
@@ -1922,7 +1923,19 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
       },
       error: (err: unknown) => {
         console.error('Error saving data entry', err);
-        if (!this.isEditMode()) {
+        // #447 (ADR 0039): eine abgelaufene Sitzung hat den Fang **nicht**
+        // vernichtet — er liegt dauerhaft in der Outbox, genau wie bei einem
+        // Netzausfall. Das Formular verhält sich deshalb wie nach einer
+        // eingereihten Speicherung: der Fang ist erfasst, das Formular steht
+        // frisch für den nächsten Vogel da, und der `unsavedChangesGuard` (#407)
+        // hat nichts mehr zu verwerfen, wenn das Banner zur Anmeldung führt.
+        // Der Fehlschlag bleibt trotzdem im Banner stehen — die Sitzung muss
+        // erneuert werden, und erst danach überträgt sich der Eintrag.
+        if (isDurablyQueued(err)) {
+          this.rememberBeringer();
+          this.entryForm.markAsPristine();
+          this.cleanReset();
+        } else if (!this.isEditMode()) {
           this.lastFailedSubmission = JSON.stringify(rawValue);
         }
         // #443 (ADR 0037): die Zurückweisung landet dort, wo die Geste
