@@ -7,7 +7,7 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {of} from 'rxjs';
 
 import {BeringerComponent} from './beringer';
-import {AppIconEmptyDirective} from '../shared/app-icons';
+import {AppIconEmptyDirective, AppIconErrorDirective} from '../shared/app-icons';
 import {renderedGlyph, seamGlyph} from '../shared/app-icons.testing';
 import {Beringer} from '../models/beringer.model';
 import {Mitgliedschaft} from '../models/mitgliedschaft.model';
@@ -79,6 +79,107 @@ function spyOnDialog(fixture: ComponentFixture<BeringerComponent>, afterClosed: 
 
 describe('BeringerComponent', () => {
   afterEach(() => httpMock.verify());
+
+  // #446 (ADR 0037): bis hierher toastete ein gescheitertes Laden drei Sekunden
+  // und ließ dieselbe leere Liste stehen wie eine Organisation ohne Beringer.
+  // Der Gap-Panel-Ladefehler war noch stiller: das Panel rendert nur bei
+  // vorhandenen Lücken, ein Fehlschlag sah also aus wie „keine Lücken".
+  describe('In-Place-Ladefehler', () => {
+    it('renders the in-place error state instead of an empty list when the Beringer load fails', () => {
+      const {fixture} = setup();
+      const snack = spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .flush(
+          {detail: 'Die Datenbank antwortet gerade nicht.'},
+          {status: 500, statusText: 'Server Error'},
+        );
+      flushGaps();
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Beringer konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      expect(fixture.nativeElement.textContent).not.toContain('keine Beringer angelegt');
+      expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+      expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
+      expect(seamGlyph(fixture, AppIconEmptyDirective)).toBe('');
+      expect(snack).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads the Beringer list on „Erneut laden" and recovers on success', () => {
+      const {fixture} = setup();
+      spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .error(new ProgressEvent('error'), {status: 0, statusText: 'Unknown Error'});
+      flushGaps();
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .flush(page0([makeBeringer({id: 'a', full_name: 'Anna Bauer'})]));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.beringer-card').length).toBe(1);
+    });
+
+    it('renders the in-place error state in place of the gap panel when the seats fail to load', () => {
+      const {fixture} = setup();
+      const snack = spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .flush(page0([makeBeringer({id: 'a', full_name: 'Anna Bauer'})]));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+        .flush({detail: 'Keine Verbindung.'}, {status: 503, statusText: 'Service Unavailable'});
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand).not.toBeNull();
+      expect(zustand.textContent).toContain('Konten konnten nicht geladen werden.');
+      expect(fixture.nativeElement.querySelector('.gap-panel')).toBeNull();
+      // Die Beringer-Liste hat geladen und bleibt bedienbar — der Fehlschlag
+      // des einen Ladevorgangs ersetzt nur, was *er* laden sollte.
+      expect(fixture.nativeElement.querySelectorAll('.beringer-card').length).toBe(1);
+      expect(snack).not.toHaveBeenCalled();
+    });
+
+    it('reloads the seats on „Erneut laden" and shows the gap panel on success', () => {
+      const {fixture} = setup();
+      spyOnSnackBar(fixture);
+
+      fixture.detectChanges();
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/scientists/'))
+        .flush(page0([makeBeringer({id: 'a', full_name: 'Anna Bauer'})]));
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/mitgliedschaften/'))
+        .error(new ProgressEvent('error'), {status: 0, statusText: 'Unknown Error'});
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      flushGaps([makeSeat({id: 's1', username: 'gap'})]);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.gap-card').length).toBe(1);
+    });
+  });
 
   it('lists the org Beringer sorted by surname then first name, requesting GET /scientists/', () => {
     const {fixture} = setup();

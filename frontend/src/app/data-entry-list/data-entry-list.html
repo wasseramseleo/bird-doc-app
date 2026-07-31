@@ -32,14 +32,16 @@
            placeholder="Deutscher oder wissenschaftlicher Name oder Ringnummer">
   </mat-form-field>
 
-  @if (loading()) {
+  <!-- #446 (ADR 0037): der Fehlerzustand von #385, jetzt als gemeinsames Bauteil
+       — dieselbe Optik auf allen sechs Bildschirmen, und mit „Erneut laden". -->
+  @if (loadFailure(); as failure) {
+    <app-load-failure
+      [failure]="failure"
+      titel="Die Einträge konnten nicht geladen werden."
+      (reload)="loadEntries()"></app-load-failure>
+  } @else if (loading()) {
     <div class="entry-list__state">
       <mat-spinner diameter="32"></mat-spinner>
-    </div>
-  } @else if (error()) {
-    <div class="entry-list__state entry-list__state--error">
-      <mat-icon app-icon-error></mat-icon>
-      <p>Die Einträge konnten nicht geladen werden.</p>
     </div>
   } @else if (entries().length === 0) {
     <div class="entry-list__state">

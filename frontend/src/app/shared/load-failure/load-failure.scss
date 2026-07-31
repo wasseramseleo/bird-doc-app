@@ -1,0 +1,49 @@
+// Übernommen aus dem #385-Idiom — dem zentrierten Fehlerzustand von
+// „Letzte Fänge" (`.entry-list__state--error`) und dem `.load-error` des
+// Erfassungsformulars: jetzt an einer Stelle, damit der kaputte Zustand auf
+// jedem Bildschirm gleich aussieht (ADR 0037).
+//
+// Kein Banner: dieses Bauteil steht *an der Stelle* des Inhalts, der nicht kam,
+// nicht über einem bedienbaren Formular (das ist `.failure-banner`).
+:host {
+  display: block;
+}
+
+.load-failure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 16px;
+  color: var(--bd-error, #b3261e);
+  text-align: center;
+
+  mat-icon {
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
+  }
+
+  p {
+    margin: 0;
+    max-width: 36rem;
+  }
+}
+
+.load-failure__titel {
+  font-weight: 600;
+}
+
+.load-failure__grund {
+  font-size: 0.9rem;
+}
+
+.load-failure__aktionen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &:empty {
+    display: none;
+  }
+}

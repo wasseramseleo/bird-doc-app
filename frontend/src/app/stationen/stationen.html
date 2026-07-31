@@ -13,7 +13,14 @@
     </button>
   </header>
 
-  @if (loading()) {
+  <!-- #446 (ADR 0037): der kaputte Zustand steht *an der Stelle* der Liste und
+       zuerst — sonst sähe er wieder aus wie der leere. -->
+  @if (loadFailure(); as failure) {
+    <app-load-failure
+      [failure]="failure"
+      titel="Stationen konnten nicht geladen werden."
+      (reload)="load()"></app-load-failure>
+  } @else if (loading()) {
     <mat-spinner diameter="32"></mat-spinner>
   } @else if (sortedStations().length === 0) {
     <div class="stationen__empty">

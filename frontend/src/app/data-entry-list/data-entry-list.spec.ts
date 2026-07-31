@@ -116,7 +116,7 @@ describe('DataEntryListComponent', () => {
         .flush('boom', { status: 500, statusText: 'Server Error' });
       fixture.detectChanges();
 
-      const state = fixture.nativeElement.querySelector('.entry-list__state--error');
+      const state = fixture.nativeElement.querySelector('[data-testid="load-error"]');
       expect(state).not.toBeNull();
       expect(renderedGlyph(state.querySelector('mat-icon'))).toBeTruthy();
       expect(seamGlyph(fixture, AppIconErrorDirective)).toBeTruthy();
@@ -150,6 +150,45 @@ describe('DataEntryListComponent', () => {
       expect(empty).toBeTruthy();
       expect(error).toBeTruthy();
       expect(error).not.toEqual(empty);
+    });
+  });
+
+  // #446 (ADR 0037): der Fehlerzustand dieser Liste ist seit #385 der Vorfahr
+  // aller sechs — jetzt ist er dasselbe Bauteil wie überall sonst. Sein
+  // bisheriges Verhalten bleibt, und „Erneut laden" kommt dazu: bislang war das
+  // Wiederkommen nur über einen Projektwechsel oder eine neue Suche zu haben.
+  describe('In-Place-Ladefehler (#446)', () => {
+    it('names what could not be loaded and carries the server sentence', () => {
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'))
+        .flush(
+          { detail: 'Die Datenbank antwortet gerade nicht.' },
+          { status: 500, statusText: 'Server Error' },
+        );
+      fixture.detectChanges();
+
+      const zustand = fixture.nativeElement.querySelector('[data-testid="load-error"]');
+      expect(zustand.textContent).toContain('Die Einträge konnten nicht geladen werden.');
+      expect(zustand.textContent).toContain('Die Datenbank antwortet gerade nicht.');
+      // Der leere Zustand läuft nicht mit — das war der Defekt aus PRD #438.
+      expect(fixture.nativeElement.textContent).not.toContain('noch keine Einträge');
+      // Ein Laden bekommt kein Banner (ADR 0037, Moment-Achse).
+      expect(fixture.nativeElement.querySelector('[data-testid="failure-banner"]')).toBeNull();
+    });
+
+    it('reloads on „Erneut laden" and recovers on success', () => {
+      httpMock
+        .expectOne((r) => r.method === 'GET' && r.url.endsWith('/data-entries/'))
+        .error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+      fixture.detectChanges();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-testid="load-error-reload"]')!
+        .click();
+      flushEntries([row({ id: 'wieder-da' })]);
+
+      expect(fixture.nativeElement.querySelector('[data-testid="load-error"]')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('tr.entry-row').length).toBe(1);
     });
   });
 
