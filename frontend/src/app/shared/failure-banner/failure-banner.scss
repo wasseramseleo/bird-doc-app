@@ -8,6 +8,10 @@
 .failure-banner {
   display: flex;
   align-items: center;
+  // #444: bis zu drei Abhilfen stehen hier neben Grund und kollidierendem
+  // Erstfang. Sie brechen um, statt die Zeile aus dem Bildschirm zu schieben —
+  // ein Telefon in einer Hand, der Vogel in der anderen.
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 1rem;
   padding: 8px 12px;
@@ -35,4 +39,19 @@
 
 .failure-banner__text {
   min-width: 0;
+}
+
+// #444: der kollidierende Erstfang bekommt eine eigene Zeile — er ist die
+// Angabe, an der der Beringer seinen Vogel wiedererkennt, und die Abhilfen
+// darunter brauchen die Breite.
+.failure-banner__rival {
+  flex-basis: 100%;
+  min-width: 0;
+  font-weight: 500;
+}
+
+// Der Satz, wo ein Knopf stünde, wenn es eine freie Nummer gäbe.
+.failure-banner__hinweis {
+  min-width: 0;
+  font-style: italic;
 }
