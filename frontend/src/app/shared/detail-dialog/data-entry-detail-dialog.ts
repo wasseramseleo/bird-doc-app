@@ -1,6 +1,6 @@
-import {ChangeDetectionStrategy, Component, inject} from '@angular/core';
+import {ChangeDetectionStrategy, Component, Signal, inject} from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
-import {MAT_DIALOG_DATA, MatDialogModule} from '@angular/material/dialog';
+import {MAT_DIALOG_DATA, MatDialogModule, MatDialogRef} from '@angular/material/dialog';
 import {MatButtonModule} from '@angular/material/button';
 import {MatIconModule} from '@angular/material/icon';
 import {
@@ -17,12 +17,43 @@ import {
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
 } from '../../models/data-entry.model';
-import {environment} from '../../../environments/environment';
 import {
   getAgeClassLabel,
   getBirdStatusLabel,
   getSexLabel,
 } from '../../data-entry-form/data-entry-labels';
+
+/**
+ * #493 (PRD #491): ob „Bearbeiten" angeboten oder **gesperrt** ist — und wenn
+ * gesperrt, warum. Entschieden wird das im geteilten Öffner; hier steht nur, was
+ * der Dialog davon zu zeigen hat.
+ */
+export interface BearbeitenAngebot {
+  readonly gesperrt: boolean;
+  /** Der Satz, der sagt warum und wann wieder — `null`, solange nichts sperrt. */
+  readonly grund: string | null;
+}
+
+/**
+ * #493: womit der geteilte Öffner den Detail-Dialog aufmacht — der Fang, das
+ * Angebot „Bearbeiten" und wohin es führt. Der Dialog entscheidet davon nichts:
+ * er zeigt den Fang, zeigt das Angebot und ruft zurück. Dadurch kann keine
+ * Tabelle die Regel anders verdrahten (ADR 0042).
+ */
+export interface DetailDialogDaten {
+  readonly fang: DataEntry;
+  /**
+   * Ein Signal, weil die Sperre der **Reichweite des Geräts** gilt und nicht dem
+   * Alter des Fangs: kommt die Verbindung wieder, wird der Knopf im offenen
+   * Dialog sofort wieder auslösbar.
+   */
+  readonly bearbeiten: Signal<BearbeitenAngebot>;
+  /** Der Weg hinaus — er führt aus dem Dialog, er ändert nichts darin. */
+  readonly bearbeiteFang: () => void;
+}
+
+/** Genau eine Begründung je Dialog, damit `aria-describedby` eindeutig zeigt. */
+let grundZaehler = 0;
 
 /**
  * #478 (ADR 0042): der **Detail-Dialog** — der vollständige, schreibgeschützte
@@ -34,6 +65,17 @@ import {
  * Fänge", die Wiederfang-Historie und „Heute" (offline) führen alle hierher.
  * Geöffnet wird er ausschließlich über den `DetailDialogOpener` daneben — der
  * kennt als Einziger die Dialog-Konfiguration.
+ *
+ * #493 (PRD #491): sein einziger weiterführender Knopf heißt **„Bearbeiten"**
+ * und führt in die Bearbeitungsmaske des gezeigten Fangs. „Im Backend öffnen"
+ * ist ersatzlos weg — Django ist ein Werkzeug für Admins, die Navigationsleiste
+ * zeigt den Zugang bewusst nur hinter dem Staff-Recht, und hier endete er für
+ * alle anderen an einer Rechtewand. Schreibgeschützt bleibt der Dialog
+ * trotzdem: „Bearbeiten" führt **hinaus**, es ändert nichts an Ort und Stelle.
+ *
+ * Ob der Knopf angeboten oder gesperrt ist, mit welcher Begründung, und wohin er
+ * führt, entscheidet der Öffner — hier steht nur, wie es aussieht und wie ein
+ * Screenreader es erfährt.
  */
 @Component({
   selector: 'app-data-entry-detail-dialog',
@@ -43,7 +85,13 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DataEntryDetailDialogComponent {
-  readonly entry: DataEntry = inject(MAT_DIALOG_DATA);
+  private readonly daten: DetailDialogDaten = inject(MAT_DIALOG_DATA);
+  private readonly dialogRef = inject<MatDialogRef<DataEntryDetailDialogComponent>>(MatDialogRef);
+
+  readonly entry: DataEntry = this.daten.fang;
+  readonly bearbeiten = this.daten.bearbeiten;
+  /** Die Id, über die `aria-describedby` des Knopfes seine Begründung findet. */
+  readonly grundId = `bearbeiten-grund-${++grundZaehler}`;
   readonly BirdStatus = BirdStatus;
 
   // #469: derselbe Ort wie für Alter und Geschlecht darunter. Ein Ring
@@ -128,7 +176,19 @@ export class DataEntryDetailDialogComponent {
     return value !== null && value !== undefined ? (map[value] ?? String(value)) : '—';
   }
 
-  openInBackend(): void {
-    window.open(`${environment.adminUrl}/birds/dataentry/${this.entry.id}/change/`, '_blank');
+  /**
+   * #493: der Weg vom Lesen zum Korrigieren. Der Knopf bleibt gesperrt
+   * **anfassbar** (`aria-disabled`, kein blankes `disabled`) — deshalb kommt der
+   * Klick auch dann hier an, und deshalb muss er hier enden. Sonst wäre der
+   * Knopf zwar angekündigt, aber trotzdem auslösbar.
+   */
+  bearbeiteFang(): void {
+    if (this.bearbeiten().gesperrt) {
+      return;
+    }
+    // Erst zumachen, dann gehen: der Dialog liegt sonst über dem Bildschirm,
+    // auf dem die Beringer:in gleich korrigiert.
+    this.dialogRef.close();
+    this.daten.bearbeiteFang();
   }
 }

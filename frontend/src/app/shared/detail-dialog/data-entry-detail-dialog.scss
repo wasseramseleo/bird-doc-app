@@ -84,6 +84,17 @@ mat-icon {
   white-space: pre-wrap;
 }
 
+// #493: die Begründung des gesperrten „Bearbeiten" — sie steht über der
+// Knopfzeile, weil sie zu ihr gehört, und liest sich als Satz, nicht als Warnung.
+.bearbeiten-grund {
+  margin: 0;
+  padding: 0 24px;
+  text-align: right;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: rgba(0, 0, 0, 0.6);
+}
+
 mat-dialog-actions {
   padding: 12px 24px 16px;
   gap: 8px;

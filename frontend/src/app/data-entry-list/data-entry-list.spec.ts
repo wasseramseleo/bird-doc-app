@@ -693,8 +693,8 @@ describe('DataEntryListComponent', () => {
     // aus, mit dem das ⓘ gerade geworben hat.
     expect(navigate).not.toHaveBeenCalled();
     expect(dialog.open).toHaveBeenCalledTimes(1);
-    const config = dialog.open.calls.mostRecent().args[1] as { data: DataEntry };
-    expect(config.data).toBe(entry);
+    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
+    expect(config.data.fang).toBe(entry);
   });
 
   // #478 (ADR 0042): der gewöhnliche Zeilenklick dieser Tabelle bleibt der direkte
