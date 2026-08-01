@@ -180,7 +180,13 @@
              Zeilenklick öffnet den Fang zum Bearbeiten". Sie ist jetzt die Regel:
              „Letzte Fänge" und „Heute" öffnen denselben Dialog, hier verschlechtert
              sich dadurch nichts. -->
-        <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" class="history-entry"
+        <!-- #496 (PRD #491): dieselbe Zeile, mit der Tastatur — Tabulator-Halt,
+             Ansage als bedienbares Element, Enter/Leertaste lösen genau den
+             Klick darunter aus. Hier ist das doppelt wichtig: die Beringer:in
+             steht mitten in einer Erfassung und soll die Hand nicht für einen
+             Blick in die Historie an die Maus nehmen müssen. -->
+        <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" appFangZeile
+            class="history-entry"
             (click)="openDetailDialog(row)"></tr>
       </table>
     </div>

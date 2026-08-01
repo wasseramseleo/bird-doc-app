@@ -159,7 +159,13 @@
            *jedes* Merkmal. Der Weg zum Bearbeiten ist der Knopf im Dialog (#493).
            Das Detail-Zeichen in der Marker-Spalte schluckt seinen Klick und
            öffnet denselben Dialog — ein Tipp, eine Wirkung. -->
-      <tr mat-row *matRowDef="let row; columns: displayedColumns;"
+      <!-- #496 (PRD #491): dieselbe Zeile, mit der Tastatur. `appFangZeile` macht
+           sie zum Tabulator-Halt, kündigt sie als bedienbar an und löst mit
+           Enter/Leertaste genau das aus, was der Zeiger auslöst — den Klick
+           direkt darunter. Ohne das hätte ein gewöhnlicher Fang (ohne
+           Brutfleck, CPL+ oder Bemerkung, also die Mehrzahl) gar keinen
+           Tastaturweg zu seinem Detail-Dialog: das ⓘ erscheint bei ihm nicht. -->
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;" appFangZeile
           class="entry-row" [class.entry-row--sentinel]="row.species.special_kind === 'ring_destroyed'"
           (click)="oeffneFang(row)"></tr>
     </table>

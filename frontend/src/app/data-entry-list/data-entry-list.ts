@@ -23,6 +23,7 @@ import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {LoadFailureComponent} from '../shared/load-failure/load-failure';
 import {AppFailure, appFailureOf} from '../core/errors/app-failure';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
+import {FangZeileDirective} from '../shared/directives/fang-zeile';
 import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
 import {
   ImportIwmDialogComponent,
@@ -42,6 +43,7 @@ import {
     MatIconModule,
     MatProgressSpinnerModule,
     MarkerSlotsComponent,
+    FangZeileDirective,
     AppIconEmptyDirective,
     FailureBannerComponent,
     LoadFailureComponent,

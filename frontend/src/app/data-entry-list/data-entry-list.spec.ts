@@ -763,4 +763,84 @@ describe('DataEntryListComponent', () => {
 
     expect(navigate).toHaveBeenCalledWith(['/data-entry', 'e42']);
   });
+
+  // #496 (PRD #491): der Kompositions-Pin dieser Tabelle für die Tastatur. Seit
+  // #494 ist der Zeilenklick der Leseweg *jedes* Fangs — der einzige
+  // Tastaturweg in den Dialog war bis hierher das ⓘ, und das erscheint bei
+  // einem gewöhnlichen Fang gar nicht. Dass ein Tastendruck bis zur Zeile
+  // durchkommt, ist eine Eigenschaft der Komposition und auf der geteilten
+  // Naht nicht beweisbar (ADR 0042); deshalb liegt dieser Pin hier.
+  describe('Tastaturbedienung der Zeile (#496)', () => {
+    function keyDown(target: HTMLElement, key: string): void {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      fixture.detectChanges();
+    }
+
+    it('macht eine Zeile per Tabulator erreichbar und kündigt sie als bedienbar an', () => {
+      flushEntries([row({ id: 'plain', comment: null })]);
+
+      const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+      expect(row0.getAttribute('tabindex')).toBe('0');
+      expect(row0.getAttribute('role')).toBe('button');
+
+      row0.focus();
+      expect(document.activeElement).toBe(row0);
+    });
+
+    // Eine fokussierbare Zeile, der man den Fokus nicht ansieht, ist eine Falle.
+    // Der Ring ist der app-weite (A11Y-4, `styles.scss`) — hier wird belegt, dass
+    // er auch auf einer Material-Tabellenzeile ankommt.
+    it('zeigt den Fokus einer Zeile sichtbar an', () => {
+      flushEntries([row({ id: 'plain', comment: null })]);
+
+      const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+      row0.focus();
+
+      const stil = getComputedStyle(row0);
+      expect(stil.outlineStyle).toBe('solid');
+      expect(parseFloat(stil.outlineWidth)).toBeGreaterThan(0);
+    });
+
+    // Kriterium: „Die Tabulator-Reihenfolge innerhalb der Tabellen bleibt
+    // nachvollziehbar (Zeile, dann was in ihr bedienbar ist)." Sie folgt der
+    // Dokumentreihenfolge, solange sich niemand mit einem positiven tabindex
+    // vordrängt.
+    it('hält die Tabulator-Reihenfolge nachvollziehbar: erst die Zeile, dann was in ihr steht', () => {
+      flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
+
+      const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+      expect(row0.getAttribute('tabindex')).toBe('0');
+
+      const vordraengler = Array.from(row0.querySelectorAll('[tabindex]')).filter(
+        (el) => Number(el.getAttribute('tabindex')) > 0,
+      );
+      expect(vordraengler).toEqual([]);
+    });
+
+    it('öffnet den Detail-Dialog mit Enter genau einmal, ohne zu navigieren', () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate');
+      const entry = row({ id: 'plain', comment: null });
+      flushEntries([entry]);
+
+      keyDown(fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement, 'Enter');
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+      const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
+      expect(config.data.fang).toBe(entry);
+    });
+
+    it('öffnet den Detail-Dialog mit der Leertaste genau einmal, ohne zu navigieren', () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate');
+      const entry = row({ id: 'plain', comment: null });
+      flushEntries([entry]);
+
+      keyDown(fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement, ' ');
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+      const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
+      expect(config.data.fang).toBe(entry);
+    });
+  });
 });

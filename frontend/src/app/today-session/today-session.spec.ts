@@ -598,4 +598,201 @@ describe('TodaySessionComponent', () => {
       expect(badge.textContent).toContain('synchronisiert');
     });
   });
+
+  // #496 (PRD #491): die Kompositions-Pins dieses Bildschirms für die Tastatur.
+  // „Heute" ist die einzige Fang-Tabelle mit **zwei** Abschnitten und der
+  // einzige Ort, an dem in der Zeile noch etwas anderes bedienbar ist — der
+  // Lösch-Knopf. Beides braucht seinen eigenen Pin: ob ein Tastendruck bis zur
+  // Zeile durchkommt (und ob einer *in* der Zeile es nicht tut), ist eine
+  // Eigenschaft der Komposition und auf der geteilten Naht nicht beweisbar
+  // (ADR 0042).
+  describe('Tastaturbedienung der Zeilen (#496)', () => {
+    function keyDown(target: HTMLElement, key: string): void {
+      target.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
+      fixture.detectChanges();
+    }
+
+    async function mitEinerEingereihtenZeile(): Promise<void> {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload(),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+    }
+
+    function queuedRow(): HTMLElement {
+      return fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement;
+    }
+
+    function syncedRow(): HTMLElement {
+      return fixture.nativeElement.querySelector('.session-row--synced') as HTMLElement;
+    }
+
+    it('macht eine synchronisierte Zeile per Tabulator erreichbar und kündigt sie als bedienbar an', async () => {
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([syncedEntry()]);
+      fixture.detectChanges();
+
+      const row = syncedRow();
+      expect(row.getAttribute('tabindex')).toBe('0');
+      expect(row.getAttribute('role')).toBe('button');
+
+      row.focus();
+      expect(document.activeElement).toBe(row);
+
+      // Eine fokussierbare Zeile, der man den Fokus nicht ansieht, ist eine
+      // Falle — der app-weite Fokusring (A11Y-4) muss hier ankommen.
+      const stil = getComputedStyle(row);
+      expect(stil.outlineStyle).toBe('solid');
+      expect(parseFloat(stil.outlineWidth)).toBeGreaterThan(0);
+    });
+
+    it('öffnet den Detail-Dialog auf einer synchronisierten Zeile mit Enter genau einmal', async () => {
+      await setup();
+      fixture.detectChanges();
+      const entry = syncedEntry({id: 'server-1'});
+      await flushSyncedEntries([entry]);
+      fixture.detectChanges();
+
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      keyDown(syncedRow(), 'Enter');
+
+      expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
+    });
+
+    it('öffnet den Detail-Dialog auf einer synchronisierten Zeile mit der Leertaste genau einmal', async () => {
+      await setup();
+      fixture.detectChanges();
+      const entry = syncedEntry({id: 'server-1'});
+      await flushSyncedEntries([entry]);
+      fixture.detectChanges();
+
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      keyDown(syncedRow(), ' ');
+
+      expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
+    });
+
+    it('macht eine nicht synchronisierte Zeile per Tabulator erreichbar und kündigt sie als bedienbar an', async () => {
+      await mitEinerEingereihtenZeile();
+
+      const row = queuedRow();
+      expect(row.getAttribute('tabindex')).toBe('0');
+      expect(row.getAttribute('role')).toBe('button');
+
+      row.focus();
+      expect(document.activeElement).toBe(row);
+    });
+
+    // Der nicht synchronisierte Abschnitt wartet auf sein Lesemodell (#495) und
+    // führt bis dahin weiter in die Warteschlangen-Bearbeitung. Der Pin sagt
+    // deshalb, was hier dauerhaft gilt: **die Tastatur tut genau das, was der
+    // Zeiger tut, und genau einmal**. Er bleibt richtig, wenn diese Zeile im
+    // nächsten Schnitt denselben Dialog öffnet wie jede andere Fang-Zeile.
+    it('löst mit Enter auf einer nicht synchronisierten Zeile genau dieselbe eine Wirkung aus wie ein Klick', async () => {
+      await mitEinerEingereihtenZeile();
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      queuedRow().click();
+      const perZeiger = {
+        dialoge: detailDialog.open.calls.count(),
+        wechsel: navigateSpy.calls.count(),
+      };
+
+      detailDialog.open.calls.reset();
+      navigateSpy.calls.reset();
+
+      keyDown(queuedRow(), 'Enter');
+
+      expect(perZeiger.dialoge + perZeiger.wechsel)
+        .withContext('ein Zeigerklick löst genau eine Wirkung aus')
+        .toBe(1);
+      expect({
+        dialoge: detailDialog.open.calls.count(),
+        wechsel: navigateSpy.calls.count(),
+      }).toEqual(perZeiger);
+    });
+
+    it('löst mit der Leertaste auf einer nicht synchronisierten Zeile genau dieselbe eine Wirkung aus wie ein Klick', async () => {
+      await mitEinerEingereihtenZeile();
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      queuedRow().click();
+      const perZeiger = {
+        dialoge: detailDialog.open.calls.count(),
+        wechsel: navigateSpy.calls.count(),
+      };
+
+      detailDialog.open.calls.reset();
+      navigateSpy.calls.reset();
+
+      keyDown(queuedRow(), ' ');
+
+      expect(perZeiger.dialoge + perZeiger.wechsel)
+        .withContext('ein Zeigerklick löst genau eine Wirkung aus')
+        .toBe(1);
+      expect({
+        dialoge: detailDialog.open.calls.count(),
+        wechsel: navigateSpy.calls.count(),
+      }).toEqual(perZeiger);
+    });
+
+    // Kriterium: der Lösch-Knopf bleibt eigenständig per Tastatur erreichbar und
+    // löst über die Tastatur **keinen** Dialog aus. Sein Tastendruck steigt zur
+    // Zeile auf wie jedes andere Ereignis — trüge die Zeile ihn weiter, hieße
+    // Löschen mit der Tastatur auch Lesen.
+    it('lässt den Lösch-Knopf eigenständig erreichbar und öffnet aus ihm heraus nichts', async () => {
+      await mitEinerEingereihtenZeile();
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const deleteButton = fixture.nativeElement.querySelector(
+        '.session-row--queued [data-testid="delete-queued"]',
+      ) as HTMLElement;
+      expect(deleteButton.tagName).toBe('BUTTON');
+      expect(deleteButton.getAttribute('tabindex')).not.toBe('-1');
+
+      deleteButton.focus();
+      expect(document.activeElement).toBe(deleteButton);
+
+      keyDown(deleteButton, 'Enter');
+      keyDown(deleteButton, ' ');
+
+      expect(detailDialog.open).not.toHaveBeenCalled();
+      expect(navigateSpy).not.toHaveBeenCalled();
+    });
+
+    // Kriterium: „Die Tabulator-Reihenfolge innerhalb der Tabellen bleibt
+    // nachvollziehbar (Zeile, dann was in ihr bedienbar ist)." Sie folgt der
+    // Dokumentreihenfolge, solange sich niemand mit einem positiven tabindex
+    // vordrängt.
+    it('hält die Tabulator-Reihenfolge nachvollziehbar: erst die Zeile, dann was in ihr bedienbar ist', async () => {
+      await mitEinerEingereihtenZeile();
+
+      const row = queuedRow();
+      const deleteButton = row.querySelector('[data-testid="delete-queued"]') as HTMLElement;
+
+      expect(row.getAttribute('tabindex')).toBe('0');
+      expect(row.contains(deleteButton))
+        .withContext('der Lösch-Knopf steht in der Zeile, also hinter ihr')
+        .toBeTrue();
+
+      const vordraengler = Array.from(row.querySelectorAll('[tabindex]')).filter(
+        (el) => Number(el.getAttribute('tabindex')) > 0,
+      );
+      expect(vordraengler).toEqual([]);
+    });
+  });
 });
