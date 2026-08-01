@@ -1205,8 +1205,8 @@ describe('DataEntryFormComponent', () => {
         keyDown(historyRowElement(), 'Enter');
 
         expect(open).toHaveBeenCalledTimes(1);
-        const config = open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-        expect(config.data.fang).toBe(entry);
+        const config = open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+        expect(config.data.fang).toEqual(lesemodellAusFang(entry));
         expect(navigate).not.toHaveBeenCalled();
         expect(navigateByUrl).not.toHaveBeenCalled();
       });
@@ -1224,8 +1224,8 @@ describe('DataEntryFormComponent', () => {
         keyDown(historyRowElement(), ' ');
 
         expect(open).toHaveBeenCalledTimes(1);
-        const config = open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-        expect(config.data.fang).toBe(entry);
+        const config = open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+        expect(config.data.fang).toEqual(lesemodellAusFang(entry));
         expect(navigate).not.toHaveBeenCalled();
         expect(navigateByUrl).not.toHaveBeenCalled();
       });

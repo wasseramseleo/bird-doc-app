@@ -744,33 +744,40 @@ describe('TodaySessionComponent', () => {
       expect(document.activeElement).toBe(row);
     });
 
-    // Der nicht synchronisierte Abschnitt wartet auf sein Lesemodell (#495) und
-    // führt bis dahin weiter in die Warteschlangen-Bearbeitung. Der Pin sagt
-    // deshalb, was hier dauerhaft gilt: **die Tastatur tut genau das, was der
-    // Zeiger tut, und genau einmal**. Er bleibt richtig, wenn diese Zeile im
-    // nächsten Schnitt denselben Dialog öffnet wie jede andere Fang-Zeile.
+    // Der Pin sagt, was hier dauerhaft gilt: **die Tastatur tut genau das, was
+    // der Zeiger tut, und genau einmal**. Er ist bewusst nicht darauf
+    // festgelegt, *welche* die eine Wirkung ist — als #496 ihn schrieb, führte
+    // die Zeile noch in die Warteschlangen-Bearbeitung; seit #495 öffnet sie den
+    // Detail-Dialog über `openQueued`. Genau deshalb zählt die Erhebung **alle
+    // drei** möglichen Wirkungen: fiele eine aus der Zählung, ginge „genau
+    // einmal" still in „gar nicht" über, ohne dass eine Aussage fällt.
+    function wirkungen(navigateSpy: jasmine.Spy): number {
+      return (
+        detailDialog.open.calls.count() +
+        detailDialog.openQueued.calls.count() +
+        navigateSpy.calls.count()
+      );
+    }
+
+    function wirkungenZuruecksetzen(navigateSpy: jasmine.Spy): void {
+      detailDialog.open.calls.reset();
+      detailDialog.openQueued.calls.reset();
+      navigateSpy.calls.reset();
+    }
+
     it('löst mit Enter auf einer nicht synchronisierten Zeile genau dieselbe eine Wirkung aus wie ein Klick', async () => {
       await mitEinerEingereihtenZeile();
       const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
 
       queuedRow().click();
-      const perZeiger = {
-        dialoge: detailDialog.open.calls.count(),
-        wechsel: navigateSpy.calls.count(),
-      };
+      const perZeiger = wirkungen(navigateSpy);
 
-      detailDialog.open.calls.reset();
-      navigateSpy.calls.reset();
+      wirkungenZuruecksetzen(navigateSpy);
 
       keyDown(queuedRow(), 'Enter');
 
-      expect(perZeiger.dialoge + perZeiger.wechsel)
-        .withContext('ein Zeigerklick löst genau eine Wirkung aus')
-        .toBe(1);
-      expect({
-        dialoge: detailDialog.open.calls.count(),
-        wechsel: navigateSpy.calls.count(),
-      }).toEqual(perZeiger);
+      expect(perZeiger).withContext('ein Zeigerklick löst genau eine Wirkung aus').toBe(1);
+      expect(wirkungen(navigateSpy)).toBe(perZeiger);
     });
 
     it('löst mit der Leertaste auf einer nicht synchronisierten Zeile genau dieselbe eine Wirkung aus wie ein Klick', async () => {
@@ -778,23 +785,14 @@ describe('TodaySessionComponent', () => {
       const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
 
       queuedRow().click();
-      const perZeiger = {
-        dialoge: detailDialog.open.calls.count(),
-        wechsel: navigateSpy.calls.count(),
-      };
+      const perZeiger = wirkungen(navigateSpy);
 
-      detailDialog.open.calls.reset();
-      navigateSpy.calls.reset();
+      wirkungenZuruecksetzen(navigateSpy);
 
       keyDown(queuedRow(), ' ');
 
-      expect(perZeiger.dialoge + perZeiger.wechsel)
-        .withContext('ein Zeigerklick löst genau eine Wirkung aus')
-        .toBe(1);
-      expect({
-        dialoge: detailDialog.open.calls.count(),
-        wechsel: navigateSpy.calls.count(),
-      }).toEqual(perZeiger);
+      expect(perZeiger).withContext('ein Zeigerklick löst genau eine Wirkung aus').toBe(1);
+      expect(wirkungen(navigateSpy)).toBe(perZeiger);
     });
 
     // Kriterium: der Lösch-Knopf bleibt eigenständig per Tastatur erreichbar und

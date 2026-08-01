@@ -830,8 +830,8 @@ describe('DataEntryListComponent', () => {
 
       expect(navigate).not.toHaveBeenCalled();
       expect(dialog.open).toHaveBeenCalledTimes(1);
-      const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-      expect(config.data.fang).toBe(entry);
+      const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+      expect(config.data.fang).toEqual(lesemodellAusFang(entry));
     });
 
     it('öffnet den Detail-Dialog mit der Leertaste genau einmal, ohne zu navigieren', () => {
@@ -843,8 +843,8 @@ describe('DataEntryListComponent', () => {
 
       expect(navigate).not.toHaveBeenCalled();
       expect(dialog.open).toHaveBeenCalledTimes(1);
-      const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-      expect(config.data.fang).toBe(entry);
+      const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+      expect(config.data.fang).toEqual(lesemodellAusFang(entry));
     });
   });
 });
