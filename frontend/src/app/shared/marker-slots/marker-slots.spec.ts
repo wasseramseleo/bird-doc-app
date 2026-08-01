@@ -230,8 +230,8 @@ describe('MarkerSlotsComponent', () => {
     detailZeichen(el)!.click();
 
     expect(dialog.open).toHaveBeenCalledTimes(1);
-    const config = dialog.open.calls.mostRecent().args[1] as {data: DataEntry};
-    expect(config.data).toBe(entry);
+    const config = dialog.open.calls.mostRecent().args[1] as {data: {fang: DataEntry}};
+    expect(config.data.fang).toBe(entry);
   });
 
   // #478 (ADR 0042), Hälfte 1 des umgekehrten Paares: das Detail-Zeichen hat ein

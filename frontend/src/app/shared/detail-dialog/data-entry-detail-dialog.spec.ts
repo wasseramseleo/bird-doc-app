@@ -1,11 +1,15 @@
-import { LOCALE_ID } from '@angular/core';
+import { LOCALE_ID, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { registerLocaleData } from '@angular/common';
 import localeDeAt from '@angular/common/locales/de-AT';
-import { MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
-import { DataEntryDetailDialogComponent } from './data-entry-detail-dialog';
+import {
+  BearbeitenAngebot,
+  DataEntryDetailDialogComponent,
+  DetailDialogDaten,
+} from './data-entry-detail-dialog';
 import { AgeClass, BirdStatus, DataEntry, Parasit, Sex } from '../../models/data-entry.model';
 import { RingSize } from '../../models/ring.model';
 import { Central } from '../../models/central.model';
@@ -51,20 +55,41 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
     } as unknown as DataEntry;
   }
 
+  /**
+   * Was der geteilte Öffner mitgibt, wenn er den Dialog aufmacht (#493): der
+   * Fang, ob „Bearbeiten" angeboten oder gesperrt ist — und wohin es führt. Der
+   * Dialog entscheidet davon nichts selbst; er zeigt es und ruft zurück.
+   */
+  const angebot = signal<BearbeitenAngebot>({ gesperrt: false, grund: null });
+  let bearbeiteFang: jasmine.Spy;
+  let dialogRef: jasmine.SpyObj<MatDialogRef<DataEntryDetailDialogComponent>>;
+
   async function render(entry: DataEntry): Promise<ComponentFixture<DataEntryDetailDialogComponent>> {
     TestBed.resetTestingModule();
+    bearbeiteFang = jasmine.createSpy('bearbeiteFang');
+    dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+    const daten: DetailDialogDaten = {
+      fang: entry,
+      bearbeiten: angebot.asReadonly(),
+      bearbeiteFang: () => bearbeiteFang(),
+    };
     await TestBed.configureTestingModule({
       imports: [DataEntryDetailDialogComponent],
       providers: [
         provideNoopAnimations(),
         { provide: LOCALE_ID, useValue: 'de-AT' },
-        { provide: MAT_DIALOG_DATA, useValue: entry },
+        { provide: MAT_DIALOG_DATA, useValue: daten },
+        { provide: MatDialogRef, useValue: dialogRef },
       ],
     }).compileComponents();
     const fixture = TestBed.createComponent(DataEntryDetailDialogComponent);
     fixture.detectChanges();
     return fixture;
   }
+
+  beforeEach(() => {
+    angebot.set({ gesperrt: false, grund: null });
+  });
 
   const zentraleText = (fixture: ComponentFixture<DataEntryDetailDialogComponent>) =>
     (
@@ -189,6 +214,134 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
       const fixture = await render(baseEntry());
 
       expect(labels(fixture)).toContain('Muskelklasse');
+    });
+  });
+
+  /**
+   * #493 (PRD #491): der Dialog verliert „Im Backend öffnen" und bekommt an
+   * dessen Stelle „Bearbeiten".
+   *
+   * Django ist ein Werkzeug für Admins — die Navigationsleiste zeigt den Zugang
+   * bewusst nur Mitgliedern mit Staff-Recht, der Dialog zeigte ihn allen, und für
+   * alle anderen endete er an einer Rechtewand. An seine Stelle tritt der Weg,
+   * den eine Beringer:in wirklich braucht: vom Lesen zum Korrigieren.
+   *
+   * Geprüft wird hier, was der Dialog **zeigt und meldet**. Ob „Bearbeiten"
+   * angeboten oder gesperrt ist und wohin es führt, entscheidet der geteilte
+   * Öffner (`detail-dialog-opener.spec.ts`) — der Dialog bekommt es mit.
+   */
+  describe('Bearbeiten statt Backend (#493)', () => {
+    const knopf = (
+      fixture: ComponentFixture<DataEntryDetailDialogComponent>,
+      beschriftung: string,
+    ) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
+        b => b.textContent!.trim() === beschriftung,
+      );
+
+    it('trägt keinen Weg mehr in die Django-Administration', async () => {
+      const fixture = await render(baseEntry());
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(el.textContent).not.toContain('Backend');
+      expect(el.textContent).not.toContain('Administration');
+      // Auch nicht still als Verweis: kein Element zeigt auf /admin.
+      const verweise = Array.from(el.querySelectorAll('a')).map(a => a.getAttribute('href') ?? '');
+      expect(verweise.some(href => href.includes('admin'))).toBeFalse();
+    });
+
+    it('trägt einen „Bearbeiten"-Knopf', async () => {
+      const fixture = await render(baseEntry());
+
+      expect(knopf(fixture, 'Bearbeiten')).withContext('„Bearbeiten" vorhanden').toBeDefined();
+    });
+
+    // Der Knopf führt **hinaus** — er ändert nichts an Ort und Stelle. Der Dialog
+    // schließt sich und überlässt das Wohin dem Öffner.
+    it('führt aus dem Dialog hinaus, statt darin zu ändern', async () => {
+      const fixture = await render(baseEntry());
+
+      knopf(fixture, 'Bearbeiten')!.click();
+
+      expect(bearbeiteFang).toHaveBeenCalledTimes(1);
+      expect(dialogRef.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('bleibt im Übrigen schreibgeschützt — kein Feld ist darin änderbar', async () => {
+      const fixture = await render(baseEntry());
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(el.querySelectorAll('input, select, textarea, [contenteditable="true"]').length).toBe(
+        0,
+      );
+      // Genau zwei Wege heraus, beide benannt: zumachen oder korrigieren.
+      const beschriftungen = (
+        Array.from(el.querySelectorAll('button')) as HTMLButtonElement[]
+      ).map(b => b.textContent!.trim());
+      expect(beschriftungen).toEqual(['Schließen', 'Bearbeiten']);
+    });
+
+    /**
+     * Ein gesperrter Knopf bleibt **sichtbar** und **nennt den Grund** (ADR 0037:
+     * nie ein verwehrter Weg ohne den Satz, der sagt warum und wann wieder). Er
+     * trägt `aria-disabled` und **kein** blankes `disabled` — das überspränge ein
+     * Screenreader, und die Begründung wäre für sie nie erreichbar (Lehre aus
+     * #416/#417).
+     */
+    describe('gesperrt', () => {
+      const GRUND = 'Ohne Verbindung nicht bearbeitbar.';
+
+      async function gesperrtGerendert(): Promise<
+        ComponentFixture<DataEntryDetailDialogComponent>
+      > {
+        angebot.set({ gesperrt: true, grund: GRUND });
+        return render(baseEntry());
+      }
+
+      it('zeigt den Knopf weiter an, für Screenreader ausdrücklich als nicht auslösbar', async () => {
+        const fixture = await gesperrtGerendert();
+
+        const bearbeiten = knopf(fixture, 'Bearbeiten')!;
+        expect(bearbeiten).withContext('sichtbar geblieben').toBeDefined();
+        expect(bearbeiten.getAttribute('aria-disabled')).toBe('true');
+        expect(bearbeiten.hasAttribute('disabled'))
+          .withContext('kein blankes disabled — sonst überspringt der Screenreader ihn')
+          .toBeFalse();
+        expect(bearbeiten.tabIndex).withContext('bleibt anfokussierbar').toBe(0);
+      });
+
+      it('macht die Begründung für einen Screenreader erreichbar', async () => {
+        const fixture = await gesperrtGerendert();
+        const el = fixture.nativeElement as HTMLElement;
+
+        const bearbeiten = knopf(fixture, 'Bearbeiten')!;
+        const beschriebenVon = bearbeiten.getAttribute('aria-describedby');
+        expect(beschriebenVon).withContext('der Knopf verweist auf seine Begründung').toBeTruthy();
+        expect(el.querySelector(`#${beschriebenVon}`)!.textContent!.trim()).toBe(GRUND);
+      });
+
+      it('ist nicht auslösbar — ein Tipp führt nirgendwohin', async () => {
+        const fixture = await gesperrtGerendert();
+
+        knopf(fixture, 'Bearbeiten')!.click();
+
+        expect(bearbeiteFang).not.toHaveBeenCalled();
+        expect(dialogRef.close).not.toHaveBeenCalled();
+      });
+
+      // Die Sperre gilt der Reichweite des Geräts, nicht dem Alter des Fangs:
+      // fällt sie, ist der Knopf im offenen Dialog sofort wieder auslösbar.
+      it('wird wieder auslösbar, sobald die Sperre fällt', async () => {
+        const fixture = await gesperrtGerendert();
+
+        angebot.set({ gesperrt: false, grund: null });
+        fixture.detectChanges();
+
+        const bearbeiten = knopf(fixture, 'Bearbeiten')!;
+        expect(bearbeiten.getAttribute('aria-disabled')).toBeNull();
+        bearbeiten.click();
+        expect(bearbeiteFang).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

@@ -144,7 +144,19 @@
 
 </mat-dialog-content>
 
+<!-- #493 (PRD #491): ein verwehrter Weg nie ohne den Satz, der sagt warum und
+     wann wieder (ADR 0037). Er steht sichtbar über dem Knopf und ist über
+     `aria-describedby` auch für einen Screenreader erreichbar — ein blankes
+     `disabled` überspränge den Knopf und nähme ihr beides (Lehre aus #416/#417). -->
+@if (bearbeiten().gesperrt) {
+  <p class="bearbeiten-grund" [id]="grundId">{{ bearbeiten().grund }}</p>
+}
+
 <mat-dialog-actions align="end">
   <button mat-stroked-button mat-dialog-close>Schließen</button>
-  <button mat-flat-button color="primary" (click)="openInBackend()">Im Backend öffnen</button>
+  <button mat-flat-button color="primary"
+          [disabled]="bearbeiten().gesperrt"
+          [disabledInteractive]="true"
+          [attr.aria-describedby]="bearbeiten().gesperrt ? grundId : null"
+          (click)="bearbeiteFang()">Bearbeiten</button>
 </mat-dialog-actions>

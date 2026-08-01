@@ -1040,8 +1040,10 @@ describe('DataEntryFormComponent', () => {
       fixture.detectChanges();
 
       expect(open).toHaveBeenCalledTimes(1);
-      const config = open.calls.mostRecent().args[1] as { data: DataEntry };
-      expect(config.data).toBe(entry);
+      // #493: der geteilte Öffner gibt dem Dialog seit PRD #491 mehr mit als den
+      // Fang (das Angebot „Bearbeiten" und wohin es führt) — der Fang steht darin.
+      const config = open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
+      expect(config.data.fang).toBe(entry);
 
       // Die laufende Erfassung bleibt stehen — kein Routenwechsel.
       expect(navigate).not.toHaveBeenCalled();
@@ -1078,8 +1080,10 @@ describe('DataEntryFormComponent', () => {
 
       expect(open).toHaveBeenCalledTimes(1);
       expect(navigate).not.toHaveBeenCalled();
-      const config = open.calls.mostRecent().args[1] as { data: DataEntry };
-      expect(config.data).toBe(entry);
+      // #493: der geteilte Öffner gibt dem Dialog seit PRD #491 mehr mit als den
+      // Fang (das Angebot „Bearbeiten" und wohin es führt) — der Fang steht darin.
+      const config = open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
+      expect(config.data.fang).toBe(entry);
     });
 
     // #405: die Anzahl erscheint als hochgestellter Badge, nicht in Klammern.
