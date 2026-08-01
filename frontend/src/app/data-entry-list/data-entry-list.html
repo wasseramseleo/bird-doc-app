@@ -152,14 +152,16 @@
       </ng-container>
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-      <!-- #478 (ADR 0042): der Zeilenklick öffnet den Fang zum Bearbeiten — die
-           Regel, von der allein die Wiederfang-Historie benannt abweicht. Das
-           Detail-Zeichen in der Marker-Spalte schluckt seinen Klick und führt
-           stattdessen in den Detail-Dialog, der auch ein vom Projekt
-           abgeschaltetes Merkmal zeigt (ADR 0035). -->
+      <!-- #494 (PRD #491, ADR 0042): der Zeilenklick öffnet den Detail-Dialog —
+           dieselbe Geste wie in jeder Fang-Tabelle. Er navigiert nicht mehr in
+           die Bearbeitungsmaske: die blendet aus, was das Projekt über die
+           Optionalen Felder abgeschaltet hat (ADR 0035), der Dialog zeigt
+           *jedes* Merkmal. Der Weg zum Bearbeiten ist der Knopf im Dialog (#493).
+           Das Detail-Zeichen in der Marker-Spalte schluckt seinen Klick und
+           öffnet denselben Dialog — ein Tipp, eine Wirkung. -->
       <tr mat-row *matRowDef="let row; columns: displayedColumns;"
           class="entry-row" [class.entry-row--sentinel]="row.species.special_kind === 'ring_destroyed'"
-          (click)="openEntry(row)"></tr>
+          (click)="oeffneFang(row)"></tr>
     </table>
   }
 

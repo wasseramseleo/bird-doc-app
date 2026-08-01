@@ -72,9 +72,8 @@ export class MarkerSlotsComponent {
 
   /**
    * #478 (ADR 0042): der Klick gehört dem Zeichen und geht **nicht** weiter zur
-   * Zeile. Stiege er auf, navigierte „Letzte Fänge" zusätzlich in die
-   * Bearbeitungsmaske und die Wiederfang-Historie öffnete den Dialog ein
-   * zweites Mal — ein Tipp, zwei Wirkungen.
+   * Zeile. Stiege er auf, öffnete jede Fang-Tabelle den Dialog ein zweites Mal
+   * (#494: der Zeilenklick öffnet ihn überall) — ein Tipp, zwei Wirkungen.
    */
   oeffneDetails(event: Event): void {
     event.stopPropagation();

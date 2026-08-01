@@ -1641,10 +1641,12 @@ export class DataEntryFormComponent implements OnInit, AfterViewInit {
   }
 
 
-  // #405 / #478 (ADR 0042): der Zeilenklick der Wiederfang-Historie ist die
-  // benannte Abweichung von „der Zeilenklick öffnet den Fang zum Bearbeiten" —
-  // der Beringer steht mitten in einer Erfassung und würde den laufenden Fang
-  // verlieren. Dass hier zwei Wege zum Dialog führen (die Zeile und das
+  // #405 / #494 (ADR 0042): der Zeilenklick der Wiederfang-Historie öffnet den
+  // Detail-Dialog — was hier einmal die benannte Abweichung war, ist jetzt die
+  // Regel jeder Fang-Tabelle. Navigieren darf er weiterhin nicht: der Beringer
+  // steht mitten in einer Erfassung und würde den laufenden Fang verlieren; der
+  // Weg zum Bearbeiten führt über den Knopf im Dialog, und der weckt den Wächter
+  // (#492/#493). Dass hier zwei Wege zum Dialog führen (die Zeile und das
   // Detail-Zeichen), ist die Vorhersage der Regel, nicht ihr Bruch.
   openDetailDialog(entry: DataEntry): void {
     this.detailDialog.open(entry);

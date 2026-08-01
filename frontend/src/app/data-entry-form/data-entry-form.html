@@ -174,10 +174,12 @@
 
         <tr mat-header-row *matHeaderRowDef="displayedHistoryColumns"></tr>
         <!-- #405: der Zeilenklick öffnet den Detail-Dialog. Er darf *nicht*
-             navigieren wie „Letzte Fänge" — der Beringer ist mitten in einer
-             Erfassung und würde den laufenden Fang verlieren.
-             #478: das ist die in ADR 0042 benannte Abweichung von „der Zeilenklick
-             öffnet den Fang zum Bearbeiten" — die einzige, und sie steht dort. -->
+             navigieren — der Beringer ist mitten in einer Erfassung und würde den
+             laufenden Fang verlieren.
+             #494 (ADR 0042): das war bis hierher die benannte Abweichung von „der
+             Zeilenklick öffnet den Fang zum Bearbeiten". Sie ist jetzt die Regel:
+             „Letzte Fänge" und „Heute" öffnen denselben Dialog, hier verschlechtert
+             sich dadurch nichts. -->
         <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" class="history-entry"
             (click)="openDetailDialog(row)"></tr>
       </table>
