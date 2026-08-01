@@ -99,6 +99,7 @@ import {
 } from '../core/plausibility/plausibility-acknowledgment';
 import {InfoDialogComponent, InfoDialogData} from '../shared/info-dialog/info-dialog';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
+import {FangZeileDirective} from '../shared/directives/fang-zeile';
 import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {LoadFailureComponent} from '../shared/load-failure/load-failure';
 import {
@@ -180,6 +181,7 @@ const SERVER_REJECTION_FIELD_SET = new Set<string>(SERVER_REJECTION_FIELDS);
     MatIconModule,
     MatBadgeModule,
     MarkerSlotsComponent,
+    FangZeileDirective,
     FailureBannerComponent,
     LoadFailureComponent,
   ],

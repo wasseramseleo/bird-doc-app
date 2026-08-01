@@ -28,6 +28,7 @@ import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
 import {getBirdStatusLabel} from '../data-entry-form/data-entry-labels';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {AppIconErrorDirective} from '../shared/app-icons';
+import {FangZeileDirective} from '../shared/directives/fang-zeile';
 import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {appFailureOf} from '../core/errors/app-failure';
 import {SchreibFehler} from '../core/errors/schreib-fehler';
@@ -69,6 +70,7 @@ interface QueuedRow {
     MatButtonModule,
     MatProgressSpinnerModule,
     AppIconErrorDirective,
+    FangZeileDirective,
     FailureBannerComponent,
   ],
   templateUrl: './today-session.html',

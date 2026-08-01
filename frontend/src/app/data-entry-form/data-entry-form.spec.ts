@@ -1149,6 +1149,83 @@ describe('DataEntryFormComponent', () => {
       ) as HTMLElement;
       expect(heading.getAttribute('aria-label')).toBe('Bisherige Fänge, 1 Eintrag');
     });
+
+    // #496 (PRD #491): der Kompositions-Pin dieser Tabelle für die Tastatur.
+    // Dass ein Tastendruck bis zur Zeile durchkommt, ist eine Eigenschaft der
+    // Komposition und auf der geteilten Naht nicht beweisbar (ADR 0042) —
+    // deshalb hat jede der drei Fang-Tabellen ihren eigenen Pin. Navigieren
+    // darf hier nach wie vor nichts: der Beringer steht mitten in einer
+    // Erfassung und würde den laufenden Fang verlieren (#405).
+    describe('Tastaturbedienung der Zeile (#496)', () => {
+      function historyRowElement(): HTMLElement {
+        return fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
+      }
+
+      function keyDown(target: HTMLElement, key: string): void {
+        target.dispatchEvent(
+          new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+        );
+        fixture.detectChanges();
+      }
+
+      it('macht eine Zeile per Tabulator erreichbar und kündigt sie als bedienbar an', () => {
+        component.recaptureHistory.set([historyRow({ comment: null })]);
+        fixture.detectChanges();
+
+        const row = historyRowElement();
+        expect(row.getAttribute('tabindex')).toBe('0');
+        expect(row.getAttribute('role')).toBe('button');
+
+        row.focus();
+        expect(document.activeElement).toBe(row);
+
+        // Die Tabulator-Reihenfolge folgt der Dokumentreihenfolge — erst die
+        // Zeile, dann was in ihr bedienbar ist. Niemand drängt sich mit einem
+        // positiven tabindex vor.
+        const vordraengler = Array.from(row.querySelectorAll('[tabindex]')).filter(
+          (el) => Number(el.getAttribute('tabindex')) > 0,
+        );
+        expect(vordraengler).toEqual([]);
+      });
+
+      it('öffnet den Detail-Dialog mit Enter genau einmal, ohne zu navigieren', () => {
+        const open = spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
+        const router = TestBed.inject(Router);
+        const navigate = spyOn(router, 'navigate');
+        const navigateByUrl = spyOn(router, 'navigateByUrl');
+
+        const entry = historyRow({ comment: null });
+        component.recaptureHistory.set([entry]);
+        fixture.detectChanges();
+
+        keyDown(historyRowElement(), 'Enter');
+
+        expect(open).toHaveBeenCalledTimes(1);
+        const config = open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
+        expect(config.data.fang).toBe(entry);
+        expect(navigate).not.toHaveBeenCalled();
+        expect(navigateByUrl).not.toHaveBeenCalled();
+      });
+
+      it('öffnet den Detail-Dialog mit der Leertaste genau einmal, ohne zu navigieren', () => {
+        const open = spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
+        const router = TestBed.inject(Router);
+        const navigate = spyOn(router, 'navigate');
+        const navigateByUrl = spyOn(router, 'navigateByUrl');
+
+        const entry = historyRow({ comment: null });
+        component.recaptureHistory.set([entry]);
+        fixture.detectChanges();
+
+        keyDown(historyRowElement(), ' ');
+
+        expect(open).toHaveBeenCalledTimes(1);
+        const config = open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
+        expect(config.data.fang).toBe(entry);
+        expect(navigate).not.toHaveBeenCalled();
+        expect(navigateByUrl).not.toHaveBeenCalled();
+      });
+    });
   });
 
   // Issue #374 (#4): the Beringer autocomplete gains autoActiveFirstOption so
