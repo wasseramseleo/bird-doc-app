@@ -4,6 +4,7 @@ import {MatDialog} from '@angular/material/dialog';
 
 import {MarkerSlotsComponent} from './marker-slots';
 import {DataEntry} from '../../models/data-entry.model';
+import {FangLesemodell, lesemodellAusFang} from '../detail-dialog/fang-lesemodell';
 import {OptionalField, Project} from '../../models/project.model';
 import {ProjectService} from '../../service/project.service';
 
@@ -230,8 +231,8 @@ describe('MarkerSlotsComponent', () => {
     detailZeichen(el)!.click();
 
     expect(dialog.open).toHaveBeenCalledTimes(1);
-    const config = dialog.open.calls.mostRecent().args[1] as {data: {fang: DataEntry}};
-    expect(config.data.fang).toBe(entry);
+    const config = dialog.open.calls.mostRecent().args[1] as {data: {fang: FangLesemodell}};
+    expect(config.data.fang).toEqual(lesemodellAusFang(entry));
   });
 
   // #478 (ADR 0042), Hälfte 1 des umgekehrten Paares: das Detail-Zeichen hat ein

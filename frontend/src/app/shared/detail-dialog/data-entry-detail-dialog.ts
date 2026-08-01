@@ -6,7 +6,6 @@ import {MatIconModule} from '@angular/material/icon';
 import {
   AgeClass,
   BirdStatus,
-  DataEntry,
   Direction,
   FatClass,
   HandWingMoult,
@@ -17,6 +16,7 @@ import {
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
 } from '../../models/data-entry.model';
+import {FangLesemodell, NICHT_AUF_DIESEM_GERAET_BEKANNT} from './fang-lesemodell';
 import {
   getAgeClassLabel,
   getBirdStatusLabel,
@@ -41,7 +41,11 @@ export interface BearbeitenAngebot {
  * Tabelle die Regel anders verdrahten (ADR 0042).
  */
 export interface DetailDialogDaten {
-  readonly fang: DataEntry;
+  /**
+   * #495: das **Lesemodell**, nicht der Server-Datensatz — ein noch nicht
+   * synchronisierter Fang ist keiner, und der Dialog zeigt beide.
+   */
+  readonly fang: FangLesemodell;
   /**
    * Ein Signal, weil die Sperre der **Reichweite des Geräts** gilt und nicht dem
    * Alter des Fangs: kommt die Verbindung wieder, wird der Knopf im offenen
@@ -76,6 +80,15 @@ let grundZaehler = 0;
  * Ob der Knopf angeboten oder gesperrt ist, mit welcher Begründung, und wohin er
  * führt, entscheidet der Öffner — hier steht nur, wie es aussieht und wie ein
  * Screenreader es erfährt.
+ *
+ * #495 (PRD #491): er zeigt einen Fang über das **Lesemodell** daneben
+ * (`fang-lesemodell.ts`) und nicht mehr über den Server-Datensatz — dadurch
+ * trägt derselbe Dialog auch einen noch nicht synchronisierten Fang, dessen
+ * Referenzen dieses Gerät bloß best effort auflösen kann. Eine Referenz, die
+ * dabei ausfällt, heißt hier **„auf diesem Gerät nicht bekannt"** und nicht
+ * Gedankenstrich: Art, Station und Beringer:in sind Pflichtangaben, und der
+ * Strich, der daneben „nicht gemessen" heißt, läse sich bei ihnen als „nicht
+ * erfasst".
  */
 @Component({
   selector: 'app-data-entry-detail-dialog',
@@ -88,11 +101,36 @@ export class DataEntryDetailDialogComponent {
   private readonly daten: DetailDialogDaten = inject(MAT_DIALOG_DATA);
   private readonly dialogRef = inject<MatDialogRef<DataEntryDetailDialogComponent>>(MatDialogRef);
 
-  readonly entry: DataEntry = this.daten.fang;
+  readonly entry: FangLesemodell = this.daten.fang;
   readonly bearbeiten = this.daten.bearbeiten;
   /** Die Id, über die `aria-describedby` des Knopfes seine Begründung findet. */
   readonly grundId = `bearbeiten-grund-${++grundZaehler}`;
   readonly BirdStatus = BirdStatus;
+
+  /**
+   * #495: die Kopfzeile las Größe und Nummer des Rings bisher als Einzige
+   * ungeschützt, während die Zentrale zwei Abschnitte tiefer längst defensiv
+   * zugreift — ein Fang ohne Ring zerlegte damit den Dialog. Er behält seinen
+   * Namen, auch wenn ihn kein Ring benennt.
+   */
+  readonly titel: string = this.entry.ring
+    ? `Ring ${this.entry.ring.size} – ${this.entry.ring.number}`
+    : 'Fang';
+
+  /**
+   * #495: eine Pflicht-Referenz, die dieses Gerät nicht auflösen konnte, sagt
+   * das — statt einen Gedankenstrich hinzustellen, den die Beringer:in als
+   * „habe ich das etwa leer gelassen?" liest.
+   */
+  referenz(name: string | null | undefined): string {
+    return name ?? NICHT_AUF_DIESEM_GERAET_BEKANNT;
+  }
+
+  /** Beringer:in mit ihrem Kürzel — oder die Wendung, wenn sie unbekannt ist. */
+  getBeringerinLabel(): string {
+    const staff = this.entry.staff;
+    return staff ? `${staff.full_name} (${staff.handle})` : NICHT_AUF_DIESEM_GERAET_BEKANNT;
+  }
 
   // #469: derselbe Ort wie für Alter und Geschlecht darunter. Ein Ring
   // vernichtet hat keinen Ringstatus — das Backend leert ihn —, und das
@@ -103,9 +141,10 @@ export class DataEntryDetailDialogComponent {
 
   // #232 (US 19): the ring's Zentrale, so a foreign recapture is recognizable in
   // the record. Shows the scheme name + EURING code; an entry with no stored
-  // Zentrale (pre-field data) reads as a dash.
+  // Zentrale (pre-field data) reads as a dash — es ist keine ausgefallene
+  // Auflösung, sondern eine Angabe, die der Fang nie trug.
   getCentralLabel(): string {
-    const central = this.entry.ring?.central;
+    const central = this.entry.central;
     return central ? `${central.name} (${central.scheme_code})` : '—';
   }
 
@@ -127,7 +166,7 @@ export class DataEntryDetailDialogComponent {
   // Parasit (ADR 0027): the selected parasite types as a comma-separated list of
   // labels, or a dash when none were recorded. Falls back to the raw code for a
   // type not in the vocabulary, so stray data never renders blank.
-  getParasitLabels(value: Parasit[] | null | undefined): string {
+  getParasitLabels(value: readonly Parasit[] | null | undefined): string {
     if (!value || value.length === 0) return '—';
     return value.map(code => PARASIT_LABELS[code] ?? code).join(', ');
   }

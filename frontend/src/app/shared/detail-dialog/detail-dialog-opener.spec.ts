@@ -11,10 +11,13 @@ import {of} from 'rxjs';
 
 import {DataEntryDetailDialogComponent} from './data-entry-detail-dialog';
 import {DetailDialogOpener} from './detail-dialog-opener';
+import {FangLesemodell} from './fang-lesemodell';
 import {ConnectivityService} from '../../core/offline/connectivity';
 import {unsavedChangesGuard} from '../../core/guards/unsaved-changes.guard';
 import {UnsavedChangesService} from '../../service/unsaved-changes.service';
 import {AgeClass, BirdStatus, DataEntry, Sex} from '../../models/data-entry.model';
+import {OfflineBundle} from '../../models/offline-bundle.model';
+import {OutboxEntry} from '../../models/outbox-entry.model';
 import {RingSize} from '../../models/ring.model';
 
 registerLocaleData(localeDeAt);
@@ -296,6 +299,116 @@ describe('DetailDialogOpener', () => {
       await warteAufUrl(`/data-entry/${ZIEL}`);
       expect(router.url).toBe(`/data-entry/${ZIEL}`);
     });
+
+    /**
+     * #495 (PRD #491): derselbe Öffner trägt auch einen Fang **ohne
+     * Server-Datensatz**. Er hat flache Ids und wird best effort gegen das
+     * zwischengespeicherte Offline-Bundle aufgelöst — mehr weiß dieses Gerät
+     * nicht, und genau das sagt der Dialog dann auch.
+     */
+    describe('ein nicht synchronisierter Fang', () => {
+      const EINGEREIHT = 'outbox-uuid-1';
+
+      const KOHLMEISE = {
+        id: 's1',
+        common_name_de: 'Kohlmeise',
+        common_name_en: 'Great Tit',
+        scientific_name: 'Parus major',
+        family_name: '',
+        order_name: '',
+        ring_size: null,
+        special_kind: '' as const,
+        usage_count: 0,
+      };
+
+      function bundle(): OfflineBundle {
+        return {
+          identity: {username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied'},
+          species: [KOHLMEISE],
+          ringing_stations: [{handle: 'STAMT', name: 'Linz, Botanischer Garten'}],
+          scientists: [{id: 'sci-1', handle: 'FRE', full_name: 'Filip Reiter'}],
+          projects: [],
+          centrals: [],
+          last_consumed_ring_numbers: [],
+        };
+      }
+
+      function eintrag(): OutboxEntry {
+        return {
+          id: EINGEREIHT,
+          accountKey: 'fre',
+          queuedAt: '2026-07-02T09:05:00.000Z',
+          payload: {
+            species_id: 's1',
+            ringing_station_id: 'STAMT',
+            staff_id: 'sci-1',
+            date_time: '2026-07-02T09:00',
+            bird_status: BirdStatus.FirstCatch,
+            ring_size: 'V',
+            ring_number: '0043',
+          },
+        };
+      }
+
+      it('zeigt ihn im selben Dialog, mit dem, was dieses Gerät auflösen kann', async () => {
+        opener.openQueued(eintrag(), bundle());
+        await settle();
+
+        expect(container().textContent).toContain('0043');
+        expect(container().textContent).toContain('Kohlmeise');
+        expect(container().textContent).toContain('Filip Reiter');
+      });
+
+      it('benennt, was dieses Gerät nicht auflösen kann — und zeigt den Ring trotzdem', async () => {
+        opener.openQueued(eintrag(), null);
+        await settle();
+
+        expect(container().textContent).toContain('auf diesem Gerät nicht bekannt');
+        expect(container().textContent).toContain('0043');
+      });
+
+      // AC: „Bearbeiten" führt bei ihm auf die bestehende
+      // Warteschlangen-Bearbeitung — `/data-entry/:id` versteht die Id eines
+      // eingereihten Eintrags (#163). Dieser Weg wird nicht umgebaut.
+      it('führt mit „Bearbeiten" auf die bestehende Warteschlangen-Bearbeitung', async () => {
+        opener.openQueued(eintrag(), bundle());
+        await settle();
+
+        knopf('Bearbeiten')!.click();
+        await warteAufUrl(`/data-entry/${EINGEREIHT}`);
+
+        expect(router.url).toBe(`/data-entry/${EINGEREIHT}`);
+      });
+
+      // Offline ist er bearbeitbar — das ist der Sinn der Warteschlange. Die
+      // Sperre gilt allein einem synchronisierten Fang.
+      it('bleibt offline bearbeitbar', async () => {
+        connectivity.markOffline();
+        opener.openQueued(eintrag(), bundle());
+        await settle();
+
+        const bearbeiten = knopf('Bearbeiten')!;
+        expect(bearbeiten.getAttribute('aria-disabled')).toBeNull();
+
+        bearbeiten.click();
+        await warteAufUrl(`/data-entry/${EINGEREIHT}`);
+        expect(router.url).toBe(`/data-entry/${EINGEREIHT}`);
+      });
+
+      // Er hat keinen Server-Datensatz: alles, was eine Server-Id voraussetzt,
+      // darf für ihn im Dialog nicht erscheinen.
+      it('bietet ihm keinen Weg an, der eine Server-Id voraussetzt', async () => {
+        opener.openQueued(eintrag(), bundle());
+        await settle();
+
+        expect(container().textContent).not.toContain('Backend');
+        expect(container().textContent).not.toContain('Administration');
+        const verweise = Array.from(container().querySelectorAll('a')).map(
+          (a) => a.getAttribute('href') ?? '',
+        );
+        expect(verweise.some((href) => href.includes('admin'))).toBeFalse();
+      });
+    });
   });
 
   /**
@@ -317,17 +430,19 @@ describe('DetailDialogOpener', () => {
     });
 
     it('öffnet den Detail-Dialog zu genau diesem Fang', () => {
-      const eintrag = fang(ZIEL);
-
-      opener.open(eintrag);
+      opener.open(fang(ZIEL));
 
       expect(dialog.open).toHaveBeenCalledTimes(1);
       const [komponente, config] = dialog.open.calls.mostRecent().args as [
         unknown,
-        {data: {fang: DataEntry}},
+        {data: {fang: FangLesemodell}},
       ];
       expect(komponente).toBe(DataEntryDetailDialogComponent);
-      expect(config.data.fang).toBe(eintrag);
+      // #495: mitgegeben wird das Lesemodell des Fangs, nicht der Datensatz —
+      // derselbe Dialog trägt seit diesem Schnitt auch einen Fang, der gar
+      // keinen Datensatz hat.
+      expect(config.data.fang.ring?.number).toBe('901234');
+      expect(config.data.fang.species?.common_name_de).toBe('Kohlmeise');
     });
 
     it('trägt die Dialog-Konfiguration als einzige Stelle', () => {

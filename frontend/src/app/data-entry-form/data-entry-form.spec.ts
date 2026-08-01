@@ -35,6 +35,10 @@ import { renderedGlyph, seamGlyph } from '../shared/app-icons.testing';
 import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
 import { ProjectService } from '../service/project.service';
+import {
+  FangLesemodell,
+  lesemodellAusFang,
+} from '../shared/detail-dialog/fang-lesemodell';
 import { AUDIO_CONTEXT_FACTORY, SoundService } from '../service/sound.service';
 import { WorkbenchStorageService } from '../service/workbench-storage.service';
 import { OptionalField, Project, Projekttyp } from '../models/project.model';
@@ -1042,8 +1046,8 @@ describe('DataEntryFormComponent', () => {
       expect(open).toHaveBeenCalledTimes(1);
       // #493: der geteilte Öffner gibt dem Dialog seit PRD #491 mehr mit als den
       // Fang (das Angebot „Bearbeiten" und wohin es führt) — der Fang steht darin.
-      const config = open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-      expect(config.data.fang).toBe(entry);
+      const config = open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+      expect(config.data.fang).toEqual(lesemodellAusFang(entry));
 
       // Die laufende Erfassung bleibt stehen — kein Routenwechsel.
       expect(navigate).not.toHaveBeenCalled();
@@ -1082,8 +1086,8 @@ describe('DataEntryFormComponent', () => {
       expect(navigate).not.toHaveBeenCalled();
       // #493: der geteilte Öffner gibt dem Dialog seit PRD #491 mehr mit als den
       // Fang (das Angebot „Bearbeiten" und wohin es führt) — der Fang steht darin.
-      const config = open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-      expect(config.data.fang).toBe(entry);
+      const config = open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+      expect(config.data.fang).toEqual(lesemodellAusFang(entry));
     });
 
     // #405: die Anzahl erscheint als hochgestellter Badge, nicht in Klammern.

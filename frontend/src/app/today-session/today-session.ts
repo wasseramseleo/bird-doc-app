@@ -9,7 +9,6 @@ import {
   untracked,
 } from '@angular/core';
 import {CommonModule} from '@angular/common';
-import {Router} from '@angular/router';
 import {MatIconModule} from '@angular/material/icon';
 import {MatButtonModule} from '@angular/material/button';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
@@ -20,11 +19,14 @@ import {DataAccessFacadeService} from '../service/data-access-facade.service';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
-import {resolveQueuedEntryDisplay} from '../core/offline/queued-entry-display';
-import {BirdStatus, DataEntry} from '../models/data-entry.model';
+import {DataEntry} from '../models/data-entry.model';
 import {OfflineBundle} from '../models/offline-bundle.model';
 import {OutboxEntry} from '../models/outbox-entry.model';
 import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
+import {
+  NICHT_AUF_DIESEM_GERAET_BEKANNT,
+  lesemodellAusEintrag,
+} from '../shared/detail-dialog/fang-lesemodell';
 import {getBirdStatusLabel} from '../data-entry-form/data-entry-labels';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {AppIconErrorDirective} from '../shared/app-icons';
@@ -43,23 +45,29 @@ interface QueuedRow {
   // flagged during sync (issue #164); `null` for a plain, not-yet-synced
   // capture. A flagged row is highlighted and opens in the form to be fixed.
   syncError: string | null;
+  // #495: der Eintrag selbst, weil der Zeilenklick ihn jetzt dem geteilten
+  // Öffner hinhält — der macht daraus das Lesemodell des Detail-Dialogs.
+  entry: OutboxEntry;
 }
 
 /**
  * "Today's session" (issue #163, PRD #152): the Mitglied's review surface for
  * the current Projekt's captures made today — both nicht synchronisiert
  * (queued, this device only) and already synchronisiert (from the server,
- * cached for offline reading). A queued entry opens in the normal capture
- * form for editing (which re-queues it, `DataEntryFormComponent`'s
- * queued-edit mode) or can be deleted outright.
+ * cached for offline reading). A queued entry can still be edited in the normal
+ * capture form (which re-queues it, `DataEntryFormComponent`'s queued-edit mode)
+ * or deleted outright.
  *
  * #494 (PRD #491, ADR 0042): eine **synchronisierte** Zeile öffnet den
  * Detail-Dialog — online wie offline, dieselbe Geste wie in „Letzte Fänge" und
  * in der Wiederfang-Historie. Dass ein synchronisierter Fang offline nicht
  * bearbeitbar ist (append-only, PRD #152), sagt der „Bearbeiten"-Knopf im
- * Dialog (#493) und nicht mehr die Zeile. Der **nicht synchronisierte**
- * Abschnitt bleibt vorerst, wie er ist: er braucht ein Lesemodell, das es noch
- * nicht gibt (#495).
+ * Dialog (#493) und nicht mehr die Zeile.
+ *
+ * #495: die **nicht synchronisierte** Zeile tut jetzt dasselbe. Damit hört
+ * „Heute" auf, ein Sonderfall zu sein: beide Abschnitte öffnen beim Zeilenklick
+ * denselben Dialog, und der Weg in die Warteschlangen-Bearbeitung führt von dort
+ * über „Bearbeiten" — unverändert, nur einen Schritt später.
  */
 @Component({
   selector: 'app-today-session',
@@ -80,7 +88,6 @@ export class TodaySessionComponent implements OnInit {
   private readonly outbox = inject(OutboxService);
   private readonly projectService = inject(ProjectService);
   private readonly referenceCache = inject(ReferenceBundleCacheService);
-  private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
   private readonly detailDialog = inject(DetailDialogOpener);
   private readonly snackBar = inject(MatSnackBar);
@@ -105,8 +112,8 @@ export class TodaySessionComponent implements OnInit {
 
   // Best-effort, read once on init: the cached offline reference bundle
   // (issue #158) resolves a queued entry's flat write-shape payload back to
-  // display-ready species/Station/Beringer names — see
-  // `resolveQueuedEntryDisplay`.
+  // display-ready species/Station/Beringer names — see `lesemodellAusEintrag`,
+  // das dafür dieselbe Auflösung benutzt wie die Erfassungsmaske (#495).
   private readonly cachedBundle = signal<OfflineBundle | null>(null);
 
   // Scoped to the active Projekt, mirroring `syncedEntries` (issue #163
@@ -166,29 +173,39 @@ export class TodaySessionComponent implements OnInit {
     });
   }
 
+  // #495: die Zeile liest denselben Fang wie der Dialog, den sie öffnet — über
+  // dasselbe Lesemodell. Eine Referenz, die dieses Gerät nicht auflösen kann,
+  // heißt deshalb hier wortgleich wie dort „auf diesem Gerät nicht bekannt";
+  // sonst widerspräche der Bildschirm dem Dialog, den er aufmacht.
   private toQueuedRow(entry: OutboxEntry): QueuedRow {
-    const display = resolveQueuedEntryDisplay(entry.payload, this.cachedBundle());
-    const ringSize = entry.payload['ring_size'];
-    const ringNumber = entry.payload['ring_number'];
+    const fang = lesemodellAusEintrag(entry, this.cachedBundle());
     return {
       id: entry.id,
       timestamp: entry.queuedAt,
-      speciesLabel: display.species?.common_name_de ?? '—',
-      ringLabel: ringSize && ringNumber ? `${ringSize} ${ringNumber}` : '—',
+      speciesLabel: fang.species?.common_name_de ?? NICHT_AUF_DIESEM_GERAET_BEKANNT,
+      // Ringgröße und Ringnummer liegen flach im Payload — kein Nachschlagen,
+      // also auch keine ausgefallene Auflösung, die zu benennen wäre.
+      ringLabel: fang.ring ? `${fang.ring.size} ${fang.ring.number}` : '—',
       // #469: derselbe Ort wie auf jeder anderen Fang-Oberfläche. Ein
       // Ring-vernichtet-Eintrag trägt schon in der Outbox keinen Ringstatus —
       // die Beschriftung macht daraus einen Gedankenstrich, keinen Wiederfang.
-      statusLabel: getBirdStatusLabel(entry.payload['bird_status'] as BirdStatus | null),
-      staffLabel: display.staff?.full_name ?? '—',
+      statusLabel: getBirdStatusLabel(fang.bird_status),
+      staffLabel: fang.staff?.full_name ?? NICHT_AUF_DIESEM_GERAET_BEKANNT,
       syncError: entry.syncError ?? null,
+      entry,
     };
   }
 
-  // Issue #163: entry-detail navigation resolves both server IDs and local
-  // outbox IDs to the same form — a queued row's id is its outbox id, which
-  // `DataEntryFormComponent` resolves via `OutboxService.findQueued()`.
+  // #495 (PRD #491, ADR 0042): auch die **nicht synchronisierte** Zeile öffnet
+  // den Detail-Dialog — damit hört „Heute" auf, zwei Sorten Zeilen mit zwei
+  // Sorten Verhalten zu sein. Bis hierher navigierte sie direkt in die
+  // Warteschlangen-Bearbeitung (#163); dorthin führt jetzt der
+  // „Bearbeiten"-Knopf im Dialog, auf demselben Weg wie zuvor.
+  //
+  // Das Lesemodell baut der geteilte Öffner; dieser Bildschirm reicht ihm nur
+  // den Eintrag und das, was er vom Gerät weiß.
   openQueued(row: QueuedRow): void {
-    this.router.navigate(['/data-entry', row.id]);
+    this.detailDialog.openQueued(row.entry, this.cachedBundle());
   }
 
   // #494 (PRD #491, ADR 0042): eine Zeile antippen heißt „zeig mir diesen Fang" —
