@@ -6,19 +6,16 @@
        Fangmarkern redundant, die eine Bemerkung ohnehin erzwingen.
        Screenreader-Beschriftung und Tooltip tragen denselben Text.
 
-       #478 (ADR 0042): ein echter Knopf, der den Detail-Dialog öffnet — in jeder
-       Fang-Tabelle, immer. Was beim Antippen passiert, trägt `aria-haspopup` und
-       *nicht* ein Präfix im zugänglichen Namen: eine Liste mit 50 Zeilen soll
-       nicht 50× dieselbe Vorrede vorlesen. Das `title` bleibt nativ — matTooltip
-       kommt im ganzen Projekt null mal vor. -->
+       #497 (PRD #491): wieder ein reines Zeichen, kein Knopf. Sein Klick steigt
+       zur Zeile auf wie der von ♥ und ⚑ — die Zeile öffnet den Detail-Dialog
+       (#494), das Zeichen muss den Weg nicht selbst tragen. Das `title` bleibt
+       nativ — matTooltip kommt im ganzen Projekt null mal vor. -->
   @if (bemerkenswertes(); as mehr) {
-    <button type="button" class="detail-zeichen"
-            data-testid="detail-zeichen"
-            aria-haspopup="dialog"
-            [title]="mehr"
-            [attr.aria-label]="mehr"
-            (click)="oeffneDetails($event)"
-    ><mat-icon class="marker-icon" inline>info_outline</mat-icon></button>
+    <mat-icon class="marker-icon detail-zeichen" inline
+              data-testid="detail-zeichen"
+              [title]="mehr"
+              [attr.aria-label]="mehr"
+    >info_outline</mat-icon>
   }
 </span>
 <span class="marker-slot" data-testid="marker-slot-tot-fund">

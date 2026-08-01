@@ -4,7 +4,6 @@ import {MatDialog} from '@angular/material/dialog';
 
 import {MarkerSlotsComponent} from './marker-slots';
 import {DataEntry} from '../../models/data-entry.model';
-import {FangLesemodell, lesemodellAusFang} from '../detail-dialog/fang-lesemodell';
 import {OptionalField, Project} from '../../models/project.model';
 import {ProjectService} from '../../service/project.service';
 
@@ -21,6 +20,12 @@ import {ProjectService} from '../../service/project.service';
  * (`data-entry-list.spec.ts`, `data-entry-form.spec.ts`). Dieses Issue existiert,
  * weil die Verdrahtung ungetestet blieb, während die Komponente gut abgedeckt
  * war.
+ *
+ * #497 (PRD #491): das Detail-Zeichen ist wieder ein reines Zeichen. Was hier
+ * geprüft wird, ist deshalb wieder **Darstellung** — welche Slots belegt sind
+ * und welchen Text das ⓘ nennt. Dass ein Tipp darauf den Detail-Dialog **genau
+ * einmal** öffnet, ist erst recht eine Aussage über die Komposition und steht
+ * je Tabelle.
  */
 function fang(overrides: Partial<DataEntry> = {}): DataEntry {
   return {
@@ -36,15 +41,16 @@ function fang(overrides: Partial<DataEntry> = {}): DataEntry {
 
 /**
  * Die Zeile, die den Klick trägt — beide Tabellen öffnen von ihr aus den
- * Detail-Dialog bzw. den Fang.
+ * Detail-Dialog.
  *
- * #478 (ADR 0042): sie trägt ihn nur noch für die **Fangmarker**. Das
- * Detail-Zeichen ist ein Knopf mit eigenem Ziel und schluckt seinen Klick;
- * dieser Host beweist beide Hälften, deshalb trägt sein Fang alle drei Slots.
+ * #497 (PRD #491): sie trägt ihn wieder für **alle drei** Slots. Das
+ * Detail-Zeichen schluckt seinen Klick nicht mehr — es steigt auf wie der von
+ * ♥ und ⚑ (#405: „die Zeile trägt den Klick, die Spalte trägt nur
+ * Information"). Dieser Host beweist beide Hälften, deshalb trägt sein Fang
+ * alle drei Slots.
  *
  * Die Polsterung steht stellvertretend für die Zellenpolsterung der echten
- * Tabellen: in sie hinein wächst die Trefferfläche des Detail-Zeichens, und ohne
- * sie läge der Messpunkt links davon außerhalb des Fensters.
+ * Tabellen.
  */
 @Component({
   imports: [MarkerSlotsComponent],
@@ -206,53 +212,57 @@ describe('MarkerSlotsComponent', () => {
     expect(detailZeichen(el)!.getAttribute('title')).toBe('Brutfleck, CPL+');
   });
 
-  // #478 (ADR 0042): das Detail-Zeichen ist ein echter Knopf und löst sein
-  // eigenes Versprechen ein — es öffnet den Detail-Dialog. Ein natives `title`
-  // hat keinerlei Touch-Verhalten; auf dem Tablet, dem Fall für den das
-  // Antippen gedacht war, ist der Tap der einzige Weg. Was beim Antippen
-  // passiert, trägt `aria-haspopup` und *nicht* ein Präfix im zugänglichen
-  // Namen: eine Liste mit 50 Zeilen soll nicht 50× dieselbe Vorrede vorlesen.
-  it('ist ein Knopf, der einen Dialog ankündigt, ohne seinen Namen zu ändern', () => {
+  // #497 (PRD #491): das Detail-Zeichen ist wieder ein reines Zeichen. #478
+  // machte es zum Knopf, weil ein natives `title` keinerlei Touch-Verhalten hat
+  // — auf dem Tablet war der Tipp der einzige Weg zur Information, und er
+  // führte in „Letzte Fänge" in die Bearbeitungsmaske. Führt der Tipp über die
+  // Zeile ohnehin zum Detail-Dialog (#494), ist diese Prämisse weg: das Zeichen
+  // muss den Weg nicht mehr selbst tragen, weil die Zeile ihn trägt.
+  //
+  // Es behält, was nichts anderes trägt: *das Bemerkenswerte* als Tooltip und
+  // zugängliche Beschriftung.
+  it('ist kein Knopf und kündigt keinen Dialog an, behält aber das Bemerkenswerte', () => {
     const el = render(fang({has_cpl_plus: true, comment: 'Ring saß locker'}));
 
     const zeichen = detailZeichen(el)!;
-    expect(zeichen.tagName).toBe('BUTTON');
-    expect((zeichen as HTMLButtonElement).type).toBe('button');
-    expect(zeichen.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(zeichen.tagName).not.toBe('BUTTON');
+    expect(zeichen.getAttribute('aria-haspopup')).toBeNull();
     // Unverändert das Bemerkenswerte, wortgleich mit dem Tooltip.
     expect(zeichen.getAttribute('aria-label')).toBe('CPL+ — Bemerkung: Ring saß locker');
     expect(zeichen.getAttribute('title')).toBe(zeichen.getAttribute('aria-label'));
   });
 
-  it('öffnet den Detail-Dialog zu diesem Fang', () => {
-    const entry = fang({has_brood_patch: true});
-    const el = render(entry);
+  // #497: die Komponente ist wieder **rein präsentational** — sie kennt den
+  // Dialog-Öffner nicht mehr. Ein Tipp auf das Zeichen öffnet von hier aus
+  // nichts; was ein Tipp bedeutet, entscheidet die Zeile darunter. Der
+  // MatDialog steht in diesem TestBed bereit, damit „öffnet selbst nichts"
+  // geprüft und nicht bloß behauptet ist.
+  it('öffnet selbst keinen Dialog — die Komponente ist rein präsentational', () => {
+    const el = render(fang({has_brood_patch: true}));
 
     detailZeichen(el)!.click();
 
-    expect(dialog.open).toHaveBeenCalledTimes(1);
-    const config = dialog.open.calls.mostRecent().args[1] as {data: {fang: FangLesemodell}};
-    expect(config.data.fang).toEqual(lesemodellAusFang(entry));
+    expect(dialog.open).not.toHaveBeenCalled();
   });
 
-  // #478 (ADR 0042), Hälfte 1 des umgekehrten Paares: das Detail-Zeichen hat ein
-  // eigenes Ziel und schluckt seinen Klick. Ließe es ihn aufsteigen, navigierte
-  // „Letzte Fänge" zusätzlich in die Bearbeitungsmaske und die Historie öffnete
-  // den Dialog doppelt — #478 wäre lautlos wiederhergestellt.
-  it('schluckt den Klick auf das Detail-Zeichen', () => {
+  // #497, Hälfte 1 des wiederhergestellten Paares: das Detail-Zeichen lässt
+  // seinen Klick zur Zeile aufsteigen wie ♥ und ⚑. Schluckte es ihn weiter,
+  // bliebe ein Tipp darauf in „Letzte Fänge" wirkungslos — die Zeile trägt den
+  // Weg zum Detail-Dialog jetzt allein.
+  it('lässt den Klick auf das Detail-Zeichen zur Zeile aufsteigen', () => {
     const host = TestBed.createComponent(ZeileMitMarkern);
     host.detectChanges();
     const el = host.nativeElement as HTMLElement;
 
     detailZeichen(el)!.click();
 
-    expect(host.componentInstance.tipps).toBe(0);
+    expect(host.componentInstance.tipps).toBe(1);
   });
 
-  // #478 (ADR 0042), Hälfte 2: für ♥ und ⚑ gilt #405 unverändert weiter — „die
-  // Zeile trägt den Klick, die Spalte trägt nur Information". Sie sind keine
-  // Knöpfe und lassen ihren Klick aufsteigen; das Detail-Zeichen ist die
-  // benannte Ausnahme, nicht die neue Regel.
+  // #497, Hälfte 2: für ♥ und ⚑ gilt #405 unverändert weiter — „die Zeile trägt
+  // den Klick, die Spalte trägt nur Information". Sie verhalten sich durch
+  // diesen Schnitt in keiner Weise anders; das Detail-Zeichen ist jetzt wieder
+  // eines von dreien statt der benannten Ausnahme.
   it('lässt den Klick auf die übrigen Slots zur Zeile aufsteigen', () => {
     const host = TestBed.createComponent(ZeileMitMarkern);
     host.detectChanges();
@@ -264,13 +274,15 @@ describe('MarkerSlotsComponent', () => {
     expect(host.componentInstance.tipps).toBe(2);
   });
 
-  // #478: „sichtbar gleich groß, tastbar größer". Der Slot ist 1.05rem breit und
-  // „ein leerer Slot behält seine Breite" ist die Invariante, die die Spalte
-  // vertikal abscannbar macht — ein `mat-icon-button` (40–48px) würde dieses
-  // Raster sprengen und jede Zeile einer Tabelle wachsen lassen, deren
-  // Seitengröße 50 beträgt (#374). Gemessen wird gegen den Nachbarn im Raster,
-  // nicht gegen eine hier wiederholte Zahl.
-  describe('Trefferfläche', () => {
+  // #388/#478/#497: die drei Slots sind gleich groß und überlappen einander
+  // nicht — das ist die Invariante, die die Spalte vertikal abscannbar macht.
+  // Gemessen wird gegen den Nachbarn im Raster, nicht gegen eine hier
+  // wiederholte Zahl.
+  //
+  // #497: die vergrößerte Trefferfläche des Knopfes (#478) ist mit dem Knopf
+  // weg. Sie war die Affordance eines eigenen Ziels; das Ziel ist jetzt die
+  // ganze Zeile, und die ist von sich aus groß genug.
+  describe('Slot-Raster', () => {
     function zeileImDokument(): {zeichen: HTMLElement; wurzel: HTMLElement} {
       const host = TestBed.createComponent(ZeileMitMarkern);
       host.detectChanges();
@@ -291,25 +303,11 @@ describe('MarkerSlotsComponent', () => {
       expect(Math.abs(eigen.height - nachbar.height)).toBeLessThan(1);
     });
 
-    it('nimmt Tipps neben und über dem Zeichen entgegen', () => {
-      const {zeichen} = zeileImDokument();
-      const r = zeichen.getBoundingClientRect();
-
-      // Links davon liegt die Zellenpolsterung — freier Raum, der keinem anderen
-      // Ziel gehört.
-      expect(zeichen.contains(document.elementFromPoint(r.left - 6, r.top + r.height / 2)))
-        .withContext('links neben dem Zeichen')
-        .toBeTrue();
-      // Und vertikal über die Zeilenhöhe, nicht nur über die Glyphe.
-      expect(zeichen.contains(document.elementFromPoint(r.left + r.width / 2, r.top - 6)))
-        .withContext('über dem Zeichen')
-        .toBeTrue();
-    });
-
-    // Eine 44er-Fläche wäre größer, würde aber die Bedeutung eines Tipps auf ♥
-    // davon abhängig machen, ob zufällig ein ⓘ danebensteht. Ein synthetischer
-    // `.click()` auf das Element liefe dabei weiter grün — deshalb wird hier
-    // gezielt am Punkt getroffen, an dem die Beringer:in tippt.
+    // Ein Zeichen, das über seinen Slot hinauswächst, machte die Bedeutung
+    // eines Tipps auf ♥ davon abhängig, ob zufällig ein ⓘ danebensteht. Ein
+    // synthetischer `.click()` auf das Element liefe dabei weiter grün —
+    // deshalb wird hier gezielt am Punkt getroffen, an dem die Beringer:in
+    // tippt.
     it('überlappt weder den ♥- noch den ⚑-Slot', () => {
       const {zeichen, wurzel} = zeileImDokument();
 

@@ -1054,12 +1054,11 @@ describe('DataEntryFormComponent', () => {
       expect(navigateByUrl).not.toHaveBeenCalled();
     });
 
-    // #478 (ADR 0042): das Detail-Zeichen ist ein Knopf und führt in *jeder*
-    // Fang-Tabelle zum Detail-Dialog. Hier fallen Tabellen-Aktion und Ziel des
-    // Zeichens zusammen — es gibt zwei Wege zum selben Dialog, und das ist die
-    // Vorhersage der Regel, nicht ihr Bruch. Der Knopf muss seinen Klick
-    // trotzdem schlucken, sonst trägt die Zeile ihn ein zweites Mal und ein
-    // einziger Tipp öffnet den Dialog doppelt.
+    // #497 (PRD #491): das Detail-Zeichen ist wieder ein reines Zeichen — es
+    // trägt kein eigenes Ziel mehr und schluckt seinen Klick nicht mehr. Ein
+    // Tipp darauf steigt zur Zeile auf, und die öffnet den Detail-Dialog
+    // (#494). Genau **einmal**: trüge das Zeichen zusätzlich sein altes Ziel,
+    // öffnete ein einziger Tipp den Dialog doppelt.
     //
     // Auch dieser Pin liegt auf Tabellenebene: „genau einmal" ist eine Aussage
     // über die Komposition, nicht über die geteilte Komponente.
@@ -1074,10 +1073,14 @@ describe('DataEntryFormComponent', () => {
 
       const zeichen = fixture.nativeElement.querySelector(
         '[data-testid="detail-zeichen"]',
-      ) as HTMLButtonElement;
-      expect(zeichen.tagName).toBe('BUTTON');
-      expect(zeichen.type).toBe('button');
-      expect(zeichen.getAttribute('aria-haspopup')).toBe('dialog');
+      ) as HTMLElement;
+      // #497: kein Knopf mehr — es kündigt nichts an, weil es nichts mehr tut.
+      expect(zeichen.tagName).not.toBe('BUTTON');
+      expect(zeichen.getAttribute('aria-haspopup')).toBeNull();
+      // Was es behält: das Bemerkenswerte, als Tooltip und zugängliche
+      // Beschriftung.
+      expect(zeichen.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
+      expect(zeichen.getAttribute('aria-label')).toBe(zeichen.getAttribute('title'));
 
       zeichen.click();
       fixture.detectChanges();
