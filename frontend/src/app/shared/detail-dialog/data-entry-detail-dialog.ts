@@ -60,15 +60,17 @@ export interface DetailDialogDaten {
 let grundZaehler = 0;
 
 /**
- * #478 (ADR 0042): der **Detail-Dialog** — der vollständige, schreibgeschützte
- * Datensatz eines Fangs. Er zeigt *jedes* Merkmal, auch eines, das das Projekt
- * über die Optionalen Felder abgeschaltet hat (ADR 0035), und ist damit das
- * Einzige, was das Versprechen des Detail-Zeichens in jedem Projekt einlöst.
+ * #478/#494 (ADR 0042): der **Detail-Dialog** — der vollständige,
+ * schreibgeschützte Datensatz eines Fangs. Er zeigt *jedes* Merkmal, auch eines,
+ * das das Projekt über die Optionalen Felder abgeschaltet hat (ADR 0035), und
+ * ist damit die einzige Oberfläche, auf der ein Fang in jedem Projekt
+ * vollständig lesbar ist.
  *
  * Er liegt in `shared/`, weil er nie dem Erfassungsformular gehörte: „Letzte
- * Fänge", die Wiederfang-Historie und „Heute" (offline) führen alle hierher.
- * Geöffnet wird er ausschließlich über den `DetailDialogOpener` daneben — der
- * kennt als Einziger die Dialog-Konfiguration.
+ * Fänge", die Wiederfang-Historie und **beide** Abschnitte von „Heute" führen
+ * alle hierher — seit #494 beim gewöhnlichen Zeilenklick, online wie offline und
+ * ohne Fallunterscheidung. Geöffnet wird er ausschließlich über den
+ * `DetailDialogOpener` daneben — der kennt als Einziger die Dialog-Konfiguration.
  *
  * #493 (PRD #491): sein einziger weiterführender Knopf heißt **„Bearbeiten"**
  * und führt in die Bearbeitungsmaske des gezeigten Fangs. „Im Backend öffnen"

@@ -213,25 +213,53 @@ _Avoid_: Beifang, Zufallsfang (one cause of it, not the marker itself), Sonderar
 
 **Detail-Zeichen**:
 The ⓘ of the Marker-Spalte. It appears when the capture carries something the
-columns do not show — **Brutfleck**, **CPL+** or a **Bemerkung** — names it in the
-tooltip and opens the **Detail-Dialog** (ADR 0042). Its text is called _das
-Bemerkenswerte_: the vocabulary first, the free Bemerkung explicitly labelled as
-„Bemerkung: …" behind it. **Not a Fangmarker**: it shares the column with ♥ and ⚑
-but does not belong to them (ADR 0026) — those flag a situation about the capture,
-this one only says that there is more to read. It does **not** know the Optionale-Felder
-configuration (#468): a Brutfleck was recorded on the bird, not on the form, so a
-Projekt that switched the field off still sees it on a historical capture.
-_Avoid_: Bemerkungs-Indikator (it means more than the Bemerkung since #468), info icon (English), Fangmarker
+columns do not show — **Brutfleck**, **CPL+** or a **Bemerkung** — and **names**
+it in the tooltip. Naming is all it does: it is a passive sign, not a control, and
+its click bubbles to the row exactly like ♥ and ⚑ do. Opening happens through the
+row, which leads to the **Detail-Dialog** (ADR 0042). Its job is to let a
+Beringer:in decide **before** tapping which row is worth opening while scanning a
+list. Its text is called _das Bemerkenswerte_: the vocabulary first, the free
+Bemerkung explicitly labelled as „Bemerkung: …" behind it. **Not a Fangmarker**: it
+shares the column with ♥ and ⚑ but does not belong to them (ADR 0026) — those flag
+a situation about the capture, this one only says that there is more to read. It
+does **not** know the Optionale-Felder configuration (#468): a Brutfleck was
+recorded on the bird, not on the form, so a Projekt that switched the field off
+still sees it on a historical capture.
+_Avoid_: Bemerkungs-Indikator (it means more than the Bemerkung since #468), info icon (English), Fangmarker; describing it as *opening* anything (it names, the row opens)
 
 **Detail-Dialog**:
 The complete, **read-only** record of one Fang. It shows **every** attribute,
 including one a Projekt switched off via the Optionale Felder, and is therefore the
-only thing that keeps the Detail-Zeichen's promise in every Projekt. It is the target
-of the Detail-Zeichen in every Fang-Tabelle, and additionally the target of the
-ordinary row click in the Wiederfang-Historie (where navigating away would destroy a
-capture in progress) and in „Heute" while offline (ADR 0042). It carries no
-„Bearbeiten" — the row click in „Letzte Fänge" is the direct way there.
-_Avoid_: Detailansicht, Fang-Popup, detail view (English), Bearbeitungsmaske (the editable form — a different screen)
+only surface on which a Fang is fully readable in every Projekt. It is reached by
+the **row click of every Fang-Tabelle** — „Letzte Fänge", the Wiederfang-Historie
+and both sections of „Heute", online and offline alike (ADR 0042). That makes it
+the reading path of *every* Fang, not only of one that happens to carry something
+remarkable, and it is why a row click no longer means something different per
+table.
+It carries exactly one way onward: **„Bearbeiten"**, which leads **out** to the
+Bearbeitungsmaske — for a **nicht synchronisiert** entry to the ordinary editing of
+that queued entry. The dialog itself stays read-only: the button leaves, it changes
+nothing in place. It is locked in exactly one case — the Fang is synchronisiert
+**and** the device is offline — and then stays **visible** and names its reason
+rather than going quietly dead (ADR 0037). „Im Backend öffnen" is gone; the Django
+access lives in the Navigationsleiste behind the Staff-Recht and nowhere else.
+It reads a **nicht synchronisiert** Fang too, through a read model whose references
+may be unresolvable — see _auf diesem Gerät nicht bekannt_.
+_Avoid_: Detailansicht, Fang-Popup, detail view (English), Bearbeitungsmaske (the editable form — a different screen); "read-only" as meaning it has no way out
+
+**auf diesem Gerät nicht bekannt**:
+What a surface says about a **reference it cannot resolve on this device** — an
+Art, a Station or a Beringer:in of a **nicht synchronisiert** Fang whose flat id
+the cached offline bundle does not (or no longer) carry. It is deliberately **not**
+the Gedankenstrich: the dash means *nicht erfasst* („Tarsus not measured"), and
+those three are mandatory on every Fang, so a dash there would read as a field the
+Beringer:in left empty and make her doubt her own capture. The distinction is the
+whole point — **not recorded ≠ not lookupable here** — and the phrase is about the
+device's reach, never about the record. The Zentrale already refused the dash on
+the same grounds, putting its EURING code up instead. The row in „Heute" and the
+Detail-Dialog it opens use the **same** wording, so a screen never contradicts what
+it opens.
+_Avoid_: unbekannt (that would claim something about the Fang), nicht gefunden, kein Eintrag, "unknown/unresolved" (English), the Gedankenstrich
 
 **Parasit**:
 A capture's recorded ectoparasite findings, held as a **multi-valued** selection
@@ -274,7 +302,7 @@ The connectivity state in which the app has no reach to the server but keeps wor
 _Avoid_: Offline-Modus, disconnected (English)
 
 **nicht synchronisiert**:
-The state of a captured entry recorded on a device but not yet reached the server — what a Mitglied sees instead of a named queue. The underlying local hold-area is deliberately **not** given a first-class domain name (no "Warteschlange"): it stays implicit, and the UI describes entries by their sync state instead, e.g. a pending count read as "N nicht synchronisierte Einträge". **Offline**, the entries a device can still edit or delete are the ones that are nicht synchronisiert — they are the only ones it holds itself. A synchronisiert entry is **not** app-wide write-protected offline: the read-only offline view is a deliberate affordance of the **Heute-Seite**, which offline opens such an entry in a read-only detail view instead of the capture form. Reached any other way — from „Letzte Fänge", say — a synchronisiert entry simply cannot be loaded offline at all: the capture form shows an error state with the **Erneut versuchen** way out instead of an editable form, so no edit ever comes about. That is graceful degradation, not an enforced invariant (issue #386). Back online a synchronisiert entry is editable and deletable again like any other (ADR 0030) — the read-only treatment is about the device's reach, not the entry's age. A nicht synchronisiert entry the server **rejects** during sync (a validation change, an archived Station, or a ring-uniqueness collision) is not lost and does not stall the rest of the queue: it is skipped and stays on the device flagged with the server's own error message (a **Synchronisierungsfehler**), while the remaining entries sync on. Resolving it is just ordinary editing — the flagged entry opens in the normal capture form, is corrected, and re-queues clean for the next sync (issue #164).
+The state of a captured entry recorded on a device but not yet reached the server — what a Mitglied sees instead of a named queue. The underlying local hold-area is deliberately **not** given a first-class domain name (no "Warteschlange"): it stays implicit, and the UI describes entries by their sync state instead, e.g. a pending count read as "N nicht synchronisierte Einträge". **Offline**, the entries a device can still edit or delete are the ones that are nicht synchronisiert — they are the only ones it holds itself. A synchronisiert entry is **not** app-wide write-protected offline. That protection is a deliberate affordance, and since ADR 0042 it lives in the **Detail-Dialog's locked „Bearbeiten" button** rather than in a row click: every Fang-Tabelle opens the read-only Detail-Dialog anyway, and where the entry is synchronisiert **and** the device offline, that button stays visible, is not triggerable and names why and when it works again. Reaching the capture form some other way still fails on its own: it cannot load a synchronisiert entry offline at all and shows an error state with the **Erneut versuchen** way out instead of an editable form, so no edit ever comes about. That is graceful degradation, not an enforced invariant (issue #386) — nothing app-wide refuses the write, the surfaces simply never offer it. Back online a synchronisiert entry is editable and deletable again like any other (ADR 0030) — the read-only treatment is about the device's reach, not the entry's age. A nicht synchronisiert entry the server **rejects** during sync (a validation change, an archived Station, or a ring-uniqueness collision) is not lost and does not stall the rest of the queue: it is skipped and stays on the device flagged with the server's own error message (a **Synchronisierungsfehler**), while the remaining entries sync on. Resolving it is just ordinary editing — the flagged entry opens in the normal capture form, is corrected, and re-queues clean for the next sync (issue #164).
 _Avoid_: Warteschlange, Queue (English), Outbox (English — internal/code term only, never user-facing)
 
 **synchronisieren / zuletzt synchronisiert**:
