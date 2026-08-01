@@ -158,12 +158,13 @@
         </ng-container>
 
         <!-- #405: die Marker-Spalte, identisch zu „Letzte Fänge" (#388). Drei feste
-             Slots in fixer Reihenfolge (ⓘ Mehr in der Zeile │ ♥ Tot-Fund │ ⚑ Nicht-Standard);
+             Slots in fixer Reihenfolge (ⓘ Detail-Zeichen │ ♥ Tot-Fund │ ⚑ Nicht-Standard);
              das ⓘ erscheint bei Brutfleck, CPL+ oder Bemerkung (#468) und heißt
              „hier steht mehr, als die Spalten zeigen — antippen". Ein Badge-Punkt
-             würde bloß die Existenz des Icons wiederholen. Der frühere Info-Button ist
-             weg — die Zeile trägt jetzt den Klick zum Detail-Dialog, dasselbe
-             Interaktionsmodell wie in „Letzte Fänge". -->
+             würde bloß die Existenz des Icons wiederholen.
+             #478 (ADR 0042): das ⓘ ist ein Knopf und öffnet den Detail-Dialog selbst.
+             Hier fällt sein Ziel mit dem des Zeilenklicks zusammen — zwei Wege zum
+             selben Dialog sind die Vorhersage der Regel, nicht ihr Bruch. -->
         <ng-container matColumnDef="marker" stickyEnd>
           <th mat-header-cell *matHeaderCellDef class="marker-header"></th>
           <td mat-cell *matCellDef="let element" data-testid="marker-cell">
@@ -174,7 +175,9 @@
         <tr mat-header-row *matHeaderRowDef="displayedHistoryColumns"></tr>
         <!-- #405: der Zeilenklick öffnet den Detail-Dialog. Er darf *nicht*
              navigieren wie „Letzte Fänge" — der Beringer ist mitten in einer
-             Erfassung und würde den laufenden Fang verlieren. -->
+             Erfassung und würde den laufenden Fang verlieren.
+             #478: das ist die in ADR 0042 benannte Abweichung von „der Zeilenklick
+             öffnet den Fang zum Bearbeiten" — die einzige, und sie steht dort. -->
         <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" class="history-entry"
             (click)="openDetailDialog(row)"></tr>
       </table>

@@ -67,6 +67,21 @@ jobs:
       - name: Run pytest (treat "no tests collected" as success)
         run: uv run pytest || [ $? -eq 5 ]
 
+  adr-index:
+    name: ADR-Index
+    runs-on: ubuntu-latest
+    # Bewusst ein eigener, schlanker Job (#479): die Prüfung gehört zu `docs/`,
+    # nicht zum Frontend, und darf nicht hinter `npm ci` oder `uv sync` warten.
+    # Das Skript nutzt nur `node:fs`/`node:path`/`node:url` — Checkout, Node,
+    # Aufruf, fertig.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: ADR-Nummern und -Index
+        run: node scripts/check-adr-index.mjs
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
