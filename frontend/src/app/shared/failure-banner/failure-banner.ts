@@ -26,6 +26,7 @@ import {
   FeedbackDialogComponent,
   FeedbackDialogData,
 } from '../../feedback/feedback-dialog/feedback-dialog';
+import {FangNavigation} from '../navigation/fang-navigation';
 import {OrgAdmin} from '../../models/org-admin.model';
 import {ApiService} from '../../service/api.service';
 import {AppUpdateService} from '../../service/app-update.service';
@@ -86,6 +87,7 @@ export class FailureBannerComponent {
   private readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly unsavedChanges = inject(UnsavedChangesService);
+  private readonly fangNavigation = inject(FangNavigation);
   private readonly dialog = inject(MatDialog);
   private readonly locale = inject(LOCALE_ID);
 
@@ -266,30 +268,18 @@ export class FailureBannerComponent {
    * stellte) noch ein Vorbeigehen am Wächter (das den Eintrag still fallen
    * ließe).
    *
-   * Der Umweg über die leere Erfassungsmaske ist genau dafür da, dass beides
-   * gilt: steht schon ein Fang offen (`/data-entry/:id` — so kommt ein
-   * zurückgewiesener eingereihter Eintrag daher, #445), dann ist das Ziel für
-   * den Router **dieselbe** Route mit einer anderen Id. Er verwendet das
-   * Bauteil dann wieder, lädt den Eintrag nicht neu und lässt den Wächter gar
-   * nicht erst laufen — der Knopf täte dort wortlos nichts. Der Zwischenschritt
-   * ist das Verlassen, das die Route sonst verschluckt: dort fragt der Wächter,
-   * und was er ablehnt, wird auch nicht geöffnet. In der History steht er
-   * nicht (`skipLocationChange`).
+   * Dass der Wächter dabei auch dann gefragt wird, wenn schon ein Fang offen
+   * steht (`/data-entry/:id` — so kommt ein zurückgewiesener eingereihter
+   * Eintrag daher, #445), ist **nicht** die Sache dieses Bauteils: der Umweg
+   * über die leere Erfassungsmaske steht seit #492 in `FangNavigation` und nur
+   * dort. Das Banner sagt „öffne diesen Fang" und bekommt die Regel mit.
    */
-  protected async onErstfangOeffnen(): Promise<void> {
+  protected onErstfangOeffnen(): void {
     const rivale = this.erstfang();
     if (!rivale) {
       return;
     }
-    if (this.router.url.startsWith('/data-entry/')) {
-      const verlassen = await this.router.navigateByUrl('/data-entry', {
-        skipLocationChange: true,
-      });
-      if (!verlassen) {
-        return;
-      }
-    }
-    void this.router.navigate(['/data-entry', rivale.id]);
+    void this.fangNavigation.zumFang(rivale.id);
   }
 
   /**
