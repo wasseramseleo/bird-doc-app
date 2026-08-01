@@ -671,9 +671,13 @@ describe('DataEntryListComponent', () => {
   // Optionalen Felder abgeschaltet hat (ADR 0035).
   //
   // #494: seit der Zeilenklick denselben Dialog öffnet, prüft dieser Pin die
-  // andere Hälfte derselben Regel — **genau einmal**. Schluckte das Zeichen
-  // seinen Klick nicht, trüge die Zeile ihn ein zweites Mal und ein einziger
-  // Tipp öffnete den Dialog doppelt.
+  // andere Hälfte derselben Regel — **genau einmal**.
+  //
+  // #497 (PRD #491): das Zeichen ist wieder passiv und schluckt seinen Klick
+  // nicht mehr; der Dialog kommt jetzt über die Zeile darunter. „Genau einmal"
+  // bleibt damit die Frage, an der alles hängt — trüge das Zeichen sein eigenes
+  // Ziel *und* stiege der Klick auf, öffnete ein einziger Tipp den Dialog
+  // doppelt.
   //
   // Der Pin liegt auf Tabellenebene: ob ein Klick zur Zeile aufsteigt, ist eine
   // Eigenschaft der Komposition und auf der geteilten Komponente nicht
@@ -686,12 +690,14 @@ describe('DataEntryListComponent', () => {
 
     const zeichen = fixture.nativeElement.querySelector(
       '[data-testid="detail-zeichen"]',
-    ) as HTMLButtonElement;
-    // Ein natives `title` kennt auf dem Tablet keinen Hover — der Tap ist der
-    // einzige Weg, also ist das Zeichen ein Knopf und sagt das auch an.
-    expect(zeichen.tagName).toBe('BUTTON');
-    expect(zeichen.type).toBe('button');
-    expect(zeichen.getAttribute('aria-haspopup')).toBe('dialog');
+    ) as HTMLElement;
+    // #497: kein Knopf mehr — es kündigt nichts an, weil es nichts mehr tut.
+    expect(zeichen.tagName).not.toBe('BUTTON');
+    expect(zeichen.getAttribute('aria-haspopup')).toBeNull();
+    // Was es behält: das Bemerkenswerte, als Tooltip und zugängliche
+    // Beschriftung.
+    expect(zeichen.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
+    expect(zeichen.getAttribute('aria-label')).toBe(zeichen.getAttribute('title'));
 
     zeichen.click();
     fixture.detectChanges();
