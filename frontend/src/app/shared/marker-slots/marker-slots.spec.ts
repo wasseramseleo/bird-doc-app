@@ -230,6 +230,14 @@ describe('MarkerSlotsComponent', () => {
     // Unverändert das Bemerkenswerte, wortgleich mit dem Tooltip.
     expect(zeichen.getAttribute('aria-label')).toBe('CPL+ — Bemerkung: Ring saß locker');
     expect(zeichen.getAttribute('title')).toBe(zeichen.getAttribute('aria-label'));
+    // …und das Bemerkenswerte ist *hörbar*. Solange es der Knopf trug, war das
+    // umsonst zu haben; auf einem blanken `mat-icon` nicht: MatIcon setzt sich
+    // im Konstruktor selbst `aria-hidden="true"`, sobald im Template kein
+    // **statisches** `aria-hidden` steht (er liest ein `HostAttributeToken`,
+    // das eine `[attr.…]`-Bindung nicht sieht). Ein `aria-label` auf einem aus
+    // dem Zugänglichkeitsbaum genommenen Element ist keine zugängliche
+    // Beschriftung — und die drei Zeilen darüber blieben trotzdem grün.
+    expect(zeichen.getAttribute('aria-hidden')).not.toBe('true');
   });
 
   // #497: die Komponente ist wieder **rein präsentational** — sie kennt den

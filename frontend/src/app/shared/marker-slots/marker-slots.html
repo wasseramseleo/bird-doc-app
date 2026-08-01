@@ -9,10 +9,21 @@
        #497 (PRD #491): wieder ein reines Zeichen, kein Knopf. Sein Klick steigt
        zur Zeile auf wie der von ♥ und ⚑ — die Zeile öffnet den Detail-Dialog
        (#494), das Zeichen muss den Weg nicht selbst tragen. Das `title` bleibt
-       nativ — matTooltip kommt im ganzen Projekt null mal vor. -->
+       nativ — matTooltip kommt im ganzen Projekt null mal vor.
+
+       Das `aria-hidden="false"` ist Absicht und muss **statisch** dastehen:
+       `MatIcon` setzt sich im Konstruktor selbst `aria-hidden="true"`, solange
+       es im Template kein geschriebenes `aria-hidden` findet (es liest ein
+       `HostAttributeToken`, das eine `[attr.…]`-Bindung nicht sieht). Solange
+       der Knopf (#478) die Beschriftung trug, war das richtig — das Zeichen
+       darin war Zierde. Jetzt trägt das Zeichen sie selbst, und ohne diese
+       Zeile fiele es stumm aus dem Zugänglichkeitsbaum: der Tooltip bliebe,
+       die zugängliche Beschriftung wäre weg. Die beiden Fangmarker unten
+       bleiben unangetastet — für sie gilt #497 „unverändert". -->
   @if (bemerkenswertes(); as mehr) {
     <mat-icon class="marker-icon detail-zeichen" inline
               data-testid="detail-zeichen"
+              aria-hidden="false"
               [title]="mehr"
               [attr.aria-label]="mehr"
     >info_outline</mat-icon>
