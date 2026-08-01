@@ -10,9 +10,17 @@ import {
   DataEntryDetailDialogComponent,
   DetailDialogDaten,
 } from './data-entry-detail-dialog';
+import {
+  FangLesemodell,
+  NICHT_AUF_DIESEM_GERAET_BEKANNT,
+  lesemodellAusEintrag,
+  lesemodellAusFang,
+} from './fang-lesemodell';
 import { AgeClass, BirdStatus, DataEntry, Parasit, Sex } from '../../models/data-entry.model';
 import { RingSize } from '../../models/ring.model';
 import { Central } from '../../models/central.model';
+import { OfflineBundle } from '../../models/offline-bundle.model';
+import { OutboxEntry } from '../../models/outbox-entry.model';
 
 registerLocaleData(localeDeAt);
 
@@ -65,11 +73,17 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
   let dialogRef: jasmine.SpyObj<MatDialogRef<DataEntryDetailDialogComponent>>;
 
   async function render(entry: DataEntry): Promise<ComponentFixture<DataEntryDetailDialogComponent>> {
+    return renderLesemodell(lesemodellAusFang(entry));
+  }
+
+  async function renderLesemodell(
+    fang: FangLesemodell,
+  ): Promise<ComponentFixture<DataEntryDetailDialogComponent>> {
     TestBed.resetTestingModule();
     bearbeiteFang = jasmine.createSpy('bearbeiteFang');
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
     const daten: DetailDialogDaten = {
-      fang: entry,
+      fang,
       bearbeiten: angebot.asReadonly(),
       bearbeiteFang: () => bearbeiteFang(),
     };
@@ -342,6 +356,140 @@ describe('DataEntryDetailDialogComponent (Zentrale, US 19 / #232)', () => {
         bearbeiten.click();
         expect(bearbeiteFang).toHaveBeenCalledTimes(1);
       });
+    });
+  });
+
+  /**
+   * #495 (PRD #491): der Dialog lernt den **noch nicht synchronisierten** Fang.
+   * Er trägt flache Ids und wird best effort gegen das zwischengespeicherte
+   * Offline-Bundle aufgelöst — was dabei nicht auflösbar ist, heißt hier „auf
+   * diesem Gerät nicht bekannt" und **nicht** Gedankenstrich.
+   */
+  describe('ein nicht synchronisierter Fang (#495)', () => {
+    const STATION = { handle: 'STAMT', name: 'Linz, Botanischer Garten' };
+    const BERINGERIN = { id: 'sci-1', handle: 'FRE', full_name: 'Filip Reiter' };
+    const KOHLMEISE = {
+      id: 's1',
+      common_name_de: 'Kohlmeise',
+      common_name_en: 'Great Tit',
+      scientific_name: 'Parus major',
+      family_name: '',
+      order_name: '',
+      ring_size: RingSize.V,
+      special_kind: '' as const,
+      usage_count: 0,
+    };
+
+    function bundle(overrides: Partial<OfflineBundle> = {}): OfflineBundle {
+      return {
+        identity: { username: 'fre', handle: 'FRE', organization: null, rolle: 'mitglied' },
+        species: [KOHLMEISE],
+        ringing_stations: [STATION],
+        scientists: [BERINGERIN],
+        projects: [],
+        centrals: [],
+        last_consumed_ring_numbers: [],
+        ...overrides,
+      };
+    }
+
+    function eintrag(payload: Record<string, unknown> = {}): OutboxEntry {
+      return {
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        queuedAt: '2026-07-02T09:05:00.000Z',
+        payload: {
+          species_id: 's1',
+          ringing_station_id: 'STAMT',
+          staff_id: 'sci-1',
+          date_time: '2026-07-02T09:00',
+          bird_status: BirdStatus.FirstCatch,
+          ring_size: 'V',
+          ring_number: '0043',
+          comment: 'Ringablesung',
+          ...payload,
+        },
+      };
+    }
+
+    /** Die Beschriftungen, die der Dialog überhaupt hinstellt. */
+    const merkmale = (fixture: ComponentFixture<DataEntryDetailDialogComponent>) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('dt, h4')) as HTMLElement[]).map(el =>
+        el.textContent!.trim(),
+      );
+
+    const zelle = (
+      fixture: ComponentFixture<DataEntryDetailDialogComponent>,
+      beschriftung: string,
+    ) =>
+      (Array.from(fixture.nativeElement.querySelectorAll('dt')) as HTMLElement[])
+        .find(dt => dt.textContent!.trim() === beschriftung)!
+        .nextElementSibling!.textContent!.trim();
+
+    it('zeigt alle Merkmale, die er auch für einen synchronisierten Fang zeigt', async () => {
+      const synchronisiert = await render({ ...baseEntry(), comment: 'Ringablesung' });
+      const erwartet = merkmale(synchronisiert);
+
+      const eingereiht = await renderLesemodell(lesemodellAusEintrag(eintrag(), bundle()));
+
+      expect(merkmale(eingereiht)).toEqual(erwartet);
+    });
+
+    it('nennt eine auflösbare Referenz bei ihrem Namen', async () => {
+      const fixture = await renderLesemodell(lesemodellAusEintrag(eintrag(), bundle()));
+
+      expect(zelle(fixture, 'Deutscher Name')).toBe('Kohlmeise');
+      expect(zelle(fixture, 'Wissenschaftlicher Name')).toBe('Parus major');
+      expect(zelle(fixture, 'Station')).toBe('Linz, Botanischer Garten');
+      expect(zelle(fixture, 'Beringer:in')).toContain('Filip Reiter');
+      expect(zelle(fixture, 'Beringer:in')).toContain('FRE');
+    });
+
+    /**
+     * Art, Station und Beringer:in sind Pflichtangaben. Der Gedankenstrich hieße
+     * hier „nicht erfasst" und ließe die Beringer:in an ihrer eigenen Erfassung
+     * zweifeln — also sagt der Dialog, was wirklich der Fall ist: dieses Gerät
+     * kennt die Referenz nicht.
+     */
+    it('sagt bei einer nicht auflösbaren Referenz „auf diesem Gerät nicht bekannt"', async () => {
+      const fixture = await renderLesemodell(lesemodellAusEintrag(eintrag(), null));
+
+      expect(zelle(fixture, 'Deutscher Name')).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+      expect(zelle(fixture, 'Wissenschaftlicher Name')).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+      expect(zelle(fixture, 'Station')).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+      expect(zelle(fixture, 'Beringer:in')).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+    });
+
+    it('hält ein leeres optionales Feld und eine nicht auflösbare Referenz auseinander', async () => {
+      const fixture = await renderLesemodell(
+        lesemodellAusEintrag(eintrag({ tarsus: null }), null),
+      );
+
+      expect(zelle(fixture, 'Tarsus (mm)')).toBe('—');
+      expect(zelle(fixture, 'Deutscher Name')).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+      expect(zelle(fixture, 'Deutscher Name')).not.toBe('—');
+    });
+
+    // Ringgröße und Ringnummer liegen flach im Payload: die Kopfzeile steht auch
+    // dann, wenn das Gerät die Referenzdaten gar nicht (mehr) hat.
+    it('trägt Ringgröße und Ringnummer ohne jedes Nachschlagen in der Kopfzeile', async () => {
+      const fixture = await renderLesemodell(lesemodellAusEintrag(eintrag(), null));
+
+      const titel = (fixture.nativeElement.querySelector('h2') as HTMLElement).textContent!;
+      expect(titel).toContain('V');
+      expect(titel).toContain('0043');
+    });
+
+    // Die Kopfzeile las Größe und Nummer bisher ungeschützt — ein Fang ohne Ring
+    // hätte den Dialog zerlegt, statt lesbar zu bleiben.
+    it('lässt sich auch für einen Fang ohne Ring öffnen', async () => {
+      const fixture = await renderLesemodell(
+        lesemodellAusEintrag(eintrag({ ring_size: null, ring_number: null }), bundle()),
+      );
+
+      expect(fixture.nativeElement.querySelector('h2')).not.toBeNull();
+      expect(zelle(fixture, 'Deutscher Name')).toBe('Kohlmeise');
+      expect(zelle(fixture, 'Zentrale')).toBe('—');
     });
   });
 });

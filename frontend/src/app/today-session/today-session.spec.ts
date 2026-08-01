@@ -25,6 +25,8 @@ import {OutboxService} from '../service/outbox.service';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
 import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
+import {NICHT_AUF_DIESEM_GERAET_BEKANNT} from '../shared/detail-dialog/fang-lesemodell';
+import {OutboxEntry} from '../models/outbox-entry.model';
 import {ConfirmDialogComponent} from '../shared/confirm-dialog/confirm-dialog';
 
 registerLocaleData(localeDeAt);
@@ -121,7 +123,7 @@ describe('TodaySessionComponent', () => {
 
   async function setup(project: Project | null = PROJECT): Promise<void> {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
-    detailDialog = jasmine.createSpyObj('DetailDialogOpener', ['open']);
+    detailDialog = jasmine.createSpyObj('DetailDialogOpener', ['open', 'openQueued']);
 
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
@@ -354,17 +356,21 @@ describe('TodaySessionComponent', () => {
       expect(fixture.nativeElement.querySelectorAll('.session-row--queued').length).toBe(0);
     });
 
-    // #494: der nicht synchronisierte Abschnitt bleibt bis auf Weiteres, wie er
-    // ist — er braucht ein Lesemodell, das es noch nicht gibt (#495), und folgt
-    // erst im nächsten Schnitt. Der Zeilenklick öffnet hier weiterhin die
-    // Warteschlangen-Bearbeitung und **keinen** Dialog.
-    it('opens a queued entry in the capture form on click, unchanged', async () => {
-      await TestBed.inject(OutboxStoreService).add({
+    // #495 (PRD #491, ADR 0042): auch die **nicht synchronisierte** Zeile öffnet
+    // den Detail-Dialog — dieselbe Geste wie im synchronisierten Abschnitt
+    // darunter und in jeder anderen Fang-Tabelle. Bis hierher navigierte sie
+    // direkt in die Warteschlangen-Bearbeitung; dorthin führt jetzt der
+    // „Bearbeiten"-Knopf im Dialog.
+    //
+    // Kompositions-Pin dieser Tabelle: **genau einmal**, und kein Routenwechsel.
+    it('opens the detail dialog exactly once on a queued row click', async () => {
+      const eintrag = {
         id: 'outbox-uuid-1',
         accountKey: 'fre',
         payload: queuedPayload(),
         queuedAt: '2026-07-02T09:00:00.000Z',
-      });
+      };
+      await TestBed.inject(OutboxStoreService).add(eintrag);
       await TestBed.inject(OutboxService).ready;
 
       await setup();
@@ -378,8 +384,46 @@ describe('TodaySessionComponent', () => {
 
       (fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement).click();
 
-      expect(navigateSpy).toHaveBeenCalledWith(['/data-entry', 'outbox-uuid-1']);
-      expect(detailDialog.open).not.toHaveBeenCalled();
+      expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.openQueued).toHaveBeenCalledTimes(1);
+      const uebergeben = detailDialog.openQueued.calls.mostRecent().args[0] as OutboxEntry;
+      expect(uebergeben.id).toBe('outbox-uuid-1');
+    });
+
+    /**
+     * #495: die Zeile und der Dialog, den sie öffnet, sagen **dasselbe**. Eine
+     * Referenz, die dieses Gerät nicht auflösen kann, heißt hier wie dort „auf
+     * diesem Gerät nicht bekannt" — und nicht Gedankenstrich, der als „nicht
+     * erfasst" gelesen würde und die Beringer:in an ihrer eigenen Erfassung
+     * zweifeln ließe.
+     */
+    it('names an unresolvable reference in the row exactly as the dialog does', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload(),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      // Kein zwischengespeichertes Bundle: das Gerät kann Art und Beringer:in
+      // nicht nachschlagen.
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement;
+      const species = row.querySelector('.session-row__species') as HTMLElement;
+      const staff = row.querySelector('.session-row__staff') as HTMLElement;
+      expect(species.textContent!.trim()).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+      expect(staff.textContent!.trim()).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+      expect(species.textContent!.trim()).not.toBe('—');
+      // Ringgröße und Ringnummer brauchen kein Nachschlagen — sie stehen da.
+      expect((row.querySelector('.session-row__ring') as HTMLElement).textContent!.trim()).toBe(
+        'V 0043',
+      );
     });
 
     // #494: der Lösch-Knopf bleibt ein Lösch-Knopf. Er löst die Löschbestätigung
@@ -413,6 +457,9 @@ describe('TodaySessionComponent', () => {
       expect(dialog.open).toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.any(Object));
       expect(navigateSpy).not.toHaveBeenCalled();
       expect(detailDialog.open).not.toHaveBeenCalled();
+      // #495: seit die Zeile den Detail-Dialog öffnet, ist das hier der Aufruf,
+      // den der Lösch-Knopf nicht auslösen darf.
+      expect(detailDialog.openQueued).not.toHaveBeenCalled();
       const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
       expect(stored).toEqual([]);
     });

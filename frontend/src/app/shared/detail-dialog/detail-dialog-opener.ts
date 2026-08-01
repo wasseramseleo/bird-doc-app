@@ -6,9 +6,12 @@ import {
   DataEntryDetailDialogComponent,
   DetailDialogDaten,
 } from './data-entry-detail-dialog';
+import {FangLesemodell, lesemodellAusEintrag, lesemodellAusFang} from './fang-lesemodell';
 import {ConnectivityService} from '../../core/offline/connectivity';
 import {FangNavigation} from '../navigation/fang-navigation';
 import {DataEntry} from '../../models/data-entry.model';
+import {OfflineBundle} from '../../models/offline-bundle.model';
+import {OutboxEntry} from '../../models/outbox-entry.model';
 
 /**
  * #493: der Satz, der einen verwehrten Weg begleitet — warum gerade nicht, und
@@ -38,6 +41,8 @@ export interface FangOeffnenOptionen {
  * Sie kennt
  *
  *   * die Dialog-Konfiguration,
+ *   * die Umwandlung in das Lesemodell — synchronisiert wie nicht
+ *     synchronisiert (#495),
  *   * ob „Bearbeiten" angeboten oder gesperrt wird, und mit welchem Grund,
  *   * und wohin „Bearbeiten" führt — samt Wächter-Umweg.
  *
@@ -61,8 +66,36 @@ export class DetailDialogOpener {
     fang: DataEntry,
     optionen: FangOeffnenOptionen = {},
   ): MatDialogRef<DataEntryDetailDialogComponent> {
-    const synchronisiert = optionen.synchronisiert ?? true;
+    return this.oeffne(lesemodellAusFang(fang), fang.id, optionen.synchronisiert ?? true);
+  }
 
+  /**
+   * #495 (PRD #491): denselben Dialog für einen **noch nicht synchronisierten**
+   * Fang. Er hat keinen Server-Datensatz — er trägt flache Ids und wird best
+   * effort gegen das zwischengespeicherte Offline-Bundle aufgelöst; was dabei
+   * ausfällt, benennt der Dialog als „auf diesem Gerät nicht bekannt".
+   *
+   * Die Umwandlung liegt hier und nicht bei der Tabelle: der Öffner ist die eine
+   * Einheit, die weiß, was das Öffnen eines Fangs bedeutet — auch dieses.
+   *
+   * „Bearbeiten" führt auf die bestehende Warteschlangen-Bearbeitung (#163):
+   * `/data-entry/:id` versteht die Id eines eingereihten Eintrags genauso wie
+   * die eines Server-Datensatzes. Gesperrt wird hier nichts — ein nicht
+   * synchronisierter Fang ist auch offline bearbeitbar, das ist der Sinn der
+   * Warteschlange.
+   */
+  openQueued(
+    eintrag: OutboxEntry,
+    bundle: OfflineBundle | null,
+  ): MatDialogRef<DataEntryDetailDialogComponent> {
+    return this.oeffne(lesemodellAusEintrag(eintrag, bundle), eintrag.id, false);
+  }
+
+  private oeffne(
+    fang: FangLesemodell,
+    fangId: string,
+    synchronisiert: boolean,
+  ): MatDialogRef<DataEntryDetailDialogComponent> {
     // Der Fall ist eng: **nur** synchronisiert und offline. Als Signal, weil die
     // Sperre der Reichweite des Geräts gilt und nicht dem Alter des Fangs —
     // kommt die Verbindung wieder, ist der Knopf im offenen Dialog sofort wieder
@@ -84,7 +117,7 @@ export class DetailDialogOpener {
           // gewechselt wird — für den Router ist das dieselbe Route mit anderer
           // Id. Ohne diesen Umweg täte „Bearbeiten" in der Wiederfang-Historie
           // wortlos nichts.
-          bearbeiteFang: () => void this.fangNavigation.zumFang(fang.id),
+          bearbeiteFang: () => void this.fangNavigation.zumFang(fangId),
         },
         width: '640px',
         maxHeight: '90vh',

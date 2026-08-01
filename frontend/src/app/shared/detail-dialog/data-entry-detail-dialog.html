@@ -1,14 +1,20 @@
-<h2 mat-dialog-title>Ring {{ entry.ring.size }} – {{ entry.ring.number }}</h2>
+<!-- #495: Ringgröße und Ringnummer liegen auch bei einem nicht synchronisierten
+     Fang flach vor — die Kopfzeile braucht dafür kein Nachschlagen. Ein Fang
+     ohne Ring behält trotzdem eine Überschrift. -->
+<h2 mat-dialog-title>{{ titel }}</h2>
 
 <mat-dialog-content>
 
   <section>
     <h4>Art</h4>
     <dl>
+      <!-- #495: Art, Station und Beringer:in sind Pflichtangaben. Was dieses
+           Gerät nicht auflösen kann, sagt das — der Gedankenstrich daneben
+           heißt „nicht gemessen" und läse sich hier als „nicht erfasst". -->
       <dt>Deutscher Name</dt>
-      <dd>{{ entry.species.common_name_de }}</dd>
+      <dd>{{ referenz(entry.species?.common_name_de) }}</dd>
       <dt>Wissenschaftlicher Name</dt>
-      <dd><em>{{ entry.species.scientific_name }}</em></dd>
+      <dd><em>{{ referenz(entry.species?.scientific_name) }}</em></dd>
     </dl>
   </section>
 
@@ -35,9 +41,9 @@
       <dt>Zentrale</dt>
       <dd data-testid="detail-zentrale">{{ getCentralLabel() }}</dd>
       <dt>Station</dt>
-      <dd>{{ entry.ringing_station.name }}</dd>
+      <dd>{{ referenz(entry.ringing_station?.name) }}</dd>
       <dt>Beringer:in</dt>
-      <dd>{{ entry.staff.full_name }} ({{ entry.staff.handle }})</dd>
+      <dd>{{ getBeringerinLabel() }}</dd>
     </dl>
   </section>
 

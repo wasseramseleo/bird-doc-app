@@ -21,6 +21,10 @@ import { appFailureOf } from '../core/errors/app-failure';
 import { ProjectService } from '../service/project.service';
 import { Project, Projekttyp } from '../models/project.model';
 import { BirdStatus, DataEntry } from '../models/data-entry.model';
+import {
+  FangLesemodell,
+  lesemodellAusFang,
+} from '../shared/detail-dialog/fang-lesemodell';
 
 describe('DataEntryListComponent', () => {
   let fixture: ComponentFixture<DataEntryListComponent>;
@@ -696,8 +700,8 @@ describe('DataEntryListComponent', () => {
     // aus, mit dem das ⓘ gerade geworben hat.
     expect(navigate).not.toHaveBeenCalled();
     expect(dialog.open).toHaveBeenCalledTimes(1);
-    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-    expect(config.data.fang).toBe(entry);
+    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+    expect(config.data.fang).toEqual(lesemodellAusFang(entry));
   });
 
   // #494 (PRD #491): die Kernregel — eine Zeile antippen heißt „zeig mir diesen
@@ -716,8 +720,8 @@ describe('DataEntryListComponent', () => {
 
     expect(navigate).not.toHaveBeenCalled();
     expect(dialog.open).toHaveBeenCalledTimes(1);
-    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-    expect(config.data.fang).toBe(entry);
+    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+    expect(config.data.fang).toEqual(lesemodellAusFang(entry));
   });
 
   // #494: auch ein völlig unauffälliger Fang — ohne Brutfleck, ohne CPL+, ohne
@@ -735,8 +739,8 @@ describe('DataEntryListComponent', () => {
     fixture.detectChanges();
 
     expect(dialog.open).toHaveBeenCalledTimes(1);
-    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: DataEntry } };
-    expect(config.data.fang).toBe(entry);
+    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+    expect(config.data.fang).toEqual(lesemodellAusFang(entry));
   });
 
   // #494: der Weg zum Bearbeiten geht nicht verloren, er wandert nur einen Schritt
