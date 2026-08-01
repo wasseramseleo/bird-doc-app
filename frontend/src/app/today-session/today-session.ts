@@ -19,7 +19,6 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {DataAccessFacadeService} from '../service/data-access-facade.service';
 import {OutboxService} from '../service/outbox.service';
 import {ProjectService} from '../service/project.service';
-import {ConnectivityService} from '../core/offline/connectivity';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {resolveQueuedEntryDisplay} from '../core/offline/queued-entry-display';
 import {BirdStatus, DataEntry} from '../models/data-entry.model';
@@ -52,10 +51,15 @@ interface QueuedRow {
  * (queued, this device only) and already synchronisiert (from the server,
  * cached for offline reading). A queued entry opens in the normal capture
  * form for editing (which re-queues it, `DataEntryFormComponent`'s
- * queued-edit mode) or can be deleted outright; a synced entry is always
- * read-only offline (the append-only design — PRD #152's "Out of Scope") and
- * opens in the ordinary edit form only while online, falling back to the
- * read-only detail dialog while offline.
+ * queued-edit mode) or can be deleted outright.
+ *
+ * #494 (PRD #491, ADR 0042): eine **synchronisierte** Zeile öffnet den
+ * Detail-Dialog — online wie offline, dieselbe Geste wie in „Letzte Fänge" und
+ * in der Wiederfang-Historie. Dass ein synchronisierter Fang offline nicht
+ * bearbeitbar ist (append-only, PRD #152), sagt der „Bearbeiten"-Knopf im
+ * Dialog (#493) und nicht mehr die Zeile. Der **nicht synchronisierte**
+ * Abschnitt bleibt vorerst, wie er ist: er braucht ein Lesemodell, das es noch
+ * nicht gibt (#495).
  */
 @Component({
   selector: 'app-today-session',
@@ -75,7 +79,6 @@ export class TodaySessionComponent implements OnInit {
   private readonly dataAccess = inject(DataAccessFacadeService);
   private readonly outbox = inject(OutboxService);
   private readonly projectService = inject(ProjectService);
-  private readonly connectivity = inject(ConnectivityService);
   private readonly referenceCache = inject(ReferenceBundleCacheService);
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
@@ -83,7 +86,9 @@ export class TodaySessionComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly currentProject = this.projectService.currentProject;
-  readonly isOffline = this.connectivity.isOffline;
+  // #494: die Verbindung entscheidet hier nichts mehr. Ob ein synchronisierter
+  // Fang gerade bearbeitbar ist, weiß der geteilte Öffner und sagt der
+  // „Bearbeiten"-Knopf im Dialog (#493) — dieser Bildschirm fragt nicht danach.
   // #469: beide Zweige dieses Bildschirms holen das Wort am selben Ort — der
   // synchronisierte im Template, der nicht synchronisierte in `toQueuedRow`.
   // Das Template braucht das Enum seither nicht mehr; es entscheidet nichts
@@ -186,18 +191,19 @@ export class TodaySessionComponent implements OnInit {
     this.router.navigate(['/data-entry', row.id]);
   }
 
-  // A synced entry is always read-only offline (no offline edits to server
-  // rows — PRD #152's append-only design): opening it offline shows the
-  // ordinary read-only detail dialog instead of the editable form.
+  // #494 (PRD #491, ADR 0042): eine Zeile antippen heißt „zeig mir diesen Fang" —
+  // online wie offline, ohne Fallunterscheidung. Bis hierher navigierte diese
+  // Zeile online in die Bearbeitungsmaske und fiel nur offline auf den Dialog
+  // zurück; die Beringer:in musste wissen, ob das Gerät gerade Empfang hat,
+  // bevor sie tippt.
   //
-  // #478 (ADR 0042): das ist eine **Degradation des Defaults**, keine dritte
-  // Regel — online navigiert diese Zeile wie überall in die Bearbeitungsmaske.
+  // Die Regel dahinter geht nicht verloren, sie wandert nur: ein
+  // synchronisierter Fang ist offline nicht bearbeitbar (append-only,
+  // PRD #152) — das sagt seit #493 der „Bearbeiten"-Knopf im Dialog, sichtbar,
+  // gesperrt und mit Grund. Entschieden wird es im geteilten Öffner, nicht
+  // hier: diese Tabelle sagt nur, *dass* es dieser Fang ist.
   openSynced(entry: DataEntry): void {
-    if (this.isOffline()) {
-      this.detailDialog.open(entry);
-      return;
-    }
-    this.router.navigate(['/data-entry', entry.id]);
+    this.detailDialog.open(entry);
   }
 
   deleteQueued(row: QueuedRow, event: Event): void {

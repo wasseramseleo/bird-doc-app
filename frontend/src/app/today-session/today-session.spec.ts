@@ -354,7 +354,11 @@ describe('TodaySessionComponent', () => {
       expect(fixture.nativeElement.querySelectorAll('.session-row--queued').length).toBe(0);
     });
 
-    it('opens a queued entry in the capture form on click', async () => {
+    // #494: der nicht synchronisierte Abschnitt bleibt bis auf Weiteres, wie er
+    // ist — er braucht ein Lesemodell, das es noch nicht gibt (#495), und folgt
+    // erst im nächsten Schnitt. Der Zeilenklick öffnet hier weiterhin die
+    // Warteschlangen-Bearbeitung und **keinen** Dialog.
+    it('opens a queued entry in the capture form on click, unchanged', async () => {
       await TestBed.inject(OutboxStoreService).add({
         id: 'outbox-uuid-1',
         accountKey: 'fre',
@@ -375,8 +379,12 @@ describe('TodaySessionComponent', () => {
       (fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement).click();
 
       expect(navigateSpy).toHaveBeenCalledWith(['/data-entry', 'outbox-uuid-1']);
+      expect(detailDialog.open).not.toHaveBeenCalled();
     });
 
+    // #494: der Lösch-Knopf bleibt ein Lösch-Knopf. Er löst die Löschbestätigung
+    // aus und **keinen** Detail-Dialog — sein Klick darf die Zeile nicht
+    // erreichen, sonst hieße Löschen auch Lesen.
     it('deletes a queued entry after confirmation, without navigating', async () => {
       await TestBed.inject(OutboxStoreService).add({
         id: 'outbox-uuid-1',
@@ -404,6 +412,7 @@ describe('TodaySessionComponent', () => {
 
       expect(dialog.open).toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.any(Object));
       expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.open).not.toHaveBeenCalled();
       const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
       expect(stored).toEqual([]);
     });
@@ -525,10 +534,18 @@ describe('TodaySessionComponent', () => {
       expect(status.textContent?.trim()).toBe('Wiederfang');
     });
 
-    it('opens a synced entry in the capture form on click while online', async () => {
+    // #494 (PRD #491): dieselbe Geste wie in jeder Fang-Tabelle — antippen heißt
+    // „zeig mir diesen Fang". Bis hierher navigierte diese Zeile online in die
+    // Bearbeitungsmaske und fiel nur offline auf den Dialog zurück; die
+    // Fallunterscheidung entfällt ersatzlos, die Offline-Kenntnis sitzt seit
+    // #493 auf dem „Bearbeiten"-Knopf im Dialog.
+    //
+    // Kompositions-Pin dieser Tabelle: **genau einmal**, und kein Routenwechsel.
+    it('opens the detail dialog exactly once on a synced row click while online', async () => {
       await setup();
       fixture.detectChanges();
-      await flushSyncedEntries([syncedEntry({id: 'server-1'})]);
+      const entry = syncedEntry({id: 'server-1'});
+      await flushSyncedEntries([entry]);
       fixture.detectChanges();
 
       const router = TestBed.inject(Router);
@@ -536,10 +553,15 @@ describe('TodaySessionComponent', () => {
 
       (fixture.nativeElement.querySelector('.session-row--synced') as HTMLElement).click();
 
-      expect(navigateSpy).toHaveBeenCalledWith(['/data-entry', 'server-1']);
+      expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
     });
 
-    it('opens the read-only detail dialog instead of navigating when offline', async () => {
+    // #494: offline geschieht **dasselbe** — kein Sonderfall, keine Degradation
+    // eines Defaults, sondern die Regel. Ein synchronisierter Fang ist offline
+    // nicht bearbeitbar; das sagt seit #493 der Knopf im Dialog, nicht mehr die
+    // Zeile.
+    it('opens the same detail dialog on a synced row click while offline', async () => {
       await setup();
       fixture.detectChanges();
       const entry = syncedEntry({id: 'server-1'});
@@ -557,6 +579,23 @@ describe('TodaySessionComponent', () => {
       // diesem Issue nur noch der geteilte Öffner. „Heute" sagt bloß, *dass* es
       // dieser Fang ist — die Konfiguration daneben ist nicht mehr ihre Sache.
       expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
+    });
+
+    // #494 (PRD #491, „bewusst unverändert"): das Zustands-Abzeichen beantwortet
+    // die Sync-Frage („ist das schon oben?"), der Dialog die Fang-Frage. Beide
+    // stehen nebeneinander — das Abzeichen verschwindet nicht, weil die Zeile
+    // jetzt etwas anderes tut.
+    it('keeps the synchronisiert badge on a synced row', async () => {
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([syncedEntry()]);
+      fixture.detectChanges();
+
+      const badge = fixture.nativeElement.querySelector(
+        '.session-row--synced .session-row__badge--synced',
+      ) as HTMLElement;
+      expect(badge).not.toBeNull();
+      expect(badge.textContent).toContain('synchronisiert');
     });
   });
 });
