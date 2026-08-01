@@ -8,8 +8,12 @@ import {
   BirdStatus,
   DataEntry,
   Direction,
+  HandWingMoult,
+  MuscleClass,
   Parasit,
   Sex,
+  SmallFeatherAppMoult,
+  SmallFeatherIntMoult,
 } from '../../models/data-entry.model';
 import {OfflineBundle, OfflineIdentity} from '../../models/offline-bundle.model';
 import {OutboxEntry} from '../../models/outbox-entry.model';
@@ -59,6 +63,13 @@ describe('das Lesemodell des Detail-Dialogs (#495)', () => {
     };
   }
 
+  /**
+   * Ein **vollständig** vermessener Fang: jedes Merkmal, das der Dialog zeigt,
+   * trägt hier einen Wert, der sich vom Leerwert unterscheidet. Ein Feld, das
+   * die Fixture leer lässt, kann die Projektion straflos fallen lassen — ein
+   * fest verdrahtetes `null` sähe genauso aus wie die Weitergabe. Was leer sein
+   * darf, prüft die Fixture mit ausdrücklichem `overrides`.
+   */
   function fang(overrides: Partial<DataEntry> = {}): DataEntry {
     return {
       id: 'server-1',
@@ -70,28 +81,28 @@ describe('das Lesemodell des Detail-Dialogs (#495)', () => {
       net_location: 3,
       net_height: 2,
       net_direction: Direction.Left,
-      feather_span: null,
+      feather_span: 55,
       wing_span: 78,
-      tarsus: null,
-      notch_f2: null,
-      inner_foot: null,
+      tarsus: 19.5,
+      notch_f2: 3,
+      inner_foot: 9,
       weight_gram: 17.5,
       bird_status: BirdStatus.ReCatch,
       fat_deposit: 0,
-      muscle_class: null,
+      muscle_class: MuscleClass.Two,
       age_class: AgeClass.ThisYear,
       sex: Sex.Female,
-      small_feather_int: null,
-      small_feather_app: null,
-      hand_wing: null,
+      small_feather_int: SmallFeatherIntMoult.Some,
+      small_feather_app: SmallFeatherAppMoult.Mixed,
+      hand_wing: HandWingMoult.AtLeastOne,
       date_time: '2026-07-02T09:00:00Z',
       created: '2026-07-02T09:00:00Z',
       updated: '2026-07-02T09:00:00Z',
       comment: 'Ringablesung',
       parasites: [Parasit.Tick],
-      has_hunger_stripes: false,
+      has_hunger_stripes: true,
       has_brood_patch: true,
-      has_cpl_plus: false,
+      has_cpl_plus: true,
       is_dead_recovery: false,
       is_non_standard: false,
       ...overrides,
@@ -145,12 +156,75 @@ describe('das Lesemodell des Detail-Dialogs (#495)', () => {
       expect(lesemodell.net_direction).toBe(Direction.Left);
       expect(lesemodell.age_class).toBe(AgeClass.ThisYear);
       expect(lesemodell.sex).toBe(Sex.Female);
+      expect(lesemodell.small_feather_int).toBe(SmallFeatherIntMoult.Some);
+      expect(lesemodell.small_feather_app).toBe(SmallFeatherAppMoult.Mixed);
+      expect(lesemodell.hand_wing).toBe(HandWingMoult.AtLeastOne);
+      expect(lesemodell.tarsus).toBe(19.5);
+      expect(lesemodell.feather_span).toBe(55);
       expect(lesemodell.wing_span).toBe(78);
       expect(lesemodell.weight_gram).toBe(17.5);
+      expect(lesemodell.notch_f2).toBe(3);
+      expect(lesemodell.inner_foot).toBe(9);
       expect(lesemodell.fat_deposit).toBe(0);
+      expect(lesemodell.muscle_class).toBe(MuscleClass.Two);
       expect(lesemodell.parasites).toEqual([Parasit.Tick]);
+      expect(lesemodell.has_hunger_stripes).toBeTrue();
       expect(lesemodell.has_brood_patch).toBeTrue();
+      expect(lesemodell.has_cpl_plus).toBeTrue();
       expect(lesemodell.comment).toBe('Ringablesung');
+    });
+
+    /**
+     * Die Gegenprobe zur Zeile darüber: ein gesetztes Kennzeichen weiterzugeben
+     * ist erst dann bewiesen, wenn ein **nicht** gesetztes auch nicht gesetzt
+     * ankommt — sonst wäre ein fest verdrahtetes `true` so unsichtbar wie ein
+     * fest verdrahtetes `false`. Dasselbe für ein nicht gemessenes Feld: der
+     * Dialog macht daraus den Gedankenstrich, und der muss verdient sein.
+     */
+    it('lässt ein nicht gemessenes Feld leer und ein nicht gesetztes Kennzeichen ungesetzt', () => {
+      const lesemodell = lesemodellAusFang(
+        fang({
+          small_feather_int: null,
+          small_feather_app: null,
+          hand_wing: null,
+          tarsus: null,
+          feather_span: null,
+          wing_span: null,
+          weight_gram: null,
+          notch_f2: null,
+          inner_foot: null,
+          net_location: null,
+          net_height: null,
+          net_direction: null,
+          fat_deposit: null,
+          muscle_class: null,
+          parasites: [],
+          comment: null,
+          has_hunger_stripes: false,
+          has_brood_patch: false,
+          has_cpl_plus: false,
+        }),
+      );
+
+      expect(lesemodell.small_feather_int).toBeNull();
+      expect(lesemodell.small_feather_app).toBeNull();
+      expect(lesemodell.hand_wing).toBeNull();
+      expect(lesemodell.tarsus).toBeNull();
+      expect(lesemodell.feather_span).toBeNull();
+      expect(lesemodell.wing_span).toBeNull();
+      expect(lesemodell.weight_gram).toBeNull();
+      expect(lesemodell.notch_f2).toBeNull();
+      expect(lesemodell.inner_foot).toBeNull();
+      expect(lesemodell.net_location).toBeNull();
+      expect(lesemodell.net_height).toBeNull();
+      expect(lesemodell.net_direction).toBeNull();
+      expect(lesemodell.fat_deposit).toBeNull();
+      expect(lesemodell.muscle_class).toBeNull();
+      expect(lesemodell.parasites).toEqual([]);
+      expect(lesemodell.comment).toBeNull();
+      expect(lesemodell.has_hunger_stripes).toBeFalse();
+      expect(lesemodell.has_brood_patch).toBeFalse();
+      expect(lesemodell.has_cpl_plus).toBeFalse();
     });
 
     it('holt die Zentrale vom Ring, und liefert `null`, wo keine gespeichert ist', () => {
