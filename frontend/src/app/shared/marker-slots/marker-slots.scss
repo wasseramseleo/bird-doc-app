@@ -46,45 +46,10 @@
 // #374 (#1): das Detail-Zeichen bleibt gedämpft — es meldet, dass in der Zeile
 // mehr steht als die Spalten zeigen (#468), nicht einen Alarm.
 //
-// #478 (ADR 0042): es ist ein `button` und trägt trotzdem keine Knopf-Gestalt —
-// die Marker-Spalte ist ein Raster aus drei gleich großen Zeichen, und ein
-// sichtbarer Knopf darin läse sich als vierte Bedeutung.
+// #497 (PRD #491): es ist wieder ein reines Zeichen wie ♥ und ⚑ — kein Knopf,
+// keine eigene Trefferfläche. Die Trefferfläche ist die Zeile, und die ist von
+// sich aus groß genug; ein zweites Ziel darin machte die Bedeutung eines Tipps
+// davon abhängig, wo genau er landet.
 .detail-zeichen {
-  appearance: none;
-  background: none;
-  border: 0;
-  padding: 0;
-  margin: 0;
   color: var(--bd-ink-faint);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  // Sichtbar exakt der Slot: 1.05rem. Ein `mat-icon-button` (40–48px) würde das
-  // Raster sprengen und jede Zeile einer Tabelle wachsen lassen, deren
-  // Seitengröße 50 beträgt, damit eine Beringer:in eine ganze Session auf einen
-  // Blick sieht (#374).
-  width: 1.05rem;
-  height: 1.05rem;
-  // Bezugsrahmen der Trefferfläche darunter.
-  position: relative;
-
-  // #478: tastbar größer als sichtbar — dasselbe Muster wie Materials eigenes
-  // `mat-mdc-button-touch-target`. Absolut positioniert, also ohne jeden
-  // Einfluss auf die Zeilenhöhe.
-  //
-  // Sie wächst **vertikal** über die Zeilenhöhe und **horizontal nur nach
-  // links**, in die Zellenpolsterung, die keinem anderen Ziel gehört. Nach
-  // rechts wächst sie nicht: eine symmetrische 44er-Fläche wäre größer, würde
-  // aber ♥ und ⚑ überlappen — und damit die Bedeutung eines Tipps auf ♥ davon
-  // abhängig machen, ob zufällig ein ⓘ danebensteht.
-  &::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: -13px;
-    width: calc(100% + 13px);
-    height: 40px;
-    transform: translateY(-50%);
-  }
 }

@@ -25,6 +25,8 @@ import {OutboxService} from '../service/outbox.service';
 import {ReferenceBundleCacheService} from '../core/offline/reference-bundle-cache';
 import {RecentEntriesCacheService} from '../core/offline/recent-entries-cache';
 import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
+import {NICHT_AUF_DIESEM_GERAET_BEKANNT} from '../shared/detail-dialog/fang-lesemodell';
+import {OutboxEntry} from '../models/outbox-entry.model';
 import {ConfirmDialogComponent} from '../shared/confirm-dialog/confirm-dialog';
 
 registerLocaleData(localeDeAt);
@@ -121,7 +123,7 @@ describe('TodaySessionComponent', () => {
 
   async function setup(project: Project | null = PROJECT): Promise<void> {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
-    detailDialog = jasmine.createSpyObj('DetailDialogOpener', ['open']);
+    detailDialog = jasmine.createSpyObj('DetailDialogOpener', ['open', 'openQueued']);
 
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
@@ -354,13 +356,21 @@ describe('TodaySessionComponent', () => {
       expect(fixture.nativeElement.querySelectorAll('.session-row--queued').length).toBe(0);
     });
 
-    it('opens a queued entry in the capture form on click', async () => {
-      await TestBed.inject(OutboxStoreService).add({
+    // #495 (PRD #491, ADR 0042): auch die **nicht synchronisierte** Zeile öffnet
+    // den Detail-Dialog — dieselbe Geste wie im synchronisierten Abschnitt
+    // darunter und in jeder anderen Fang-Tabelle. Bis hierher navigierte sie
+    // direkt in die Warteschlangen-Bearbeitung; dorthin führt jetzt der
+    // „Bearbeiten"-Knopf im Dialog.
+    //
+    // Kompositions-Pin dieser Tabelle: **genau einmal**, und kein Routenwechsel.
+    it('opens the detail dialog exactly once on a queued row click', async () => {
+      const eintrag = {
         id: 'outbox-uuid-1',
         accountKey: 'fre',
         payload: queuedPayload(),
         queuedAt: '2026-07-02T09:00:00.000Z',
-      });
+      };
+      await TestBed.inject(OutboxStoreService).add(eintrag);
       await TestBed.inject(OutboxService).ready;
 
       await setup();
@@ -374,9 +384,51 @@ describe('TodaySessionComponent', () => {
 
       (fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement).click();
 
-      expect(navigateSpy).toHaveBeenCalledWith(['/data-entry', 'outbox-uuid-1']);
+      expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.openQueued).toHaveBeenCalledTimes(1);
+      const uebergeben = detailDialog.openQueued.calls.mostRecent().args[0] as OutboxEntry;
+      expect(uebergeben.id).toBe('outbox-uuid-1');
     });
 
+    /**
+     * #495: die Zeile und der Dialog, den sie öffnet, sagen **dasselbe**. Eine
+     * Referenz, die dieses Gerät nicht auflösen kann, heißt hier wie dort „auf
+     * diesem Gerät nicht bekannt" — und nicht Gedankenstrich, der als „nicht
+     * erfasst" gelesen würde und die Beringer:in an ihrer eigenen Erfassung
+     * zweifeln ließe.
+     */
+    it('names an unresolvable reference in the row exactly as the dialog does', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload(),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      // Kein zwischengespeichertes Bundle: das Gerät kann Art und Beringer:in
+      // nicht nachschlagen.
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement;
+      const species = row.querySelector('.session-row__species') as HTMLElement;
+      const staff = row.querySelector('.session-row__staff') as HTMLElement;
+      expect(species.textContent!.trim()).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+      expect(staff.textContent!.trim()).toBe(NICHT_AUF_DIESEM_GERAET_BEKANNT);
+      expect(species.textContent!.trim()).not.toBe('—');
+      // Ringgröße und Ringnummer brauchen kein Nachschlagen — sie stehen da.
+      expect((row.querySelector('.session-row__ring') as HTMLElement).textContent!.trim()).toBe(
+        'V 0043',
+      );
+    });
+
+    // #494: der Lösch-Knopf bleibt ein Lösch-Knopf. Er löst die Löschbestätigung
+    // aus und **keinen** Detail-Dialog — sein Klick darf die Zeile nicht
+    // erreichen, sonst hieße Löschen auch Lesen.
     it('deletes a queued entry after confirmation, without navigating', async () => {
       await TestBed.inject(OutboxStoreService).add({
         id: 'outbox-uuid-1',
@@ -404,6 +456,10 @@ describe('TodaySessionComponent', () => {
 
       expect(dialog.open).toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.any(Object));
       expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.open).not.toHaveBeenCalled();
+      // #495: seit die Zeile den Detail-Dialog öffnet, ist das hier der Aufruf,
+      // den der Lösch-Knopf nicht auslösen darf.
+      expect(detailDialog.openQueued).not.toHaveBeenCalled();
       const stored = await TestBed.inject(OutboxStoreService).listForAccount('fre');
       expect(stored).toEqual([]);
     });
@@ -525,10 +581,18 @@ describe('TodaySessionComponent', () => {
       expect(status.textContent?.trim()).toBe('Wiederfang');
     });
 
-    it('opens a synced entry in the capture form on click while online', async () => {
+    // #494 (PRD #491): dieselbe Geste wie in jeder Fang-Tabelle — antippen heißt
+    // „zeig mir diesen Fang". Bis hierher navigierte diese Zeile online in die
+    // Bearbeitungsmaske und fiel nur offline auf den Dialog zurück; die
+    // Fallunterscheidung entfällt ersatzlos, die Offline-Kenntnis sitzt seit
+    // #493 auf dem „Bearbeiten"-Knopf im Dialog.
+    //
+    // Kompositions-Pin dieser Tabelle: **genau einmal**, und kein Routenwechsel.
+    it('opens the detail dialog exactly once on a synced row click while online', async () => {
       await setup();
       fixture.detectChanges();
-      await flushSyncedEntries([syncedEntry({id: 'server-1'})]);
+      const entry = syncedEntry({id: 'server-1'});
+      await flushSyncedEntries([entry]);
       fixture.detectChanges();
 
       const router = TestBed.inject(Router);
@@ -536,10 +600,15 @@ describe('TodaySessionComponent', () => {
 
       (fixture.nativeElement.querySelector('.session-row--synced') as HTMLElement).click();
 
-      expect(navigateSpy).toHaveBeenCalledWith(['/data-entry', 'server-1']);
+      expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
     });
 
-    it('opens the read-only detail dialog instead of navigating when offline', async () => {
+    // #494: offline geschieht **dasselbe** — kein Sonderfall, keine Degradation
+    // eines Defaults, sondern die Regel. Ein synchronisierter Fang ist offline
+    // nicht bearbeitbar; das sagt seit #493 der Knopf im Dialog, nicht mehr die
+    // Zeile.
+    it('opens the same detail dialog on a synced row click while offline', async () => {
       await setup();
       fixture.detectChanges();
       const entry = syncedEntry({id: 'server-1'});
@@ -557,6 +626,218 @@ describe('TodaySessionComponent', () => {
       // diesem Issue nur noch der geteilte Öffner. „Heute" sagt bloß, *dass* es
       // dieser Fang ist — die Konfiguration daneben ist nicht mehr ihre Sache.
       expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
+    });
+
+    // #494 (PRD #491, „bewusst unverändert"): das Zustands-Abzeichen beantwortet
+    // die Sync-Frage („ist das schon oben?"), der Dialog die Fang-Frage. Beide
+    // stehen nebeneinander — das Abzeichen verschwindet nicht, weil die Zeile
+    // jetzt etwas anderes tut.
+    it('keeps the synchronisiert badge on a synced row', async () => {
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([syncedEntry()]);
+      fixture.detectChanges();
+
+      const badge = fixture.nativeElement.querySelector(
+        '.session-row--synced .session-row__badge--synced',
+      ) as HTMLElement;
+      expect(badge).not.toBeNull();
+      expect(badge.textContent).toContain('synchronisiert');
+    });
+  });
+
+  // #496 (PRD #491): die Kompositions-Pins dieses Bildschirms für die Tastatur.
+  // „Heute" ist die einzige Fang-Tabelle mit **zwei** Abschnitten und der
+  // einzige Ort, an dem in der Zeile noch etwas anderes bedienbar ist — der
+  // Lösch-Knopf. Beides braucht seinen eigenen Pin: ob ein Tastendruck bis zur
+  // Zeile durchkommt (und ob einer *in* der Zeile es nicht tut), ist eine
+  // Eigenschaft der Komposition und auf der geteilten Naht nicht beweisbar
+  // (ADR 0042).
+  describe('Tastaturbedienung der Zeilen (#496)', () => {
+    function keyDown(target: HTMLElement, key: string): void {
+      target.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
+      fixture.detectChanges();
+    }
+
+    async function mitEinerEingereihtenZeile(): Promise<void> {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload(),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([]);
+      await settle();
+      fixture.detectChanges();
+    }
+
+    function queuedRow(): HTMLElement {
+      return fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement;
+    }
+
+    function syncedRow(): HTMLElement {
+      return fixture.nativeElement.querySelector('.session-row--synced') as HTMLElement;
+    }
+
+    it('macht eine synchronisierte Zeile per Tabulator erreichbar und kündigt sie als bedienbar an', async () => {
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([syncedEntry()]);
+      fixture.detectChanges();
+
+      const row = syncedRow();
+      expect(row.getAttribute('tabindex')).toBe('0');
+      expect(row.getAttribute('role')).toBe('button');
+
+      row.focus();
+      expect(document.activeElement).toBe(row);
+
+      // Eine fokussierbare Zeile, der man den Fokus nicht ansieht, ist eine
+      // Falle — der app-weite Fokusring (A11Y-4) muss hier ankommen.
+      const stil = getComputedStyle(row);
+      expect(stil.outlineStyle).toBe('solid');
+      expect(parseFloat(stil.outlineWidth)).toBeGreaterThan(0);
+    });
+
+    it('öffnet den Detail-Dialog auf einer synchronisierten Zeile mit Enter genau einmal', async () => {
+      await setup();
+      fixture.detectChanges();
+      const entry = syncedEntry({id: 'server-1'});
+      await flushSyncedEntries([entry]);
+      fixture.detectChanges();
+
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      keyDown(syncedRow(), 'Enter');
+
+      expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
+    });
+
+    it('öffnet den Detail-Dialog auf einer synchronisierten Zeile mit der Leertaste genau einmal', async () => {
+      await setup();
+      fixture.detectChanges();
+      const entry = syncedEntry({id: 'server-1'});
+      await flushSyncedEntries([entry]);
+      fixture.detectChanges();
+
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      keyDown(syncedRow(), ' ');
+
+      expect(navigateSpy).not.toHaveBeenCalled();
+      expect(detailDialog.open).toHaveBeenCalledOnceWith(entry);
+    });
+
+    it('macht eine nicht synchronisierte Zeile per Tabulator erreichbar und kündigt sie als bedienbar an', async () => {
+      await mitEinerEingereihtenZeile();
+
+      const row = queuedRow();
+      expect(row.getAttribute('tabindex')).toBe('0');
+      expect(row.getAttribute('role')).toBe('button');
+
+      row.focus();
+      expect(document.activeElement).toBe(row);
+    });
+
+    // Der Pin sagt, was hier dauerhaft gilt: **die Tastatur tut genau das, was
+    // der Zeiger tut, und genau einmal**. Er ist bewusst nicht darauf
+    // festgelegt, *welche* die eine Wirkung ist — als #496 ihn schrieb, führte
+    // die Zeile noch in die Warteschlangen-Bearbeitung; seit #495 öffnet sie den
+    // Detail-Dialog über `openQueued`. Genau deshalb zählt die Erhebung **alle
+    // drei** möglichen Wirkungen: fiele eine aus der Zählung, ginge „genau
+    // einmal" still in „gar nicht" über, ohne dass eine Aussage fällt.
+    function wirkungen(navigateSpy: jasmine.Spy): number {
+      return (
+        detailDialog.open.calls.count() +
+        detailDialog.openQueued.calls.count() +
+        navigateSpy.calls.count()
+      );
+    }
+
+    function wirkungenZuruecksetzen(navigateSpy: jasmine.Spy): void {
+      detailDialog.open.calls.reset();
+      detailDialog.openQueued.calls.reset();
+      navigateSpy.calls.reset();
+    }
+
+    it('löst mit Enter auf einer nicht synchronisierten Zeile genau dieselbe eine Wirkung aus wie ein Klick', async () => {
+      await mitEinerEingereihtenZeile();
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      queuedRow().click();
+      const perZeiger = wirkungen(navigateSpy);
+
+      wirkungenZuruecksetzen(navigateSpy);
+
+      keyDown(queuedRow(), 'Enter');
+
+      expect(perZeiger).withContext('ein Zeigerklick löst genau eine Wirkung aus').toBe(1);
+      expect(wirkungen(navigateSpy)).toBe(perZeiger);
+    });
+
+    it('löst mit der Leertaste auf einer nicht synchronisierten Zeile genau dieselbe eine Wirkung aus wie ein Klick', async () => {
+      await mitEinerEingereihtenZeile();
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      queuedRow().click();
+      const perZeiger = wirkungen(navigateSpy);
+
+      wirkungenZuruecksetzen(navigateSpy);
+
+      keyDown(queuedRow(), ' ');
+
+      expect(perZeiger).withContext('ein Zeigerklick löst genau eine Wirkung aus').toBe(1);
+      expect(wirkungen(navigateSpy)).toBe(perZeiger);
+    });
+
+    // Kriterium: der Lösch-Knopf bleibt eigenständig per Tastatur erreichbar und
+    // löst über die Tastatur **keinen** Dialog aus. Sein Tastendruck steigt zur
+    // Zeile auf wie jedes andere Ereignis — trüge die Zeile ihn weiter, hieße
+    // Löschen mit der Tastatur auch Lesen.
+    it('lässt den Lösch-Knopf eigenständig erreichbar und öffnet aus ihm heraus nichts', async () => {
+      await mitEinerEingereihtenZeile();
+      const navigateSpy = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const deleteButton = fixture.nativeElement.querySelector(
+        '.session-row--queued [data-testid="delete-queued"]',
+      ) as HTMLElement;
+      expect(deleteButton.tagName).toBe('BUTTON');
+      expect(deleteButton.getAttribute('tabindex')).not.toBe('-1');
+
+      deleteButton.focus();
+      expect(document.activeElement).toBe(deleteButton);
+
+      keyDown(deleteButton, 'Enter');
+      keyDown(deleteButton, ' ');
+
+      expect(detailDialog.open).not.toHaveBeenCalled();
+      expect(navigateSpy).not.toHaveBeenCalled();
+    });
+
+    // Kriterium: „Die Tabulator-Reihenfolge innerhalb der Tabellen bleibt
+    // nachvollziehbar (Zeile, dann was in ihr bedienbar ist)." Sie folgt der
+    // Dokumentreihenfolge, solange sich niemand mit einem positiven tabindex
+    // vordrängt.
+    it('hält die Tabulator-Reihenfolge nachvollziehbar: erst die Zeile, dann was in ihr bedienbar ist', async () => {
+      await mitEinerEingereihtenZeile();
+
+      const row = queuedRow();
+      const deleteButton = row.querySelector('[data-testid="delete-queued"]') as HTMLElement;
+
+      expect(row.getAttribute('tabindex')).toBe('0');
+      expect(row.contains(deleteButton))
+        .withContext('der Lösch-Knopf steht in der Zeile, also hinter ihr')
+        .toBeTrue();
+
+      const vordraengler = Array.from(row.querySelectorAll('[tabindex]')).filter(
+        (el) => Number(el.getAttribute('tabindex')) > 0,
+      );
+      expect(vordraengler).toEqual([]);
     });
   });
 });

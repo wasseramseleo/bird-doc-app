@@ -1,8 +1,7 @@
-import {ChangeDetectionStrategy, Component, computed, inject, input} from '@angular/core';
+import {ChangeDetectionStrategy, Component, computed, input} from '@angular/core';
 import {MatIconModule} from '@angular/material/icon';
 
 import {DataEntry} from '../../models/data-entry.model';
-import {DetailDialogOpener} from '../detail-dialog/detail-dialog-opener';
 
 /**
  * #388/#405: die Marker-Zelle der Fang-Tabellen — drei feste Slots in fixer
@@ -12,13 +11,11 @@ import {DetailDialogOpener} from '../detail-dialog/detail-dialog-opener';
  * Breite und rückt nicht nach. Ein Fang kann beide Fangmarker zugleich tragen
  * (ADR 0026), alle drei Slots sind also gleichzeitig belegbar.
  *
- * **Zwei Slots tragen Information, einer trägt eine Handlung** (#478, ADR 0042).
- * ♥ und ⚑ bleiben passiv: sie schlucken ihren Klick nicht, er steigt zur Zeile
- * auf, und was die Zeile damit tut, ist Sache der Tabelle (#405: „die Zeile
- * trägt den Klick, die Spalte trägt nur Information"). Das **Detail-Zeichen**
- * ist die benannte Ausnahme — ein `button`, der den Detail-Dialog öffnet und
- * seinen Klick schluckt. Diese Komponente ist damit **nicht mehr rein
- * präsentational**; wer sie dorthin zurückbaut, stellt #478 wieder her.
+ * **Alle drei Slots tragen Information, keiner trägt eine Handlung** (#497,
+ * PRD #491). Sie schlucken ihren Klick nicht, er steigt zur Zeile auf, und was
+ * die Zeile damit tut, ist Sache der Tabelle (#405: „die Zeile trägt den Klick,
+ * die Spalte trägt nur Information"). Diese Komponente ist damit **rein
+ * präsentational** und kennt den Dialog-Öffner nicht.
  *
  * #468: das ⓘ bedeutet **nicht** „hat Bemerkung", sondern „in dieser Zeile
  * steht mehr, als die Spalten zeigen — antippen". Es erscheint deshalb auch bei
@@ -26,13 +23,18 @@ import {DetailDialogOpener} from '../detail-dialog/detail-dialog-opener';
  * Spalte haben: ohne das Zeichen wüsste die Beringer:in beim Wiederfang nicht
  * einmal, dass es etwas zu erfahren gibt.
  *
- * #478: das „antippen" wird jetzt auch eingelöst. Ein natives `title` hat
- * keinerlei Touch-Verhalten — auf dem Tablet, dem Fall für den das Antippen
- * gedacht war, ist der Tap der einzige Weg, und er führte in „Letzte Fänge" in
- * die Bearbeitungsmaske, die ein vom Projekt abgeschaltetes Merkmal ausblendet
- * (ADR 0035). Das Ziel ist deshalb der **Detail-Dialog**, der als Einziges
- * *jedes* Merkmal führt; geöffnet über den geteilten `DetailDialogOpener`,
- * damit keine Tabelle die Regel anders verdrahten kann.
+ * #497: das „antippen" löst die **Zeile** ein. #478 machte das Zeichen dafür zum
+ * Knopf, und der Grund war gut — ein natives `title` hat keinerlei
+ * Touch-Verhalten, auf dem Tablet war der Tipp der einzige Weg zur Information,
+ * und er führte in „Letzte Fänge" in die Bearbeitungsmaske, die ein vom Projekt
+ * abgeschaltetes Merkmal ausblendet (ADR 0035). Diese Prämisse ist mit #494
+ * weg: der Zeilenklick öffnet überall den Detail-Dialog, der als Einziges
+ * *jedes* Merkmal führt. Wer den Knopf zurückbaut, öffnet den Dialog doppelt.
+ *
+ * Die eigentliche Aufgabe des Zeichens bleibt: der Beringer:in **vor** dem
+ * Antippen sagen, dass in dieser Zeile mehr steht, als die Spalten zeigen —
+ * damit sie beim Abscannen einer Liste entscheiden kann, welche Zeile sie
+ * überhaupt öffnet.
  *
  * Tooltip und Screenreader-Beschriftung tragen **denselben** beschrifteten Text
  * (`bemerkenswertes`): die Vokabeln zuerst, die freie Bemerkung ausdrücklich als
@@ -60,8 +62,6 @@ import {DetailDialogOpener} from '../detail-dialog/detail-dialog-opener';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkerSlotsComponent {
-  private readonly detailDialog = inject(DetailDialogOpener);
-
   readonly entry = input.required<DataEntry>();
 
   /**
@@ -69,17 +69,6 @@ export class MarkerSlotsComponent {
    * nichts. Leer heißt: kein Detail-Zeichen.
    */
   readonly bemerkenswertes = computed(() => bemerkenswertesAn(this.entry()));
-
-  /**
-   * #478 (ADR 0042): der Klick gehört dem Zeichen und geht **nicht** weiter zur
-   * Zeile. Stiege er auf, navigierte „Letzte Fänge" zusätzlich in die
-   * Bearbeitungsmaske und die Wiederfang-Historie öffnete den Dialog ein
-   * zweites Mal — ein Tipp, zwei Wirkungen.
-   */
-  oeffneDetails(event: Event): void {
-    event.stopPropagation();
-    this.detailDialog.open(this.entry());
-  }
 }
 
 /**

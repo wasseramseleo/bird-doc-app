@@ -162,9 +162,9 @@
              das ⓘ erscheint bei Brutfleck, CPL+ oder Bemerkung (#468) und heißt
              „hier steht mehr, als die Spalten zeigen — antippen". Ein Badge-Punkt
              würde bloß die Existenz des Icons wiederholen.
-             #478 (ADR 0042): das ⓘ ist ein Knopf und öffnet den Detail-Dialog selbst.
-             Hier fällt sein Ziel mit dem des Zeilenklicks zusammen — zwei Wege zum
-             selben Dialog sind die Vorhersage der Regel, nicht ihr Bruch. -->
+             #497 (PRD #491): das ⓘ ist passiv und trägt kein eigenes Ziel — sein
+             Klick steigt zur Zeile auf, und die öffnet den Detail-Dialog. Ein
+             Tipp auf das Zeichen wirkt also genau einmal. -->
         <ng-container matColumnDef="marker" stickyEnd>
           <th mat-header-cell *matHeaderCellDef class="marker-header"></th>
           <td mat-cell *matCellDef="let element" data-testid="marker-cell">
@@ -174,11 +174,19 @@
 
         <tr mat-header-row *matHeaderRowDef="displayedHistoryColumns"></tr>
         <!-- #405: der Zeilenklick öffnet den Detail-Dialog. Er darf *nicht*
-             navigieren wie „Letzte Fänge" — der Beringer ist mitten in einer
-             Erfassung und würde den laufenden Fang verlieren.
-             #478: das ist die in ADR 0042 benannte Abweichung von „der Zeilenklick
-             öffnet den Fang zum Bearbeiten" — die einzige, und sie steht dort. -->
-        <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" class="history-entry"
+             navigieren — der Beringer ist mitten in einer Erfassung und würde den
+             laufenden Fang verlieren.
+             #494 (ADR 0042): das war bis hierher die benannte Abweichung von „der
+             Zeilenklick öffnet den Fang zum Bearbeiten". Sie ist jetzt die Regel:
+             „Letzte Fänge" und „Heute" öffnen denselben Dialog, hier verschlechtert
+             sich dadurch nichts. -->
+        <!-- #496 (PRD #491): dieselbe Zeile, mit der Tastatur — Tabulator-Halt,
+             Ansage als bedienbares Element, Enter/Leertaste lösen genau den
+             Klick darunter aus. Hier ist das doppelt wichtig: die Beringer:in
+             steht mitten in einer Erfassung und soll die Hand nicht für einen
+             Blick in die Historie an die Maus nehmen müssen. -->
+        <tr mat-row *matRowDef="let row; columns: displayedHistoryColumns;" appFangZeile
+            class="history-entry"
             (click)="openDetailDialog(row)"></tr>
       </table>
     </div>

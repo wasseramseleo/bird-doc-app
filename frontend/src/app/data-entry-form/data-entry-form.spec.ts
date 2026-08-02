@@ -35,6 +35,10 @@ import { renderedGlyph, seamGlyph } from '../shared/app-icons.testing';
 import { DataAccessFacadeService, RingHistory } from '../service/data-access-facade.service';
 import { DataEntryRefreshService } from '../service/data-entry-refresh.service';
 import { ProjectService } from '../service/project.service';
+import {
+  FangLesemodell,
+  lesemodellAusFang,
+} from '../shared/detail-dialog/fang-lesemodell';
 import { AUDIO_CONTEXT_FACTORY, SoundService } from '../service/sound.service';
 import { WorkbenchStorageService } from '../service/workbench-storage.service';
 import { OptionalField, Project, Projekttyp } from '../models/project.model';
@@ -1040,20 +1044,21 @@ describe('DataEntryFormComponent', () => {
       fixture.detectChanges();
 
       expect(open).toHaveBeenCalledTimes(1);
-      const config = open.calls.mostRecent().args[1] as { data: DataEntry };
-      expect(config.data).toBe(entry);
+      // #493: der geteilte Öffner gibt dem Dialog seit PRD #491 mehr mit als den
+      // Fang (das Angebot „Bearbeiten" und wohin es führt) — der Fang steht darin.
+      const config = open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+      expect(config.data.fang).toEqual(lesemodellAusFang(entry));
 
       // Die laufende Erfassung bleibt stehen — kein Routenwechsel.
       expect(navigate).not.toHaveBeenCalled();
       expect(navigateByUrl).not.toHaveBeenCalled();
     });
 
-    // #478 (ADR 0042): das Detail-Zeichen ist ein Knopf und führt in *jeder*
-    // Fang-Tabelle zum Detail-Dialog. Hier fallen Tabellen-Aktion und Ziel des
-    // Zeichens zusammen — es gibt zwei Wege zum selben Dialog, und das ist die
-    // Vorhersage der Regel, nicht ihr Bruch. Der Knopf muss seinen Klick
-    // trotzdem schlucken, sonst trägt die Zeile ihn ein zweites Mal und ein
-    // einziger Tipp öffnet den Dialog doppelt.
+    // #497 (PRD #491): das Detail-Zeichen ist wieder ein reines Zeichen — es
+    // trägt kein eigenes Ziel mehr und schluckt seinen Klick nicht mehr. Ein
+    // Tipp darauf steigt zur Zeile auf, und die öffnet den Detail-Dialog
+    // (#494). Genau **einmal**: trüge das Zeichen zusätzlich sein altes Ziel,
+    // öffnete ein einziger Tipp den Dialog doppelt.
     //
     // Auch dieser Pin liegt auf Tabellenebene: „genau einmal" ist eine Aussage
     // über die Komposition, nicht über die geteilte Komponente.
@@ -1068,18 +1073,24 @@ describe('DataEntryFormComponent', () => {
 
       const zeichen = fixture.nativeElement.querySelector(
         '[data-testid="detail-zeichen"]',
-      ) as HTMLButtonElement;
-      expect(zeichen.tagName).toBe('BUTTON');
-      expect(zeichen.type).toBe('button');
-      expect(zeichen.getAttribute('aria-haspopup')).toBe('dialog');
+      ) as HTMLElement;
+      // #497: kein Knopf mehr — es kündigt nichts an, weil es nichts mehr tut.
+      expect(zeichen.tagName).not.toBe('BUTTON');
+      expect(zeichen.getAttribute('aria-haspopup')).toBeNull();
+      // Was es behält: das Bemerkenswerte, als Tooltip und zugängliche
+      // Beschriftung.
+      expect(zeichen.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
+      expect(zeichen.getAttribute('aria-label')).toBe(zeichen.getAttribute('title'));
 
       zeichen.click();
       fixture.detectChanges();
 
       expect(open).toHaveBeenCalledTimes(1);
       expect(navigate).not.toHaveBeenCalled();
-      const config = open.calls.mostRecent().args[1] as { data: DataEntry };
-      expect(config.data).toBe(entry);
+      // #493: der geteilte Öffner gibt dem Dialog seit PRD #491 mehr mit als den
+      // Fang (das Angebot „Bearbeiten" und wohin es führt) — der Fang steht darin.
+      const config = open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+      expect(config.data.fang).toEqual(lesemodellAusFang(entry));
     });
 
     // #405: die Anzahl erscheint als hochgestellter Badge, nicht in Klammern.
@@ -1144,6 +1155,83 @@ describe('DataEntryFormComponent', () => {
         '[data-testid="history-heading"]',
       ) as HTMLElement;
       expect(heading.getAttribute('aria-label')).toBe('Bisherige Fänge, 1 Eintrag');
+    });
+
+    // #496 (PRD #491): der Kompositions-Pin dieser Tabelle für die Tastatur.
+    // Dass ein Tastendruck bis zur Zeile durchkommt, ist eine Eigenschaft der
+    // Komposition und auf der geteilten Naht nicht beweisbar (ADR 0042) —
+    // deshalb hat jede der drei Fang-Tabellen ihren eigenen Pin. Navigieren
+    // darf hier nach wie vor nichts: der Beringer steht mitten in einer
+    // Erfassung und würde den laufenden Fang verlieren (#405).
+    describe('Tastaturbedienung der Zeile (#496)', () => {
+      function historyRowElement(): HTMLElement {
+        return fixture.nativeElement.querySelector('tr.history-entry') as HTMLElement;
+      }
+
+      function keyDown(target: HTMLElement, key: string): void {
+        target.dispatchEvent(
+          new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+        );
+        fixture.detectChanges();
+      }
+
+      it('macht eine Zeile per Tabulator erreichbar und kündigt sie als bedienbar an', () => {
+        component.recaptureHistory.set([historyRow({ comment: null })]);
+        fixture.detectChanges();
+
+        const row = historyRowElement();
+        expect(row.getAttribute('tabindex')).toBe('0');
+        expect(row.getAttribute('role')).toBe('button');
+
+        row.focus();
+        expect(document.activeElement).toBe(row);
+
+        // Die Tabulator-Reihenfolge folgt der Dokumentreihenfolge — erst die
+        // Zeile, dann was in ihr bedienbar ist. Niemand drängt sich mit einem
+        // positiven tabindex vor.
+        const vordraengler = Array.from(row.querySelectorAll('[tabindex]')).filter(
+          (el) => Number(el.getAttribute('tabindex')) > 0,
+        );
+        expect(vordraengler).toEqual([]);
+      });
+
+      it('öffnet den Detail-Dialog mit Enter genau einmal, ohne zu navigieren', () => {
+        const open = spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
+        const router = TestBed.inject(Router);
+        const navigate = spyOn(router, 'navigate');
+        const navigateByUrl = spyOn(router, 'navigateByUrl');
+
+        const entry = historyRow({ comment: null });
+        component.recaptureHistory.set([entry]);
+        fixture.detectChanges();
+
+        keyDown(historyRowElement(), 'Enter');
+
+        expect(open).toHaveBeenCalledTimes(1);
+        const config = open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+        expect(config.data.fang).toEqual(lesemodellAusFang(entry));
+        expect(navigate).not.toHaveBeenCalled();
+        expect(navigateByUrl).not.toHaveBeenCalled();
+      });
+
+      it('öffnet den Detail-Dialog mit der Leertaste genau einmal, ohne zu navigieren', () => {
+        const open = spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
+        const router = TestBed.inject(Router);
+        const navigate = spyOn(router, 'navigate');
+        const navigateByUrl = spyOn(router, 'navigateByUrl');
+
+        const entry = historyRow({ comment: null });
+        component.recaptureHistory.set([entry]);
+        fixture.detectChanges();
+
+        keyDown(historyRowElement(), ' ');
+
+        expect(open).toHaveBeenCalledTimes(1);
+        const config = open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+        expect(config.data.fang).toEqual(lesemodellAusFang(entry));
+        expect(navigate).not.toHaveBeenCalled();
+        expect(navigateByUrl).not.toHaveBeenCalled();
+      });
     });
   });
 

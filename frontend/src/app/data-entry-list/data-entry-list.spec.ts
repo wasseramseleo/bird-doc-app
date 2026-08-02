@@ -21,6 +21,10 @@ import { appFailureOf } from '../core/errors/app-failure';
 import { ProjectService } from '../service/project.service';
 import { Project, Projekttyp } from '../models/project.model';
 import { BirdStatus, DataEntry } from '../models/data-entry.model';
+import {
+  FangLesemodell,
+  lesemodellAusFang,
+} from '../shared/detail-dialog/fang-lesemodell';
 
 describe('DataEntryListComponent', () => {
   let fixture: ComponentFixture<DataEntryListComponent>;
@@ -664,27 +668,36 @@ describe('DataEntryListComponent', () => {
   // #478 (ADR 0042): das Detail-Zeichen verspricht „in dieser Zeile steht mehr,
   // als die Spalten zeigen — antippen". Eingelöst wird das Versprechen allein vom
   // Detail-Dialog: er führt *jedes* Merkmal, auch eines, das das Projekt über die
-  // Optionalen Felder abgeschaltet hat (ADR 0035). Der Zeilenklick dieser Tabelle
-  // führt dagegen in die Bearbeitungsmaske, die genau dieses Kästchen ausblendet
-  // — das Detail-Zeichen muss seinen Klick deshalb schlucken.
+  // Optionalen Felder abgeschaltet hat (ADR 0035).
   //
-  // Der eigentliche Regressionstest dieses Issues, und er liegt auf Tabellenebene:
-  // ob ein Klick zur Zeile aufsteigt, ist eine Eigenschaft der Komposition und auf
-  // der geteilten Komponente nicht beweisbar. Genau deshalb blieb die Verdrahtung
-  // ungetestet, während die Komponente gut abgedeckt war.
-  it('opens the Detail-Dialog on the Detail-Zeichen without navigating away', () => {
+  // #494: seit der Zeilenklick denselben Dialog öffnet, prüft dieser Pin die
+  // andere Hälfte derselben Regel — **genau einmal**.
+  //
+  // #497 (PRD #491): das Zeichen ist wieder passiv und schluckt seinen Klick
+  // nicht mehr; der Dialog kommt jetzt über die Zeile darunter. „Genau einmal"
+  // bleibt damit die Frage, an der alles hängt — trüge das Zeichen sein eigenes
+  // Ziel *und* stiege der Klick auf, öffnete ein einziger Tipp den Dialog
+  // doppelt.
+  //
+  // Der Pin liegt auf Tabellenebene: ob ein Klick zur Zeile aufsteigt, ist eine
+  // Eigenschaft der Komposition und auf der geteilten Komponente nicht
+  // beweisbar. Genau deshalb blieb die Verdrahtung in #478 ungetestet, während
+  // die Komponente gut abgedeckt war.
+  it('opens the Detail-Dialog exactly once on the Detail-Zeichen, without navigating away', () => {
     const navigate = spyOn(TestBed.inject(Router), 'navigate');
     const entry = row({ id: 'noted', comment: 'linker Flügel verletzt' });
     flushEntries([entry]);
 
     const zeichen = fixture.nativeElement.querySelector(
       '[data-testid="detail-zeichen"]',
-    ) as HTMLButtonElement;
-    // Ein natives `title` kennt auf dem Tablet keinen Hover — der Tap ist der
-    // einzige Weg, also ist das Zeichen ein Knopf und sagt das auch an.
-    expect(zeichen.tagName).toBe('BUTTON');
-    expect(zeichen.type).toBe('button');
-    expect(zeichen.getAttribute('aria-haspopup')).toBe('dialog');
+    ) as HTMLElement;
+    // #497: kein Knopf mehr — es kündigt nichts an, weil es nichts mehr tut.
+    expect(zeichen.tagName).not.toBe('BUTTON');
+    expect(zeichen.getAttribute('aria-haspopup')).toBeNull();
+    // Was es behält: das Bemerkenswerte, als Tooltip und zugängliche
+    // Beschriftung.
+    expect(zeichen.getAttribute('title')).toBe('Bemerkung: linker Flügel verletzt');
+    expect(zeichen.getAttribute('aria-label')).toBe(zeichen.getAttribute('title'));
 
     zeichen.click();
     fixture.detectChanges();
@@ -693,22 +706,151 @@ describe('DataEntryListComponent', () => {
     // aus, mit dem das ⓘ gerade geworben hat.
     expect(navigate).not.toHaveBeenCalled();
     expect(dialog.open).toHaveBeenCalledTimes(1);
-    const config = dialog.open.calls.mostRecent().args[1] as { data: DataEntry };
-    expect(config.data).toBe(entry);
+    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+    expect(config.data.fang).toEqual(lesemodellAusFang(entry));
   });
 
-  // #478 (ADR 0042): der gewöhnliche Zeilenklick dieser Tabelle bleibt der direkte
-  // Weg in die Bearbeitungsmaske — die Regel, von der die Wiederfang-Historie
-  // benannt abweicht. Dass sie unverändert bleibt, ist die andere Hälfte dieses
-  // Issues und war bis hierher durch keinen Test gedeckt.
-  it('navigates to the capture form on an ordinary row click', () => {
+  // #494 (PRD #491): die Kernregel — eine Zeile antippen heißt „zeig mir diesen
+  // Fang". Bis hierher navigierte dieselbe Geste in die Bearbeitungsmaske, und
+  // die blendet aus, was das Projekt über die Optionalen Felder abgeschaltet hat
+  // (ADR 0035) — ein Bildschirm zum Ändern, wo nur gelesen werden sollte.
+  //
+  // Kompositions-Pin dieser Tabelle: **genau einmal**, und kein Routenwechsel.
+  it('opens the Detail-Dialog exactly once on a row click and no longer navigates to the capture form', () => {
     const navigate = spyOn(TestBed.inject(Router), 'navigate');
+    const entry = row({ id: 'e42', comment: 'linker Flügel verletzt' });
+    flushEntries([entry]);
+
+    (fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+    expect(config.data.fang).toEqual(lesemodellAusFang(entry));
+  });
+
+  // #494: auch ein völlig unauffälliger Fang — ohne Brutfleck, ohne CPL+, ohne
+  // Bemerkung, also ohne Detail-Zeichen — ist über die Zeile lesbar. Das ist der
+  // eigentliche Gewinn: bis hierher hatte die Mehrzahl aller Fänge gar keinen
+  // Leseweg.
+  it('opens the Detail-Dialog on a row click even where no Detail-Zeichen is shown', () => {
+    const entry = row({ id: 'plain', comment: null });
+    flushEntries([entry]);
+
+    const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+    expect(row0.querySelector('[data-testid="detail-zeichen"]')).toBeNull();
+
+    row0.click();
+    fixture.detectChanges();
+
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+    expect(config.data.fang).toEqual(lesemodellAusFang(entry));
+  });
+
+  // #494: der Weg zum Bearbeiten geht nicht verloren, er wandert nur einen Schritt
+  // weiter — auf den Knopf im Dialog (#493). Die Konfiguration dafür kennt allein
+  // der geteilte Öffner; diese Tabelle sagt nur, *dass* es dieser Fang ist.
+  it('keeps the way to the capture form: the dialog it opens carries the Bearbeiten path', () => {
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
     flushEntries([row({ id: 'e42', comment: 'linker Flügel verletzt' })]);
 
     (fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement).click();
     fixture.detectChanges();
 
+    const config = dialog.open.calls.mostRecent().args[1] as {
+      data: {
+        bearbeiten: () => { gesperrt: boolean; grund: string | null };
+        bearbeiteFang: () => void;
+      };
+    };
+    // Online ist der Knopf frei — die einzige Sperre ist synchronisiert + offline
+    // und liegt im Öffner (#493).
+    expect(config.data.bearbeiten()).toEqual({ gesperrt: false, grund: null });
+
+    config.data.bearbeiteFang();
+
     expect(navigate).toHaveBeenCalledWith(['/data-entry', 'e42']);
-    expect(dialog.open).not.toHaveBeenCalled();
+  });
+
+  // #496 (PRD #491): der Kompositions-Pin dieser Tabelle für die Tastatur. Seit
+  // #494 ist der Zeilenklick der Leseweg *jedes* Fangs — der einzige
+  // Tastaturweg in den Dialog war bis hierher das ⓘ, und das erscheint bei
+  // einem gewöhnlichen Fang gar nicht. Dass ein Tastendruck bis zur Zeile
+  // durchkommt, ist eine Eigenschaft der Komposition und auf der geteilten
+  // Naht nicht beweisbar (ADR 0042); deshalb liegt dieser Pin hier.
+  describe('Tastaturbedienung der Zeile (#496)', () => {
+    function keyDown(target: HTMLElement, key: string): void {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      fixture.detectChanges();
+    }
+
+    it('macht eine Zeile per Tabulator erreichbar und kündigt sie als bedienbar an', () => {
+      flushEntries([row({ id: 'plain', comment: null })]);
+
+      const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+      expect(row0.getAttribute('tabindex')).toBe('0');
+      expect(row0.getAttribute('role')).toBe('button');
+
+      row0.focus();
+      expect(document.activeElement).toBe(row0);
+    });
+
+    // Eine fokussierbare Zeile, der man den Fokus nicht ansieht, ist eine Falle.
+    // Der Ring ist der app-weite (A11Y-4, `styles.scss`) — hier wird belegt, dass
+    // er auch auf einer Material-Tabellenzeile ankommt.
+    it('zeigt den Fokus einer Zeile sichtbar an', () => {
+      flushEntries([row({ id: 'plain', comment: null })]);
+
+      const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+      row0.focus();
+
+      const stil = getComputedStyle(row0);
+      expect(stil.outlineStyle).toBe('solid');
+      expect(parseFloat(stil.outlineWidth)).toBeGreaterThan(0);
+    });
+
+    // Kriterium: „Die Tabulator-Reihenfolge innerhalb der Tabellen bleibt
+    // nachvollziehbar (Zeile, dann was in ihr bedienbar ist)." Sie folgt der
+    // Dokumentreihenfolge, solange sich niemand mit einem positiven tabindex
+    // vordrängt.
+    it('hält die Tabulator-Reihenfolge nachvollziehbar: erst die Zeile, dann was in ihr steht', () => {
+      flushEntries([row({ id: 'noted', comment: 'linker Flügel verletzt' })]);
+
+      const row0 = fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement;
+      expect(row0.getAttribute('tabindex')).toBe('0');
+
+      const vordraengler = Array.from(row0.querySelectorAll('[tabindex]')).filter(
+        (el) => Number(el.getAttribute('tabindex')) > 0,
+      );
+      expect(vordraengler).toEqual([]);
+    });
+
+    it('öffnet den Detail-Dialog mit Enter genau einmal, ohne zu navigieren', () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate');
+      const entry = row({ id: 'plain', comment: null });
+      flushEntries([entry]);
+
+      keyDown(fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement, 'Enter');
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+      const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+      expect(config.data.fang).toEqual(lesemodellAusFang(entry));
+    });
+
+    it('öffnet den Detail-Dialog mit der Leertaste genau einmal, ohne zu navigieren', () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate');
+      const entry = row({ id: 'plain', comment: null });
+      flushEntries([entry]);
+
+      keyDown(fixture.nativeElement.querySelector('tr.entry-row') as HTMLElement, ' ');
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+      const config = dialog.open.calls.mostRecent().args[1] as { data: { fang: FangLesemodell } };
+      expect(config.data.fang).toEqual(lesemodellAusFang(entry));
+    });
   });
 });

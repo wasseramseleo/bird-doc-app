@@ -23,6 +23,8 @@ import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {LoadFailureComponent} from '../shared/load-failure/load-failure';
 import {AppFailure, appFailureOf} from '../core/errors/app-failure';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
+import {FangZeileDirective} from '../shared/directives/fang-zeile';
+import {DetailDialogOpener} from '../shared/detail-dialog/detail-dialog-opener';
 import {
   ImportIwmDialogComponent,
   ImportIwmDialogData,
@@ -41,6 +43,7 @@ import {
     MatIconModule,
     MatProgressSpinnerModule,
     MarkerSlotsComponent,
+    FangZeileDirective,
     AppIconEmptyDirective,
     FailureBannerComponent,
     LoadFailureComponent,
@@ -58,6 +61,7 @@ export class DataEntryListComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
+  private readonly detailDialog = inject(DetailDialogOpener);
 
   readonly currentProject = this.projectService.currentProject;
 
@@ -149,8 +153,17 @@ export class DataEntryListComponent implements OnInit {
     this.loadEntries();
   }
 
-  openEntry(entry: DataEntry): void {
-    this.router.navigate(['/data-entry', entry.id]);
+  // #494 (PRD #491, ADR 0042): eine Zeile antippen heißt „zeig mir diesen Fang" —
+  // in jeder Fang-Tabelle dieselbe Geste. Bis hierher navigierte dieselbe Geste
+  // hier in die Bearbeitungsmaske, und die blendet aus, was das Projekt über die
+  // Optionalen Felder abgeschaltet hat (ADR 0035): ein Bildschirm zum Ändern,
+  // wenn nur gelesen werden sollte. Der Weg zum Bearbeiten ist ab jetzt der
+  // „Bearbeiten"-Knopf im Dialog (#493).
+  //
+  // Geöffnet wird ausschließlich über den geteilten Öffner: diese Tabelle sagt
+  // nur, *dass* es dieser Fang ist, und kennt die Dialog-Konfiguration nicht.
+  oeffneFang(entry: DataEntry): void {
+    this.detailDialog.open(entry);
   }
 
   newEntry(): void {
