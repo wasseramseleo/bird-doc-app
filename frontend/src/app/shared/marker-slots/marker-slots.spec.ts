@@ -3,6 +3,7 @@ import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {MatDialog} from '@angular/material/dialog';
 
 import {MarkerSlotsComponent} from './marker-slots';
+import {MarkerFakten} from './marker-fakten';
 import {DataEntry} from '../../models/data-entry.model';
 import {OptionalField, Project} from '../../models/project.model';
 import {ProjectService} from '../../service/project.service';
@@ -73,7 +74,7 @@ describe('MarkerSlotsComponent', () => {
   let fixture: ComponentFixture<MarkerSlotsComponent>;
   let dialog: jasmine.SpyObj<MatDialog>;
 
-  function render(entry: DataEntry): HTMLElement {
+  function render(entry: MarkerFakten): HTMLElement {
     fixture = TestBed.createComponent(MarkerSlotsComponent);
     fixture.componentRef.setInput('entry', entry);
     fixture.detectChanges();
@@ -104,6 +105,56 @@ describe('MarkerSlotsComponent', () => {
         },
       ],
     }).compileComponents();
+  });
+
+  // #480: die Komponente nimmt seit „Heute" nicht mehr den ganzen Fang-Datensatz,
+  // sondern nur noch die fünf Angaben, die sie liest — `MarkerFakten`. Ein
+  // `DataEntry` erfüllt den Typ **strukturell**, und genau das hält die beiden
+  // bestehenden Aufrufstellen („Letzte Fänge", Wiederfang-Historie) unverändert:
+  // sie reichen weiterhin ihren Datensatz herein, ohne Adapter dazwischen.
+  //
+  // Die Zuweisung unten ist der eigentliche Beweis — sie ist eine
+  // **Übersetzungszeit**-Aussage: fiele auf `DataEntry` eines der fünf Felder weg
+  // oder änderte seinen Typ, bräche schon der Build. Ohne sie liefen die beiden
+  // Typen lautlos auseinander, weil `setInput` nicht typgeprüft ist. Die
+  // Darstellung darunter macht die Aussage nicht-leer: derselbe Datensatz belegt
+  // ohne Zutun alle drei Slots.
+  it('erfüllt ein DataEntry die MarkerFakten strukturell — ohne Adapter', () => {
+    const datensatz: DataEntry = fang({
+      has_brood_patch: true,
+      has_cpl_plus: true,
+      comment: 'Ring saß locker',
+      is_dead_recovery: true,
+      is_non_standard: true,
+    });
+
+    const fakten: MarkerFakten = datensatz;
+
+    const el = render(fakten);
+    expect(detailZeichen(el)!.getAttribute('title')).toBe(
+      'Brutfleck, CPL+ — Bemerkung: Ring saß locker',
+    );
+    expect(el.querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="non-standard-icon"]')).not.toBeNull();
+  });
+
+  // #480: die Gegenrichtung — die Komponente kommt mit den fünf Angaben allein
+  // aus und verlangt nichts, was eine Warteschlangen-Zeile nicht hat. Deren
+  // Verweise auf Art, Ring, Station und Beringer:in sind auf `DataEntry` nicht
+  // nullbar; einen synthetischen Datensatz daraus zu bauen hieße, einen
+  // gefälschten Fang zu erfinden, statt einen schmalen Typ zu nehmen.
+  it('kommt mit den fünf Angaben allein aus — ohne einen Fang-Datensatz', () => {
+    const el = render({
+      has_brood_patch: false,
+      has_cpl_plus: false,
+      comment: 'Totfund; Umstände: Katze',
+      is_dead_recovery: true,
+      is_non_standard: false,
+    });
+
+    expect(detailZeichen(el)!.getAttribute('title')).toBe('Bemerkung: Totfund; Umstände: Katze');
+    expect(el.querySelector('[data-testid="tot-fund-icon"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="non-standard-icon"]')).toBeNull();
   });
 
   // #468: das ⓘ bedeutet nicht mehr „hat Bemerkung", sondern „in dieser Zeile

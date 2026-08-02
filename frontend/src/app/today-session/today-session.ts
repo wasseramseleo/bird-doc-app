@@ -31,6 +31,8 @@ import {getBirdStatusLabel} from '../data-entry-form/data-entry-labels';
 import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialog/confirm-dialog';
 import {AppIconErrorDirective} from '../shared/app-icons';
 import {FangZeileDirective} from '../shared/directives/fang-zeile';
+import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
+import {MarkerFakten} from '../shared/marker-slots/marker-fakten';
 import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {appFailureOf} from '../core/errors/app-failure';
 import {SchreibFehler} from '../core/errors/schreib-fehler';
@@ -46,6 +48,11 @@ interface QueuedRow {
   // flagged during sync (issue #164); `null` for a plain, not-yet-synced
   // capture. A flagged row is highlighted and opens in the form to be fixed.
   syncError: string | null;
+  // #480: was die Marker-Spalte über diesen Fang liest — die fünf Angaben, die
+  // im Outbox-Payload ohnehin wörtlich stehen. Sie gehören der **Fang**-Frage
+  // („was war an diesem Fang besonders?") und nicht der Sync-Frage, die das
+  // Zustands-Abzeichen weiter unten in derselben Zeile beantwortet.
+  marker: MarkerFakten;
   // #495: der Eintrag selbst, weil der Zeilenklick ihn jetzt dem geteilten
   // Öffner hinhält — der macht daraus das Lesemodell des Detail-Dialogs.
   entry: OutboxEntry;
@@ -69,6 +76,14 @@ interface QueuedRow {
  * „Heute" auf, ein Sonderfall zu sein: beide Abschnitte öffnen beim Zeilenklick
  * denselben Dialog, und der Weg in die Warteschlangen-Bearbeitung führt von dort
  * über „Bearbeiten" — unverändert, nur einen Schritt später.
+ *
+ * #480: **beide** Abschnitte tragen jetzt auch die Marker-Spalte, mit denselben
+ * drei festen Slots wie „Letzte Fänge" und die Wiederfang-Historie. Damit
+ * beantwortet die Zeile zwei getrennte Fragen nebeneinander: das
+ * Zustands-Abzeichen die Sync-Frage („ist das schon oben?"), die Marker-Spalte
+ * die Fang-Frage („was war an diesem Fang besonders?"). Ein heute Vormittag
+ * erfasster Tot-Fund ist hier als Tot-Fund zu erkennen, ob synchronisiert oder
+ * nicht.
  */
 @Component({
   selector: 'app-today-session',
@@ -80,6 +95,7 @@ interface QueuedRow {
     AppIconErrorDirective,
     FangZeileDirective,
     FailureBannerComponent,
+    MarkerSlotsComponent,
   ],
   templateUrl: './today-session.html',
   styleUrl: './today-session.scss',
@@ -193,6 +209,12 @@ export class TodaySessionComponent implements OnInit {
       // die Beschriftung macht daraus einen Gedankenstrich, keinen Wiederfang.
       statusLabel: getBirdStatusLabel(fang.bird_status),
       staffLabel: fang.staff?.full_name ?? NICHT_AUF_DIESEM_GERAET_BEKANNT,
+      // #480: dieselbe Lesung des Payloads wie die vier Spalten darüber — das
+      // Lesemodell erfüllt die `MarkerFakten` strukturell. Die fünf Angaben
+      // stehen wörtlich im Payload, es wird nichts gegen das Offline-Bundle
+      // aufgelöst: ein Tot-Fund ist in „Heute" als Tot-Fund zu erkennen, ob er
+      // schon oben ist oder nicht.
+      marker: fang,
       syncError: entry.syncError ?? null,
       entry,
     };

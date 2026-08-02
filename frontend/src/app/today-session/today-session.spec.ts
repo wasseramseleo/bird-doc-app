@@ -646,6 +646,252 @@ describe('TodaySessionComponent', () => {
     });
   });
 
+  // #480: „Heute" war die dritte Fang-Tabelle und die einzige ohne
+  // Marker-Spalte — ein heute Vormittag erfasster Tot-Fund war hier nicht als
+  // solcher zu erkennen, während „Letzte Fänge" und die Wiederfang-Historie ihn
+  // seit #388 bzw. #405 kennzeichnen. Die Pins hier sind
+  // **Kompositions**-Aussagen: dass die Zelle da ist, wo sie hingehört, und dass
+  // sie in **beiden** Abschnitten dasselbe liest. Was die Slots aus den fünf
+  // Angaben machen, steht auf der geteilten Naht (`marker-slots.spec.ts`).
+  describe('Marker-Spalte (#480)', () => {
+    // Ein Bildschirm mit je einer Zeile in beiden Abschnitten — dieselben
+    // Marker-Angaben auf beiden Seiten, damit ein Unterschied im Ergebnis nur
+    // vom Sync-Zustand kommen könnte.
+    async function mitBeidenAbschnitten(
+      marker: {
+        has_brood_patch?: boolean;
+        has_cpl_plus?: boolean;
+        comment?: string | null;
+        is_dead_recovery?: boolean;
+        is_non_standard?: boolean;
+      } = {},
+    ): Promise<void> {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload(marker),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      await flushSyncedEntries([syncedEntry(marker as Partial<DataEntry>)]);
+      await settle();
+      fixture.detectChanges();
+    }
+
+    function abschnitte(): {queued: HTMLElement; synced: HTMLElement} {
+      return {
+        queued: fixture.nativeElement.querySelector('.session-row--queued') as HTMLElement,
+        synced: fixture.nativeElement.querySelector('.session-row--synced') as HTMLElement,
+      };
+    }
+
+    function markerZelle(row: HTMLElement): HTMLElement {
+      return row.querySelector('app-marker-slots') as HTMLElement;
+    }
+
+    /** Der heutige Tag zu einer bestimmten Ortszeit — siehe `getTodayEntries`. */
+    function heuteUm(stunde: number, minute: number): string {
+      const zeitpunkt = new Date();
+      zeitpunkt.setHours(stunde, minute, 0, 0);
+      return zeitpunkt.toISOString();
+    }
+
+    it('zeigt ♥ auf einem Tot-Fund in beiden Abschnitten', async () => {
+      await mitBeidenAbschnitten({is_dead_recovery: true, comment: 'Totfund; Umstände: Katze'});
+
+      const {queued, synced} = abschnitte();
+      expect(queued.querySelector('[data-testid="tot-fund-icon"]'))
+        .withContext('nicht synchronisiert')
+        .not.toBeNull();
+      expect(synced.querySelector('[data-testid="tot-fund-icon"]'))
+        .withContext('synchronisiert')
+        .not.toBeNull();
+    });
+
+    it('zeigt ⚑ auf einem Nicht-Standard-Fang in beiden Abschnitten', async () => {
+      await mitBeidenAbschnitten({is_non_standard: true, comment: 'Handfang'});
+
+      const {queued, synced} = abschnitte();
+      expect(queued.querySelector('[data-testid="non-standard-icon"]'))
+        .withContext('nicht synchronisiert')
+        .not.toBeNull();
+      expect(synced.querySelector('[data-testid="non-standard-icon"]'))
+        .withContext('synchronisiert')
+        .not.toBeNull();
+    });
+
+    // #468: das ⓘ erscheint auch bei Brutfleck oder CPL+ allein — beide haben
+    // hier so wenig eine Spalte wie in den anderen Tabellen. Und es nennt in
+    // beiden Abschnitten **denselben** Text, weil es denselben Fang liest.
+    it('zeigt das ⓘ in beiden Abschnitten mit demselben Bemerkenswerten', async () => {
+      await mitBeidenAbschnitten({has_brood_patch: true, comment: 'Ring saß locker'});
+
+      const {queued, synced} = abschnitte();
+      const eingereiht = queued.querySelector('[data-testid="detail-zeichen"]') as HTMLElement;
+      const oben = synced.querySelector('[data-testid="detail-zeichen"]') as HTMLElement;
+
+      expect(eingereiht).not.toBeNull();
+      expect(oben).not.toBeNull();
+      expect(eingereiht.getAttribute('title')).toBe('Brutfleck — Bemerkung: Ring saß locker');
+      expect(oben.getAttribute('title')).toBe(eingereiht.getAttribute('title'));
+    });
+
+    it('zeigt das ⓘ auch bei CPL+ ohne Bemerkung in beiden Abschnitten', async () => {
+      await mitBeidenAbschnitten({has_cpl_plus: true});
+
+      const {queued, synced} = abschnitte();
+      expect(queued.querySelector('[data-testid="detail-zeichen"]')).not.toBeNull();
+      expect(synced.querySelector('[data-testid="detail-zeichen"]')).not.toBeNull();
+    });
+
+    // #388: ein leerer Slot behält seine Breite und rückt nicht nach — sonst
+    // stünde die Spalte je Zeile woanders und ließe sich nicht abscannen.
+    it('lässt die Zelle eines unauffälligen Fangs leer, aber gleich breit', async () => {
+      await mitBeidenAbschnitten();
+
+      const {queued, synced} = abschnitte();
+      expect(queued.querySelector('[data-testid="detail-zeichen"]')).toBeNull();
+      expect(queued.querySelector('[data-testid="tot-fund-icon"]')).toBeNull();
+      expect(queued.querySelector('[data-testid="non-standard-icon"]')).toBeNull();
+
+      for (const row of [queued, synced]) {
+        // Die drei Slots stehen auch leer da …
+        expect(row.querySelectorAll('.marker-slot').length).toBe(3);
+        // … und die Zelle ist breiter als nichts.
+        expect(markerZelle(row).getBoundingClientRect().width).toBeGreaterThan(0);
+      }
+    });
+
+    // Der Kern der Platzierung: **nach der Uhrzeit, vor der Art**. Alles hinter
+    // der Art wird von je Zeile unterschiedlichem Inhalt verschoben (der
+    // Abzeichentext wechselt, der Lösch-Knopf existiert nur im nicht
+    // synchronisierten Abschnitt) — dort könnte die Spalte ihre x-Position nicht
+    // halten, und genau die ist ihr Zweck.
+    it('setzt die Zelle in beiden Abschnitten zwischen Uhrzeit und Art', async () => {
+      await mitBeidenAbschnitten();
+
+      for (const row of Object.values(abschnitte())) {
+        const kinder = Array.from(row.children);
+        const uhrzeit = kinder.findIndex((el) => el.classList.contains('session-row__time'));
+        const zelle = kinder.findIndex((el) => el.tagName.toLowerCase() === 'app-marker-slots');
+        const art = kinder.findIndex((el) => el.classList.contains('session-row__species'));
+
+        expect(uhrzeit).toBeGreaterThanOrEqual(0);
+        expect(zelle).toBe(uhrzeit + 1);
+        expect(art).toBe(zelle + 1);
+      }
+    });
+
+    // Woran die Ausrichtung wirklich hängt: die Uhrzeit ist der einzige Nachbar
+    // **vor** der Zelle, also bestimmt ihre Breite deren x-Position. Inters
+    // Ziffern sind proportional — „07:12" ist schmaler als „14:25" —, und die
+    // Spalte wanderte in der laufenden App je Zeile um ein paar Pixel, obwohl
+    // der Vergleich der x-Positionen unten grün blieb: die Prüfumgebung rendert
+    // ohne die Marken-Schrift, und ihr Ersatz hat von sich aus gleich breite
+    // Ziffern. Dieser Pin behauptet deshalb die **Ursache** und nicht die
+    // Wirkung — die Wirkung war hier nicht messbar.
+    it('stellt die Uhrzeit auf Tabellenziffern, damit die Zelle nicht wandert', async () => {
+      await mitBeidenAbschnitten();
+
+      for (const row of Object.values(abschnitte())) {
+        const uhrzeit = row.querySelector('.session-row__time') as HTMLElement;
+        expect(getComputedStyle(uhrzeit).fontVariantNumeric).toContain('tabular-nums');
+      }
+    });
+
+    // Dieselbe x-Position über **alle** Zeilen **beider** Abschnitte — auch
+    // wenn die eine Zeile Marker trägt und die andere nicht und die Uhrzeiten
+    // verschieden sind. Was dieser Pin greift, ist das Flex-Verhalten der Zelle
+    // (sie schrumpft nicht, sie rückt nicht nach); für die Breite der Uhrzeit
+    // steht der Pin darüber.
+    it('hält die Zelle über beide Abschnitte hinweg an derselben x-Position', async () => {
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-1',
+        accountKey: 'fre',
+        payload: queuedPayload({date_time: '2026-07-02T09:00', is_dead_recovery: true}),
+        queuedAt: '2026-07-02T09:00:00.000Z',
+      });
+      await TestBed.inject(OutboxStoreService).add({
+        id: 'outbox-uuid-2',
+        accountKey: 'fre',
+        payload: queuedPayload({date_time: '2026-07-02T11:48', idempotency_key: 'outbox-uuid-2'}),
+        queuedAt: '2026-07-02T11:48:00.000Z',
+      });
+      await TestBed.inject(OutboxService).ready;
+
+      await setup();
+      fixture.detectChanges();
+      // `getTodayEntries` verwirft alles, was nicht von heute ist — die beiden
+      // Uhrzeiten müssen deshalb am heutigen Tag liegen und trotzdem verschieden
+      // sein, sonst prüfte der Vergleich unten vier gleich breite Uhrzeiten.
+      await flushSyncedEntries([
+        syncedEntry({id: 'server-1', date_time: heuteUm(7, 3), is_non_standard: true}),
+        syncedEntry({id: 'server-2', date_time: heuteUm(14, 25)}),
+      ]);
+      await settle();
+      fixture.detectChanges();
+
+      const zellen = Array.from(
+        fixture.nativeElement.querySelectorAll('.session-row app-marker-slots'),
+      ) as HTMLElement[];
+      expect(zellen.length).toBe(4);
+
+      const links = zellen.map((zelle) => zelle.getBoundingClientRect().left);
+      for (const x of links) {
+        expect(Math.abs(x - links[0])).toBeLessThan(1);
+      }
+    });
+
+    // „Bewusst unverändert": das Abzeichen beantwortet die Sync-Frage, die
+    // Marker-Spalte die Fang-Frage. Beide stehen nebeneinander.
+    it('lässt Zustands-Abzeichen und Lösch-Knopf unverändert bestehen', async () => {
+      await mitBeidenAbschnitten({is_dead_recovery: true, comment: 'Totfund; Umstände: Katze'});
+
+      const {queued, synced} = abschnitte();
+      expect(queued.querySelector('.session-row__badge--pending')?.textContent).toContain(
+        'nicht synchronisiert',
+      );
+      expect(queued.querySelector('[data-testid="delete-queued"]')).not.toBeNull();
+      expect(synced.querySelector('.session-row__badge--synced')?.textContent).toContain(
+        'synchronisiert',
+      );
+    });
+
+    // Der Lösch-Knopf steht weiterhin allein für sich: sein Klick öffnet die
+    // Löschbestätigung und **nicht** zusätzlich den Detail-Dialog, auch mit der
+    // neuen Zelle in derselben Zeile.
+    it('öffnet aus dem Lösch-Knopf heraus nur die Löschbestätigung', async () => {
+      await mitBeidenAbschnitten({is_dead_recovery: true, comment: 'Totfund; Umstände: Katze'});
+      dialog.open.and.returnValue({afterClosed: () => of(false)} as never);
+
+      const {queued} = abschnitte();
+      (queued.querySelector('[data-testid="delete-queued"]') as HTMLElement).click();
+      await settle();
+
+      expect(dialog.open).toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.any(Object));
+      expect(detailDialog.open).not.toHaveBeenCalled();
+      expect(detailDialog.openQueued).not.toHaveBeenCalled();
+    });
+
+    // #497/#405: die Marker sind Information, keine Handlung — ihr Klick steigt
+    // zur Zeile auf, und die öffnet den Detail-Dialog. Auf der geteilten Naht ist
+    // das Aufsteigen bewiesen; dass es hier bei genau **einem** Öffnen ankommt,
+    // ist eine Aussage über diese Zeile.
+    it('lässt einen Tipp auf einen Marker die Zeile genau einmal öffnen', async () => {
+      await mitBeidenAbschnitten({is_dead_recovery: true, comment: 'Totfund; Umstände: Katze'});
+
+      const {queued, synced} = abschnitte();
+      (queued.querySelector('[data-testid="tot-fund-icon"]') as HTMLElement).click();
+      expect(detailDialog.openQueued).toHaveBeenCalledTimes(1);
+
+      (synced.querySelector('[data-testid="detail-zeichen"]') as HTMLElement).click();
+      expect(detailDialog.open).toHaveBeenCalledTimes(1);
+    });
+  });
+
   // #496 (PRD #491): die Kompositions-Pins dieses Bildschirms für die Tastatur.
   // „Heute" ist die einzige Fang-Tabelle mit **zwei** Abschnitten und der
   // einzige Ort, an dem in der Zeile noch etwas anderes bedienbar ist — der

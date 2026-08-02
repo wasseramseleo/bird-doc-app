@@ -15,6 +15,7 @@ import {
   SmallFeatherAppMoult,
   SmallFeatherIntMoult,
 } from '../../models/data-entry.model';
+import {MarkerFakten} from '../marker-slots/marker-fakten';
 import {OfflineBundle, OfflineIdentity} from '../../models/offline-bundle.model';
 import {OutboxEntry} from '../../models/outbox-entry.model';
 import {RingSize} from '../../models/ring.model';
@@ -407,6 +408,54 @@ describe('das Lesemodell des Detail-Dialogs (#495)', () => {
       const lesemodell = lesemodellAusEintrag(eintrag({date_time: null}), null);
 
       expect(lesemodell.date_time).toBe('2026-07-02T09:05:00.000Z');
+    });
+
+    // #480: die beiden Fangmarker reisen auf Lese- und Schreibseite mit
+    // (ADR 0026) — sie stehen wörtlich im Payload und brauchen kein Bundle.
+    it('liest die beiden Fangmarker wörtlich aus dem Payload', () => {
+      const gesetzt = lesemodellAusEintrag(
+        eintrag({is_dead_recovery: true, is_non_standard: true}),
+        null,
+      );
+      expect(gesetzt.is_dead_recovery).toBeTrue();
+      expect(gesetzt.is_non_standard).toBeTrue();
+
+      const ungesetzt = lesemodellAusEintrag(eintrag(), null);
+      expect(ungesetzt.is_dead_recovery).toBeFalse();
+      expect(ungesetzt.is_non_standard).toBeFalse();
+    });
+  });
+
+  /**
+   * #480: die Marker-Spalte in „Heute" liest ihre fünf Angaben aus **diesem**
+   * Modell und nicht aus einer zweiten Lesung desselben Payloads — sie kann das,
+   * weil `FangLesemodell` die `MarkerFakten` strukturell erfüllt.
+   *
+   * Die Zuweisungen unten sind der Beweis, und sie sind eine
+   * **Übersetzungszeit**-Aussage: fiele hier eines der fünf Felder weg oder
+   * änderte seinen Typ, bräche der Build. Ohne sie liefen die beiden Typen
+   * lautlos auseinander und die Zeile widerspräche dem Dialog, den sie öffnet.
+   */
+  describe('erfüllt die MarkerFakten strukturell (#480)', () => {
+    it('aus einem Fang-Datensatz', () => {
+      const fakten: MarkerFakten = lesemodellAusFang(
+        fang({has_brood_patch: true, is_dead_recovery: true, comment: 'Totfund; Umstände: Katze'}),
+      );
+
+      expect(fakten.has_brood_patch).toBeTrue();
+      expect(fakten.is_dead_recovery).toBeTrue();
+      expect(fakten.comment).toBe('Totfund; Umstände: Katze');
+    });
+
+    it('aus einem nicht synchronisierten Eintrag', () => {
+      const fakten: MarkerFakten = lesemodellAusEintrag(
+        eintrag({has_cpl_plus: true, is_non_standard: true, comment: 'Handfang'}),
+        null,
+      );
+
+      expect(fakten.has_cpl_plus).toBeTrue();
+      expect(fakten.is_non_standard).toBeTrue();
+      expect(fakten.comment).toBe('Handfang');
     });
   });
 });
