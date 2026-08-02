@@ -15,6 +15,7 @@ import {Central} from '../../models/central.model';
 import {OfflineBundle} from '../../models/offline-bundle.model';
 import {OutboxEntry} from '../../models/outbox-entry.model';
 import {resolveQueuedEntryDisplay} from '../../core/offline/queued-entry-display';
+import {MarkerFakten} from '../marker-slots/marker-fakten';
 
 /**
  * #495 (PRD #491): die Wendung für eine Referenz, die **dieses Gerät** nicht
@@ -47,6 +48,12 @@ export const NICHT_AUF_DIESEM_GERAET_BEKANNT = 'auf diesem Gerät nicht bekannt'
  *
  * Die Feldnamen sind die des Datensatzes: dieses Modell ist seine
  * **Anzeigefläche**, keine zweite Sprache für dieselben Merkmale.
+ *
+ * #480: der Dialog ist nicht sein einziger Leser. Die Zeile in „Heute" liest
+ * daraus schon Art, Ring, Ringstatus und Beringer:in — und seit #480 auch ihre
+ * Marker-Spalte, die dafür nur die {@link MarkerFakten} sieht. Der Payload wird
+ * damit **einmal** gelesen: die Zeile und der Dialog, den sie öffnet, können
+ * über denselben Fang nichts Verschiedenes sagen.
  *
  * `null` heißt hier zweierlei, und der Dialog hält die beiden auseinander:
  * bei einer **Referenz** „dieses Gerät kennt sie nicht"
@@ -91,6 +98,16 @@ export interface FangLesemodell {
   readonly has_brood_patch: boolean;
   readonly has_cpl_plus: boolean;
   readonly comment: string | null;
+  /**
+   * Die beiden Fangmarker (ADR 0026). Sie kamen mit #480 dazu, weil dieses
+   * Modell nicht nur der Dialog liest: die Zeile in „Heute" liest daraus schon
+   * Art, Ring, Ringstatus und Beringer:in, und seit #480 auch ihre
+   * Marker-Spalte. Mit ihnen erfüllt `FangLesemodell` die `MarkerFakten`
+   * **strukturell** — sonst müsste derselbe Payload ein zweites Mal gelesen
+   * werden, und die zwei Lesungen liefen lautlos auseinander.
+   */
+  readonly is_dead_recovery: boolean;
+  readonly is_non_standard: boolean;
 }
 
 /**
@@ -133,6 +150,8 @@ export function lesemodellAusFang(fang: DataEntry): FangLesemodell {
     has_brood_patch: fang.has_brood_patch,
     has_cpl_plus: fang.has_cpl_plus,
     comment: fang.comment,
+    is_dead_recovery: fang.is_dead_recovery,
+    is_non_standard: fang.is_non_standard,
   };
 }
 
@@ -191,6 +210,11 @@ export function lesemodellAusEintrag(
     has_brood_patch: payload['has_brood_patch'] === true,
     has_cpl_plus: payload['has_cpl_plus'] === true,
     comment: text(payload['comment']),
+    // #480: die beiden Fangmarker reisen auf Lese- **und** Schreibseite mit
+    // (ADR 0026) — sie stehen also wörtlich im Payload und brauchen so wenig
+    // ein Nachschlagen wie Ringgröße und Ringnummer.
+    is_dead_recovery: payload['is_dead_recovery'] === true,
+    is_non_standard: payload['is_non_standard'] === true,
   };
 }
 

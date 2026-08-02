@@ -32,7 +32,7 @@ import {ConfirmDialogComponent, ConfirmDialogData} from '../shared/confirm-dialo
 import {AppIconErrorDirective} from '../shared/app-icons';
 import {FangZeileDirective} from '../shared/directives/fang-zeile';
 import {MarkerSlotsComponent} from '../shared/marker-slots/marker-slots';
-import {MarkerFakten, markerFaktenAusPayload} from '../shared/marker-slots/marker-fakten';
+import {MarkerFakten} from '../shared/marker-slots/marker-fakten';
 import {FailureBannerComponent} from '../shared/failure-banner/failure-banner';
 import {appFailureOf} from '../core/errors/app-failure';
 import {SchreibFehler} from '../core/errors/schreib-fehler';
@@ -209,11 +209,12 @@ export class TodaySessionComponent implements OnInit {
       // die Beschriftung macht daraus einen Gedankenstrich, keinen Wiederfang.
       statusLabel: getBirdStatusLabel(fang.bird_status),
       staffLabel: fang.staff?.full_name ?? NICHT_AUF_DIESEM_GERAET_BEKANNT,
-      // #480: die fünf Marker-Angaben kommen **direkt** aus dem Payload — kein
-      // Nachschlagen im Offline-Bundle, also auch keine Angabe, die dieses Gerät
-      // nicht kennen könnte. Ein Tot-Fund ist in „Heute" damit als Tot-Fund zu
-      // erkennen, ob er schon oben ist oder nicht.
-      marker: markerFaktenAusPayload(entry.payload),
+      // #480: dieselbe Lesung des Payloads wie die vier Spalten darüber — das
+      // Lesemodell erfüllt die `MarkerFakten` strukturell. Die fünf Angaben
+      // stehen wörtlich im Payload, es wird nichts gegen das Offline-Bundle
+      // aufgelöst: ein Tot-Fund ist in „Heute" als Tot-Fund zu erkennen, ob er
+      // schon oben ist oder nicht.
+      marker: fang,
       syncError: entry.syncError ?? null,
       entry,
     };

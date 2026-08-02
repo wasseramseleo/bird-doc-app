@@ -16,6 +16,13 @@
  * nicht nullbar, eine Warteschlangen-Zeile kann sie nicht auflösen, und das
  * Ergebnis wäre ein gefälschter Datensatz statt eines Adapters.
  *
+ * Die fünf Angaben liest „Heute" auch **nicht selbst** aus dem Outbox-Payload:
+ * `FangLesemodell` liest ihn ohnehin schon für Art, Ring, Ringstatus und
+ * Beringer:in derselben Zeile und erfüllt diesen Typ dadurch ebenfalls
+ * strukturell. Eine zweite Lesung desselben Payloads daneben wäre eine zweite
+ * Wahrheit über denselben Fang — und die Zeile widerspräche dem Dialog, den sie
+ * öffnet.
+ *
  * Die Feldnamen sind die des Datensatzes — dieser Typ ist sein Ausschnitt, keine
  * zweite Sprache für dieselben Merkmale (dieselbe Linie wie `FangLesemodell`).
  */
@@ -25,31 +32,4 @@ export interface MarkerFakten {
   readonly comment: string | null;
   readonly is_dead_recovery: boolean;
   readonly is_non_standard: boolean;
-}
-
-/**
- * Die fünf Angaben aus dem **Schreib-Payload** eines noch nicht
- * synchronisierten Fangs — reines Durchreichen.
- *
- * Sie stehen dort alle wörtlich: der Schreib-Serializer übernimmt den gesamten
- * Formularwert (`DataEntryFormComponent.transformFromForm`), und die Fangmarker
- * werden auf Lese- **und** Schreibseite serialisiert (ADR 0026), damit sie die
- * Offline-Warteschlange überhaupt überstehen. Es wird hier also nichts
- * abgeleitet und nichts gegen das Offline-Bundle aufgelöst — anders als bei Art,
- * Station und Beringer:in, die ein Nachschlagen brauchen.
- *
- * Der Payload ist ungetypt (Formularwerte), deshalb die ausdrückliche Prüfung
- * auf `true` und auf eine nicht leere Zeichenkette: ein abgeschaltetes
- * Kontrollkästchen hinterlässt `null`, ein geleertes Bemerkungsfeld `''`, und
- * beides heißt „nicht gesetzt" und nicht „unbekannt".
- */
-export function markerFaktenAusPayload(payload: Record<string, unknown>): MarkerFakten {
-  const bemerkung = payload['comment'];
-  return {
-    has_brood_patch: payload['has_brood_patch'] === true,
-    has_cpl_plus: payload['has_cpl_plus'] === true,
-    comment: typeof bemerkung === 'string' && bemerkung !== '' ? bemerkung : null,
-    is_dead_recovery: payload['is_dead_recovery'] === true,
-    is_non_standard: payload['is_non_standard'] === true,
-  };
 }

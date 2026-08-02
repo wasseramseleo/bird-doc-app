@@ -238,7 +238,11 @@ takes these five and not a Fang record — a **nicht synchronisiert** row is a f
 projection of an Outbox-Eintrag, which carries all five verbatim but resolves none
 of the references a record promises. A Fang record satisfies MarkerFakten
 **structurally**, so the Material tables („Letzte Fänge", the Wiederfang-Historie)
-hand in their record unchanged, with no adapter (#480).
+hand in their record unchanged, with no adapter (#480). So does the read model
+behind the **Detail-Dialog**, which is where the queued row in „Heute" takes its
+five from — the row reads that model for its other columns already, and a second
+reading of the same Outbox payload beside it would be a second truth about one
+Fang: the row would contradict the dialog it opens.
 The five belong to the **Fang** question — „what was special about this capture?" —
 and stand beside, never instead of, the Zustands-Abzeichen of „Heute", which answers
 the **Sync** question („is this up yet?").
