@@ -1,7 +1,7 @@
 import {ChangeDetectionStrategy, Component, computed, input} from '@angular/core';
 import {MatIconModule} from '@angular/material/icon';
 
-import {DataEntry} from '../../models/data-entry.model';
+import {MarkerFakten} from './marker-fakten';
 
 /**
  * #388/#405: die Marker-Zelle der Fang-Tabellen — drei feste Slots in fixer
@@ -53,6 +53,15 @@ import {DataEntry} from '../../models/data-entry.model';
  * war zweimal definiert und bereits divergiert. Die `matColumnDef` selbst bleibt
  * bewusst pro Tabelle (Header, Breite, `stickyEnd`): die ist über Material-
  * Tabellen hinweg schlecht teilbar und war auch nicht das, was divergiert ist.
+ *
+ * #480: seit „Heute" ist die dritte Tabelle dabei — und sie ist keine
+ * Material-Tabelle, sondern eine Flex-Zeile mit **zwei** Abschnitten, deren
+ * nicht synchronisierter keine Fang-Datensätze zeigt. Deshalb nimmt die
+ * Komponente nur noch {@link MarkerFakten}, die fünf Angaben, die sie ohnehin
+ * liest. Ein `DataEntry` erfüllt den Typ strukturell, die beiden älteren
+ * Aufrufstellen blieben dadurch unangetastet. Die *Platzierung* der Zelle bleibt
+ * Entscheidung je Tabelle — fixiert ist die Reihenfolge der drei Slots
+ * **innerhalb** der Zelle, nicht die Position der Zelle in der Zeile.
  */
 @Component({
   selector: 'app-marker-slots',
@@ -62,7 +71,7 @@ import {DataEntry} from '../../models/data-entry.model';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkerSlotsComponent {
-  readonly entry = input.required<DataEntry>();
+  readonly entry = input.required<MarkerFakten>();
 
   /**
    * Was in dieser Zeile mehr steht, als die Spalten zeigen — oder `''`, wenn
@@ -79,7 +88,7 @@ export class MarkerSlotsComponent {
  * Spaltenüberschrift der Meldestelle).
  */
 const MERKMAL_VOKABELN: readonly {
-  readonly gesetzt: (entry: DataEntry) => boolean;
+  readonly gesetzt: (entry: MarkerFakten) => boolean;
   readonly wort: string;
 }[] = [
   {gesetzt: (entry) => entry.has_brood_patch, wort: 'Brutfleck'},
@@ -96,7 +105,7 @@ const MERKMAL_VOKABELN: readonly {
  * | beides                | `Brutfleck, CPL+ — Bemerkung: Ring saß locker`|
  * | Tot-Fund + Brutfleck  | `Brutfleck — Bemerkung: Totfund; Umstände: Katze` |
  */
-function bemerkenswertesAn(entry: DataEntry): string {
+function bemerkenswertesAn(entry: MarkerFakten): string {
   const teile: string[] = [];
 
   const merkmale = MERKMAL_VOKABELN.filter(({gesetzt}) => gesetzt(entry)).map(({wort}) => wort);

@@ -40,6 +40,14 @@
     background: var(--bd-hover-bg, rgba(0, 0, 0, 0.03));
   }
 
+  // #480: die Marker-Zelle bringt ihre Breite selbst mit (drei feste Slots) —
+  // sie darf nur nicht schrumpfen, sonst wanderte die Spalte doch wieder, sobald
+  // eine Zeile eng wird. Eine reservierte Breite braucht es hier nicht: vor der
+  // Art steht mit der Uhrzeit nur ein gleich breiter Nachbar.
+  &__marker {
+    flex: 0 0 auto;
+  }
+
   &__species {
     flex: 1 1 auto;
     font-weight: 500;
@@ -51,6 +59,16 @@
   &__staff {
     color: var(--bd-ink-soft);
     white-space: nowrap;
+  }
+
+  // #480: die Uhrzeit ist der einzige Nachbar **vor** der Marker-Zelle, also
+  // entscheidet ihre Breite über deren x-Position. „HH:mm" sind immer fünf
+  // Zeichen, aber in Inters proportionalen Ziffern nicht immer gleich breit —
+  // „07:12" ist schmaler als „14:25", und die Spalte wanderte je Zeile um ein
+  // paar Pixel. Mit Tabellenziffern ist sie ohne reservierte Breite ausgerichtet
+  // (dieselbe Behandlung wie die Zahlenspalten in „Letzte Fänge").
+  &__time {
+    font-variant-numeric: tabular-nums;
   }
 
   &__badge {

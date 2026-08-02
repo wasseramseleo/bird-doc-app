@@ -184,7 +184,9 @@ and Ring stay. Clicking it opens a popup for the **Todesumstände** (required); 
 Bemerkung is then composed as **„Totfund; Umstände: <Eingabe>"** and stays
 mandatory. The Todesumstände is not stored separately — it lives inside the
 composed Bemerkung. In the IWM export that Bemerkung text travels along in the
-Bemerkungsspalte and the row takes **no row colour**. Carries a row icon in „Letzte Fänge" and the Wiederfang-Historie. Not
+Bemerkungsspalte and the row takes **no row colour**. Carries a row icon in the
+Marker-Spalte of **every** Fang-Tabelle — „Letzte Fänge", the Wiederfang-Historie
+and both sections of „Heute" (#480). Not
 an Erst/Wiederfang distinction and not a Sonderart.
 Beyond the Bemerkung the export row also sets its **Umstand to 08** and its
 **Zustand to 2** (ADR 0034) — the only capture-level facts that displace a
@@ -207,8 +209,8 @@ empty. That is the rule, and it is deliberately phrased about the *source* of th
 value rather than a fixed column list (ADR 0034): **Fangmethode** and **Lockmittel**
 are always the Projekt's, so they always blank; **Umstand** blanks too — unless the
 capture is also a **Tot-Fund**, whose 08 is a fact about that capture and therefore
-survives the combination, as does its Zustand 2. Carries a row icon in „Letzte Fänge" and
-the Wiederfang-Historie. Does not change the standard statistics today (deferred).
+survives the combination, as does its Zustand 2. Carries a row icon in the Marker-Spalte
+of **every** Fang-Tabelle, „Heute" included (#480). Does not change the standard statistics today (deferred).
 _Avoid_: Beifang, Zufallsfang (one cause of it, not the marker itself), Sonderart
 
 **Detail-Zeichen**:
@@ -226,6 +228,24 @@ does **not** know the Optionale-Felder configuration (#468): a Brutfleck was
 recorded on the bird, not on the form, so a Projekt that switched the field off
 still sees it on a historical capture.
 _Avoid_: Bemerkungs-Indikator (it means more than the Bemerkung since #468), info icon (English), Fangmarker; describing it as *opening* anything (it names, the row opens)
+
+**MarkerFakten**:
+**What the Marker-Spalte reads about a Fang** — exactly five things: **Brutfleck**,
+**CPL+**, the **Bemerkung**, **Tot-Fund** and **Nicht-Standard-Fang**. Deliberately
+independent of whether the Fang has reached the server: a Tot-Fund captured this
+morning is a Tot-Fund in „Heute" before it ever syncs. That is why the column
+takes these five and not a Fang record — a **nicht synchronisiert** row is a flat
+projection of an Outbox-Eintrag, which carries all five verbatim but resolves none
+of the references a record promises. A Fang record satisfies MarkerFakten
+**structurally**, so the Material tables („Letzte Fänge", the Wiederfang-Historie)
+hand in their record unchanged, with no adapter (#480).
+The five belong to the **Fang** question — „what was special about this capture?" —
+and stand beside, never instead of, the Zustands-Abzeichen of „Heute", which answers
+the **Sync** question („is this up yet?").
+_Avoid_: building a synthetic Fang record out of a queued row (its Art, Ring, Station
+and Beringer:in references are not nullable — the result would be a forged record,
+not an adapter); Markerdaten, marker facts (English); treating it as a Fangmarker
+(it *contains* the two, alongside three things that are not markers at all)
 
 **Detail-Dialog**:
 The complete, **read-only** record of one Fang. It shows **every** attribute,

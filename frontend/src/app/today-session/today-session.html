@@ -34,6 +34,15 @@
           (click)="openQueued(row)"
         >
           <span class="session-row__time">{{ row.timestamp | date:'HH:mm' }}</span>
+          <!-- #480: die Marker-Zelle sitzt **nach der Uhrzeit, vor der Art** —
+               in beiden Abschnitten. „Heute" ist keine Material-Tabelle, sondern
+               eine Flex-Zeile, und die Art ist ihr einziges wachsendes Element:
+               alles hinter der Art wird von je Zeile unterschiedlichem Inhalt
+               verschoben (der Abzeichentext wechselt, der Lösch-Knopf gibt es
+               nur hier), dort könnte die Spalte ihre x-Position nicht halten.
+               Genau die ist der Zweck der drei festen Slots (#388). Vor der Art
+               richtet sie sich von selbst aus, ohne reservierte Breiten. -->
+          <app-marker-slots class="session-row__marker" [entry]="row.marker"></app-marker-slots>
           <span class="session-row__species">{{ row.speciesLabel }}</span>
           <span class="session-row__ring">{{ row.ringLabel }}</span>
           <span class="session-row__status">{{ row.statusLabel }}</span>
@@ -76,6 +85,10 @@
              den der Zeiger öffnet. -->
         <div class="session-row session-row--synced" appFangZeile (click)="openSynced(entry)">
           <span class="session-row__time">{{ entry.date_time | date:'HH:mm' }}</span>
+          <!-- #480: dieselbe Stelle wie im nicht synchronisierten Abschnitt —
+               ein Datensatz erfüllt `MarkerFakten` strukturell, es braucht hier
+               keinen Adapter. -->
+          <app-marker-slots class="session-row__marker" [entry]="entry"></app-marker-slots>
           <span class="session-row__species">{{ entry.species.common_name_de }}</span>
           <span class="session-row__ring">
             @if (entry.ring) {
