@@ -7,7 +7,9 @@ the app and landing are separate build roots on separate subdomains and the CDN
 is gone (ADR 0007), so the share is source-time, not a runtime link.
 
 Seit #511 gilt dieselbe Disziplin für die drei SVG-Kanons der gezeichneten
-Marke (`frontend/public/birddoc-{marke,glyph,muster}.svg`). ADR 0043 weitet
+Marke (`frontend/public/birddoc-{marke,glyph,muster}.svg`), seit #512 auch für
+die drei Icon-Ableitungen, die die Landing an ihrer eigenen Wurzel ausliefert
+(`favicon.ico`, `favicon-96x96.png`, `apple-touch-icon.png`). ADR 0043 weitet
 ADR 0009 genau deshalb aus: die Bilder liefen nie unter dieser Wacht, und genau
 dort ist die Drift dann auch eingetreten — die Landing hinkte der App um eine
 ganze Logo-Generation hinterher, ohne dass es jemandem aufgefallen wäre.
@@ -44,6 +46,21 @@ DOPPELT_GEFUEHRT = [
     (
         REPO_ROOT / "frontend" / "public" / "birddoc-muster.svg",
         LANDING_STATIC / "birddoc-muster.svg",
+    ),
+    # Die drei Ableitungen, die die Landing selbst ausliefert (`seo.py` reicht
+    # sie am Apex-Wurzelpfad heraus). Sie entstehen aus demselben Skript wie die
+    # der App-Wurzel und werden darum auch byte-gleich geführt.
+    (
+        REPO_ROOT / "frontend" / "public" / "favicon.ico",
+        LANDING_STATIC / "favicon.ico",
+    ),
+    (
+        REPO_ROOT / "frontend" / "public" / "favicon-96x96.png",
+        LANDING_STATIC / "favicon-96x96.png",
+    ),
+    (
+        REPO_ROOT / "frontend" / "public" / "apple-touch-icon.png",
+        LANDING_STATIC / "apple-touch-icon.png",
     ),
 ]
 
