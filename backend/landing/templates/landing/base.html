@@ -11,8 +11,14 @@
     is built off the live request (ADR 0010 — the canonical domain lives in the
     host routing, not the code). The bilingual pages add hreflang alternates in
     head_meta; German-only pages (legal, auth flows) carry only this canonical.
+
+    Es steht seit issue #515 in einem Block (ADR 0044): eine erbende Seite, die
+    nicht kanonisch sein DARF, kann es damit weglassen, statt es zu erben — ein
+    selbstreferenzielles Canonical auf einer Adresse, die 404 antwortet, meldete
+    Crawlern eine tote Adresse als legitim. Die erbenden Seiten überschreiben
+    den Block nicht und tragen ihr Canonical unverändert weiter.
     {% endcomment %}
-    <link rel="canonical" href="{% canonical_url %}">
+    {% block canonical %}<link rel="canonical" href="{% canonical_url %}">{% endblock %}
     {% comment %}
     SEO / Open-Graph / share tags (issue #108). The marketing home fills this
     with its meta description + OG/Twitter card; other pages leave it empty.

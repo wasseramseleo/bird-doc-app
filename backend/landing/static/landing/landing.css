@@ -575,7 +575,7 @@ body {
 }
 
 .page--home .band--ink .button:focus-visible {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--bd-paper) 35%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--bd-paper) 40%, transparent);
 }
 
 @media (max-width: 30rem) {
@@ -1603,4 +1603,183 @@ body {
     font-style: italic;
     font-size: 0.85rem;
     color: var(--muted);
+}
+
+/* ── Die Fehlerseiten (issue #515, ADR 0044) ──────────────────────────────
+   404 und 500 stehen für sich: ohne Kopfleiste, ohne Fußzeile, ohne Karte.
+   Für die 500 ist das Zwang (Django rendert sie mit leerem Kontext, sie kann
+   base.html nicht erben), für die 404 eine Entscheidung — dass die beiden
+   gleich aussehen, ist der Punkt: sie sind derselbe Moment.
+
+   Die Zusammensetzung wurde prototypisch entschieden, nicht argumentiert:
+   drei strukturell verschiedene Entwürfe in der echten Landing mit diesem
+   Stylesheet; gewählt wurde die invertierte Tuschefläche. Die Wortmarke trägt
+   ein 48-px-Zeichen bei 1,85 rem Lora — eine Stufe größer konkurriert sie mit
+   dem Vogel darunter, und die Seite liest sich als zwei gestapelte Vögel. */
+
+.fehlerseite {
+    min-height: 100vh;
+    background-color: var(--bd-ink);
+    color: var(--bd-paper);
+    /* Die Landing-Semantik kippt für diese eine Fläche mit: Tusche wird Grund,
+       Papier wird Schrift. So tragen die geerbten Bausteine (.button, die
+       Rechts-Links) die Umkehrung, ohne je einzeln umgefärbt zu werden. */
+    --ink: var(--bd-paper);
+    --muted: color-mix(in srgb, var(--bd-paper) 74%, var(--bd-ink));
+    --line: color-mix(in srgb, var(--bd-paper) 28%, var(--bd-ink));
+    --accent: var(--bd-accent-soft);
+    --accent-strong: var(--bd-paper);
+    /* Dieser Token IST der Fokusring: `.button:focus-visible` schaltet die
+       UA-Kontur ab (`outline: none`) und malt allein aus `--accent-tint`.
+       Bliebe er beim Papiergrund-Wert (Akzentbraun zu 18 %), läge der Ring auf
+       Tusche bei 1,16:1 — der eine Ausweg dieser Seite sähe fokussiert aus wie
+       unfokussiert. Papier zu 40 % misst 3,35:1 gegen den Tuschegrund und
+       3,84:1 gegen das Knopfpapier: beide Ränder des Rings über den 3:1 aus
+       WCAG 1.4.11. Wer die Umkehrung erweitert, lässt diese Zeile stehen. */
+    --accent-tint: color-mix(in srgb, var(--bd-paper) 40%, transparent);
+    /* Derselbe Knopf mit demselben Namen, im eigenen Bereich neu gesetzt: die
+       6 % aus brand-tokens.css gelten auf Papiergrund, auf Tusche trägt die
+       Textur mehr (Prototyp: 10 %). */
+    --bd-muster-deckkraft: 0.1;
+}
+
+.fehlerseite__flaeche {
+    position: relative;
+    overflow: hidden;
+    flex: 1 0 auto;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4rem 1.25rem;
+    text-align: center;
+}
+
+/* Die Musterfläche in ihrer NATIVEN weißen Farbe — der einzige Ort im Produkt,
+   an dem sie keine Maske braucht (ADR 0043): auf Tusche färbt sie sich selbst.
+   Fehlt das Hintergrundbild, bleibt schlicht der Tuschegrund — der richtige
+   Ausfallmodus für Schmuck. */
+.fehlerseite__muster {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("./birddoc-muster.svg");
+    background-repeat: repeat;
+    background-size: var(--bd-muster-kachel) auto;
+    opacity: var(--bd-muster-deckkraft);
+}
+
+.fehlerseite__inhalt {
+    position: relative;
+    width: 100%;
+    max-width: var(--measure);
+    margin: 0 auto;
+}
+
+/* Die Seite nennt sich selbst: ohne Kopfleiste trüge sie sonst keine
+   BirdDoc-Marke — der Vogel darunter ist nicht das Logo. */
+.fehlerseite__wortmarke {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    margin-bottom: 2.75rem;
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.85rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+/* Das Zeichen ist der bewachte Kanon (birddoc-marke.svg, ADR 0043) — hier als
+   Maske statt als <img>, weil die Marke schwarze Tusche auf Transparenz ist
+   und auf dem Tuschegrund unsichtbar wäre. So bleibt es die EINE Datei unter
+   dem Paritätstest, statt als Kopie der Zeichnung in die Vorlagen zu wandern
+   und dort unbemerkt zu veralten. Fehlt die Maskenunterstützung, bleibt das
+   Wort „BirdDoc" — die Seite nennt sich weiterhin selbst. */
+.fehlerseite__zeichen {
+    flex: none;
+    width: 48px;
+    height: 48px;
+    -webkit-mask-image: url("./birddoc-marke.svg");
+    mask-image: url("./birddoc-marke.svg");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-position: center;
+    mask-position: center;
+    background-color: currentColor;
+}
+
+.fehlerseite__vogel {
+    width: 128px;
+    margin: 0 auto 1.5rem;
+    color: var(--bd-paper);
+}
+
+.fehlerseite__vogel svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.fehlerseite__eyebrow {
+    margin: 0 0 0.6rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+}
+
+.fehlerseite__titel {
+    margin: 0 0 0.75rem;
+    font-size: 1.9rem;
+    line-height: 1.2;
+    color: var(--bd-paper);
+}
+
+.fehlerseite__satz {
+    max-width: 28rem;
+    margin: 0 auto 1.75rem;
+    color: var(--muted);
+}
+
+.fehlerseite__ausweg {
+    margin: 0;
+}
+
+/* Der eine Ausweg kehrt auf dem Tuschegrund um: Papier auf Tusche. */
+.fehlerseite .button {
+    color: var(--bd-ink);
+    background: var(--bd-paper);
+    border-color: var(--bd-paper);
+}
+
+.fehlerseite .button:hover {
+    background: var(--bd-accent-soft);
+    border-color: var(--bd-accent-soft);
+}
+
+/* Die schmale Rechts-Zeile: ohne Fußzeile wäre die 404 sonst die einzige Seite
+   der Oberfläche ohne Weg zum Impressum — und sie ist gerade die Seite, auf
+   der Fremde ankommen. */
+.fehlerseite__recht {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.25rem;
+    margin-top: 3rem;
+    font-size: 0.85rem;
+}
+
+.fehlerseite__recht a {
+    color: var(--muted);
+    text-decoration: none;
+}
+
+.fehlerseite__recht a:hover {
+    color: var(--bd-paper);
+    text-decoration: underline;
 }
