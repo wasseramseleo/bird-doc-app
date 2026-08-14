@@ -63,6 +63,18 @@ dem sie keine Maske braucht. Darauf der Vogel in Papierfarbe, darunter Eyebrow,
 `.panel` ist das Idiom der **Feldkarte**, und eine Fehlerseite ist kein Formular,
 das ausgefüllt werden will.
 
+**Die Umkehrung gilt für die ganze Semantik, auch für das, was man nicht sieht.**
+`.fehlerseite` bildet die Landing-Namen auf dem Tuschegrund neu ab, statt die
+geerbten Bausteine einzeln umzufärben — und dazu gehört `--accent-tint`, aus dem
+`.button:focus-visible` seinen Ring malt, nachdem es die Kontur des Browsers
+abgeschaltet hat. Bleibt dieser eine Token beim Papiergrund-Wert, liegt der Ring
+auf Tusche bei 1,16:1: der **einzige** Ausweg der Seite sähe fokussiert aus wie
+unfokussiert. Ein Zustand, der nur in einem Zustand sichtbar ist, muss darum mit
+dem Grund umgerechnet und nicht nur mit umgezogen werden — der Wert ist gemessen
+(Papier zu 40 %: 3,35:1 gegen den Grund, 3,84:1 gegen das Knopfpapier, beide
+Ränder über WCAG 1.4.11) und wird im Test aus dem Stylesheet nachgerechnet statt
+als Literal festgenagelt.
+
 **Die Seite nennt sich selbst.** Ohne Kopfleiste trüge sie sonst **keine
 BirdDoc-Marke** — der `?`-Vogel ist nicht das Logo — und ein Fremder bekäme eine
 dunkle Seite mit einem Knopf „Zurück zur Startseite" zu einer Seite, die er nicht

@@ -575,7 +575,7 @@ body {
 }
 
 .page--home .band--ink .button:focus-visible {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--bd-paper) 35%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--bd-paper) 40%, transparent);
 }
 
 @media (max-width: 30rem) {
@@ -1629,6 +1629,14 @@ body {
     --line: color-mix(in srgb, var(--bd-paper) 28%, var(--bd-ink));
     --accent: var(--bd-accent-soft);
     --accent-strong: var(--bd-paper);
+    /* Dieser Token IST der Fokusring: `.button:focus-visible` schaltet die
+       UA-Kontur ab (`outline: none`) und malt allein aus `--accent-tint`.
+       Bliebe er beim Papiergrund-Wert (Akzentbraun zu 18 %), läge der Ring auf
+       Tusche bei 1,16:1 — der eine Ausweg dieser Seite sähe fokussiert aus wie
+       unfokussiert. Papier zu 40 % misst 3,35:1 gegen den Tuschegrund und
+       3,84:1 gegen das Knopfpapier: beide Ränder des Rings über den 3:1 aus
+       WCAG 1.4.11. Wer die Umkehrung erweitert, lässt diese Zeile stehen. */
+    --accent-tint: color-mix(in srgb, var(--bd-paper) 40%, transparent);
     /* Derselbe Knopf mit demselben Namen, im eigenen Bereich neu gesetzt: die
        6 % aus brand-tokens.css gelten auf Papiergrund, auf Tusche trägt die
        Textur mehr (Prototyp: 10 %). */

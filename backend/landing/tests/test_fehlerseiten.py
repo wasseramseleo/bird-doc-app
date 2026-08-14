@@ -230,6 +230,103 @@ def test_das_zeichen_der_wortmarke_kommt_aus_dem_bewachten_kanon():
     assert hat_deklaration(regel, "background-color", "currentColor")
 
 
+STATIK = REPO_ROOT / "backend" / "landing" / "static" / "landing"
+
+# WCAG 1.4.11 (Non-text Contrast): ein Zustandsanzeiger — hier der Fokusring —
+# braucht 3:1 gegen die Farben, an die er grenzt.
+FOKUSRING_MINDESTKONTRAST = 3.0
+
+
+def lies_markenfarbe(name):
+    """Der Hex-Wert eines `--bd-*`-Tokens aus dem Kanon brand-tokens.css."""
+    tokens = (STATIK / "brand-tokens.css").read_text()
+    treffer = re.search(rf"^\s*{re.escape(name)}:\s*(#[0-9A-Fa-f]{{6}});", tokens, re.M)
+    assert treffer, f"{name} fehlt in brand-tokens.css"
+    hexwert = treffer.group(1).lstrip("#")
+    return tuple(int(hexwert[i : i + 2], 16) for i in (0, 2, 4))
+
+
+def loese_farbe(deklaration):
+    """`var(--bd-x)` oder `color-mix(in srgb, var(--bd-x) N%, transparent)`.
+
+    Das zweite gibt Farbe *und* Deckkraft zurück — genau die zwei Zahlen, die
+    ein halbdurchsichtiger Ring auf seinem Grund braucht.
+    """
+    schlicht = re.fullmatch(r"var\((--bd-[\w-]+)\)", deklaration)
+    if schlicht:
+        return lies_markenfarbe(schlicht.group(1)), 1.0
+    gemischt = re.fullmatch(
+        r"color-mix\(in srgb,\s*var\((--bd-[\w-]+)\)\s*(\d+)%,\s*transparent\)", deklaration
+    )
+    assert gemischt, f"unerwartete Farbangabe: {deklaration}"
+    return lies_markenfarbe(gemischt.group(1)), int(gemischt.group(2)) / 100
+
+
+def ueber(farbe, deckkraft, grund):
+    return tuple(deckkraft * f + (1 - deckkraft) * g for f, g in zip(farbe, grund, strict=True))
+
+
+def kontrast(eine, andere):
+    """Das Kontrastverhältnis nach WCAG 2.x (1,0 bis 21,0)."""
+
+    def helligkeit(farbe):
+        kanaele = []
+        for wert in farbe:
+            anteil = wert / 255
+            linear = anteil / 12.92 if anteil <= 0.03928 else ((anteil + 0.055) / 1.055) ** 2.4
+            kanaele.append(linear)
+        rot, gruen, blau = kanaele
+        return 0.2126 * rot + 0.7152 * gruen + 0.0722 * blau
+
+    hell, dunkel = sorted((helligkeit(eine), helligkeit(andere)), reverse=True)
+    return (hell + 0.05) / (dunkel + 0.05)
+
+
+def lies_deklaration(regel, eigenschaft):
+    treffer = re.search(rf"^\s*{re.escape(eigenschaft)}:\s*(.+);\s*$", regel, re.M)
+    assert treffer, f"{eigenschaft} fehlt in der Regel"
+    return treffer.group(1)
+
+
+def test_der_eine_ausweg_traegt_auf_tusche_einen_sichtbaren_fokusring():
+    """Der Knopf ist die EINZIGE Handlung der Seite — er muss den Fokus zeigen.
+
+    Der Ring wird hier nicht auf einen Literalwert festgenagelt, sondern
+    *gerechnet*: die Umkehrung der Landing-Semantik durch `.fehlerseite` ist
+    genau dann vollständig, wenn der geerbte Fokusring auf dem Tuschegrund noch
+    sichtbar ist. Vergisst jemand den Token, den `.button:focus-visible` malt,
+    fällt der Ring auf den Papiergrund-Wert zurück (Akzentbraun zu 18 % ⇒
+    1,16:1 auf Tusche) — fokussiert sähe aus wie unfokussiert, und `outline:
+    none` hat die Kontur des Browsers da längst abgeschaltet.
+    """
+    css = (STATIK / "landing.css").read_text()
+
+    # Die Prämisse der Rechnung: der Knopf verzichtet auf die UA-Kontur und malt
+    # seinen Ring allein aus einem Token. Wird das anders gelöst, muss diese
+    # Zusicherung mit umziehen statt still grün zu bleiben.
+    fokus = lies_regel(css, ".button:focus-visible")
+    assert hat_deklaration(fokus, "outline", "none")
+    gemalt = re.fullmatch(r"0 0 0 3px var\((--[\w-]+)\)", lies_deklaration(fokus, "box-shadow"))
+    assert gemalt, "der Fokusring malt nicht mehr aus einem einzelnen Token"
+    token = gemalt.group(1)
+
+    flaeche = lies_regel(css, ".fehlerseite")
+    assert re.search(rf"^\s*{re.escape(token)}:", flaeche, re.M), (
+        f"{token} kippt auf dem Tuschegrund nicht mit — der Fokusring des einen "
+        "Auswegs bliebe der Papiergrund-Wert und wäre auf Tusche unsichtbar"
+    )
+
+    grund, _ = loese_farbe(lies_deklaration(flaeche, "background-color"))
+    knopf, _ = loese_farbe(lies_deklaration(lies_regel(css, ".fehlerseite .button"), "background"))
+    farbe, deckkraft = loese_farbe(lies_deklaration(flaeche, token))
+    ring = ueber(farbe, deckkraft, grund)
+
+    # Beide Ränder des 3-px-Rings: nach außen der Tuschegrund, nach innen das
+    # Knopfpapier.
+    assert kontrast(ring, grund) >= FOKUSRING_MINDESTKONTRAST
+    assert kontrast(ring, knopf) >= FOKUSRING_MINDESTKONTRAST
+
+
 def test_die_spa_leitet_unbekannte_pfade_unveraendert_weiter():
     # ADR 0044 behält die Weiterleitung bewusst: die SPA könnte ohnehin keinen
     # echten 404-Status liefern (der Webserver antwortet auf jeden unbekannten
