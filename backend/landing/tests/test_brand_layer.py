@@ -7,6 +7,8 @@ the old CSS-drawn ``○``, and sits on the app's warm cream paper rather than it
 former grey-green.
 """
 
+import re
+
 
 def test_landing_links_the_shared_brand_tokens(client):
     content = client.get("/").content.decode()
@@ -76,3 +78,100 @@ def test_landing_css_sits_on_warm_cream_not_the_old_grey_green(settings):
     assert "-apple-system" not in css
     # ...the landing now consumes the canonical warm-cream brand tokens instead.
     assert "var(--bd-paper)" in css
+
+
+# ── Die Musterfläche auf dem Tinte-Band (issue #516, ADR 0043) ───────────────
+#
+# Die Musterfläche ist Textur, nie Illustration: sie zeichnet `fluffy`, nicht
+# die gewählte Marke `fluffyfat`, und säße groß gesetzt als nicht-kanonischer
+# Vogel in derselben Ansicht wie die Marke. Geprüft wird sie als CSS-Inhalt,
+# wie alles andere Gestalterische in diesem Verzeichnis; die Sichtprüfung ist
+# in ADR 0043 bewusst ausgelassen, weil es hier keine Apparatur dafür gibt.
+
+MUSTER_SELEKTOR = ".page--home .band--ink::before"
+
+
+def _landing_css(settings):
+    from pathlib import Path
+
+    return (Path(settings.BASE_DIR) / "landing" / "static" / "landing" / "landing.css").read_text()
+
+
+def _musterflaeche_regel(css):
+    """Der eine Block, der die Musterfläche auf das Tinte-Band legt."""
+    assert MUSTER_SELEKTOR in css, f"kein Regelblock für {MUSTER_SELEKTOR} in landing.css"
+    anfang = css.index(MUSTER_SELEKTOR)
+    return css[anfang : css.index("}", anfang) + 1]
+
+
+def _supports_rahmen(css):
+    """Jeder @supports-Block als (Bedingung, Anfang, Ende) über Klammertiefe."""
+    for treffer in re.finditer(r"@supports([^{]*)\{", css):
+        tiefe = 0
+        for stelle in range(treffer.end() - 1, len(css)):
+            if css[stelle] == "{":
+                tiefe += 1
+            elif css[stelle] == "}":
+                tiefe -= 1
+                if tiefe == 0:
+                    yield treffer.group(1), treffer.start(), stelle
+                    break
+
+
+def test_das_tinte_band_traegt_die_musterflaeche_in_papierfarbe(settings):
+    regel = _musterflaeche_regel(_landing_css(settings))
+    # Der gelieferte Kanon ist weiß und transparent und wird über `mask-image`
+    # eingefärbt, statt als zweite, eingefärbte Kopie geführt zu werden — beide
+    # Schreibweisen, damit auch älteres WebKit die Textur bekommt.
+    assert 'mask-image: url("birddoc-muster.svg")' in regel
+    assert '-webkit-mask-image: url("birddoc-muster.svg")' in regel
+    # Auf dem einen dunkel invertierten Band malt die Maske Papier auf Tusche.
+    assert "background-color: var(--bd-paper)" in regel
+
+
+def test_die_musterflaeche_bleibt_textur_und_wird_nie_zum_motiv(settings):
+    regel = _musterflaeche_regel(_landing_css(settings))
+    # Sie kachelt in ihrer Token-Größe, statt eine einzelne Zeichnung auf die
+    # Bandfläche zu ziehen: die Musterfläche zeichnet `fluffy`, nicht die
+    # gewählte Marke — groß gesetzt säße dort ein nicht-kanonischer Vogel.
+    assert "mask-repeat: repeat" in regel
+    assert "-webkit-mask-repeat: repeat" in regel
+    assert "mask-size: var(--bd-muster-kachel) auto" in regel
+    assert "-webkit-mask-size: var(--bd-muster-kachel) auto" in regel
+    for aufblasend in ("cover", "contain", "100%"):
+        assert aufblasend not in regel, f"mask-size {aufblasend} macht aus der Textur ein Motiv"
+
+
+def test_deckkraft_und_kachelgroesse_stehen_nirgends_als_zahl(settings):
+    css = _landing_css(settings)
+    assert "opacity: var(--bd-muster-deckkraft)" in _musterflaeche_regel(css)
+    # Die beiden Knöpfe der Textur stehen in brand-tokens.css und laufen damit
+    # unter der Parität der Markenebene. Wiederholte Zahlen laufen beim ersten
+    # Nachjustieren auseinander — also darf keine der beiden hier stehen.
+    assert "420px" not in css
+    assert re.search(r"opacity:\s*0?\.\d", css) is None
+
+
+def test_ohne_maskenunterstuetzung_malt_die_musterflaeche_nicht(settings):
+    css = _landing_css(settings)
+    # Schmuck darf nie zum Defekt werden: ohne Maskenunterstützung bliebe von
+    # der Regel eine flächige helle Fläche über dem Band übrig. Der ganze
+    # Regelblock — samt `content` — steht deshalb hinter einem @supports-Rahmen
+    # auf `mask-image`; fehlt der Rückhalt, entsteht das Pseudo-Element nicht.
+    assert css.count(MUSTER_SELEKTOR) == 1, "die Musterfläche wird an mehr als einer Stelle gemalt"
+    stelle = css.index(MUSTER_SELEKTOR)
+    umschliessend = [
+        bedingung for bedingung, anfang, ende in _supports_rahmen(css) if anfang < stelle < ende
+    ]
+    assert umschliessend, f"{MUSTER_SELEKTOR} steht ungeschützt außerhalb jedes @supports"
+    assert any("mask-image" in bedingung for bedingung in umschliessend)
+
+
+def test_die_musterflaeche_ist_schmueckend_und_wird_nicht_vorgelesen(client, settings):
+    # Sie lebt als Pseudo-Element im Stylesheet, nicht als Element im Dokument:
+    # die Startseite benennt sie an keiner Stelle, es gibt also nichts, was ein
+    # Bildschirmleser ansagen könnte...
+    assert "birddoc-muster" not in client.get("/").content.decode()
+    # ...und das Pseudo-Element trägt keinen Ersatztext (`content: "" / "…"`
+    # würde vorgelesen), sondern eine leere Zeichenkette.
+    assert 'content: "";' in _musterflaeche_regel(_landing_css(settings))
