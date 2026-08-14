@@ -7,6 +7,39 @@
   gap: 1rem;
   padding: 1.5rem;
   background-color: var(--bd-paper);
+  // Trägt die Musterfläche (unten): eigener Stapelkontext, damit das
+  // Pseudo-Element über dem Papiergrund und unter der Karte liegt.
+  position: relative;
+  isolation: isolate;
+}
+
+// Die Musterfläche auf dem einen bildschirmfüllenden Moment der App (#516,
+// ADR 0043) — Textur, nie Illustration. Der gelieferte Kanon ist weiß und
+// transparent; die Maske färbt ihn hier in Tusche auf Papiergrund, statt eine
+// zweite, eingefärbte Kopie zu führen. Deckkraft und Kachelgröße kommen aus
+// den Marken-Tokens, damit „niedriger Kontrast“ ein Wert an einer Stelle
+// bleibt und nicht zwischen login.scss und landing.css auseinanderläuft.
+//
+// Der @supports-Rahmen ist der Ausfallmodus, nicht Zierrat: ohne
+// Maskenunterstützung stünde `background-color` als flächiger Tuschekasten
+// über der Anmeldung. Fehlt die Unterstützung, entsteht das Pseudo-Element gar
+// nicht erst — die Seite sieht dann aus wie vorher.
+@supports ((mask-image: url('/birddoc-muster.svg')) or (-webkit-mask-image: url('/birddoc-muster.svg'))) {
+  .login-page::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    -webkit-mask-image: url('/birddoc-muster.svg');
+    mask-image: url('/birddoc-muster.svg');
+    -webkit-mask-repeat: repeat;
+    mask-repeat: repeat;
+    -webkit-mask-size: var(--bd-muster-kachel) auto;
+    mask-size: var(--bd-muster-kachel) auto;
+    background-color: var(--bd-ink);
+    opacity: var(--bd-muster-deckkraft);
+  }
 }
 
 // Legal links out to the public apex (§ 5 ECG — reachable from the app

@@ -256,7 +256,14 @@ describe('ProjectPickerComponent', () => {
         '.picker__empty img.picker__empty-logo',
       ) as HTMLImageElement | null;
       expect(logo).not.toBeNull();
-      expect(logo!.getAttribute('src')).toBe('/birddoc-logo-1930x1930.png');
+      // Die Sache, nicht der Dateiname von gestern: über dem leeren Zustand
+      // steht die gezeichnete Marke als Vektor — kein Pixelbild —, und bei
+      // 96 px trägt die Fläche den vollen Kanon (ADR 0043: bis 32 px das
+      // eng beschnittene Glyph, darüber die Marke).
+      const src = logo!.getAttribute('src') ?? '';
+      expect(src.endsWith('.svg')).toBeTrue();
+      expect(src).toContain('birddoc-marke');
+      expect(Number(logo!.getAttribute('width'))).toBeGreaterThan(32);
     });
 
     it('names the missing Beringer as the cause for a no-Beringer Admin, not a missing Projekt-Zuordnung', () => {

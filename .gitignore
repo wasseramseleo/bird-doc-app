@@ -38,3 +38,7 @@ frontend/res/local-error.log
 # Vendored agent tooling (kept locally, not tracked)
 .agents/
 skills-lock.json
+
+# Der Lieferordner des Künstlers wird nie eingecheckt — die Originale liegen
+# verwahrt in docs/brand/ (ADR 0043).
+/birb/
