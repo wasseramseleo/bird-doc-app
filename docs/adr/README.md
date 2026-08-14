@@ -47,5 +47,7 @@ Alle Entscheidungen dieses Verzeichnisses, aufsteigend nach Nummer.
 - [0040](0040-die-oberflaeche-schreibt-beringer-in.md) — Die Oberfläche schreibt Beringer:in — vier Schreibweisen, jede mit ihrem Geltungsbereich
 - [0041](0041-charting-library-chartjs-direct.md) — Visualisation charting: Chart.js used directly, no Angular wrapper
 - [0042](0042-zeilenklick-oeffnet-den-detail-dialog.md) — Der Zeilenklick öffnet den Detail-Dialog, der Dialog führt zum Bearbeiten
+- [0043](0043-die-gezeichnete-marke-und-ihre-ableitungen.md) — Die gezeichnete Marke und ihre Ableitungen — ein Kanon je Artefakt, zwei Wurzeln, ein Skript
+- [0044](0044-die-fehlerseiten-stehen-fuer-sich.md) — Die Fehlerseiten stehen für sich — kein Chrome, Tuschegrund, und der Vogel sagt, welcher Zustand gilt
 
-**Nächste freie Nummer: 0043**
+**Nächste freie Nummer: 0045**
