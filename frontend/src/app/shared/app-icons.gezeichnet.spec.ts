@@ -83,6 +83,21 @@ describe('Icon-Seam mit gezeichneten Vögeln', () => {
     expect(svg!.querySelectorAll('path, circle, polygon, ellipse').length).toBeGreaterThan(0);
   });
 
+  // ADR 0037: „Der leere und der kaputte Zustand bekommen verschiedene Vögel."
+  // Hier steht die Zusicherung am Gezeichneten selbst — zwei Zeichnungen, die
+  // sich unterscheiden. `app-icons.spec.ts` sagt dasselbe über die Naht; diese
+  // Spec sagt es über das Bild, unabhängig davon, wie eine Hilfsfunktion ein
+  // `<mat-icon>` gerade ausliest. Welcher Vogel welcher ist, bleibt auch hier
+  // ungenannt: verglichen wird nur, dass es zwei sind.
+  it('zeichnet dem leeren Zustand einen anderen Vogel als dem kaputten', () => {
+    const kaputt = drawing('mat-icon[app-icon-error]');
+    const leer = drawing('mat-icon[app-icon-empty]');
+
+    expect(kaputt!.innerHTML.trim()).toBeTruthy();
+    expect(leer!.innerHTML.trim()).toBeTruthy();
+    expect(leer!.innerHTML).not.toBe(kaputt!.innerHTML);
+  });
+
   // ADR 0043: die Zeichnung bringt keine eigene Farbe mit, sie erbt die der
   // Meldung daneben — damit Symbol und Satz als ein Hinweis gelesen werden.
   it('trägt die Farbe der Meldung daneben, statt eine eigene mitzubringen', () => {
