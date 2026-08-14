@@ -47,23 +47,53 @@ def test_landing_font_css_declares_lora_and_inter_from_local_files(settings):
             assert (static / "fonts" / filename).is_file(), f"missing font file {filename}"
 
 
+def _wortmarken_bild(content: str) -> str:
+    """Das ``<img>`` der Wortmarke, so wie die Kopfleiste es tatsächlich ausliefert."""
+    import re
+
+    treffer = re.search(r"<img[^>]*wordmark__mark[^>]*>", content)
+    assert treffer, "die Wortmarke der Landing trägt kein Bild"
+    return treffer.group(0)
+
+
+def _attribut(tag: str, name: str) -> str:
+    import re
+
+    treffer = re.search(rf'{name}="([^"]*)"', tag)
+    assert treffer, f"{name} fehlt an {tag}"
+    return treffer.group(1)
+
+
 def test_landing_header_wears_the_real_logo_not_a_css_ring(client):
     content = client.get("/").content.decode()
-    # The real BirdDoc logo, shipped as an <img>, replaces the old CSS-drawn ○.
-    assert "birddoc-logo" in content
-    assert "<img" in content
+    # Die gezeichnete Marke steht als <img> dort, wo früher der CSS-gemalte ○
+    # stand — und bei 28 px trägt die Wortmarke den eng beschnittenen Glyph
+    # (ADR 0043: bis 32 px das Glyph, darüber die volle Marke).
+    bild = _wortmarken_bild(content)
+    assert int(_attribut(bild, "width")) <= 32
+    assert "birddoc-glyph.svg" in _attribut(bild, "src")
     # The reinvented CSS wordmark ring is gone from the chrome.
     assert "wordmark__ring" not in content
 
 
-def test_landing_logo_is_an_optimized_asset(settings):
+def test_landing_logo_is_an_optimized_asset(client, settings):
     from pathlib import Path
 
-    logo = Path(settings.BASE_DIR) / "landing" / "static" / "landing" / "birddoc-logo.png"
+    # Die eigentlich gemeinte Zusicherung, nicht bloß eine Größenschranke: die
+    # Marke der Landing ist ein **echter Vektor ohne eingebettetes Pixelbild**.
+    # Der Defekt, den der frühere Kommentar hier nur als Warnung zitierte — eine
+    # 669 KB schwere SVG-Hülle um ein base64-PNG —, ist damit geschlossen; §3
+    # des Briefings schließt eingebettete Pixelbilder aus (ADR 0043).
+    quelle = _attribut(_wortmarken_bild(client.get("/").content.decode()), "src")
+    logo = Path(settings.BASE_DIR) / "landing" / "static" / quelle.split("/static/", 1)[1]
     assert logo.is_file(), f"landing logo missing at {logo}"
+    assert logo.suffix == ".svg", f"die Marke der Landing ist kein Vektor: {logo.name}"
+    inhalt = logo.read_text(encoding="utf-8")
+    assert "<path" in inhalt, f"{logo.name} trägt keinen einzigen Pfad"
+    for eingebettet in ("<image", "base64", "data:image"):
+        assert eingebettet not in inhalt, f"{logo.name} bettet ein Pixelbild ein ({eingebettet})"
     size = logo.stat().st_size
-    # Far below the ~669 KB favicon.svg the issue calls out as too heavy for a
-    # landing — a header mark needs only a small raster.
+    # Und damit ein paar Kilobyte statt eines halben Megabytes.
     assert size < 50_000, f"landing logo is {size} bytes — optimize it further"
 
 

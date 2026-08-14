@@ -211,9 +211,13 @@ def test_the_only_motion_is_the_thread_reveal_and_it_is_reduced_motion_aware():
 def test_no_stock_photography_is_introduced(client):
     # Visuals are self-sourced from the app's own language — the only image is the
     # brand logo; no stock photography, no external image hosts.
+    import re
+
     content = client.get("/").content.decode()
     assert content.count("<img") == 1
-    assert "birddoc-logo" in content
+    # Das eine Bild ist die eigene, gezeichnete Marke aus dem eigenen
+    # Static-Ordner — kein Fremdbild und keine Fremdadresse.
+    assert re.search(r'<img[^>]+src="/static/landing/birddoc-[a-z]+\.svg"', content)
     for marker in ("unsplash", "shutterstock", "pexels", "istockphoto", ".jpg", ".jpeg"):
         assert marker not in content.lower()
     css = LANDING_CSS.read_text().lower()
