@@ -558,6 +558,39 @@ body {
     --accent: var(--bd-accent-soft);
     --accent-strong: var(--bd-paper);
     --accent-tint: color-mix(in srgb, var(--bd-accent-soft) 32%, transparent);
+    /* Trägt die Musterfläche (unten): eigener Stapelkontext, damit das
+       Pseudo-Element über dem Bandgrund und unter allem Inhalt liegt. */
+    position: relative;
+    isolation: isolate;
+}
+
+/* Die Musterfläche auf dem einen Tinte-Band (issue #516, ADR 0043) — Textur,
+   nie Illustration. Der gelieferte Kanon ist weiß und transparent; die Maske
+   färbt ihn hier in Papier auf Tuschegrund, statt eine zweite, eingefärbte
+   Kopie zu führen. Deckkraft und Kachelgröße kommen aus den Marken-Tokens,
+   damit „niedriger Kontrast“ ein Wert an einer Stelle bleibt und nicht
+   zwischen landing.css und login.scss auseinanderläuft.
+
+   Der @supports-Rahmen ist der Ausfallmodus, nicht Zierrat: ohne
+   Maskenunterstützung würde `background-color` als flächiger heller Kasten
+   über dem Band stehen. Fehlt die Unterstützung, entsteht das Pseudo-Element
+   gar nicht erst — die Seite sieht dann aus wie vorher. */
+@supports ((mask-image: url("birddoc-muster.svg")) or (-webkit-mask-image: url("birddoc-muster.svg"))) {
+    .page--home .band--ink::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        -webkit-mask-image: url("birddoc-muster.svg");
+        mask-image: url("birddoc-muster.svg");
+        -webkit-mask-repeat: repeat;
+        mask-repeat: repeat;
+        -webkit-mask-size: var(--bd-muster-kachel) auto;
+        mask-size: var(--bd-muster-kachel) auto;
+        background-color: var(--bd-paper);
+        opacity: var(--bd-muster-deckkraft);
+    }
 }
 
 /* On ink, the primary action inverts to a paper-bright button — the most
