@@ -32,6 +32,17 @@
   --bd-success:      #4F7A4A;
   --bd-warning:      #B07A24;
   --bd-error:        #A8412D;
+
+  /* Musterfläche (birddoc-muster.svg, ADR 0043) — keine Palette, sondern die
+   * zwei Knöpfe der Textur. Sie stehen hier und nicht in landing.css bzw.
+   * login.scss, damit „niedriger Kontrast“ ein prüfbarer Wert bleibt und nicht
+   * beim ersten Nachjustieren zwischen den beiden Wurzeln auseinanderläuft.
+   * Startwerte aus dem Prototyp, gemessen, aber keine Offenbarung: 420 px
+   * Kachel, 6 % Deckkraft. Die 6 % gelten auf Papiergrund; auf Tuschegrund lief
+   * der Prototyp mit 10 % — dort wird dieselbe Eigenschaft im eigenen Bereich
+   * neu gesetzt, damit es ein Knopf mit einem Namen bleibt. */
+  --bd-muster-kachel:    420px;
+  --bd-muster-deckkraft: 0.06;
 }
 
 /* Type families — Lora (display) + Inter (body). The shared brand decision;
