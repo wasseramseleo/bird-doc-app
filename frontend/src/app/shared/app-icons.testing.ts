@@ -27,11 +27,20 @@ import {By} from '@angular/platform-browser';
  * gezeichneten Vögel überleben: eine Material-Ligatur landet als Text im
  * Element, ein `svgIcon` als eingebettetes `<svg>`. Was genau dort steht, prüft
  * absichtlich niemand — nur *dass* dort etwas steht.
+ *
+ * **Zurückgegeben wird in beiden Fällen das Gezeichnete selbst, nie sein Name**
+ * (#514). Ein `<mat-icon svgIcon>` trägt seinen Registry-Namen als
+ * `data-mat-icon-name` am Element; ihn hier zu bevorzugen wäre bequemer zu
+ * lesen und würde die eine Zusicherung zerstören, für die diese Funktion
+ * gebaut ist: `glyph(a) !== glyph(b)` vergliche dann zwei Konstanten, die sich
+ * per Konstruktion unterscheiden — auch dann, wenn hinter beiden Namen
+ * dieselbe Zeichnung steht. „Der leere und der kaputte Zustand bekommen
+ * verschiedene Vögel" (ADR 0037) wäre unbeobachtet.
  */
 export function renderedGlyph(icon: Element | null | undefined): string {
   if (!icon) return '';
   const svg = icon.querySelector('svg');
-  if (svg) return icon.getAttribute('data-mat-icon-name') ?? svg.outerHTML;
+  if (svg) return svg.outerHTML;
   return icon.textContent?.trim() ?? '';
 }
 
