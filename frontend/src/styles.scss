@@ -101,6 +101,17 @@ h3 { font-size: 20px; line-height: 28px; }
   background-color: var(--bd-paper-elev);
 }
 
+// #514: Ein `<mat-icon inline>` mit gezeichnetem Vogel bleibt so groß wie der
+// Satz, in dem es steht. Material gibt `inline` Höhe und Breite des Elternteils
+// mit (`.mat-icon-inline { width: inherit; height: inherit }`) — das passte zur
+// Ligatur, die ohnehin mit der Schrift wuchs. Ein SVG mit `height="100%"` in
+// einem Kasten ohne feste Höhe wird damit vielfach zu groß. `1em` stellt die
+// alte Größe wieder her, ohne dass eine Aufrufstelle etwas davon wissen muss.
+mat-icon.mat-icon-inline[data-mat-icon-type='svg'] {
+  width: 1em;
+  height: 1em;
+}
+
 // A11Y-4 Visible focus ring. Guarantee a brand-accent focus indicator on every
 // keyboard-focused interactive element that doesn't already render a Material
 // focus state (e.g. the navbar brand link).
