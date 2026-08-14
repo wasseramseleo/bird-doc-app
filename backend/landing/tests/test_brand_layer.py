@@ -97,21 +97,40 @@ def _landing_css(settings):
     return (Path(settings.BASE_DIR) / "landing" / "static" / "landing" / "landing.css").read_text()
 
 
+def _ohne_kommentare(css):
+    """``css`` mit ausgeblendeten ``/* … */`` — längentreu, damit jede Fundstelle
+    weiterhin auf dieselbe Stelle im Original zeigt.
+
+    Die Kommentare dieses Stylesheets sprechen *über* die Regel, die sie
+    einleiten, und nennen sie dabei beim Namen: über dem echten At-Rule steht
+    das Wort ``@supports`` schon in der Prosa. Wer den Text roh absucht, findet
+    den Kommentar statt der Regel — und hielte den Schmuck für geschützt, auch
+    wenn der Rahmen fehlt.
+    """
+    return re.sub(r"/\*.*?\*/", lambda treffer: " " * len(treffer.group()), css, flags=re.S)
+
+
 def _musterflaeche_regel(css):
     """Der eine Block, der die Musterfläche auf das Tinte-Band legt."""
-    assert MUSTER_SELEKTOR in css, f"kein Regelblock für {MUSTER_SELEKTOR} in landing.css"
-    anfang = css.index(MUSTER_SELEKTOR)
-    return css[anfang : css.index("}", anfang) + 1]
+    prosafrei = _ohne_kommentare(css)
+    assert MUSTER_SELEKTOR in prosafrei, f"kein Regelblock für {MUSTER_SELEKTOR} in landing.css"
+    anfang = prosafrei.index(MUSTER_SELEKTOR)
+    return css[anfang : prosafrei.index("}", anfang) + 1]
 
 
 def _supports_rahmen(css):
-    """Jeder @supports-Block als (Bedingung, Anfang, Ende) über Klammertiefe."""
-    for treffer in re.finditer(r"@supports([^{]*)\{", css):
+    """Jeder @supports-Block als (Bedingung, Anfang, Ende) über Klammertiefe.
+
+    Anfang und Ende zeigen auf ``css`` selbst; gesucht wird auf dem Text ohne
+    Kommentare, damit Prosa kein At-Rule vortäuschen kann.
+    """
+    prosafrei = _ohne_kommentare(css)
+    for treffer in re.finditer(r"@supports([^{]*)\{", prosafrei):
         tiefe = 0
-        for stelle in range(treffer.end() - 1, len(css)):
-            if css[stelle] == "{":
+        for stelle in range(treffer.end() - 1, len(prosafrei)):
+            if prosafrei[stelle] == "{":
                 tiefe += 1
-            elif css[stelle] == "}":
+            elif prosafrei[stelle] == "}":
                 tiefe -= 1
                 if tiefe == 0:
                     yield treffer.group(1), treffer.start(), stelle
@@ -152,8 +171,24 @@ def test_deckkraft_und_kachelgroesse_stehen_nirgends_als_zahl(settings):
     assert re.search(r"opacity:\s*0?\.\d", css) is None
 
 
+def test_der_supports_rahmen_zaehlt_regeln_und_keine_kommentarprosa():
+    # Die Wacht des nächsten Tests an einem Stylesheet, dessen Ausgang bekannt
+    # ist. Der Kommentar nennt beide Wörter, nach denen sie sucht — zählte sie
+    # Prosa mit, bliebe sie grün, während die Fläche ungeschützt ausliefert.
+    prosa = "/* Der @supports-Rahmen auf `mask-image` ist der Ausfallmodus. */\n"
+    regel = f'{MUSTER_SELEKTOR} {{ content: ""; }}\n'
+    assert list(_supports_rahmen(prosa + regel)) == [], "der Kommentar gilt als Rahmen"
+    # Und der echte Rahmen wird gefunden — an der Stelle, an der er steht.
+    geschuetzt = prosa + '@supports (mask-image: url("x.svg")) {\n' + regel + "}\n"
+    rahmen = list(_supports_rahmen(geschuetzt))
+    assert len(rahmen) == 1
+    bedingung, anfang, ende = rahmen[0]
+    assert "mask-image" in bedingung
+    assert anfang < geschuetzt.index(MUSTER_SELEKTOR) < ende
+
+
 def test_ohne_maskenunterstuetzung_malt_die_musterflaeche_nicht(settings):
-    css = _landing_css(settings)
+    css = _ohne_kommentare(_landing_css(settings))
     # Schmuck darf nie zum Defekt werden: ohne Maskenunterstützung bliebe von
     # der Regel eine flächige helle Fläche über dem Band übrig. Der ganze
     # Regelblock — samt `content` — steht deshalb hinter einem @supports-Rahmen
